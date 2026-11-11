@@ -5,6 +5,7 @@
 //! decoded by [`SseDecoder`] and assembled by `stream::Assembler`.
 
 mod error;
+mod live;
 mod models;
 mod request;
 mod stream;
@@ -14,6 +15,7 @@ mod wire;
 use std::sync::atomic::Ordering;
 use std::time::Instant;
 
+pub use live::{remember as remember_models, LiveCaps};
 pub use models::{builtin_models, efforts, fit_effort, ModelInfo};
 
 use crate::http::{Flow, HttpHead, HttpRequest, Transport};

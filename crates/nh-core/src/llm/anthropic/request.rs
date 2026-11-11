@@ -88,7 +88,7 @@ pub(crate) fn build(
     oauth: bool,
 ) -> (Value, Vec<&'static str>) {
     let cache = cache_control(req.cache_long);
-    let plan = thinking::plan(spec, req.effort, req.max_tokens);
+    let plan = thinking::plan_model(req.model, spec, req.effort, req.max_tokens);
     let mut messages = convert_messages(req.messages, oauth, &cache);
     if let Some(effort) = &plan.trailing_effort {
         messages

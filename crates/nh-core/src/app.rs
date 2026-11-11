@@ -52,6 +52,7 @@ impl Runtime {
 
     pub fn load_at(home: PathBuf) -> Result<Runtime, String> {
         let config = Config::load(&home)?;
+        models::load_cache(&home);
         let pool = Arc::new(open_pool(&home)?);
         Ok(Runtime {
             home,
@@ -123,5 +124,24 @@ impl Runtime {
             None => Conversation::create(&self.home, cwd, None)
                 .map_err(|err| format!("new session: {err}")),
         }
+    }
+}
+
+// Live model catalog: the cache and `GET /v1/models` (`app/models.rs`).
+mod models;
+
+pub use models::{read_cache, write_cache, ModelSource, CACHE_FILE, CACHE_VERSION};
+
+impl Runtime {
+    /// The model catalog with the credential `auth()` picks now. Cheap: take
+    /// a new one each time a picker opens, then call `fetch` off the UI thread.
+    pub fn models(&self) -> ModelSource {
+        let transport: Arc<dyn Transport> = self.transport.clone();
+        ModelSource::new(
+            self.home.clone(),
+            self.auth(),
+            transport,
+            self.provider.clone(),
+        )
     }
 }
