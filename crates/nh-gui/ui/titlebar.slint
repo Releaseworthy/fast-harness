@@ -1,0 +1,188 @@
+// The custom window title bar (the window has no native frame): the sidebar
+// toggle, the Settings and About menu buttons, the account usage pill and
+// the minimize, maximize or restore and close buttons. The empty bar moves
+// the window; a double click maximizes or restores it.
+import { Theme, Mark } from "parts.slint";
+import { Icons } from "icons.slint";
+import { IconButton } from "widgets.slint";
+
+// A flat text menu button. The open page reads in the text colour, bold,
+// with a 2px accent underline, so the state never rests on colour alone.
+component MenuButton inherits Rectangle {
+    in property <string> text;
+    in property <bool> selected;
+    callback clicked();
+    height: 28px;
+    width: label.preferred-width + 2 * Theme.space-m;
+    border-radius: Theme.radius-s;
+    background: ta.has-hover ? Theme.hover : transparent;
+    accessible-role: button;
+    accessible-label: root.text + (root.selected ? " (open)" : "");
+    accessible-action-default => { root.clicked(); }
+    label := Text {
+        text: root.text;
+        font-size: Theme.font-s;
+        font-weight: root.selected ? 600 : 400;
+        color: root.selected ? Theme.text : Theme.dim;
+        vertical-alignment: center;
+        accessible-role: none;
+    }
+    if root.selected: Rectangle {
+        x: Theme.space-m;
+        y: parent.height - 2px;
+        width: parent.width - 2 * Theme.space-m;
+        height: 2px;
+        border-radius: 1px;
+        background: Theme.accent;
+    }
+    ta := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
+// A compact usage meter: the window name, a short bar and the percent.
+component Meter {
+    in property <string> label;
+    in property <float> value;
+    in property <string> caption;
+    HorizontalLayout {
+        spacing: Theme.space-xs + 1px;
+        Text { text: root.label; font-size: Theme.font-xs; color: Theme.dim; vertical-alignment: center; }
+        Rectangle {
+            width: 34px;
+            Rectangle {
+                y: (parent.height - self.height) / 2;
+                height: 5px;
+                border-radius: 2.5px;
+                background: Theme.line;
+                Rectangle {
+                    x: 0;
+                    width: parent.width * max(0, min(1, root.value));
+                    border-radius: 2.5px;
+                    background: root.value >= 0.9 ? Theme.error : root.value >= 0.7 ? Theme.warning : Theme.success;
+                }
+            }
+        }
+        Text {
+            text: root.caption == "no data" ? "n/a" : Math.round(root.value * 100) + "%";
+            font-size: Theme.font-xs;
+            color: Theme.text;
+            vertical-alignment: center;
+        }
+    }
+}
+
+// The active account and its 5h and 7d usage. Opens the Accounts page.
+component AccountPill inherits Rectangle {
+    in property <string> name;
+    in property <float> five;
+    in property <string> five-text;
+    in property <float> seven;
+    in property <string> seven-text;
+    in property <bool> selected;
+    callback clicked();
+    height: 28px;
+    width: pill.preferred-width;
+    border-radius: 14px;
+    border-width: root.selected ? 2px : 1px;
+    border-color: root.selected ? Theme.accent : Theme.border;
+    background: ta.has-hover ? Theme.hover : Theme.raised;
+    accessible-role: button;
+    accessible-label: "Account " + root.name + ". 5h usage " + root.five-text + ". 7d usage " + root.seven-text + ". Open Accounts";
+    accessible-action-default => { root.clicked(); }
+    pill := HorizontalLayout {
+        padding-left: Theme.space-s + 2px;
+        padding-right: Theme.space-m;
+        spacing: Theme.space-s;
+        Mark { text: Icons.account; color: Theme.text; font-size: Theme.font-m; }
+        Text {
+            text: root.name;
+            max-width: 200px;
+            overflow: elide;
+            font-size: Theme.font-s;
+            font-weight: 600;
+            color: Theme.text;
+            vertical-alignment: center;
+        }
+        Meter { label: "5h"; value: root.five; caption: root.five-text; }
+        Meter { label: "7d"; value: root.seven; caption: root.seven-text; }
+    }
+    ta := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
+// Minimize, maximize or restore, close: 46 by 40 like the native ones.
+component WindowButton inherits IconButton {
+    width: 46px;
+    height: 40px;
+    border-radius: 0;
+    icon-size: 16px;
+}
+
+export component TitleBar inherits Rectangle {
+    in property <string> page;
+    in property <bool> sidebar-open;
+    in property <bool> maximized;
+    in property <string> chip-name;
+    in property <float> chip-five;
+    in property <string> chip-five-text;
+    in property <float> chip-seven;
+    in property <string> chip-seven-text;
+    callback toggle-sidebar();
+    callback open-page(string);
+    callback minimize();
+    callback toggle-maximize();
+    callback close();
+    height: 40px;
+    background: Theme.surface;
+    WindowMoveArea {
+        HorizontalLayout {
+            padding-left: Theme.space-xs + 2px;
+            spacing: Theme.space-xs;
+            VerticalLayout {
+                alignment: center;
+                IconButton {
+                    icon: root.sidebar-open ? Icons.layout-sidebar-left : Icons.layout-sidebar-left-off;
+                    label: root.sidebar-open ? "Hide the sidebar" : "Show the sidebar";
+                    clicked => { root.toggle-sidebar(); }
+                }
+            }
+            VerticalLayout {
+                alignment: center;
+                MenuButton { text: "Settings"; selected: root.page == "settings"; clicked => { root.open-page("settings"); } }
+            }
+            VerticalLayout {
+                alignment: center;
+                MenuButton { text: "About"; selected: root.page == "about"; clicked => { root.open-page("about"); } }
+            }
+            TouchArea {
+                horizontal-stretch: 1;
+                double-clicked => { root.toggle-maximize(); }
+            }
+            VerticalLayout {
+                alignment: center;
+                horizontal-stretch: 0;
+                AccountPill {
+                    name: root.chip-name;
+                    five: root.chip-five;
+                    five-text: root.chip-five-text;
+                    seven: root.chip-seven;
+                    seven-text: root.chip-seven-text;
+                    selected: root.page == "accounts";
+                    clicked => { root.open-page("accounts"); }
+                }
+            }
+            Rectangle { width: Theme.space-s; }
+            WindowButton { icon: Icons.chrome-minimize; label: "Minimize"; clicked => { root.minimize(); } }
+            WindowButton {
+                icon: root.maximized ? Icons.chrome-restore : Icons.chrome-maximize;
+                label: root.maximized ? "Restore" : "Maximize";
+                clicked => { root.toggle-maximize(); }
+            }
+            WindowButton { icon: Icons.chrome-close; label: "Close"; danger: true; clicked => { root.close(); } }
+        }
+    }
+}

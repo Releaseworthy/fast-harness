@@ -1,6 +1,7 @@
 // Themed controls that replace the std-widgets ones, so every colour comes
 // from the `Theme` global (the Fluent widgets take the OS accent colour).
-import { Theme } from "parts.slint";
+import { Theme, Mark } from "parts.slint";
+import { Icons } from "icons.slint";
 
 // The 2px focus ring; users place it 1px outside the control (WCAG 2.4.7 and 2.4.13).
 export component FocusRing inherits Rectangle {
@@ -14,6 +15,8 @@ export component FocusRing inherits Rectangle {
 // "ghost" (no fill until hovered). Enter or Space activates it.
 export component ActionButton inherits Rectangle {
     in property <string> text;
+    // An optional code point from `Icons`, drawn before the text.
+    in property <string> icon;
     in property <string> variant: "secondary";
     in property <bool> enabled: true;
     out property <bool> has-focus: fs.has-focus;
@@ -39,7 +42,13 @@ export component ActionButton inherits Rectangle {
         padding-left: Theme.space-l - 2px;
         padding-right: Theme.space-l - 2px;
         alignment: center;
-        Text {
+        spacing: Theme.space-s;
+        if root.icon != "": Mark {
+            text: root.icon;
+            font-size: Theme.font-m;
+            color: !root.enabled ? Theme.dim : root.primary ? Theme.on-accent : Theme.text;
+        }
+        if root.text != "": Text {
             text: root.text;
             font-size: Theme.font-m;
             font-weight: root.primary ? 600 : 500;
@@ -80,11 +89,10 @@ component DropdownItem inherits Rectangle {
         padding-left: Theme.space-s;
         padding-right: Theme.space-s;
         spacing: Theme.space-s;
-        Text {
+        Mark {
             width: 14px;
-            text: root.selected ? "✓" : "";
+            text: root.selected ? Icons.check : "";
             color: Theme.accent;
-            vertical-alignment: center;
         }
         Text {
             text: root.text;
@@ -181,18 +189,10 @@ export component Dropdown inherits Rectangle {
             horizontal-stretch: 1;
             accessible-role: none;
         }
-        VerticalLayout {
-            alignment: center;
-            Path {
-                width: 10px;
-                height: 6px;
-                viewbox-width: 10;
-                viewbox-height: 6;
-                commands: root.open ? "M 1 5 L 5 1 L 9 5" : "M 1 1 L 5 5 L 9 1";
-                stroke: Theme.dim;
-                stroke-width: 1.5px;
-                accessible-role: none;
-            }
+        Mark {
+            text: root.open ? Icons.chevron-up : Icons.chevron-down;
+            color: Theme.dim;
+            font-size: Theme.font-m;
         }
     }
     ta := TouchArea {
@@ -366,5 +366,34 @@ export component BusySpinner {
         border-radius: 3px;
         background: Theme.accent;
         opacity: 0.35 + 0.65 * (0.5 + 0.5 * Math.sin(root.phase - i * 60deg));
+    }
+}
+// An icon-only button: a square with one glyph, a hover fill and a label
+// for assistive technology. `danger` fills it with the error colour on hover.
+export component IconButton inherits Rectangle {
+    in property <string> icon;
+    in property <string> label;
+    in property <bool> danger;
+    in property <length> icon-size: Theme.font-m + 2px;
+    callback clicked();
+    width: Theme.control-height;
+    height: Theme.control-height;
+    border-radius: Theme.radius-s;
+    background: ta.pressed ? (root.danger ? Theme.error.darker(0.1) : Theme.selection)
+        : ta.has-hover ? (root.danger ? Theme.error : Theme.hover) : transparent;
+    accessible-role: button;
+    accessible-label: root.label;
+    accessible-action-default => { root.clicked(); }
+    Mark {
+        width: parent.width;
+        height: parent.height;
+        horizontal-alignment: center;
+        text: root.icon;
+        font-size: root.icon-size;
+        color: root.danger && ta.has-hover ? Theme.bg : Theme.text;
+    }
+    ta := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
     }
 }

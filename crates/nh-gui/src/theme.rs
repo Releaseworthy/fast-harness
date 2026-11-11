@@ -17,6 +17,7 @@ pub fn apply(ui: &MainWindow, theme: &CoreTheme) {
     let p = &theme.palette;
     let g = ui.global::<Theme>();
     g.set_dark(theme.dark);
+    g.set_greyscale(theme.id.starts_with("greyscale"));
     g.set_bg(color(p.bg));
     g.set_surface(color(p.surface));
     g.set_raised(color(p.raised));

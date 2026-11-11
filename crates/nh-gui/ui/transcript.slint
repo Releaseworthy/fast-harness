@@ -1,6 +1,7 @@
 import { ListView } from "std-widgets.slint";
 import { MsgRow } from "types.slint";
 import { Theme, LinkText, Columns, Mark } from "parts.slint";
+import { Icons } from "icons.slint";
 import { BusySpinner } from "widgets.slint";
 
 // The user's message: a bubble on the right, at most 80% of the column.
@@ -47,7 +48,7 @@ component AssistantBlock {
         if msg.thinking != "": HorizontalLayout {
             spacing: Theme.space-xs;
             alignment: start;
-            Mark { text: msg.expanded ? "▾" : "▸"; color: Theme.dim; font-size: Theme.font-s; }
+            Mark { text: msg.expanded ? Icons.chevron-down : Icons.chevron-right; color: Theme.dim; font-size: Theme.font-s; }
             LinkText {
                 text: msg.expanded ? "Hide thinking" : "Show thinking";
                 font-size: Theme.font-s;
@@ -89,16 +90,16 @@ component ToolStatus {
     in property <MsgRow> msg;
     HorizontalLayout {
         if msg.running: BusySpinner { label: "Running " + msg.title; }
-        if !msg.running && !msg.error: Text {
-            text: "✓";
+        if !msg.running && !msg.error: Mark {
+            text: Icons.check;
             color: Theme.success;
-            font-weight: 700;
-            vertical-alignment: center;
+            font-size: Theme.font-m;
+            accessible-role: text;
             accessible-label: "done";
         }
         if msg.error: HorizontalLayout {
             spacing: Theme.space-xs;
-            Mark { text: "✕"; color: Theme.error; font-size: Theme.font-s; }
+            Mark { text: Icons.error; color: Theme.error; font-size: Theme.font-s; }
             Text {
                 text: "failed";
                 color: Theme.error;
@@ -170,7 +171,7 @@ component ToolCard inherits Rectangle {
     }
 }
 
-// A note line: a mark per kind (↻ retry, ⇄ switch, ✕ error, ℹ info).
+// A note line: a mark per kind (refresh: retry, git-compare: switch, error, info).
 component Note {
     in property <MsgRow> msg;
     property <color> tint: msg.tone == "error" ? Theme.error : msg.tone == "retry" ? Theme.warning : msg.tone == "switch" ? Theme.accent : Theme.dim;
@@ -180,7 +181,7 @@ component Note {
             width: 14px;
             vertical-alignment: top;
             horizontal-alignment: center;
-            text: msg.tone == "retry" ? "↻" : msg.tone == "switch" ? "⇄" : msg.tone == "error" ? "✕" : "ℹ";
+            text: msg.tone == "retry" ? Icons.refresh : msg.tone == "switch" ? Icons.git-compare : msg.tone == "error" ? Icons.error : Icons.info;
             color: root.tint;
             font-size: Theme.font-m;
         }

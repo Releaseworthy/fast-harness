@@ -1,8 +1,8 @@
 import { ListView } from "std-widgets.slint";
 import { SessionRow } from "types.slint";
-import { Theme, UsageBar } from "parts.slint";
+import { Theme, Mark } from "parts.slint";
+import { Icons } from "icons.slint";
 import { ActionButton } from "widgets.slint";
-
 // A selected row: the selection colour, an accent bar on the left and a
 // heavier weight, so the state shows without colour alone.
 component RowMark inherits Rectangle {
@@ -20,24 +20,30 @@ component RowMark inherits Rectangle {
     }
 }
 
+
+// A page entry: an icon and a word; the open page uses RowMark.
 component NavEntry inherits Rectangle {
+    in property <string> icon;
     in property <string> text;
     in property <bool> selected;
     callback clicked();
-    height: Theme.control-height;
-    accessible-role: tab;
-    accessible-label: root.text;
-    accessible-item-selected: root.selected;
+    height: Theme.control-height + 4px;
+    accessible-role: button;
+    accessible-label: root.text + (root.selected ? " (open)" : "");
     accessible-action-default => { root.clicked(); }
     RowMark { selected: root.selected; hovered: ta.has-hover; }
-    Text {
-        x: Theme.space-m;
-        text: root.text;
-        color: root.selected ? Theme.text : Theme.dim;
-        font-size: Theme.font-m;
-        font-weight: root.selected ? 600 : 400;
-        vertical-alignment: center;
-        height: parent.height;
+    HorizontalLayout {
+        padding-left: Theme.space-m;
+        spacing: Theme.space-s + 2px;
+        alignment: start;
+        Mark { text: root.icon; color: Theme.text; font-size: Theme.font-l - 2px; }
+        Text {
+            text: root.text;
+            color: Theme.text;
+            font-size: Theme.font-m;
+            font-weight: root.selected ? 600 : 500;
+            vertical-alignment: center;
+        }
     }
     ta := TouchArea {
         mouse-cursor: pointer;
@@ -45,71 +51,69 @@ component NavEntry inherits Rectangle {
     }
 }
 
-// The active account: name and the 5h and 7d bars. Opens the Accounts page.
-component AccountChip inherits Rectangle {
-    in property <string> name;
-    in property <float> five;
-    in property <string> five-text;
-    in property <float> seven;
-    in property <string> seven-text;
-    in property <bool> selected;
-    callback clicked();
-    border-radius: Theme.radius-m;
-    border-width: root.selected ? 2px : 1px;
-    border-color: root.selected ? Theme.accent : Theme.line;
-    background: ta.has-hover ? Theme.hover : Theme.raised;
-    accessible-role: button;
-    accessible-label: "Account " + root.name;
-    accessible-action-default => { root.clicked(); }
+// The brand: the app icon, the lowercase wordmark and a HARNESS badge.
+component Logo inherits HorizontalLayout {
+    spacing: Theme.space-s;
+    alignment: start;
+    accessible-role: text;
+    accessible-label: "Fast Harness";
     VerticalLayout {
-        padding: Theme.space-m - 2px;
-        spacing: Theme.space-xs + 2px;
-        Text {
-            text: root.name;
-            overflow: elide;
-            color: Theme.text;
-            font-size: Theme.font-s;
-            font-weight: 600;
+        alignment: center;
+        Image {
+            width: 22px;
+            height: 22px;
+            source: Theme.greyscale ? @image-url("../assets/fast-harness-grey-64.png") : @image-url("../assets/fast-harness-64.png");
+            accessible-role: none;
         }
-        UsageBar { label: "5h"; value: root.five; caption: root.five-text; }
-        UsageBar { label: "7d"; value: root.seven; caption: root.seven-text; }
     }
-    ta := TouchArea {
-        mouse-cursor: pointer;
-        clicked => { root.clicked(); }
+    Text {
+        text: "fast";
+        color: Theme.text;
+        font-size: Theme.font-l;
+        font-weight: 800;
+        vertical-alignment: center;
+        accessible-role: none;
+    }
+    VerticalLayout {
+        alignment: center;
+        Rectangle {
+            border-radius: 3px;
+            background: Theme.text;
+            HorizontalLayout {
+                padding-left: 5px;
+                padding-right: 5px;
+                padding-top: 1px;
+                padding-bottom: 1px;
+                Text {
+                    text: "HARNESS";
+                    color: Theme.bg;
+                    font-size: Theme.font-xs;
+                    font-weight: 700;
+                    letter-spacing: 0.8px;
+                    accessible-role: none;
+                }
+            }
+        }
     }
 }
 
 export component Sidebar inherits Rectangle {
     in property <[SessionRow]> sessions;
     in property <string> page;
-    in property <string> chip-name;
-    in property <float> chip-five;
-    in property <string> chip-five-text;
-    in property <float> chip-seven;
-    in property <string> chip-seven-text;
     callback new-session();
     callback open-session(string);
     callback open-page(string);
     width: 260px;
     background: Theme.surface;
-    Rectangle {
-        x: parent.width - 1px;
-        width: 1px;
-        background: Theme.line;
-    }
     VerticalLayout {
         padding: Theme.space-m;
+        padding-top: Theme.space-xs;
         spacing: Theme.space-xs;
-        Text {
-            text: "native-harness";
-            color: Theme.text;
-            font-size: Theme.font-m;
-            font-weight: 700;
-        }
+        Logo { height: 32px; }
         Rectangle { height: Theme.space-s; }
         ActionButton {
-            text: "+  New session";
+            icon: Icons.add;
+            text: "New session";
             clicked => { root.new-session(); }
         }
         Text {
@@ -153,32 +157,8 @@ export component Sidebar inherits Rectangle {
         Rectangle { height: 1px; background: Theme.line; }
         Rectangle { height: Theme.space-xs; }
         NavEntry {
-            text: "Chat";
-            selected: root.page == "chat";
-            clicked => { root.open-page("chat"); }
-        }
-        NavEntry {
-            text: "Trace";
-            selected: root.page == "trace";
-            clicked => { root.open-page("trace"); }
-        }
-        NavEntry {
-            text: "Settings";
-            selected: root.page == "settings";
-            clicked => { root.open-page("settings"); }
-        }
-        NavEntry {
-            text: "About";
-            selected: root.page == "about";
-            clicked => { root.open-page("about"); }
-        }
-        Rectangle { height: Theme.space-s; }
-        AccountChip {
-            name: root.chip-name;
-            five: root.chip-five;
-            five-text: root.chip-five-text;
-            seven: root.chip-seven;
-            seven-text: root.chip-seven-text;
+            icon: Icons.account;
+            text: "Accounts";
             selected: root.page == "accounts";
             clicked => { root.open-page("accounts"); }
         }
