@@ -34,6 +34,8 @@ export component MainWindow inherits Window {
     in property <[string]> themes;
     in-out property <int> theme-index;
     in property <[MsgRow]> messages;
+    // True while the transcript follows new output (read by the tests).
+    out property <bool> transcript-follow: transcript.follow;
     in property <[SideRow]> side-rows;
     in property <[AccountRow]> accounts;
     in property <[GoogleRow]> google-accounts;

@@ -2,7 +2,7 @@ import { ListView } from "std-widgets.slint";
 import { MsgRow } from "types.slint";
 import { Theme, LinkText, Columns, Mark } from "parts.slint";
 import { Icons } from "icons.slint";
-import { BusySpinner } from "widgets.slint";
+import { BusySpinner, IconButton } from "widgets.slint";
 
 // The user's message: a bubble on the right, at most 80% of the column.
 component UserBubble {
@@ -229,18 +229,31 @@ component MessageView {
     }
 }
 
-// The transcript list. It follows the bottom while `follow` is true; a
-// scroll away from the bottom clears it, a scroll back sets it again.
+// The transcript list. It follows the bottom while `follow` is true. Any
+// user scroll clears it at once: the wheel calls `scrolled` before its
+// animation moves `content-y` (so `content-y` cannot tell the direction
+// there), and the scroll bar's arrows and wheel move `content-y` without
+// `scrolled`, which the `changed content-y` check catches. Coming back to
+// the bottom sets it again; "Jump to latest" does it in one click.
 export component TranscriptView {
     in property <[MsgRow]> rows;
     in-out property <bool> follow: true;
+    property <length> bottom: min(0px, list.visible-height - list.content-height);
+    // How far the view is above the bottom: exact while the last row is
+    // laid out, whatever the ListView's height estimate.
+    property <length> gap: list.content-y - root.bottom;
+    // `gap` and `content-height` at the last `content-y` change: the gap
+    // growing with an unchanged height is the user's scroll.
+    property <length> last-gap;
+    property <length> last-height;
     callback toggle(int);
     callback copy(string);
     callback link(string);
 
     public function to-bottom() {
         root.follow = true;
-        list.content-y = min(0px, list.visible-height - list.content-height);
+        list.content-y = root.bottom;
+        root.last-height = list.content-height;
     }
 
     list := ListView {
@@ -253,12 +266,39 @@ export component TranscriptView {
             link(u) => { root.link(u); }
         }
         scrolled => {
-            root.follow = self.content-y <= self.visible-height - self.content-height + 32px;
+            root.follow = false;
+        }
+        changed content-y => {
+            if (root.gap > root.last-gap + 0.5px && self.content-height == root.last-height) {
+                root.follow = false;
+            } else if (root.gap <= 1px && root.last-gap > 1px) {
+                root.follow = true;
+            }
+            root.last-gap = root.gap;
+            root.last-height = self.content-height;
         }
         changed content-height => {
             if (root.follow) {
-                self.content-y = min(0px, self.visible-height - self.content-height);
+                self.content-y = root.bottom;
+                // A snap to the same `content-y` fires no `changed content-y`.
+                root.last-height = self.content-height;
             }
+        }
+    }
+
+    if !root.follow: Rectangle {
+        x: parent.width - self.width - Theme.space-xl;
+        y: parent.height - self.height - Theme.space-m;
+        width: Theme.control-height;
+        height: Theme.control-height;
+        border-radius: Theme.radius-s;
+        border-width: 1px;
+        border-color: Theme.border;
+        background: Theme.raised;
+        IconButton {
+            icon: Icons.arrow-down;
+            label: "Jump to latest";
+            clicked => { root.to-bottom(); }
         }
     }
 }

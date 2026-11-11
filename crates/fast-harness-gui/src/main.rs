@@ -16,6 +16,8 @@ mod mirror;
 mod model_refresh;
 mod pickers;
 mod rows;
+#[cfg(test)]
+mod scroll_tests;
 mod settings;
 #[cfg(test)]
 mod shots_png;
