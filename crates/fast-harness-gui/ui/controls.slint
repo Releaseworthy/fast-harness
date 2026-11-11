@@ -1,0 +1,213 @@
+// Themed value controls (PLAN.md D33): a slider and a number box. Both take
+// `value` from their owner and report a user change through `changed`, so
+// the owner keeps one value and both controls show it.
+import { Theme } from "parts.slint";
+import { FocusRing } from "widgets.slint";
+
+// A horizontal slider: a track, the part up to the value filled with the
+// accent gradient, a round thumb. Drag or click the track; arrow keys step 1,
+// PageUp and PageDown 10, Home and End jump to the ends.
+export component Slider {
+    in property <int> minimum: 0;
+    in property <int> maximum: 100;
+    in property <int> value;
+    in property <string> label;
+    out property <bool> has-focus: fs.has-focus;
+    callback changed(int);
+    property <length> knob: 20px;
+    property <float> ratio: (min(root.maximum, max(root.minimum, root.value)) - root.minimum) / max(1, root.maximum - root.minimum);
+    property <bool> active: ta.has-hover || ta.pressed || fs.has-focus;
+    min-height: Theme.control-height;
+    min-width: 120px;
+    horizontal-stretch: 1;
+    forward-focus: fs;
+    accessible-role: slider;
+    accessible-label: root.label;
+    accessible-value: root.value;
+    accessible-value-minimum: root.minimum;
+    accessible-value-maximum: root.maximum;
+    accessible-value-step: 1;
+    accessible-action-increment => { root.set(root.value + 1); }
+    accessible-action-decrement => { root.set(root.value - 1); }
+
+    // Clamps `v` and reports it when it differs from the value.
+    public function set(v: int) {
+        let c = max(root.minimum, min(root.maximum, v));
+        if (c != root.value) {
+            root.changed(c);
+        }
+    }
+
+    function at(x: length) -> int {
+        return round((x - root.knob / 2) / max(1px, root.width - root.knob) * (root.maximum - root.minimum)) + root.minimum;
+    }
+
+    track := Rectangle {
+        x: root.knob / 2;
+        y: (root.height - self.height) / 2;
+        width: root.width - root.knob;
+        height: 8px;
+        border-radius: 4px;
+        background: Theme.raised;
+        border-width: 1px;
+        border-color: Theme.border;
+        clip: true;
+        Rectangle {
+            x: 0;
+            width: max(8px, parent.width * root.ratio);
+            height: parent.height;
+            border-radius: 4px;
+            clip: true;
+            Rectangle { background: @linear-gradient(90deg, Theme.accent 0%, Theme.accent2 100%); }
+        }
+    }
+    // A soft halo behind the thumb while it is hovered, dragged or focused.
+    if root.active: Rectangle {
+        x: track.x + track.width * root.ratio - self.width / 2;
+        y: (root.height - self.height) / 2;
+        width: root.knob + 12px;
+        height: self.width;
+        border-radius: self.width / 2;
+        background: Theme.glow.with-alpha(0.28);
+    }
+    thumb := Rectangle {
+        x: track.x + track.width * root.ratio - root.knob / 2;
+        y: (root.height - root.knob) / 2;
+        width: root.knob;
+        height: root.knob;
+        border-radius: root.knob / 2;
+        background: Theme.surface;
+        border-width: 4px;
+        border-color: root.ratio >= 0.5 ? Theme.accent2 : Theme.accent;
+        drop-shadow-blur: 6px;
+        drop-shadow-offset-y: 1px;
+        drop-shadow-color: Theme.shadow.with-alpha(0.5);
+    }
+    if fs.has-focus: FocusRing {
+        radius: root.knob / 2 - 3px;
+        x: thumb.x - 4px;
+        y: thumb.y - 4px;
+        width: root.knob + 8px;
+        height: root.knob + 8px;
+    }
+    ta := TouchArea {
+        mouse-cursor: pointer;
+        pointer-event(e) => {
+            if (e.kind == PointerEventKind.down && e.button == PointerEventButton.left) {
+                fs.focus();
+                root.set(root.at(self.mouse-x));
+            }
+        }
+        moved => {
+            if (self.pressed) {
+                root.set(root.at(self.mouse-x));
+            }
+        }
+    }
+    fs := FocusScope {
+        focus-on-click: false;
+        key-pressed(e) => {
+            if (e.text == Key.RightArrow || e.text == Key.UpArrow) { root.set(root.value + 1); return accept; }
+            if (e.text == Key.LeftArrow || e.text == Key.DownArrow) { root.set(root.value - 1); return accept; }
+            if (e.text == Key.PageUp) { root.set(root.value + 10); return accept; }
+            if (e.text == Key.PageDown) { root.set(root.value - 10); return accept; }
+            if (e.text == Key.Home) { root.set(root.minimum); return accept; }
+            if (e.text == Key.End) { root.set(root.maximum); return accept; }
+            return reject;
+        }
+    }
+}
+
+// A whole number box: digits only; Enter or leaving the box applies the
+// typed number (out of range clamps, empty restores the value); the Up and
+// Down arrows step 1.
+export component NumberBox inherits Rectangle {
+    in property <int> minimum: 0;
+    in property <int> maximum: 100;
+    in property <int> value;
+    in property <string> label;
+    // A unit after the number ("%").
+    in property <string> suffix;
+    out property <bool> has-focus: input.has-focus;
+    // The text in the box (for the tests).
+    out property <string> text: input.text;
+    callback changed(int);
+    width: 76px;
+    height: Theme.control-height;
+    border-radius: Theme.radius-s;
+    background: input.has-focus ? Theme.surface : Theme.raised;
+    border-width: 1px;
+    border-color: input.has-focus ? Theme.accent : ta.has-hover ? Theme.dim : Theme.border;
+    forward-focus: input;
+    accessible-role: spinbox;
+    accessible-label: root.label;
+    accessible-value: root.value;
+    accessible-value-minimum: root.minimum;
+    accessible-value-maximum: root.maximum;
+    accessible-value-step: 1;
+    accessible-action-increment => { root.report(root.value + 1); }
+    accessible-action-decrement => { root.report(root.value - 1); }
+
+    // Applies the typed text: rounded and clamped, then shown again.
+    public function apply() {
+        if (input.text == "") {
+            input.text = root.value;
+            return;
+        }
+        root.report(round(input.text.to-float()));
+    }
+
+    function report(v: int) {
+        let c = max(root.minimum, min(root.maximum, v));
+        input.text = c;
+        if (c != root.value) {
+            root.changed(c);
+        }
+    }
+
+    changed value => { input.text = root.value; }
+
+    ta := TouchArea {
+        mouse-cursor: MouseCursor.text;
+        clicked => { input.focus(); }
+    }
+    FocusScope {
+        capture-key-pressed(e) => {
+            if (e.text == Key.UpArrow) { root.report(root.value + 1); return accept; }
+            if (e.text == Key.DownArrow) { root.report(root.value - 1); return accept; }
+            return reject;
+        }
+        HorizontalLayout {
+            padding-left: Theme.space-s + 2px;
+            padding-right: Theme.space-s + 2px;
+            spacing: 2px;
+            input := TextInput {
+                text: root.value;
+                input-type: InputType.number;
+                horizontal-alignment: right;
+                vertical-alignment: center;
+                color: Theme.text;
+                selection-background-color: Theme.selection;
+                selection-foreground-color: Theme.text;
+                font-size: Theme.font-m;
+                font-weight: 600;
+                single-line: true;
+                accessible-role: none;
+                accepted => { root.apply(); }
+                changed has-focus => {
+                    if (!self.has-focus) {
+                        root.apply();
+                    }
+                }
+            }
+            if root.suffix != "": Text {
+                text: root.suffix;
+                color: Theme.dim;
+                font-size: Theme.font-m;
+                vertical-alignment: center;
+                accessible-role: none;
+            }
+        }
+    }
+    if input.has-focus: FocusRing { radius: Theme.radius-s; x: -3px; y: -3px; width: parent.width + 6px; height: parent.height + 6px; }
+}

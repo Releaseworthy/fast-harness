@@ -1,4 +1,5 @@
 import { ListView } from "std-widgets.slint";
+import { ScrollBar } from "scrollbar.slint";
 import { SideRow } from "types.slint";
 import { Theme, Mark } from "parts.slint";
 import { Icons } from "icons.slint";
@@ -225,8 +226,12 @@ export component Sidebar inherits Rectangle {
                 }
             }
         }
-        ListView {
+        Rectangle {
             vertical-stretch: 1;
+            side-list := ListView {
+            width: 100%;
+            height: 100%;
+            vertical-scrollbar-policy: ScrollBarPolicy.always-off;
             for r in root.rows: VerticalLayout {
                 if r.kind == "workspace": WorkspaceEntry {
                     entry: r;
@@ -237,6 +242,15 @@ export component Sidebar inherits Rectangle {
                     entry: r;
                     clicked => { root.open-session(r.workspace, r.id); }
                 }
+            }
+            }
+            ScrollBar {
+                x: parent.width - self.width;
+                height: parent.height;
+                content-y: side-list.content-y;
+                content-height: side-list.content-height;
+                visible-height: side-list.visible-height;
+                scroll-to(y) => { side-list.content-y = y; }
             }
         }
         Rectangle { height: 1px; background: Theme.line; }

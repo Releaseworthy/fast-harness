@@ -8,7 +8,7 @@ use std::path::Path;
 
 use fast_harness_core::config::{save_setting, Config};
 use fast_harness_core::theme::{Rgb, Theme as CoreTheme, ThemeSet, GREYSCALE_MAX};
-use slint::{Color, ComponentHandle, ModelRc, SharedString, VecModel};
+use slint::{Color, ComponentHandle};
 
 use crate::app::{show_error, App};
 use crate::{MainWindow, Theme};
@@ -30,7 +30,7 @@ pub fn load(app_home: &Path) -> Vec<String> {
     notes
 }
 
-fn color(c: Rgb) -> Color {
+pub fn color(c: Rgb) -> Color {
     Color::from_rgb_u8(c.0, c.1, c.2)
 }
 
@@ -80,6 +80,7 @@ pub fn apply_config(ui: &MainWindow, config: &Config) {
 }
 
 /// The theme names in picker order.
+#[cfg(test)]
 pub fn names() -> Vec<String> {
     with_set(|set| set.themes().iter().map(|t| t.name.clone()).collect())
 }
@@ -95,45 +96,62 @@ pub fn at(index: i32) -> Option<CoreTheme> {
     with_set(|set| set.at(index).cloned())
 }
 
-/// Fills the Settings list with the theme names and the current pick.
-pub fn fill(ui: &MainWindow, id: &str) {
-    let names: Vec<SharedString> = names().into_iter().map(SharedString::from).collect();
-    ui.set_themes(ModelRc::new(VecModel::from(names)));
-    ui.set_theme_index(index_of(id) as i32);
+/// Every theme in picker order (built-ins, then user themes).
+pub fn all() -> Vec<CoreTheme> {
+    with_set(|set| set.themes().to_vec())
+}
+
+/// The notes of the last load (skipped files, errors, contrast failures).
+pub fn notes() -> Vec<String> {
+    with_set(|set| set.notes().to_vec())
+}
+
+/// Sets `config.theme` to the theme at `index` and saves it to
+/// `config.json`; `None` when the index is out of range.
+pub fn choose(
+    config: &mut Config,
+    home: &Path,
+    index: i32,
+) -> Option<(CoreTheme, Result<(), String>)> {
+    let theme = at(index)?;
+    config.theme = theme.id.clone();
+    let saved = save_setting(home, "theme", serde_json::json!(theme.id));
+    Some((theme, saved))
+}
+
+/// Sets `config.greyscale` to `level` clamped to 0..=100 and saves it.
+pub fn save_level(config: &mut Config, home: &Path, level: i32) -> Result<(), String> {
+    let level = u8::try_from(level.clamp(0, i32::from(GREYSCALE_MAX))).unwrap_or(0);
+    config.greyscale = level;
+    save_setting(home, "greyscale", serde_json::json!(level))
 }
 
 /// Applies the picked theme at once and saves it.
 pub fn pick(app: &mut App, ui: &MainWindow, index: i32) {
-    let Some(theme) = at(index) else {
+    let Some((theme, saved)) = choose(&mut app.rt.config, &app.rt.home, index) else {
         return;
     };
     apply(ui, &theme, app.rt.config.greyscale);
-    app.rt.config.theme = theme.id.clone();
-    if let Err(err) = save_setting(&app.rt.home, "theme", serde_json::json!(theme.id)) {
+    if let Err(err) = saved {
         show_error(ui, format!("Cannot save the theme: {err}"));
     }
 }
 
 /// Sets the greyscale level (clamped to 0..=100), applies it at once and
 /// saves it; for the Appearance slider and number box.
-#[allow(dead_code)] // Called by Settings > Appearance (the next chunk).
-pub fn set_greyscale(app: &mut App, ui: &MainWindow, level: u8) {
-    let level = level.min(GREYSCALE_MAX);
-    app.rt.config.greyscale = level;
+pub fn set_greyscale(app: &mut App, ui: &MainWindow, level: i32) {
+    let saved = save_level(&mut app.rt.config, &app.rt.home, level);
     apply_config(ui, &app.rt.config);
-    if let Err(err) = save_setting(&app.rt.home, "greyscale", serde_json::json!(level)) {
+    if let Err(err) = saved {
         show_error(ui, format!("Cannot save the greyscale level: {err}"));
     }
 }
 
-/// Reads the theme files again, refills the list and applies the configured
-/// theme (the default when its file is gone); returns the notes.
-#[allow(dead_code)] // Called by the Appearance Reload button (the next chunk).
-pub fn reload(app: &mut App, ui: &MainWindow) -> Vec<String> {
-    let notes = load(&app.rt.home);
-    fill(ui, &app.rt.config.theme);
+/// Reads the theme files again and applies the configured theme (the
+/// default when its file is gone).
+pub fn reload(app: &mut App, ui: &MainWindow) {
+    load(&app.rt.home);
     apply_config(ui, &app.rt.config);
-    notes
 }
 
 #[cfg(test)]

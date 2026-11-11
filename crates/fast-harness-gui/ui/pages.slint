@@ -2,6 +2,7 @@ import { AboutSlint } from "std-widgets.slint";
 import { Theme, Columns } from "parts.slint";
 import { ActionButton, Dropdown } from "widgets.slint";
 import { PromptSettings } from "prompt_settings.slint";
+import { Appearance } from "appearance.slint";
 
 // A labelled settings row: the name, a dropdown and a caption under it.
 component SettingRow {
@@ -42,15 +43,12 @@ component SettingRow {
 }
 
 export component SettingsPage inherits Rectangle {
-    in property <[string]> themes;
-    in-out property <int> theme-index;
     in property <[string]> models;
     // True for the provider title rows of `models`.
     in property <[bool]> model-headers;
     in property <[string]> efforts;
     in-out property <int> model-index;
     in-out property <int> effort-index;
-    callback changed-theme(int);
     // A note after a pick (the effort changed with the model).
     in property <string> note;
     callback model-picked(int);
@@ -65,18 +63,12 @@ export component SettingsPage inherits Rectangle {
         width: page-flick.width;
         padding-top: Theme.space-xl;
         padding-bottom: Theme.space-xl;
-        padding-left: Columns.side(root.width, 560px);
-        padding-right: Columns.side(root.width, 560px);
+        padding-left: Columns.side(root.width, 640px);
+        padding-right: Columns.side(root.width, 640px);
         spacing: Theme.space-l + 4px;
         alignment: start;
         Text { text: "Settings"; color: Theme.text; font-size: Theme.font-l; font-weight: 600; }
-        SettingRow {
-            label: "Theme";
-            caption: "Applies at once. The theme is saved to config.json.";
-            model: root.themes;
-            current-index <=> root.theme-index;
-            selected(i) => { root.changed-theme(i); }
-        }
+        Appearance { }
         Rectangle { height: 1px; background: Theme.line; }
         SettingRow {
             label: "Model";

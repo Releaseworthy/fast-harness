@@ -1,4 +1,4 @@
-//! Settings: the theme (saved), model and effort for the next turn (kept for
+//! Settings: the Appearance section (`appearance.rs`), model and effort for the next turn (kept for
 //! this window only). The composer and the Settings page bind the same
 //! window properties, so a pick in one shows in the other.
 
@@ -29,7 +29,7 @@ fn replace<T: Clone + 'static>(current: ModelRc<T>, items: Vec<T>) -> Option<Mod
 
 /// Fills the pickers from the cached list (the last fetch, else the table).
 pub fn fill(app: &mut App, ui: &MainWindow) {
-    crate::theme::fill(ui, &app.rt.config.theme);
+    crate::appearance::show(app, ui);
     let list = model_list(&app.rt.models().cached(), &app.rt.config.model);
     show_models(app, ui, list);
 }

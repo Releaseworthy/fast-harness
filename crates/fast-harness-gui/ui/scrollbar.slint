@@ -1,0 +1,81 @@
+// A themed vertical scroll bar for a ListView or Flickable whose own bar is
+// off: a thin rounded thumb that widens on hover, drag, a click on the track
+// pages, the wheel over it scrolls. It never moves the list itself: every
+// user interaction asks the owner through `scroll-to`, so the owner can
+// count it as a user scroll (the transcript then stops following).
+import { Theme } from "parts.slint";
+
+export component ScrollBar {
+    // The list's `content-y` (0 at the top, negative further down).
+    in property <length> content-y;
+    in property <length> content-height;
+    in property <length> visible-height;
+    // The `content-y` a user interaction asks for, already clamped.
+    callback scroll-to(length);
+    // The thumb's centre in window coordinates (for the tests).
+    out property <length> thumb-x: self.absolute-position.x + self.width / 2;
+    out property <length> thumb-y: self.absolute-position.y + root.thumb-top + root.thumb-length / 2;
+    property <length> maximum: max(0px, root.content-height - root.visible-height);
+    property <length> offset: max(0px, min(root.maximum, -root.content-y));
+    property <length> thumb-length: root.maximum <= 0 ? root.height
+        : max(28px, root.height * root.visible-height / max(1px, root.content-height));
+    property <length> travel: max(0px, root.height - root.thumb-length);
+    property <length> thumb-top: root.maximum <= 0 ? 0px : root.travel * root.offset / root.maximum;
+    property <bool> dragging;
+    // The thumb's place (0 top, 1 bottom) at the press: a drag moves it by
+    // the pointer's share of the travel, so a ListView height re-estimate
+    // during the drag never throws the view to an end.
+    property <float> drag-start;
+    property <bool> active: ta.has-hover || root.dragging;
+    width: 14px;
+    visible: root.maximum > 0;
+
+    function go(offset: length) {
+        root.scroll-to(-max(0px, min(root.maximum, offset)));
+    }
+
+    // The track shows only while the pointer is over the bar.
+    Rectangle {
+        x: root.width - self.width - 2px;
+        width: 10px;
+        border-radius: 5px;
+        background: root.active ? Theme.raised.with-alpha(0.7) : transparent;
+        animate background { duration: 120ms; }
+    }
+    Rectangle {
+        x: root.width - self.width - 2px - (10px - self.width) / 2;
+        y: root.thumb-top;
+        width: root.active ? 10px : 5px;
+        height: root.thumb-length;
+        border-radius: self.width / 2;
+        background: root.active ? @linear-gradient(180deg, Theme.accent 0%, Theme.accent2 100%) : Theme.border;
+        animate width { duration: 120ms; }
+    }
+    ta := TouchArea {
+        pointer-event(e) => {
+            if (e.kind == PointerEventKind.down && e.button == PointerEventButton.left) {
+                if (self.mouse-y >= root.thumb-top && self.mouse-y <= root.thumb-top + root.thumb-length) {
+                    root.dragging = true;
+                    root.drag-start = root.maximum <= 0 ? 0 : root.offset / root.maximum;
+                    // Holding the thumb is already a user scroll.
+                    root.go(root.offset);
+                } else if (self.mouse-y < root.thumb-top) {
+                    root.go(root.offset - root.visible-height * 0.9);
+                } else {
+                    root.go(root.offset + root.visible-height * 0.9);
+                }
+            } else if (e.kind == PointerEventKind.up) {
+                root.dragging = false;
+            }
+        }
+        moved => {
+            if (root.dragging && root.travel > 0) {
+                root.go(root.maximum * max(0, min(1, root.drag-start + (self.mouse-y - self.pressed-y) / root.travel)));
+            }
+        }
+        scroll-event(e) => {
+            root.go(root.offset - e.delta-y);
+            return accept;
+        }
+    }
+}
