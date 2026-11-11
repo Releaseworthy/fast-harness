@@ -1,0 +1,272 @@
+//! The pool as an [`AuthSource`]: leases, live usage and failover.
+//!
+//! The pool's mutex is held while a token refreshes, so one single-use
+//! refresh token is never spent twice at once (claude-switch's `refreshGrant`
+//! runs one refresh per token at a time for the same reason).
+
+use super::{now_ms, AccountPool, State};
+use crate::accounts::dsh_import::read_linked;
+use crate::accounts::model::{now_unix_ms, AccountKind, Secret};
+use crate::accounts::oauth::{self, OAuthError};
+use crate::accounts::order::{
+    candidates, hold_for_limit, Candidate, BROKEN_HOLD_MS, RETRY_INTERVAL_MS,
+};
+use crate::accounts::usage::{current_usage, usage_from_headers, Usage};
+use crate::auth::{AuthError, AuthSource, Failover, Lease};
+use crate::http::{HttpHead, Transport};
+use crate::llm::{Auth, ErrorKind, LlmError};
+use std::path::Path;
+
+/// An own access token expiring sooner than this is refreshed before use
+/// (claude-switch `REFRESH_MARGIN_MS`).
+pub const REFRESH_MARGIN_MS: u64 = 60_000;
+
+/// The unexpired access token DSH holds for linked account `id`, read fresh.
+fn linked_token(dsh: Option<&Path>, id: &str) -> Option<String> {
+    let token = read_linked(dsh?)
+        .ok()?
+        .into_iter()
+        .find(|account| account.id == id)?
+        .token;
+    (!token.is_expired(now_unix_ms())).then_some(token.access)
+}
+
+/// Live usage from headers; model windows only the endpoint reports are kept
+/// from the previous read.
+fn merged(previous: Option<&Usage>, mut fresh: Usage, now: i64) -> Usage {
+    if fresh.extra.is_empty() {
+        if let Some(previous) = previous {
+            fresh.extra = current_usage(previous, now).extra;
+        }
+    }
+    fresh
+}
+
+impl State {
+    /// A credential for `id`, or `None` when it is unusable now. An own token
+    /// is refreshed when it expires within the margin or when `force` is set;
+    /// a refused refresh holds the account for `BROKEN_HOLD_MS`.
+    pub(super) fn token_for(
+        &mut self,
+        dsh: Option<&Path>,
+        id: &str,
+        http: &dyn Transport,
+        force: bool,
+    ) -> Option<Auth> {
+        match self.store.get(id)?.kind {
+            AccountKind::Own => self.own_token(id, http, force),
+            AccountKind::Linked => linked_token(dsh, id).map(Auth::OAuth),
+            AccountKind::ApiKey => match self.store.secret(id) {
+                Ok(Some(Secret::ApiKey { key })) => Some(Auth::ApiKey(key)),
+                _ => None,
+            },
+        }
+    }
+
+    fn own_token(&mut self, id: &str, http: &dyn Transport, force: bool) -> Option<Auth> {
+        let Ok(Some(Secret::Own {
+            refresh,
+            access,
+            expires_at,
+        })) = self.store.secret(id)
+        else {
+            return None;
+        };
+        let now = now_unix_ms();
+        let usable = expires_at > now.saturating_add(REFRESH_MARGIN_MS);
+        if self.dead.contains(id) {
+            return (usable && !force).then_some(Auth::OAuth(access));
+        }
+        if !force && usable {
+            return Some(Auth::OAuth(access));
+        }
+        match oauth::refresh(http, &refresh) {
+            Ok(tokens) => {
+                let secret = Secret::Own {
+                    refresh: tokens.refresh,
+                    access: tokens.access.clone(),
+                    expires_at: tokens.expires_at,
+                };
+                // The old refresh token is spent: keep the new pair in memory
+                // even if this write fails; the next save writes it.
+                if self.store.set_secret(id, secret).is_ok() {
+                    let _ = self.store.save();
+                }
+                Some(Auth::OAuth(tokens.access))
+            }
+            Err(OAuthError::Dead(_)) => {
+                self.dead.insert(id.to_string());
+                self.hold(id, now_ms() + BROKEN_HOLD_MS, "refresh token refused");
+                None
+            }
+            Err(_) if !force && expires_at > now => Some(Auth::OAuth(access)),
+            Err(_) => None,
+        }
+    }
+
+    fn candidate_list(&self) -> Vec<Candidate> {
+        self.store
+            .list()
+            .into_iter()
+            .map(|account| Candidate {
+                id: account.id.clone(),
+                plan: account.plan.clone(),
+                usage: self.snapshot.usage(&account.id).cloned(),
+            })
+            .collect()
+    }
+
+    fn lease_of(&self, id: &str, auth: Auth) -> Lease {
+        let account = self.store.get(id);
+        let label = account
+            .and_then(|a| a.email.clone().or_else(|| a.name.clone()))
+            .unwrap_or_else(|| id.to_string());
+        Lease {
+            account: id.to_string(),
+            label,
+            auth,
+        }
+    }
+
+    fn make_active(&mut self, id: &str) {
+        if self.store.active().map(|a| a.id.as_str()) != Some(id)
+            && self.store.set_active(id).is_ok()
+        {
+            let _ = self.store.save();
+        }
+    }
+
+    /// Installs the first candidate with a usable credential (`Retry`); with
+    /// none, waits for the soonest hold, at most `RETRY_INTERVAL_MS`.
+    fn fail_over(
+        &mut self,
+        dsh: Option<&Path>,
+        current: &str,
+        model: &str,
+        http: &dyn Transport,
+    ) -> Failover {
+        let now = now_ms();
+        let order = candidates(&self.candidate_list(), current, &self.holds(), model, now);
+        for id in order {
+            if self.token_for(dsh, &id, http, false).is_some() {
+                self.make_active(&id);
+                return Failover::Retry;
+            }
+        }
+        let soonest = self.holds().soonest(now);
+        let wait = soonest.map_or(RETRY_INTERVAL_MS, |until| {
+            (until - now).clamp(1, RETRY_INTERVAL_MS)
+        });
+        Failover::Wait(u64::try_from(wait).unwrap_or(1))
+    }
+
+    /// Records usage from `head` for `id`; returns false when it has none.
+    fn record_headers(&mut self, id: &str, head: &HttpHead) -> bool {
+        let Some(fresh) = usage_from_headers(&head.headers) else {
+            return false;
+        };
+        let usage = merged(self.snapshot.usage(id), fresh, now_ms());
+        self.snapshot.set(id, usage, now_unix_ms());
+        true
+    }
+}
+
+impl AccountPool {
+    fn on_limit(
+        &self,
+        lease: &Lease,
+        err: &LlmError,
+        model: &str,
+        http: &dyn Transport,
+    ) -> Failover {
+        let mut state = self.lock();
+        if let Some(head) = &err.head {
+            state.record_headers(&lease.account, head);
+        }
+        let until = hold_for_limit(state.snapshot.usage(&lease.account), model, now_ms());
+        state.hold(&lease.account, until, "rate limit");
+        let _ = state.snapshot.save(now_unix_ms(), true);
+        state.fail_over(self.dsh_path(), &lease.account, model, http)
+    }
+
+    fn on_auth(&self, lease: &Lease, model: &str, http: &dyn Transport) -> Failover {
+        let mut state = self.lock();
+        let id = lease.account.as_str();
+        let dsh = self.dsh_path();
+        let kind = state.store.get(id).map(|a| a.kind);
+        match kind {
+            Some(AccountKind::ApiKey) => return Failover::Fail,
+            // One forced refresh per failure streak; a second refusal holds the account.
+            Some(AccountKind::Own)
+                if state.forced.insert(id.to_string())
+                    && state.token_for(dsh, id, http, true).is_some() =>
+            {
+                return Failover::Retry;
+            }
+            // Retry only when DSH has written another token since the lease.
+            Some(AccountKind::Linked)
+                if linked_token(dsh, id)
+                    .is_some_and(|access| Auth::OAuth(access) != lease.auth) =>
+            {
+                return Failover::Retry;
+            }
+            _ => {}
+        }
+        state.hold(id, now_ms() + BROKEN_HOLD_MS, "credentials refused");
+        state.fail_over(dsh, id, model, http)
+    }
+}
+
+impl AuthSource for AccountPool {
+    /// The active account (when not held), else the best candidate, else the
+    /// held active account again (after a `Wait` the call is simply retried).
+    fn lease(&self, http: &dyn Transport) -> Result<Lease, AuthError> {
+        let mut state = self.lock();
+        let now = now_ms();
+        let active = state.store.active().map(|a| a.id.clone());
+        let current = active.clone().unwrap_or_default();
+        let held = state.holds().held_until(&current, now).is_some();
+        let mut order: Vec<String> = active.iter().filter(|_| !held).cloned().collect();
+        order.extend(candidates(
+            &state.candidate_list(),
+            &current,
+            &state.holds(),
+            "",
+            now,
+        ));
+        order.extend(active.iter().filter(|_| held).cloned());
+        for id in order {
+            if let Some(auth) = state.token_for(self.dsh_path(), &id, http, false) {
+                state.make_active(&id);
+                return Ok(state.lease_of(&id, auth));
+            }
+        }
+        Err(AuthError {
+            message: "no Claude account is usable: sign in, import or add a key".into(),
+        })
+    }
+
+    fn observe(&self, lease: &Lease, head: &HttpHead) {
+        let mut state = self.lock();
+        if (200..300).contains(&head.status) {
+            state.forced.remove(&lease.account);
+        }
+        if state.record_headers(&lease.account, head) {
+            let _ = state.snapshot.save(now_unix_ms(), false);
+        }
+    }
+
+    fn on_failure(
+        &self,
+        lease: &Lease,
+        err: &LlmError,
+        model: &str,
+        http: &dyn Transport,
+    ) -> Failover {
+        match err.kind {
+            ErrorKind::RateLimit => self.on_limit(lease, err, model, http),
+            ErrorKind::Auth => self.on_auth(lease, model, http),
+            _ => Failover::Fail,
+        }
+    }
+}
