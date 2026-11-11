@@ -265,7 +265,7 @@ fn screens_open_and_dispatch() {
     assert_eq!(ui.screen, Screen::Chat);
     ui.screen = Screen::Models;
     let effort = press(&mut ui, KeyCode::Char('e'), KeyModifiers::NONE);
-    assert_eq!(effort, Action::SetEffort("max".into()));
+    assert_eq!(effort, Action::SetEffort("xhigh".into()));
     ui.running = true;
     ui.screen = Screen::Chat;
     let sessions = press(&mut ui, KeyCode::Char('o'), KeyModifiers::CONTROL);

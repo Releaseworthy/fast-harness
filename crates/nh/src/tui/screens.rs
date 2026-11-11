@@ -3,7 +3,8 @@
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 use super::input::Input;
-use super::ui::{next_effort, Action, Dialog, Screen, Ui};
+use super::picker::next_effort;
+use super::ui::{Action, Dialog, Screen, Ui};
 
 impl Ui {
     fn list_len(&self) -> usize {
@@ -63,6 +64,14 @@ impl Ui {
             KeyCode::PageDown => self.trace_scroll(page),
             KeyCode::Home => self.trace_top = 0,
             KeyCode::End => self.trace_scroll(isize::MAX / 2),
+            KeyCode::Char('f') => {
+                self.trace.full = !self.trace.full;
+                self.trace_top = 0;
+            }
+            KeyCode::Char('s') => {
+                self.trace.show_steps = !self.trace.show_steps;
+                self.trace_top = 0;
+            }
             _ => {}
         }
     }
@@ -132,7 +141,7 @@ impl Ui {
                 None => Action::None,
             },
             KeyCode::Char('e') | KeyCode::Tab | KeyCode::Right | KeyCode::Left => {
-                Action::SetEffort(next_effort(self.effort.as_deref()).to_string())
+                Action::SetEffort(next_effort(&self.model, self.effort.as_deref()).to_string())
             }
             _ => Action::None,
         }

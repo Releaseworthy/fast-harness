@@ -7,6 +7,7 @@ use ratatui::widgets::{Block, Paragraph};
 use ratatui::Frame;
 
 use super::panels;
+use super::picker::{self, model_name};
 use super::theme::Styles;
 use super::transcript::{Cache, Opts};
 use super::ui::{Screen, Ui};
@@ -80,10 +81,13 @@ fn hint_text(ui: &Ui) -> String {
         return ui.status.clone();
     }
     match ui.screen {
-        Screen::Chat if ui.running => "Esc/Ctrl+C cancel · PgUp/PgDn scroll · Ctrl+T thinking · F2 accounts · F3 trace · F5 theme".into(),
-        Screen::Chat => "Enter send · Alt+Enter newline · ↑↓ history · Ctrl+N new · Ctrl+O sessions · Ctrl+T thinking · F2 accounts · F3 trace · F4 model · F5 theme · Ctrl+D quit".into(),
+        Screen::Chat if ui.picker.is_some() => "↑↓ PgUp PgDn choose · Enter pick · Esc close".into(),
+        Screen::Chat if ui.running => "Esc cancel · Ctrl+P model · Ctrl+E effort · PgUp/PgDn scroll · Ctrl+T thinking · F3 trace · F5 theme".into(),
+        Screen::Chat => "Enter send · Alt+Enter newline · Ctrl+P model · Ctrl+E effort · Ctrl+T thinking · Ctrl+N new · Ctrl+O sessions · F2 accounts · F3 trace · F5 theme".into(),
         Screen::Accounts => "Enter use · l sign in · i import · k add key · d remove · r read usage · Esc back".into(),
-        Screen::Trace => "↑↓ PgUp PgDn Home End scroll · Esc back".into(),
+        Screen::Trace if ui.trace.show_steps => "s timeline · ↑↓ PgUp PgDn Home End scroll · Esc back".into(),
+        Screen::Trace if ui.trace.full => "f cut bodies · s steps table · ↑↓ PgUp PgDn Home End scroll · Esc back".into(),
+        Screen::Trace => "f full bodies · s steps table · ↑↓ PgUp PgDn Home End scroll · Esc back".into(),
         Screen::Models => "↑↓ choose · Enter use model · e/Tab cycle effort · Esc back".into(),
         Screen::Sessions => "↑↓ choose · Enter resume · Esc back".into(),
     }
@@ -113,7 +117,8 @@ pub fn draw(frame: &mut Frame, ui: &mut Ui, view: &mut View<'_>, now_ms: u64) {
     match ui.screen {
         Screen::Chat => {
             draw_transcript(frame, ui, view, body);
-            draw_input(frame, &rows, cursor, input, &st);
+            draw_input(frame, ui, &rows, cursor, input);
+            picker::draw(frame, ui, input, body);
         }
         _ => panels::draw(frame, ui, body, now_ms),
     }
@@ -164,7 +169,22 @@ fn draw_transcript(frame: &mut Frame, ui: &mut Ui, view: &mut View<'_>, area: Re
     }
 }
 
-fn draw_input(frame: &mut Frame, rows: &[String], cursor: (usize, usize), area: Rect, st: &Styles) {
+/// The input box title: the model and effort of the next turn.
+fn settings_title(ui: &Ui, st: &Styles) -> Line<'static> {
+    Line::from(vec![
+        Span::styled(" ", st.dim()),
+        Span::styled(model_name(&ui.model), st.accent()),
+        Span::styled(" · effort ", st.dim()),
+        Span::styled(
+            ui.effort.clone().unwrap_or_else(|| "default".into()),
+            st.accent(),
+        ),
+        Span::styled(" ", st.dim()),
+    ])
+}
+
+fn draw_input(frame: &mut Frame, ui: &Ui, rows: &[String], cursor: (usize, usize), area: Rect) {
+    let st = Styles::new(ui.theme);
     let inner_rows = usize::from(area.height.saturating_sub(2)).max(1);
     let skip = (cursor.0 + 1).saturating_sub(inner_rows);
     let text: Vec<Line<'static>> = rows
@@ -174,7 +194,7 @@ fn draw_input(frame: &mut Frame, rows: &[String], cursor: (usize, usize), area: 
         .map(|r| Line::raw(r.clone()))
         .collect();
     // The chat input has the focus: its frame is drawn in the accent colour.
-    let block = st.focus_block();
+    let block = st.focus_block().title(settings_title(ui, &st));
     frame.render_widget(Paragraph::new(text).block(block), area);
     let x = area.x + 1 + cursor.1.min(u16::MAX as usize) as u16;
     let y = area.y + 1 + (cursor.0 - skip).min(u16::MAX as usize) as u16;

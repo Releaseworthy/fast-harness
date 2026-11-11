@@ -11,7 +11,7 @@ use nh_core::app::Runtime;
 use nh_core::events::{AgentEvent, TurnOutcome};
 use nh_core::llm::anthropic::builtin_models;
 use nh_core::session;
-use nh_core::trace::{self, report};
+use nh_core::trace::{self, detail, report};
 use nh_core::view::{Item, NoteKind, Transcript};
 use ratatui::crossterm::event::Event;
 
@@ -162,14 +162,19 @@ impl Tui {
             }
             Action::Open(screen) => self.open(screen),
             Action::SetModel(id) => {
-                self.rt.config.model = id.clone();
-                self.ui.status = format!("model {id} applies to the next turn");
-                self.ui.model = id;
+                self.ui.set_model(id);
+                self.rt.config.model = self.ui.model.clone();
+                self.rt.config.effort = self.ui.effort.clone();
             }
             Action::SetEffort(effort) => {
                 self.rt.config.set_effort(&effort);
                 self.ui.effort = self.rt.config.effort.clone();
-                self.ui.status = format!("effort {effort} applies to the next turn");
+                let when = if self.ui.running {
+                    "after this turn"
+                } else {
+                    "next turn"
+                };
+                self.ui.status = format!("{when}: effort {effort}");
             }
             Action::CycleTheme => {
                 let theme = super::theme::cycle(&mut self.ui, &self.rt.home);
@@ -253,16 +258,24 @@ impl Tui {
 
     fn load_trace(&mut self) {
         self.ui.trace_top = 0;
-        self.ui.trace = match trace::read(&self.log_path) {
+        match trace::read(&self.log_path) {
             Ok((_, events)) => {
                 let rows = report::step_rows(&events);
-                report::format_table(&rows)
-                    .lines()
-                    .map(String::from)
-                    .collect()
+                let steps = if rows.is_empty() {
+                    Vec::new()
+                } else {
+                    report::format_table(&rows)
+                        .lines()
+                        .map(String::from)
+                        .collect()
+                };
+                self.ui.trace.set(detail::entries(&events), steps, None);
             }
-            Err(err) => vec![format!("cannot read {}: {err}", self.log_path.display())],
-        };
+            Err(err) => {
+                let text = format!("cannot read {}: {err}", self.log_path.display());
+                self.ui.trace.set(Vec::new(), Vec::new(), Some(text));
+            }
+        }
     }
 
     fn login_done(&mut self, result: Result<String, String>) {

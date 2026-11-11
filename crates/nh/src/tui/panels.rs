@@ -117,19 +117,20 @@ fn draw_accounts(frame: &mut Frame, ui: &mut Ui, area: Rect, now_ms: u64) {
 }
 
 fn draw_trace(frame: &mut Frame, ui: &mut Ui, area: Rect) {
-    let block = Styles::new(ui.theme).block("Trace: one row per step");
+    let st = Styles::new(ui.theme);
+    let block = st.block(ui.trace.title());
     let inner = block.inner(area);
     ui.view_height = usize::from(inner.height).max(1);
-    let lines: Vec<Line<'static>> = if ui.trace.is_empty() {
-        vec![Line::raw("No steps in this session yet.")]
-    } else {
-        ui.trace
-            .iter()
-            .skip(ui.trace_top)
-            .take(ui.view_height)
-            .map(|row| Line::raw(clip(row, usize::from(inner.width))))
-            .collect()
-    };
+    ui.trace.render(usize::from(inner.width), &st);
+    ui.trace_scroll(0);
+    let lines: Vec<Line<'static>> = ui
+        .trace
+        .lines
+        .iter()
+        .skip(ui.trace_top)
+        .take(ui.view_height)
+        .cloned()
+        .collect();
     frame.render_widget(Paragraph::new(lines).block(block), area);
 }
 
