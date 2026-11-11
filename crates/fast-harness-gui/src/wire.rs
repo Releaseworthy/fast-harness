@@ -6,8 +6,7 @@ use slint::ComponentHandle;
 use crate::app::{show_error, with_app};
 use crate::{
     accounts, google, mirror, model_refresh, prompt_settings, providers, settings, theme,
-    trace_rows, turn,
-    window_state, workspaces, MainWindow,
+    trace_rows, turn, window_state, workspaces, MainWindow,
 };
 
 pub fn connect(ui: &MainWindow) {

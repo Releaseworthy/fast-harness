@@ -117,8 +117,8 @@ fn prompt_includes_agents_files_root_first() {
     );
     assert!(text.starts_with(&start), "{text}");
     assert!(text.contains(
-        " (UTC).\nUse the tools to read, search and change files and to run \
-        commands; independent calls in one step run in parallel. Be brief.\n"
+        " (UTC).\nCall find_tools first to load the tools you need; \
+        independent calls in one step run in parallel. Be brief.\n"
     ));
     let root_at = text.find("ROOT RULES").unwrap();
     let sub_at = text.find("SUB RULES").unwrap();

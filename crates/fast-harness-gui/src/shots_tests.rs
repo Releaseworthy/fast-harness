@@ -322,10 +322,10 @@ fn shots() {
         let png = shots_png::encode(WIDTH, HEIGHT, &render(&window));
         std::fs::write(dir.join(format!("{}-nosidebar.png", core.id)), png).expect("write png");
         ui.set_sidebar_open(true);
-        provider_states(&ui, &window, &dir, core.id);
+        provider_states(&ui, &window, &dir, &core.id);
         outside_click_closes(&ui, &window);
         let size = (WIDTH, HEIGHT);
-        crate::shots_prompt::shot(&ui, &window, &dir, core.id, size, || render(&window));
+        crate::shots_prompt::shot(&ui, &window, &dir, &core.id, size, || render(&window));
     }
 }
 

@@ -14,7 +14,7 @@ pub const MAX_AGENTS_BYTES: usize = 32 * 1024;
 /// The built-in prompt template (PLAN.md D18), used without a prompt file (D31).
 pub const DEFAULT_TEMPLATE: &str =
     "You are a coding agent in Fast Harness, working in {cwd} on {os}. \
-Today is {date} (UTC).\nUse the tools to read, search and change files and to run commands; \
+Today is {date} (UTC).\nCall find_tools first to load the tools you need; \
 independent calls in one step run in parallel. Be brief.\n";
 
 /// The placeholders a template may use; any other text stays as written.
