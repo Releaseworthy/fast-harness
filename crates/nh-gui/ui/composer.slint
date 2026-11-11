@@ -1,0 +1,65 @@
+import { Theme } from "parts.slint";
+import { ActionButton, TextArea } from "widgets.slint";
+
+// The message composer: a rounded card with the text area on top and a
+// toolbar below. Children placed inside `Composer { ... }` go to the left
+// slot of the toolbar (a HorizontalLayout), e.g. model and effort dropdowns.
+export component Composer inherits Rectangle {
+    in-out property <string> text <=> area.text;
+    in property <bool> busy;
+    in property <string> hint: "Enter to send · Shift+Enter for a new line";
+    // Fired on Enter or the Send button; the parent clears `text` itself.
+    callback submit();
+    callback stop();
+    public function focus-input() { area.focus(); }
+    border-radius: Theme.radius-l;
+    background: Theme.surface;
+    border-width: area.has-focus ? 2px : 1px;
+    border-color: area.has-focus ? Theme.accent : Theme.border;
+    VerticalLayout {
+        padding: Theme.space-m;
+        padding-top: Theme.space-m + 2px;
+        spacing: Theme.space-s;
+        area := TextArea {
+            placeholder: "Message native-harness";
+            key-pressed(event) => {
+                if (event.text == Key.Return && !event.modifiers.shift) {
+                    if (!root.busy) {
+                        root.submit();
+                    }
+                    return accept;
+                }
+                return reject;
+            }
+        }
+        HorizontalLayout {
+            spacing: Theme.space-s;
+            toolbar-left := HorizontalLayout {
+                spacing: Theme.space-s;
+                alignment: start;
+                @children
+            }
+            Text {
+                text: root.hint;
+                color: Theme.dim;
+                font-size: Theme.font-xs;
+                horizontal-alignment: right;
+                vertical-alignment: center;
+                overflow: elide;
+                horizontal-stretch: 1;
+            }
+            ActionButton {
+                text: root.busy ? "■ Stop" : "Send";
+                variant: root.busy ? "secondary" : "primary";
+                min-width: 84px;
+                clicked => {
+                    if (root.busy) {
+                        root.stop();
+                    } else {
+                        root.submit();
+                    }
+                }
+            }
+        }
+    }
+}

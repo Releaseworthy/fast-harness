@@ -4,7 +4,7 @@ use nh_core::platform;
 use slint::ComponentHandle;
 
 use crate::app::{show_error, with_app};
-use crate::{accounts, mirror, settings, turn, MainWindow};
+use crate::{accounts, mirror, settings, theme, turn, MainWindow};
 
 pub fn connect(ui: &MainWindow) {
     ui.on_send(|text| with_app(|app, ui| turn::send(app, ui, &text)).unwrap_or(false));
@@ -28,6 +28,9 @@ pub fn connect(ui: &MainWindow) {
     });
     ui.on_settings_changed(|model, effort| {
         with_app(|app, ui| settings::apply(app, ui, model, effort));
+    });
+    ui.on_theme_changed(|index| {
+        with_app(|app, ui| theme::pick(app, ui, index));
     });
     connect_accounts(ui);
     connect_open_url(ui);

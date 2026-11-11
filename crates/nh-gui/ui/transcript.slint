@@ -1,30 +1,38 @@
-import { ListView, Spinner, Palette } from "std-widgets.slint";
+import { ListView } from "std-widgets.slint";
 import { MsgRow } from "types.slint";
-import { Theme, LinkText } from "parts.slint";
+import { Theme, LinkText, Columns, Mark } from "parts.slint";
+import { BusySpinner } from "widgets.slint";
 
+// The user's message: a bubble on the right, at most 80% of the column.
 component UserBubble {
     in property <MsgRow> msg;
     callback copy(string);
-    HorizontalLayout {
-        padding-left: 80px;
-        Rectangle {
-            border-radius: 8px;
-            background: Theme.accent;
-            VerticalLayout {
-                padding: 10px;
-                spacing: 4px;
-                Text {
-                    text: msg.text;
-                    wrap: word-wrap;
-                    color: Palette.accent-foreground;
-                }
-                LinkText {
-                    text: "Copy";
-                    horizontal-alignment: right;
-                    color: Palette.accent-foreground;
-                    clicked => { root.copy(msg.text); }
+    VerticalLayout {
+        spacing: Theme.space-xs;
+        HorizontalLayout {
+            alignment: end;
+            Rectangle {
+                max-width: root.width * 0.8;
+                border-radius: Theme.radius-l;
+                background: Theme.bubble;
+                HorizontalLayout {
+                    padding-left: Theme.space-l - 2px;
+                    padding-right: Theme.space-l - 2px;
+                    padding-top: Theme.space-s + 2px;
+                    padding-bottom: Theme.space-s + 2px;
+                    Text {
+                        text: msg.text;
+                        wrap: word-wrap;
+                        color: Theme.text;
+                        font-size: Theme.font-m;
+                    }
                 }
             }
+        }
+        LinkText {
+            text: "Copy";
+            horizontal-alignment: right;
+            clicked => { root.copy(msg.text); }
         }
     }
 }
@@ -35,20 +43,36 @@ component AssistantBlock {
     callback toggle();
     callback link(string);
     VerticalLayout {
-        spacing: 4px;
-        if msg.thinking != "": LinkText {
-            text: msg.expanded ? "Hide thinking" : "Show thinking";
-            clicked => { root.toggle(); }
+        spacing: Theme.space-s;
+        if msg.thinking != "": HorizontalLayout {
+            spacing: Theme.space-xs;
+            alignment: start;
+            Mark { text: msg.expanded ? "▾" : "▸"; color: Theme.dim; font-size: Theme.font-s; }
+            LinkText {
+                text: msg.expanded ? "Hide thinking" : "Show thinking";
+                font-size: Theme.font-s;
+                clicked => { root.toggle(); }
+            }
         }
-        if msg.thinking != "" && msg.expanded: Text {
-            text: msg.thinking;
-            wrap: word-wrap;
-            color: Theme.dim;
-            font-italic: true;
+        if msg.thinking != "" && msg.expanded: HorizontalLayout {
+            spacing: Theme.space-m;
+            Rectangle {
+                width: 2px;
+                border-radius: 1px;
+                background: Theme.line;
+            }
+            Text {
+                text: msg.thinking;
+                wrap: word-wrap;
+                color: Theme.dim;
+                font-size: Theme.font-s;
+                font-italic: true;
+            }
         }
         if msg.text != "": StyledText {
             text: msg.body;
-            default-color: Palette.foreground;
+            default-color: Theme.text;
+            default-font-size: Theme.font-m;
             link-color: Theme.accent;
             link-clicked(url) => { root.link(url); }
         }
@@ -59,50 +83,112 @@ component AssistantBlock {
     }
 }
 
+// The status of a tool: dots while it runs, then a mark and a word, so the
+// state never rests on colour alone.
+component ToolStatus {
+    in property <MsgRow> msg;
+    HorizontalLayout {
+        if msg.running: BusySpinner { label: "Running " + msg.title; }
+        if !msg.running && !msg.error: Text {
+            text: "✓";
+            color: Theme.success;
+            font-weight: 700;
+            vertical-alignment: center;
+            accessible-label: "done";
+        }
+        if msg.error: HorizontalLayout {
+            spacing: Theme.space-xs;
+            Mark { text: "✕"; color: Theme.error; font-size: Theme.font-s; }
+            Text {
+                text: "failed";
+                color: Theme.error;
+                font-size: Theme.font-s;
+                font-weight: 600;
+                vertical-alignment: center;
+            }
+        }
+    }
+}
+
 component ToolCard inherits Rectangle {
     in property <MsgRow> msg;
     callback copy(string);
     callback toggle();
-    border-radius: 6px;
+    border-radius: Theme.radius-m;
     border-width: 1px;
-    border-color: msg.error ? Theme.red : Theme.line;
-    background: Theme.card;
+    border-color: msg.error ? Theme.error : Theme.line;
+    background: Theme.surface;
     VerticalLayout {
-        padding: 8px;
-        spacing: 4px;
+        padding: Theme.space-s + 2px;
+        padding-left: Theme.space-m;
+        padding-right: Theme.space-m;
+        spacing: Theme.space-s;
         HorizontalLayout {
-            spacing: 8px;
-            if msg.running: Spinner {
-                indeterminate: true;
-                width: 14px;
-                height: 14px;
-            }
+            spacing: Theme.space-s;
+            ToolStatus { msg: msg; }
             Text {
                 text: msg.title;
+                font-family: Theme.mono;
+                font-size: Theme.font-s;
                 font-weight: 700;
-                color: msg.error ? Theme.red : Palette.foreground;
+                color: Theme.text;
+                vertical-alignment: center;
             }
             Text {
                 text: msg.summary;
                 color: Theme.dim;
+                font-size: Theme.font-s;
                 overflow: elide;
+                vertical-alignment: center;
                 horizontal-stretch: 1;
             }
             if !msg.running: LinkText {
                 text: msg.expanded ? "Hide output" : "Show output";
+                vertical-alignment: center;
                 clicked => { root.toggle(); }
             }
             if !msg.running: LinkText {
                 text: "Copy";
+                vertical-alignment: center;
                 clicked => { root.copy(msg.text); }
             }
         }
-        if msg.expanded && !msg.running: Text {
-            text: msg.output;
+        if msg.expanded && !msg.running: Rectangle {
+            border-radius: Theme.radius-s;
+            background: Theme.code;
+            HorizontalLayout {
+                padding: Theme.space-s + 2px;
+                Text {
+                    text: msg.output;
+                    wrap: word-wrap;
+                    font-family: Theme.mono;
+                    font-size: Theme.font-s;
+                    color: Theme.text;
+                }
+            }
+        }
+    }
+}
+
+// A note line: a mark per kind (↻ retry, ⇄ switch, ✕ error, ℹ info).
+component Note {
+    in property <MsgRow> msg;
+    property <color> tint: msg.tone == "error" ? Theme.error : msg.tone == "retry" ? Theme.warning : msg.tone == "switch" ? Theme.accent : Theme.dim;
+    HorizontalLayout {
+        spacing: Theme.space-s;
+        Mark {
+            width: 14px;
+            vertical-alignment: top;
+            horizontal-alignment: center;
+            text: msg.tone == "retry" ? "↻" : msg.tone == "switch" ? "⇄" : msg.tone == "error" ? "✕" : "ℹ";
+            color: root.tint;
+            font-size: Theme.font-m;
+        }
+        Text {
+            text: msg.text;
             wrap: word-wrap;
-            font-family: "Consolas";
-            font-size: 12px;
-            color: msg.error ? Theme.red : Palette.foreground;
+            font-size: Theme.font-s;
+            color: root.tint;
         }
     }
 }
@@ -113,10 +199,10 @@ component MessageView {
     callback toggle();
     callback link(string);
     VerticalLayout {
-        padding-left: 16px;
-        padding-right: 16px;
-        padding-top: msg.kind == "footer" ? 0px : 6px;
-        padding-bottom: msg.kind == "footer" ? 6px : 2px;
+        padding-left: Columns.side(root.width, Theme.column-width);
+        padding-right: Columns.side(root.width, Theme.column-width);
+        padding-top: msg.kind == "footer" ? 0px : msg.kind == "user" ? Theme.space-l : Theme.space-s;
+        padding-bottom: msg.kind == "footer" ? Theme.space-s : 2px;
         if msg.kind == "user": UserBubble {
             msg: msg;
             copy(t) => { root.copy(t); }
@@ -132,15 +218,10 @@ component MessageView {
             copy(t) => { root.copy(t); }
             toggle => { root.toggle(); }
         }
-        if msg.kind == "note": Text {
-            text: msg.text;
-            wrap: word-wrap;
-            font-size: 12px;
-            color: msg.tone == "error" ? Theme.red : msg.tone == "info" ? Theme.dim : Theme.amber;
-        }
+        if msg.kind == "note": Note { msg: msg; }
         if msg.kind == "footer": Text {
             text: msg.text;
-            font-size: 10px;
+            font-size: Theme.font-xs;
             color: Theme.dim;
             overflow: elide;
         }

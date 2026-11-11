@@ -3146,6 +3146,7 @@ name = "nh-gui"
 version = "0.1.0"
 dependencies = [
  "nh-core",
+ "serde_json",
  "slint",
  "slint-build",
 ]

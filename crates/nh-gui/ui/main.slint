@@ -1,12 +1,14 @@
-import { Button, TextEdit, Palette } from "std-widgets.slint";
+import { Palette } from "std-widgets.slint";
 import { MsgRow, SessionRow, AccountRow } from "types.slint";
-import { Theme } from "parts.slint";
+import { Theme, Mark } from "parts.slint";
+import { ActionButton } from "widgets.slint";
+import { Composer } from "composer.slint";
 import { TranscriptView } from "transcript.slint";
 import { Sidebar } from "sidebar.slint";
 import { AccountsPage } from "accounts.slint";
 import { TracePage, SettingsPage, AboutPage } from "pages.slint";
 
-export { MsgRow, SessionRow, AccountRow }
+export { MsgRow, SessionRow, AccountRow, Theme }
 
 component StatusBar inherits Rectangle {
     in property <string> state;
@@ -14,32 +16,51 @@ component StatusBar inherits Rectangle {
     in property <string> account;
     in property <string> tokens;
     in property <string> timing;
-    height: 24px;
-    background: Palette.alternate-background;
+    height: 26px;
+    background: Theme.surface;
+    Rectangle { y: 0; height: 1px; background: Theme.line; }
     HorizontalLayout {
-        padding-left: 10px;
-        padding-right: 10px;
-        spacing: 16px;
-        Text { text: root.state; font-size: 11px; vertical-alignment: center; }
-        Text { text: root.model; font-size: 11px; color: Theme.dim; vertical-alignment: center; }
-        Text { text: root.account; font-size: 11px; color: Theme.dim; vertical-alignment: center; overflow: elide; }
+        padding-left: Theme.space-m;
+        padding-right: Theme.space-m;
+        spacing: Theme.space-l;
+        Text { text: root.state; font-size: Theme.font-xs; color: Theme.text; vertical-alignment: center; }
+        Text { text: root.model; font-size: Theme.font-xs; color: Theme.dim; vertical-alignment: center; }
+        Text { text: root.account; font-size: Theme.font-xs; color: Theme.dim; vertical-alignment: center; overflow: elide; }
         Rectangle { horizontal-stretch: 1; }
-        Text { text: root.tokens; font-size: 11px; color: Theme.dim; vertical-alignment: center; }
-        Text { text: root.timing; font-size: 11px; color: Theme.dim; vertical-alignment: center; }
+        Text { text: root.tokens; font-size: Theme.font-xs; color: Theme.dim; vertical-alignment: center; }
+        Text { text: root.timing; font-size: Theme.font-xs; color: Theme.dim; vertical-alignment: center; }
     }
 }
 
+// An error: a mark and a word next to the colour (WCAG 1.4.1).
 component ErrorBanner inherits Rectangle {
     in property <string> text;
     callback dismiss();
-    background: Theme.red.transparentize(75%);
-    border-color: Theme.red;
+    border-radius: Theme.radius-m;
+    background: Theme.surface;
+    border-color: Theme.error;
     border-width: 1px;
+    accessible-role: AccessibleRole.text;
+    accessible-label: "Error: " + root.text;
     HorizontalLayout {
-        padding: 8px;
-        spacing: 8px;
-        Text { text: root.text; wrap: word-wrap; horizontal-stretch: 1; }
-        Button { text: "Dismiss"; clicked => { root.dismiss(); } }
+        padding: Theme.space-s;
+        padding-left: Theme.space-m;
+        spacing: Theme.space-m;
+        Mark { text: "✕"; color: Theme.error; }
+        Text {
+            text: "Error";
+            color: Theme.error;
+            font-weight: 700;
+            vertical-alignment: center;
+        }
+        Text {
+            text: root.text;
+            color: Theme.text;
+            wrap: word-wrap;
+            vertical-alignment: center;
+            horizontal-stretch: 1;
+        }
+        ActionButton { text: "Dismiss"; variant: "ghost"; clicked => { root.dismiss(); } }
     }
 }
 
@@ -49,8 +70,11 @@ export component MainWindow inherits Window {
     preferred-height: 740px;
     min-width: 640px;
     min-height: 420px;
-    background: Palette.background;
+    background: Theme.bg;
+    default-font-size: Theme.font-m;
 
+    in property <[string]> themes;
+    in-out property <int> theme-index;
     in property <[MsgRow]> messages;
     in property <[SessionRow]> sessions;
     in property <[AccountRow]> accounts;
@@ -96,6 +120,7 @@ export component MainWindow inherits Window {
     callback remove-account(string);
     callback refresh-trace();
     callback settings-changed(int, int);
+    callback theme-changed(int);
 
     // Copy: a hidden TextInput takes the text, selects it and copies it
     // (StyledText has no selection in Slint 1.18).
@@ -110,9 +135,14 @@ export component MainWindow inherits Window {
         transcript.to-bottom();
     }
 
+    // The std widgets left (scroll bars, AboutSlint) follow this scheme.
+    public function set-color-scheme(dark: bool) {
+        Palette.color-scheme = dark ? ColorScheme.dark : ColorScheme.light;
+    }
+
     function submit() {
-        if (root.send(input.text)) {
-            input.text = "";
+        if (root.send(composer.text)) {
+            composer.text = "";
             transcript.to-bottom();
         }
     }
@@ -140,10 +170,20 @@ export component MainWindow inherits Window {
             horizontal-stretch: 1;
             Rectangle {
                 vertical-stretch: 1;
-                VerticalLayout {
-                    if root.error-text != "": ErrorBanner {
-                        text: root.error-text;
-                        dismiss => { root.error-text = ""; }
+                chat := VerticalLayout {
+                    // The banner and the composer sit in a centred column;
+                    // explicit geometry keeps the width out of the layout.
+                    property <length> column: min(self.width - 2 * Theme.space-l, Theme.column-width);
+                    if root.error-text != "": Rectangle {
+                        height: banner.preferred-height + Theme.space-m;
+                        banner := ErrorBanner {
+                            x: (parent.width - self.width) / 2;
+                            y: Theme.space-m;
+                            width: chat.column;
+                            height: self.preferred-height;
+                            text: root.error-text;
+                            dismiss => { root.error-text = ""; }
+                        }
                     }
                     transcript := TranscriptView {
                         vertical-stretch: 1;
@@ -152,36 +192,16 @@ export component MainWindow inherits Window {
                         copy(t) => { root.copy-text(t); }
                         link(u) => { root.open-url(u); }
                     }
-                    HorizontalLayout {
-                        padding: 8px;
-                        spacing: 8px;
-                        height: 110px;
-                        input := TextEdit {
-                            horizontal-stretch: 1;
-                            placeholder-text: "Message (Enter sends, Shift+Enter adds a line)";
-                            key-pressed(event) => {
-                                if (event.text == Key.Return && !event.modifiers.shift) {
-                                    if (!root.busy) {
-                                        root.submit();
-                                    }
-                                    return accept;
-                                }
-                                return reject;
-                            }
-                        }
-                        VerticalLayout {
-                            alignment: end;
-                            Button {
-                                text: root.busy ? "Stop" : "Send";
-                                width: 80px;
-                                clicked => {
-                                    if (root.busy) {
-                                        root.stop();
-                                    } else {
-                                        root.submit();
-                                    }
-                                }
-                            }
+                    Rectangle {
+                        height: composer.preferred-height + Theme.space-s + Theme.space-l;
+                        composer := Composer {
+                            x: (parent.width - self.width) / 2;
+                            y: Theme.space-s;
+                            width: chat.column;
+                            height: self.preferred-height;
+                            busy: root.busy;
+                            submit => { root.submit(); }
+                            stop => { root.stop(); }
                         }
                     }
                 }
@@ -213,6 +233,9 @@ export component MainWindow inherits Window {
                 if root.page == "settings": SettingsPage {
                     width: parent.width;
                     height: parent.height;
+                    themes: root.themes;
+                    theme-index <=> root.theme-index;
+                    changed-theme(i) => { root.theme-changed(i); }
                     models: root.models;
                     efforts: root.efforts;
                     model-index <=> root.model-index;

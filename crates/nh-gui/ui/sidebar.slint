@@ -1,17 +1,41 @@
-import { Button, ListView, Palette } from "std-widgets.slint";
+import { ListView } from "std-widgets.slint";
 import { SessionRow } from "types.slint";
 import { Theme, UsageBar } from "parts.slint";
+import { ActionButton } from "widgets.slint";
+
+// A selected row: the selection colour, an accent bar on the left and a
+// heavier weight, so the state shows without colour alone.
+component RowMark inherits Rectangle {
+    in property <bool> selected;
+    in property <bool> hovered;
+    border-radius: Theme.radius-s;
+    background: root.selected ? Theme.selection : root.hovered ? Theme.hover : transparent;
+    if root.selected: Rectangle {
+        x: 0;
+        y: (parent.height - self.height) / 2;
+        width: 3px;
+        height: parent.height - 14px;
+        border-radius: 1.5px;
+        background: Theme.accent;
+    }
+}
 
 component NavEntry inherits Rectangle {
     in property <string> text;
     in property <bool> selected;
     callback clicked();
-    height: 28px;
-    border-radius: 4px;
-    background: root.selected ? Theme.line : ta.has-hover ? Theme.card : transparent;
+    height: Theme.control-height;
+    accessible-role: tab;
+    accessible-label: root.text;
+    accessible-item-selected: root.selected;
+    accessible-action-default => { root.clicked(); }
+    RowMark { selected: root.selected; hovered: ta.has-hover; }
     Text {
-        x: 8px;
+        x: Theme.space-m;
         text: root.text;
+        color: root.selected ? Theme.text : Theme.dim;
+        font-size: Theme.font-m;
+        font-weight: root.selected ? 600 : 400;
         vertical-alignment: center;
         height: parent.height;
     }
@@ -28,17 +52,23 @@ component AccountChip inherits Rectangle {
     in property <string> five-text;
     in property <float> seven;
     in property <string> seven-text;
+    in property <bool> selected;
     callback clicked();
-    border-radius: 6px;
-    border-width: 1px;
-    border-color: Theme.line;
-    background: ta.has-hover ? Theme.card : transparent;
+    border-radius: Theme.radius-m;
+    border-width: root.selected ? 2px : 1px;
+    border-color: root.selected ? Theme.accent : Theme.line;
+    background: ta.has-hover ? Theme.hover : Theme.raised;
+    accessible-role: button;
+    accessible-label: "Account " + root.name;
+    accessible-action-default => { root.clicked(); }
     VerticalLayout {
-        padding: 8px;
-        spacing: 4px;
+        padding: Theme.space-m - 2px;
+        spacing: Theme.space-xs + 2px;
         Text {
             text: root.name;
             overflow: elide;
+            color: Theme.text;
+            font-size: Theme.font-s;
             font-weight: 600;
         }
         UsageBar { label: "5h"; value: root.five; caption: root.five-text; }
@@ -61,31 +91,58 @@ export component Sidebar inherits Rectangle {
     callback new-session();
     callback open-session(string);
     callback open-page(string);
-    width: 250px;
-    background: Palette.alternate-background;
+    width: 260px;
+    background: Theme.surface;
+    Rectangle {
+        x: parent.width - 1px;
+        width: 1px;
+        background: Theme.line;
+    }
     VerticalLayout {
-        padding: 8px;
-        spacing: 6px;
-        Button {
-            text: "New session";
+        padding: Theme.space-m;
+        spacing: Theme.space-xs;
+        Text {
+            text: "native-harness";
+            color: Theme.text;
+            font-size: Theme.font-m;
+            font-weight: 700;
+        }
+        Rectangle { height: Theme.space-s; }
+        ActionButton {
+            text: "+  New session";
             clicked => { root.new-session(); }
         }
         Text {
-            text: "Sessions";
-            font-size: 11px;
+            text: "SESSIONS";
+            font-size: Theme.font-xs;
+            font-weight: 600;
+            letter-spacing: 0.6px;
             color: Theme.dim;
+            height: 32px;
+            vertical-alignment: bottom;
         }
         ListView {
             vertical-stretch: 1;
             for s in root.sessions: Rectangle {
-                height: 46px;
-                border-radius: 4px;
-                background: s.current ? Theme.line : sta.has-hover ? Theme.card : transparent;
+                height: 48px;
+                accessible-role: list-item;
+                accessible-label: s.title;
+                accessible-item-selected: s.current;
+                accessible-action-default => { root.open-session(s.id); }
+                RowMark { selected: s.current; hovered: sta.has-hover; }
                 VerticalLayout {
-                    padding: 4px;
-                    padding-left: 8px;
-                    Text { text: s.title; overflow: elide; }
-                    Text { text: s.time; font-size: 11px; color: Theme.dim; }
+                    padding-left: Theme.space-m;
+                    padding-right: Theme.space-s;
+                    alignment: center;
+                    spacing: 2px;
+                    Text {
+                        text: s.title;
+                        overflow: elide;
+                        color: Theme.text;
+                        font-size: Theme.font-m;
+                        font-weight: s.current ? 600 : 400;
+                    }
+                    Text { text: s.time; font-size: Theme.font-xs; color: Theme.dim; }
                 }
                 sta := TouchArea {
                     mouse-cursor: pointer;
@@ -93,6 +150,8 @@ export component Sidebar inherits Rectangle {
                 }
             }
         }
+        Rectangle { height: 1px; background: Theme.line; }
+        Rectangle { height: Theme.space-xs; }
         NavEntry {
             text: "Chat";
             selected: root.page == "chat";
@@ -113,12 +172,14 @@ export component Sidebar inherits Rectangle {
             selected: root.page == "about";
             clicked => { root.open-page("about"); }
         }
+        Rectangle { height: Theme.space-s; }
         AccountChip {
             name: root.chip-name;
             five: root.chip-five;
             five-text: root.chip-five-text;
             seven: root.chip-seven;
             seven-text: root.chip-seven-text;
+            selected: root.page == "accounts";
             clicked => { root.open-page("accounts"); }
         }
     }
