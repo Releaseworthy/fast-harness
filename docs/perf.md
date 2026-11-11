@@ -16,3 +16,25 @@ For comparison, DeepSeek Harness (Electron) ran as 9 processes with 1,680 MB wor
 Consequences:
 - The GUI uses Slint's software renderer by default: about a third of the memory and start time of the OpenGL renderer here. `SLINT_BACKEND` still selects another renderer.
 - Start time of the TUI in a new console window is dominated by the terminal itself (0.7 to 17 s, Windows Terminal start), not by nh.
+
+## Harness time per step (2026-11-11)
+
+`cargo run --release -p nh-core --example step_bench -- <steps>`: one turn of N steps, each a scripted Claude stream (512-byte chunks) asking for the `read` tool on a small file, then a text answer. It covers SSE parsing, stream assembly, the tool, the session log and the wire capture, with no network. Same machine, other builds running.
+
+| Steps | Total | Per step | Session log | Wire capture |
+|---|---|---|---|---|
+| 51 | 86.6 ms | 1.7 ms | 65 KB | 1.1 MB |
+| 201 | 552.1 ms | 2.7 ms | 245 KB | 12.3 MB |
+
+The per-step time grows with the conversation because every request carries the whole conversation and the wire capture stores every request body: its size grows with the square of the step count. A live step's time to first byte from Claude was 1.4 to 2.0 s (below), so the harness adds about 0.1 to 0.2 % to a step.
+
+## Live call (2026-11-11)
+
+`nh -p "Read README.md with the read tool, then reply with its first line only."` on `claude-opus-5-5` with a Claude subscription account (OAuth), release build:
+
+| Step | TTFB | Total | Input | Output | Cache read | Cache write |
+|---|---|---|---|---|---|---|
+| 1 (tool call) | 1,992 ms | 2,502 ms | 4 | 70 | 0 | 5,704 |
+| 2 (answer) | 1,439 ms | 1,445 ms | 2 | 7 | 5,704 | 115 |
+
+Wall time 4.0 s for the turn. `nh.exe` release: 4.98 MB.
