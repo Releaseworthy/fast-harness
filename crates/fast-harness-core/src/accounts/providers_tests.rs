@@ -69,11 +69,20 @@ fn empty_providers_say_no_accounts() {
     let cards = summaries(&[], &[], &ClientState::Ready("id".into()), NOW);
     assert_eq!(cards.len(), 2);
     assert_eq!(cards[0].key, ProviderKey::Claude);
-    assert_eq!(cards[0].status, "No accounts");
+    assert_eq!(cards[0].status, "Not set up");
     assert_eq!(cards[0].count_text, "No accounts");
     assert_eq!(cards[0].tone, Tone::Empty);
     assert_eq!(cards[1].key.name(), "Google Antigravity");
     assert_eq!(cards[1].left, None);
+}
+
+/// Bug: an empty card said `No accounts` twice, in the count line and the status.
+#[test]
+fn empty_card_says_no_accounts_once() {
+    for card in summaries(&[], &[], &ClientState::Ready("id".into()), NOW) {
+        assert_ne!(card.status, card.count_text, "{:?}", card.key);
+        assert!(!card.status.is_empty(), "the status stays in words");
+    }
 }
 
 #[test]

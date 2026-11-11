@@ -114,6 +114,34 @@ fn notes_and_footers() {
     );
 }
 
+/// Bug: a step without a model printed `step 2 |  | seed`.
+#[test]
+fn footer_skips_empty_parts() {
+    let footer = Item::StepFooter {
+        turn: 1,
+        step: 2,
+        model: String::new(),
+        account: "seed".into(),
+        usage: Usage::default(),
+        timing: Timing::default(),
+        stop: StopReason::End,
+    };
+    let text = msg_row(&footer).text.to_string();
+    assert!(text.starts_with("turn 1 | step 2 | seed | TTFB"), "{text}");
+    assert!(!text.contains("|  |"), "{text}");
+    let blank = Item::StepFooter {
+        turn: 1,
+        step: 2,
+        model: " ".into(),
+        account: String::new(),
+        usage: Usage::default(),
+        timing: Timing::default(),
+        stop: StopReason::End,
+    };
+    let text = msg_row(&blank).text.to_string();
+    assert!(text.starts_with("turn 1 | step 2 | TTFB"), "{text}");
+}
+
 fn status(kind: AccountKind, usage: Option<AccountUsage>) -> AccountStatus {
     AccountStatus {
         account: Account {

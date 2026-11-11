@@ -51,7 +51,7 @@ public static class FhWin2 {
 "@
 }
 [FhWin2]::SetProcessDPIAware() | Out-Null
-$keys = @{ Enter = 0x0D; Escape = 0x1B; Tab = 0x09; Back = 0x08; Delete = 0x2E; Up = 0x26; Down = 0x28; Home = 0x24; End = 0x23 }
+$keys = @{ Enter = 0x0D; Escape = 0x1B; Tab = 0x09; Back = 0x08; Delete = 0x2E; Up = 0x26; Down = 0x28; Left = 0x25; Right = 0x27; Home = 0x24; End = 0x23 }
 
 function Find-Window([string]$path, [int]$waitMs = 0) {
     $deadline = (Get-Date).AddMilliseconds($waitMs)
