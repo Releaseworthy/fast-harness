@@ -5,6 +5,8 @@ export struct MsgRow {
     kind: string,
     // Plain text: what Copy puts on the clipboard.
     text: string,
+    // `text` as drawn: cut under the software renderer's i16 pixel limit.
+    shown: string,
     // Assistant text parsed from markdown.
     body: styled-text,
     thinking: string,

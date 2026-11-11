@@ -46,6 +46,7 @@ fn msg(kind: &str, text: &str) -> MsgRow {
     MsgRow {
         kind: kind.into(),
         text: text.into(),
+        shown: text.into(),
         body: markdown(text),
         ..MsgRow::default()
     }

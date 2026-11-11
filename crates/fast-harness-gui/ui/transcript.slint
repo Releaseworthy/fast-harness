@@ -22,7 +22,7 @@ component UserBubble {
                     padding-top: Theme.space-s + 2px;
                     padding-bottom: Theme.space-s + 2px;
                     Text {
-                        text: msg.text;
+                        text: msg.shown;
                         wrap: word-wrap;
                         color: Theme.text;
                         font-size: Theme.font-m;
@@ -186,7 +186,7 @@ component Note {
             font-size: Theme.font-m;
         }
         Text {
-            text: msg.text;
+            text: msg.shown;
             wrap: word-wrap;
             font-size: Theme.font-s;
             color: root.tint;

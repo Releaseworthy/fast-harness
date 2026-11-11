@@ -16,6 +16,8 @@ mod picker_fetch_tests;
 mod picker_tests;
 mod screens;
 #[cfg(test)]
+mod scroll_tests;
+#[cfg(test)]
 mod tabs_tests;
 #[cfg(test)]
 mod tests;

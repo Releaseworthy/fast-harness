@@ -46,10 +46,39 @@ fn tool_rows_track_running_and_errors() {
         (failed.text.as_str(), failed.output.as_str()),
         ("boom", "boom")
     );
-    let long = "x".repeat(OUTPUT_CHARS + 10);
+}
+
+/// Lines a drawn text takes at 100 characters a line: what must stay under
+/// the software renderer's i16 limit (`trace_rows::EXPANDED_LINES`).
+fn drawn_lines(text: &str) -> usize {
+    text.lines().count() + text.chars().count() / 100
+}
+
+#[test]
+fn long_transcript_texts_stay_under_the_renderer_limit() {
+    let long: String = (0..5000).map(|i| format!("line {i}\n")).collect();
+    let max = crate::trace_rows::EXPANDED_LINES + crate::trace_rows::EXPANDED_CHARS / 100 + 2;
     let row = msg_row(&tool(Some(&long), false));
-    assert_eq!(row.text.len(), OUTPUT_CHARS + 10);
-    assert!(row.output.contains("10 more characters"));
+    assert_eq!(row.text, long, "Copy takes all of it");
+    assert!(drawn_lines(&row.output) <= max, "tool output");
+    assert!(row.output.contains("(Copy takes all)"));
+    let user = msg_row(&Item::User { text: long.clone() });
+    assert!(drawn_lines(&user.shown) <= max, "user text");
+    let item = Item::Assistant {
+        turn: 1,
+        step: 1,
+        text: long.clone(),
+        thinking: long.clone(),
+    };
+    let answer = msg_row(&item);
+    assert_eq!(answer.text, long);
+    assert!(drawn_lines(&answer.thinking) <= max, "thinking");
+    let shown = crate::trace_rows::expanded(&long);
+    assert!(drawn_lines(&shown) <= max);
+    assert!(
+        answer.body == markdown(&shown),
+        "answer drawn from the cut text"
+    );
 }
 
 #[test]
