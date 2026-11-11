@@ -13,8 +13,10 @@ Usage:
   nh [tui] [-c|--resume ID] [--cwd DIR]
       The full-screen chat (`nh` alone on a terminal). F2 accounts, F3 trace, F4 model.
   nh sessions [--cwd DIR]          List the sessions of the directory, newest first.
-  nh trace [ID|latest] [--json] [--cwd DIR]
-      One row per step of a session (default latest); --json prints the raw events.
+  nh trace [ID|latest] [--steps] [--json] [--cwd DIR]
+      A session (default latest): what the user sent, each request, the model's thinking,
+      answers and tool calls, then one row per step. --steps prints only the step table,
+      --json the raw events.
   nh accounts [list]               Accounts with their 5-hour and 7-day usage (* = active).
   nh accounts login [--no-browser] Sign in with a Claude account in the browser.
   nh accounts import               Add the claude-switch accounts of DSH (read-only, linked).
@@ -27,7 +29,8 @@ Usage:
 
 Credentials: ANTHROPIC_API_KEY or NH_OAUTH_TOKEN when set, else the accounts of `nh accounts`
 (switched automatically on rate limits).
-Settings: <NH_HOME or ~/.nh>/config.json; NH_MODEL and NH_EFFORT override it.";
+Settings: <NH_HOME or ~/.nh>/config.json (model, effort, theme, wire); NH_MODEL, NH_EFFORT,
+NH_THEME and NH_WIRE override it. Raw wire capture (<session>.wire/) is off unless wire is true.";
 
 #[derive(Debug, PartialEq)]
 pub enum AccountsAction {
@@ -88,6 +91,7 @@ pub enum Command {
     },
     Trace {
         id: Option<String>,
+        steps: bool,
         json: bool,
         cwd: Option<PathBuf>,
     },
@@ -101,6 +105,7 @@ struct Opts {
     print: PrintArgs,
     prompt: Option<String>,
     json: bool,
+    steps: bool,
     no_browser: bool,
     help: bool,
     version: bool,
@@ -123,6 +128,7 @@ fn read_opts(args: Vec<String>) -> Result<Opts, String> {
             "--cwd" => opts.print.cwd = Some(PathBuf::from(value(&mut args, &arg)?)),
             "-c" | "--continue" => opts.print.continue_latest = true,
             "--json" => opts.json = true,
+            "--steps" => opts.steps = true,
             "--no-browser" => opts.no_browser = true,
             "-h" | "--help" => opts.help = true,
             "-V" | "--version" => opts.version = true,
@@ -169,8 +175,13 @@ pub fn parse(args: Vec<String>) -> Result<Command, String> {
         }
         Some("trace") if opts.positional.len() <= 2 => {
             let id = opts.positional.get(1).cloned();
-            let json = opts.json;
-            return Ok(Command::Trace { id, json, cwd });
+            let (steps, json) = (opts.steps, opts.json);
+            return Ok(Command::Trace {
+                id,
+                steps,
+                json,
+                cwd,
+            });
         }
         Some(other) => return Err(format!("unexpected argument `{other}` (see `nh help`)")),
         None => {}
@@ -220,10 +231,21 @@ mod tests {
             trace,
             Command::Trace {
                 id,
+                steps: false,
                 json: true,
                 cwd: None
             }
         );
+        assert_eq!(
+            parse_str("trace --steps --cwd d").unwrap(),
+            Command::Trace {
+                id: None,
+                steps: true,
+                json: false,
+                cwd: Some(PathBuf::from("d"))
+            }
+        );
+        assert!(parse_str("trace a b").is_err());
         assert!(parse_str("-p").is_err());
         assert!(parse_str("--bogus").is_err());
         assert!(parse_str("frob").is_err());

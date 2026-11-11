@@ -1,6 +1,6 @@
 //! Reads a session log back.
 
-use crate::trace::{SessionHeader, TraceEvent, VERSION};
+use crate::trace::{SessionHeader, TraceEvent, MIN_VERSION, VERSION};
 use serde_json::Value;
 use std::io;
 use std::path::Path;
@@ -55,7 +55,7 @@ fn parse_header(line: &[u8]) -> io::Result<SessionHeader> {
     }
     let header: SessionHeader =
         serde_json::from_value(value).map_err(|err| invalid(format!("line 1: {err}")))?;
-    if header.version != VERSION {
+    if !(MIN_VERSION..=VERSION).contains(&header.version) {
         let message = format!("line 1: unsupported trace version {}", header.version);
         return Err(invalid(message));
     }

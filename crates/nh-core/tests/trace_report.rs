@@ -21,7 +21,7 @@ fn context<'a>(step: u32, attempt: u32, account: &'a str) -> RequestContext<'a> 
         model: "claude-opus-5-5",
         account,
         effort: Some("high"),
-        wire: "t1-s1-a1",
+        wire: Some("t1-s1-a1"),
     }
 }
 

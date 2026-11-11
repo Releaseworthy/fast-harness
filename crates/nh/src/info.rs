@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use nh_core::session;
-use nh_core::trace::{self, report};
+use nh_core::trace::{self, detail, report};
 
 pub fn sessions(cwd: Option<PathBuf>) -> Result<ExitCode, String> {
     let (home, cwd) = (crate::home()?, crate::work_dir(cwd)?);
@@ -33,7 +33,14 @@ fn resolve(home: &Path, cwd: &Path, id: Option<String>) -> Result<String, String
     }
 }
 
-pub fn trace(id: Option<String>, json: bool, cwd: Option<PathBuf>) -> Result<ExitCode, String> {
+/// The timeline and the step table; `steps` prints only the table, `json`
+/// the raw header and events.
+pub fn trace(
+    id: Option<String>,
+    steps: bool,
+    json: bool,
+    cwd: Option<PathBuf>,
+) -> Result<ExitCode, String> {
     let (home, cwd) = (crate::home()?, crate::work_dir(cwd)?);
     let id = resolve(&home, &cwd, id)?;
     let path = session::log_path(&home, &cwd, &id);
@@ -51,6 +58,10 @@ pub fn trace(id: Option<String>, json: bool, cwd: Option<PathBuf>) -> Result<Exi
         }
     } else {
         println!("session {id}");
+        if !steps {
+            print!("{}", detail::format_text(&detail::entries(&events)));
+            println!();
+        }
         print!("{}", report::format_table(&report::step_rows(&events)));
     }
     Ok(ExitCode::SUCCESS)

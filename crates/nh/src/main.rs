@@ -38,7 +38,12 @@ fn main() -> ExitCode {
             Ok(ExitCode::SUCCESS)
         }
         Command::Sessions { cwd } => info::sessions(cwd),
-        Command::Trace { id, json, cwd } => info::trace(id, json, cwd),
+        Command::Trace {
+            id,
+            steps,
+            json,
+            cwd,
+        } => info::trace(id, steps, json, cwd),
         Command::Accounts(action) => accounts_cmd::run(action),
         Command::Print(print_args) => print::run(print_args),
         Command::Tui(tui_args) => tui::run(tui_args),

@@ -68,7 +68,8 @@ fn header_line_is_exactly_the_plan_format() {
     );
     let made = SessionHeader::new("y", "C:\\", Some("x".into()));
     assert_eq!(made.harness, format!("nh {}", env!("CARGO_PKG_VERSION")));
-    assert_eq!((made.version, made.parent.as_deref()), (1, Some("x")));
+    assert_eq!((made.version, made.parent.as_deref()), (2, Some("x")));
+    assert_eq!((trace::VERSION, trace::MIN_VERSION), (2, 1));
 }
 
 #[test]
@@ -131,7 +132,7 @@ fn write_every_event(path: &Path) {
         model: "claude-opus-5-5",
         account: "u-1f3c",
         effort: Some("high"),
-        wire: "t1-s1-a1",
+        wire: Some("t1-s1-a1"),
     };
     let (answer, stop) = (Message::user("x"), StopReason::ToolUse);
     w.turn_start(1).unwrap();
@@ -243,4 +244,49 @@ fn open_append_continues_seq_and_cuts_a_torn_line() {
     let fresh = tmp.0.join("empty.jsonl");
     TraceWriter::create(&fresh, &header("e")).unwrap();
     assert_eq!(TraceWriter::open_append(&fresh).unwrap().next_seq(), 0);
+}
+
+#[test]
+fn reader_accepts_versions_1_and_2_only() {
+    let tmp = TempDir::new("versions");
+    for version in [1, 2, 3, 0] {
+        let path = tmp.0.join(format!("v{version}.jsonl"));
+        let mut head = header("v");
+        head.version = version;
+        let mut writer = TraceWriter::create(&path, &head).unwrap();
+        writer.turn_start(1).unwrap();
+        drop(writer);
+        match trace::read(&path) {
+            Ok((read, events)) => {
+                assert!(version == 1 || version == 2, "read version {version}");
+                assert_eq!((read.version, events.len()), (version, 1));
+            }
+            Err(err) => {
+                assert!(version == 3 || version == 0, "{err}");
+                assert!(err.to_string().contains("unsupported trace version"));
+            }
+        }
+    }
+}
+
+#[test]
+fn request_context_without_wire_has_no_wire_key() {
+    let tmp = TempDir::new("nowire");
+    let path = tmp.0.join("s.jsonl");
+    let mut writer = TraceWriter::create(&path, &header("w")).unwrap();
+    let context = RequestContext {
+        turn: 1,
+        step: 1,
+        attempt: 1,
+        provider: "anthropic",
+        model: "m1",
+        account: "a1",
+        effort: None,
+        wire: None,
+    };
+    writer.request_context(&context).unwrap();
+    drop(writer);
+    let (_, events) = trace::read(&path).unwrap();
+    assert!(events[0].data.get("wire").is_none());
+    assert_eq!(events[0].data["effort"], json!(null));
 }
