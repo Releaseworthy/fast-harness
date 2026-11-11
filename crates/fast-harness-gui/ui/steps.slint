@@ -24,13 +24,13 @@ export component StepsTable {
             y: 0;
             width: root.total;
             height: root.head-height;
-            Rectangle { y: parent.height - 2px; height: 2px; background: Theme.border; }
+            Rectangle { y: parent.height - 2px; height: 2px; background: @linear-gradient(90deg, Theme.accent 0%, Theme.accent2 100%); }
             for title[c] in root.titles: Text {
                 x: root.xs[c] + root.pad;
                 width: root.widths[c] - 2 * root.pad;
                 height: parent.height - 2px;
                 text: title;
-                color: Theme.dim;
+                color: Theme.text;
                 font-size: Theme.font-xs;
                 font-weight: 700;
                 horizontal-alignment: root.text-column(c) ? left : right;
@@ -44,7 +44,9 @@ export component StepsTable {
             width: root.total;
             height: root.row-height;
             background: ta.has-hover ? Theme.hover : Math.mod(r, 2) == 1 ? Theme.surface : transparent;
+            animate background { duration: Theme.quick; }
             ta := TouchArea { }
+            if ta.has-hover: Rectangle { x: 0; width: 3px; background: @linear-gradient(180deg, Theme.accent 0%, Theme.accent2 100%); }
             Rectangle { y: parent.height - 1px; height: 1px; background: Theme.line; }
             for cell[c] in row: Text {
                 x: root.xs[c] + root.pad;

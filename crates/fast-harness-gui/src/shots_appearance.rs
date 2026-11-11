@@ -16,8 +16,8 @@ fn write(dir: &Path, name: &str, size: (u32, u32), rgb: &[u8]) {
     std::fs::write(dir.join(format!("{name}.png")), png).expect("write png");
 }
 
-/// `<theme>-appearance.png`, `<theme>-appearance-grey50.png` and, for
-/// Dark, `dark-appearance-custom.png`.
+/// `<theme>-appearance.png`, `<theme>-appearance-grey50.png`,
+/// `<theme>-chat-grey100.png` and, for Dark, `dark-appearance-custom.png`.
 pub fn shot(ui: &MainWindow, dir: &Path, id: &str, size: (u32, u32), render: impl Fn() -> Vec<u8>) {
     let core = by_id(id);
     ui.set_page("settings".into());
@@ -32,6 +32,10 @@ pub fn shot(ui: &MainWindow, dir: &Path, id: &str, size: (u32, u32), render: imp
     }
     appearance::fill(ui, id, 0);
     ui.set_page("chat".into());
+    // The chat at greyscale 100: gradients, halos and marks in pure greys.
+    theme::apply(ui, core, 100);
+    write(dir, &format!("{id}-chat-grey100"), size, &render());
+    theme::apply(ui, core, 0);
 }
 
 fn custom(ui: &MainWindow, dir: &Path, size: (u32, u32), render: &dyn Fn() -> Vec<u8>) {

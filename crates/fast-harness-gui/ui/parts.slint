@@ -47,15 +47,21 @@ export global Theme {
     out property <length> radius-s: 6px;
     out property <length> radius-m: 8px;
     out property <length> radius-l: 12px;
+    out property <length> radius-xl: 16px;
     out property <length> space-xs: 4px;
     out property <length> space-s: 8px;
     out property <length> space-m: 12px;
     out property <length> space-l: 16px;
     out property <length> space-xl: 24px;
+    out property <length> space-xxl: 32px;
+    // Captions, labels, body, card titles and page titles.
     out property <length> font-xs: 11px;
     out property <length> font-s: 12px;
     out property <length> font-m: 14px;
     out property <length> font-l: 18px;
+    out property <length> font-xl: 24px;
+    // Hover and press transitions.
+    out property <duration> quick: 120ms;
     // Controls are at least this tall (WCAG 2.5.8 asks for 24px).
     out property <length> control-height: 32px;
     // The chat and accounts columns never grow wider than this.
@@ -135,14 +141,122 @@ export component UsageBar {
     }
 }
 
-// A small rounded tag. `strong` uses the accent colours.
+// The accent gradient (accent to accent2, left to right) on a rounded
+// shape. The software renderer fills a gradient with square corners (it
+// ignores border-radius and the clip ignores the radius too), so the
+// corners are solid rounded caps in the two end colours and the gradient is
+// a square band between them. Narrower than 4 * radius (a circle, a small
+// tile) it is one solid fill halfway between the two colours.
+export component AccentFill inherits Rectangle {
+    in property <length> radius: Theme.radius-m;
+    in property <color> from: Theme.accent;
+    in property <color> to: Theme.accent2;
+    property <bool> band: root.width >= 4 * root.radius;
+    if !root.band: Rectangle { border-radius: root.radius; background: root.from.mix(root.to, 0.5); }
+    if root.band: Rectangle { border-radius: root.radius; background: root.from; }
+    if root.band: Rectangle {
+        x: root.width / 2;
+        width: root.width / 2;
+        border-radius: root.radius;
+        background: root.to;
+    }
+    if root.band: Rectangle {
+        x: root.radius;
+        width: root.width - 2 * root.radius;
+        background: @linear-gradient(90deg, root.from 0%, root.to 100%);
+    }
+}
+
+// A soft coloured halo around its parent (hover and focus): two rounded
+// rings of the glow colour. Drop shadows do not render in the software
+// renderer, so halos and shadows are stacked translucent rounded fills.
+export component Halo inherits Rectangle {
+    in property <length> radius: Theme.radius-m;
+    in property <float> strength: 1;
+    Rectangle {
+        x: -5px;
+        y: -5px;
+        width: parent.width + 10px;
+        height: parent.height + 10px;
+        border-radius: root.radius + 5px;
+        background: Theme.glow.with-alpha(0.10 * root.strength);
+    }
+    Rectangle {
+        x: -2px;
+        y: -2px;
+        width: parent.width + 4px;
+        height: parent.height + 4px;
+        border-radius: root.radius + 2px;
+        background: Theme.glow.with-alpha(0.22 * root.strength);
+    }
+}
+
+// Elevation under a card: three translucent shadow fills, offset down.
+export component Elevation inherits Rectangle {
+    in property <length> radius: Theme.radius-l;
+    in property <float> level: 1;
+    property <float> k: (Theme.dark ? 1.6 : 1) * root.level;
+    for layer[i] in [{ o: 1px, s: 0px, a: 0.16 }, { o: 3px, s: 2px, a: 0.08 }, { o: 7px, s: 5px, a: 0.045 }]: Rectangle {
+        x: -layer.s;
+        y: layer.o - layer.s;
+        width: root.width + 2 * layer.s;
+        height: root.height + 2 * layer.s;
+        border-radius: root.radius + layer.s;
+        background: Theme.shadow.with-alpha(min(0.6, layer.a * root.k));
+    }
+}
+
+// A raised card: elevation, a fill, a 1px edge, then the children.
+export component Card inherits Rectangle {
+    in property <length> radius: Theme.radius-l;
+    in property <brush> fill: Theme.surface;
+    in property <brush> edge: Theme.line;
+    in property <float> elevation: 1;
+    if root.elevation > 0: Elevation { radius: root.radius; level: root.elevation; }
+    Rectangle {
+        border-radius: root.radius;
+        background: root.fill;
+        border-width: 1px;
+        border-color: root.edge;
+    }
+    @children
+}
+
+// A page title: a short gradient bar and the title in the large size.
+export component PageTitle inherits HorizontalLayout {
+    in property <string> text;
+    spacing: Theme.space-m;
+    VerticalLayout {
+        alignment: center;
+        AccentFill { width: 20px; height: 6px; radius: 3px; }
+    }
+    Text {
+        text: root.text;
+        color: Theme.text;
+        font-size: Theme.font-xl;
+        font-weight: 700;
+        vertical-alignment: center;
+        horizontal-stretch: 1;
+    }
+}
+
+// An uppercase section caption.
+export component Eyebrow inherits Text {
+    color: Theme.dim;
+    font-size: Theme.font-xs;
+    font-weight: 700;
+    letter-spacing: 0.8px;
+}
+
+// A small rounded tag. `strong` uses the accent gradient.
 export component Badge inherits Rectangle {
     in property <string> text;
     in property <bool> strong;
     border-radius: 4px;
-    background: root.strong ? Theme.accent : Theme.raised;
+    background: root.strong ? transparent : Theme.raised;
     border-width: root.strong ? 0px : 1px;
     border-color: Theme.line;
+    if root.strong: AccentFill { radius: 4px; }
     HorizontalLayout {
         padding-left: 6px;
         padding-right: 6px;

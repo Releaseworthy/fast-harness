@@ -1,5 +1,5 @@
 import { AboutSlint } from "std-widgets.slint";
-import { Theme, Columns } from "parts.slint";
+import { Theme, Columns, Card, PageTitle, Eyebrow, Badge } from "parts.slint";
 import { ActionButton, Dropdown } from "widgets.slint";
 import { PromptSettings } from "prompt_settings.slint";
 import { Appearance } from "appearance.slint";
@@ -42,6 +42,15 @@ component SettingRow {
     }
 }
 
+// A settings section: a raised card with padding around its content.
+component Section inherits Card {
+    radius: Theme.radius-xl;
+    VerticalLayout {
+        padding: Theme.space-xl;
+        @children
+    }
+}
+
 export component SettingsPage inherits Rectangle {
     in property <[string]> models;
     // True for the provider title rows of `models`.
@@ -56,7 +65,7 @@ export component SettingsPage inherits Rectangle {
     // The model or effort list opened (the app refetches the models).
     callback pickers-opened();
     in property <bool> refreshing;
-    background: Theme.bg;
+    background: transparent;
     // Scrolls: the System prompt section is taller than the window.
     page-flick := Flickable { content-height: max(self.height, page-column.preferred-height);
     page-column := VerticalLayout {
@@ -67,9 +76,11 @@ export component SettingsPage inherits Rectangle {
         padding-right: Columns.side(root.width, 640px);
         spacing: Theme.space-l + 4px;
         alignment: start;
-        Text { text: "Settings"; color: Theme.text; font-size: Theme.font-l; font-weight: 600; }
-        Appearance { }
-        Rectangle { height: 1px; background: Theme.line; }
+        PageTitle { text: "Settings"; }
+        Section { Appearance { } }
+        Section { VerticalLayout {
+        spacing: Theme.space-l;
+        Eyebrow { text: "MODEL"; }
         SettingRow {
             label: "Model";
             model: root.models;
@@ -90,21 +101,47 @@ export component SettingsPage inherits Rectangle {
             opened => { root.pickers-opened(); }
         }
         if root.note != "": Text { text: root.note; color: Theme.text; font-size: Theme.font-s; wrap: word-wrap; }
-        Rectangle { height: 1px; background: Theme.line; }
-        PromptSettings { }
+        } }
+        Section { PromptSettings { } }
     }
     }
 }
 
 export component AboutPage inherits Rectangle {
     in property <string> version;
-    background: Theme.bg;
+    background: transparent;
     VerticalLayout {
         padding: Theme.space-xl;
-        spacing: Theme.space-m;
+        padding-left: Columns.side(root.width, 640px);
+        padding-right: Columns.side(root.width, 640px);
+        spacing: Theme.space-l;
         alignment: start;
-        Text { text: "Fast Harness " + root.version; color: Theme.text; font-size: Theme.font-l; font-weight: 600; }
-        Text { text: "A fast native coding agent harness (fast-harness). The interface is made with Slint."; color: Theme.dim; }
+        PageTitle { text: "About"; }
+        Section {
+            HorizontalLayout {
+                spacing: Theme.space-l;
+                VerticalLayout {
+                    alignment: center;
+                    Image {
+                        width: 64px;
+                        height: 64px;
+                        source: Theme.greyscale ? @image-url("../assets/fast-harness-grey-64.png") : @image-url("../assets/fast-harness-64.png");
+                        accessible-role: none;
+                    }
+                }
+                VerticalLayout {
+                    alignment: center;
+                    spacing: Theme.space-s;
+                    HorizontalLayout {
+                        spacing: Theme.space-s;
+                        alignment: start;
+                        Text { text: "Fast Harness"; color: Theme.text; font-size: Theme.font-xl; font-weight: 700; vertical-alignment: center; }
+                        VerticalLayout { alignment: center; Badge { text: root.version; strong: true; } }
+                    }
+                    Text { text: "A fast native coding agent harness (fast-harness). The interface is made with Slint."; color: Theme.dim; wrap: word-wrap; }
+                }
+            }
+        }
         AboutSlint { }
     }
 }

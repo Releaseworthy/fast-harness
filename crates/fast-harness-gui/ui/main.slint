@@ -28,7 +28,7 @@ export component MainWindow inherits Window {
     preferred-height: 740px;
     min-width: 640px;
     min-height: 420px;
-    background: Theme.surface;
+    background: Theme.bg;
     default-font-size: Theme.font-m;
 
     in-out property <bool> sidebar-open: true;
@@ -144,6 +144,17 @@ export component MainWindow inherits Window {
         opacity: 0;
     }
 
+    // The backdrop: bg at the top left to bg-end at the bottom right. The
+    // window background itself cannot be a gradient in the software
+    // renderer; a full-bleed square rectangle can.
+    Rectangle { background: @linear-gradient(135deg, Theme.bg 0%, Theme.bg-end 100%); }
+    // The brand line along the top edge (square, so the gradient renders).
+    Rectangle {
+        y: 0;
+        height: 2px;
+        background: @linear-gradient(90deg, Theme.accent 0%, Theme.accent2 100%);
+    }
+
 
     VerticalLayout {
         TitleBar {
@@ -172,10 +183,12 @@ export component MainWindow inherits Window {
                 open-page(p) => { root.open-page(p); }
             }
             // The main card: rounded top-left corner, flush right and bottom.
+            // A translucent bg fill over the backdrop: a solid fill keeps its
+            // rounded corner in the software renderer, a gradient would not.
             Rectangle {
                 horizontal-stretch: 1;
-                background: Theme.bg;
-                border-top-left-radius: Theme.radius-l;
+                background: Theme.bg.with-alpha(0.55);
+                border-top-left-radius: Theme.radius-xl;
                 // No child may paint square over the rounded corner.
                 clip: true;
                 VerticalLayout {
@@ -185,6 +198,10 @@ export component MainWindow inherits Window {
                     }
                     Rectangle {
                         vertical-stretch: 1;
+                        // The pages are see-through (the backdrop shows), so
+                        // the chat hides while another page is open.
+                        Rectangle {
+                        visible: root.page == "chat";
                         chat := VerticalLayout {
                             // The banner and the composer sit in a centred column;
                             // explicit geometry keeps the width out of the layout.
@@ -245,6 +262,7 @@ export component MainWindow inherits Window {
                                     }
                                 }
                             }
+                        }
                         }
                         if root.page == "accounts": AccountsPage {
                             width: parent.width;
@@ -317,7 +335,7 @@ export component MainWindow inherits Window {
                 // The border paints over the clipped children, so it follows
                 // the curve with no gap between the line and the fill.
                 Rectangle {
-                    border-top-left-radius: Theme.radius-l;
+                    border-top-left-radius: Theme.radius-xl;
                     border-width: 1px;
                     border-color: Theme.line;
                 }

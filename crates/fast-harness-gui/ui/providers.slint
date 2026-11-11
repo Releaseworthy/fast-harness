@@ -1,7 +1,7 @@
 // The provider cards the Accounts page opens on and the header of a
 // provider page (PLAN.md D32).
 import { ProviderCard } from "types.slint";
-import { Theme, Mark } from "parts.slint";
+import { Theme, Mark, AccentFill, Card, Halo } from "parts.slint";
 import { Icons } from "icons.slint";
 import { FocusRing, IconButton } from "widgets.slint";
 
@@ -12,15 +12,19 @@ export component ProviderLogo inherits Rectangle {
     in property <bool> lit;
     width: root.size;
     height: root.size;
-    border-radius: root.size * 0.28;
-    background: root.lit ? Theme.accent : Theme.selection;
+    // The tile carries the accent gradient (accent2 first while lit).
+    AccentFill {
+        radius: root.size * 0.25;
+        from: root.lit ? Theme.accent2 : Theme.accent;
+        to: root.lit ? Theme.accent : Theme.accent2;
+    }
     Mark {
         width: parent.width;
         height: parent.height;
         horizontal-alignment: center;
         text: root.provider == "google" ? Icons.google : Icons.claude;
         font-size: root.size * 0.5;
-        color: root.lit ? Theme.on-accent : Theme.accent;
+        color: Theme.on-accent;
     }
 }
 
@@ -80,25 +84,33 @@ export component ProviderTile inherits Rectangle {
     in property <ProviderCard> info;
     callback open();
     property <bool> lit: ta.has-hover || fs.has-focus;
-    border-radius: Theme.radius-l;
-    border-width: 1px;
-    border-color: root.lit ? Theme.border : Theme.line;
-    background: ta.pressed ? Theme.selection : ta.has-hover ? Theme.raised : Theme.surface;
     forward-focus: fs;
     accessible-role: button;
     accessible-label: root.info.name + ", " + root.info.count + ", " + root.info.status;
     accessible-action-default => { root.open(); }
-    // The logo again, large and faint in the corner (clipped to the card).
+    if ta.has-hover: Halo { radius: Theme.radius-xl; strength: 0.8; }
+    Card {
+        radius: Theme.radius-xl;
+        elevation: root.lit ? 2 : 1;
+        fill: ta.pressed ? Theme.selection : Theme.surface;
+        edge: root.lit ? Theme.accent : Theme.line;
+    }
+    // The logo again, large and faint, kept clear of the rounded corners
+    // (the software renderer clips to the square bounds only).
     Rectangle {
+        x: Theme.space-l;
+        y: Theme.space-l;
+        width: parent.width - 2 * Theme.space-l;
+        height: parent.height - 2 * Theme.space-l;
         clip: true;
-        border-radius: Theme.radius-l;
         Mark {
-            x: parent.width - 132px;
-            y: parent.height - 118px;
+            x: parent.width - 124px;
+            y: parent.height - 110px;
             text: root.info.id == "google" ? Icons.google : Icons.claude;
-            font-size: 168px;
-            color: Theme.accent;
-            opacity: root.lit ? 0.12 : 0.06;
+            font-size: 150px;
+            color: Theme.accent2;
+            opacity: root.lit ? 0.14 : 0.07;
+            animate opacity { duration: Theme.quick; }
         }
     }
     VerticalLayout {
@@ -120,9 +132,9 @@ export component ProviderTile inherits Rectangle {
                     width: 28px;
                     height: 28px;
                     border-radius: 14px;
-                    border-width: 1px;
-                    border-color: root.lit ? Theme.accent : Theme.line;
-                    background: root.lit ? Theme.accent : transparent;
+                    border-width: root.lit ? 0px : 1px;
+                    border-color: Theme.border;
+                    if root.lit: AccentFill { radius: 14px; }
                     Mark {
                         width: parent.width;
                         height: parent.height;
@@ -152,7 +164,7 @@ export component ProviderTile inherits Rectangle {
             return reject;
         }
     }
-    if fs.has-focus: FocusRing { radius: Theme.radius-l; x: -3px; y: -3px; width: parent.width + 6px; height: parent.height + 6px; }
+    if fs.has-focus: FocusRing { radius: Theme.radius-xl; x: -3px; y: -3px; width: parent.width + 6px; height: parent.height + 6px; }
 }
 
 // The cards in as many columns as fit (at least 300px each); they wrap
@@ -191,7 +203,7 @@ export component ProviderHeader inherits HorizontalLayout {
     VerticalLayout { alignment: center; ProviderLogo { provider: root.info.id; size: 36px; } }
     VerticalLayout {
         alignment: center;
-        Text { text: root.info.name; color: Theme.text; font-size: Theme.font-l; font-weight: 600; overflow: elide; }
+        Text { text: root.info.name; color: Theme.text; font-size: Theme.font-xl; font-weight: 700; overflow: elide; }
         Text { text: root.info.count; color: Theme.dim; font-size: Theme.font-s; }
     }
     Rectangle { horizontal-stretch: 1; }

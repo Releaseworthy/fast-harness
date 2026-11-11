@@ -1,4 +1,4 @@
-import { Theme } from "parts.slint";
+import { Theme, Card, Halo } from "parts.slint";
 import { Icons } from "icons.slint";
 import { ActionButton, TextArea } from "widgets.slint";
 
@@ -16,10 +16,18 @@ export component Composer inherits Rectangle {
     callback submit();
     callback stop();
     public function focus-input() { area.focus(); }
-    border-radius: Theme.radius-l;
-    background: Theme.surface;
-    border-width: area.has-focus ? 2px : 1px;
-    border-color: area.has-focus ? Theme.accent : Theme.border;
+    // A floating card: elevation, a glow halo and an accent edge while focused.
+    if area.has-focus: Halo { radius: Theme.radius-xl; }
+    Card {
+        radius: Theme.radius-xl;
+        elevation: 2;
+        edge: area.has-focus ? Theme.accent : Theme.border;
+    }
+    if area.has-focus: Rectangle {
+        border-radius: Theme.radius-xl;
+        border-width: 2px;
+        border-color: Theme.accent;
+    }
     VerticalLayout {
         padding: Theme.space-m;
         padding-top: Theme.space-m + 2px;
@@ -57,7 +65,7 @@ export component Composer inherits Rectangle {
                 icon: root.busy ? Icons.debug-stop : Icons.send;
                 text: root.busy ? "Stop" : "Send";
                 variant: root.busy ? "secondary" : "primary";
-                min-width: 84px;
+                min-width: 96px;
                 clicked => {
                     if (root.busy) {
                         root.stop();
