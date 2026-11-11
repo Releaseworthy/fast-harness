@@ -15,11 +15,11 @@ For comparison, DeepSeek Harness (Electron) ran as 9 processes with 1,680 MB wor
 
 Consequences:
 - The GUI uses Slint's software renderer by default: about a third of the memory and start time of the OpenGL renderer here. `SLINT_BACKEND` still selects another renderer.
-- Start time of the TUI in a new console window is dominated by the terminal itself (0.7 to 17 s, Windows Terminal start), not by nh.
+- Start time of the TUI in a new console window is dominated by the terminal itself (0.7 to 17 s, Windows Terminal start), not by fast-harness.
 
 ## Harness time per step (2026-11-11)
 
-`cargo run --release -p nh-core --example step_bench -- <steps>`: one turn of N steps, each a scripted Claude stream (512-byte chunks) asking for the `read` tool on a small file, then a text answer. It covers SSE parsing, stream assembly, the tool, the session log and the wire capture, with no network. Same machine, other builds running.
+`cargo run --release -p fast-harness-core --example step_bench -- <steps>`: one turn of N steps, each a scripted Claude stream (512-byte chunks) asking for the `read` tool on a small file, then a text answer. It covers SSE parsing, stream assembly, the tool, the session log and the wire capture, with no network. Same machine, other builds running.
 
 | Steps | Total | Per step | Session log | Wire capture |
 |---|---|---|---|---|
@@ -30,24 +30,24 @@ The per-step time grows with the conversation because every request carries the 
 
 ## Live call (2026-11-11)
 
-`nh -p "Read README.md with the read tool, then reply with its first line only."` on `claude-opus-5-5` with a Claude subscription account (OAuth), release build:
+`fast-harness -p "Read README.md with the read tool, then reply with its first line only."` on `claude-opus-5-5` with a Claude subscription account (OAuth), release build:
 
 | Step | TTFB | Total | Input | Output | Cache read | Cache write |
 |---|---|---|---|---|---|---|
 | 1 (tool call) | 1,992 ms | 2,502 ms | 4 | 70 | 0 | 5,704 |
 | 2 (answer) | 1,439 ms | 1,445 ms | 2 | 7 | 5,704 | 115 |
 
-Wall time 4.0 s for the turn. `nh.exe` release: 4.98 MB.
+Wall time 4.0 s for the turn. `fast-harness.exe` release: 4.98 MB.
 
 ## Phase 4: the finished binaries (2026-11-11, no other build running)
 
 | Measure | Result |
 |---|---|
-| `nh.exe` release size (CLI and TUI) | 5.76 MB |
-| `nh-gui.exe` release size (Slint, software and OpenGL renderers compiled in) | 19.9 MB |
-| `nh --version`, median of 10 | 13.2 ms |
-| `nh accounts` (load the store, read DSH's file, print 7 accounts), median of 5 | 13.2 ms |
-| `nh tui` idle in its own console after 3.5 s | working set 16.9 MB, private 6.0 MB |
-| `nh-gui` window created (cold, then warm) | 311 ms, then 30 to 31 ms |
-| `nh-gui` idle after 4 s with 7 accounts | working set 46.0 to 58.4 MB, private 76 MB |
+| `fast-harness.exe` release size (CLI and TUI) | 5.76 MB |
+| `fast-harness-gui.exe` release size (Slint, software and OpenGL renderers compiled in) | 19.9 MB |
+| `fast-harness --version`, median of 10 | 13.2 ms |
+| `fast-harness accounts` (load the store, read DSH's file, print 7 accounts), median of 5 | 13.2 ms |
+| `fast-harness tui` idle in its own console after 3.5 s | working set 16.9 MB, private 6.0 MB |
+| `fast-harness-gui` window created (cold, then warm) | 311 ms, then 30 to 31 ms |
+| `fast-harness-gui` idle after 4 s with 7 accounts | working set 46.0 to 58.4 MB, private 76 MB |
 | DeepSeek Harness on the same machine | 9 processes, 1,680 MB working set |

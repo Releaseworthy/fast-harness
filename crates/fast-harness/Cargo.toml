@@ -1,0 +1,17 @@
+[package]
+name = "fast-harness"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Fast Harness command line: print mode, TUI, accounts, sessions, trace."
+
+[[bin]]
+name = "fast-harness"
+path = "src/main.rs"
+
+[dependencies]
+fast-harness-core.workspace = true
+serde_json.workspace = true
+ratatui.workspace = true
+pulldown-cmark.workspace = true

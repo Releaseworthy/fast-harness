@@ -1,0 +1,21 @@
+[package]
+name = "fast-harness-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Portable core of fast-harness: Claude provider, agent loop, tools, tracing, accounts."
+
+[lib]
+name = "fast_harness_core"
+path = "src/lib.rs"
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+ureq.workspace = true
+regex.workspace = true
+ignore.workspace = true
+
+[target.'cfg(windows)'.dependencies]
+windows-sys.workspace = true
