@@ -1,1 +1,283 @@
-//! `~/.nh/accounts.json` with encrypted secrets (chunk 1D-a).
+//! `~/.nh/accounts.json` with encrypted secrets.
+//!
+//! Schema (version 1):
+//! `{"version":1,"active":<id or null>,"accounts":[{...account fields,"secret":"<base64>"}]}`.
+//! A secret is base64(platform::protect(serde_json bytes of [`Secret`])); accounts
+//! without a secret (linked ones) have no `secret` key. Unknown top-level keys are
+//! kept on save.
+
+use crate::accounts::crypto::{base64_decode, base64_encode, Base64Error};
+use crate::accounts::model::{Account, AccountKind, Secret};
+use crate::platform::{self, PlatformError};
+use serde::{Deserialize, Serialize};
+use serde_json::{Map, Value};
+use std::fmt;
+use std::fs;
+use std::io;
+use std::path::{Path, PathBuf};
+
+/// The schema version this code reads and writes.
+pub const VERSION: u64 = 1;
+
+/// Errors of the account store. None of them carries a secret value.
+#[derive(Debug)]
+pub enum StoreError {
+    Io(io::Error),
+    /// `accounts.json` is not valid JSON or does not match the schema.
+    Json(serde_json::Error),
+    UnsupportedVersion(u64),
+    Platform(PlatformError),
+    /// The stored secret of this account cannot be decoded or decrypted.
+    BadSecret(String),
+    UnknownAccount(String),
+    /// Linked accounts keep their tokens in DSH's file, never here (PLAN.md D8).
+    LinkedSecret(String),
+    /// The secret type does not fit the account kind.
+    SecretKindMismatch(String),
+}
+
+impl fmt::Display for StoreError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            StoreError::Io(err) => write!(f, "accounts file: {err}"),
+            StoreError::Json(err) => write!(f, "accounts file is invalid: {err}"),
+            StoreError::UnsupportedVersion(v) => {
+                write!(f, "accounts file version {v} is not supported")
+            }
+            StoreError::Platform(err) => write!(f, "secret encryption: {err}"),
+            StoreError::BadSecret(id) => write!(f, "the secret of account {id} cannot be read"),
+            StoreError::UnknownAccount(id) => write!(f, "no account {id}"),
+            StoreError::LinkedSecret(id) => write!(f, "linked account {id} cannot hold a secret"),
+            StoreError::SecretKindMismatch(id) => {
+                write!(f, "secret type does not fit account {id}")
+            }
+        }
+    }
+}
+
+impl std::error::Error for StoreError {}
+
+impl From<io::Error> for StoreError {
+    fn from(err: io::Error) -> Self {
+        StoreError::Io(err)
+    }
+}
+
+impl From<PlatformError> for StoreError {
+    fn from(err: PlatformError) -> Self {
+        StoreError::Platform(err)
+    }
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+struct Entry {
+    #[serde(flatten)]
+    account: Account,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    secret: Option<String>,
+}
+
+#[derive(Serialize, Deserialize)]
+struct FileData {
+    version: u64,
+    #[serde(default)]
+    active: Option<String>,
+    #[serde(default)]
+    accounts: Vec<Entry>,
+    #[serde(flatten)]
+    extra: Map<String, Value>,
+}
+
+/// The accounts file in memory. Changes reach the disk on [`AccountStore::save`].
+pub struct AccountStore {
+    path: PathBuf,
+    active: Option<String>,
+    entries: Vec<Entry>,
+    extra: Map<String, Value>,
+}
+
+impl fmt::Debug for AccountStore {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let ids: Vec<&str> = self.entries.iter().map(|e| e.account.id.as_str()).collect();
+        f.debug_struct("AccountStore")
+            .field("path", &self.path)
+            .field("active", &self.active)
+            .field("accounts", &ids)
+            .finish()
+    }
+}
+
+/// `platform::nh_home()/accounts.json`, or `None` without a home directory.
+pub fn default_path() -> Option<PathBuf> {
+    platform::nh_home().map(|home| home.join("accounts.json"))
+}
+
+impl AccountStore {
+    /// Reads `path`. A missing file is an empty store.
+    pub fn load(path: impl Into<PathBuf>) -> Result<AccountStore, StoreError> {
+        let path = path.into();
+        let text = match fs::read_to_string(&path) {
+            Ok(text) => text,
+            Err(err) if err.kind() == io::ErrorKind::NotFound => String::new(),
+            Err(err) => return Err(err.into()),
+        };
+        let mut store = AccountStore {
+            path,
+            active: None,
+            entries: Vec::new(),
+            extra: Map::new(),
+        };
+        if text.trim().is_empty() {
+            return Ok(store);
+        }
+        let data: FileData = serde_json::from_str(&text).map_err(StoreError::Json)?;
+        if data.version != VERSION {
+            return Err(StoreError::UnsupportedVersion(data.version));
+        }
+        store.active = data.active;
+        store.entries = data.accounts;
+        store.extra = data.extra;
+        Ok(store)
+    }
+
+    /// The file this store reads and writes.
+    pub fn path(&self) -> &Path {
+        &self.path
+    }
+
+    /// Writes the store: a temporary file in the same folder, renamed over the old one.
+    pub fn save(&self) -> Result<(), StoreError> {
+        let data = FileData {
+            version: VERSION,
+            active: self.active.clone(),
+            accounts: self.entries.clone(),
+            extra: self.extra.clone(),
+        };
+        let mut text = serde_json::to_string_pretty(&data).map_err(StoreError::Json)?;
+        text.push('\n');
+        if let Some(dir) = self.path.parent().filter(|d| !d.as_os_str().is_empty()) {
+            fs::create_dir_all(dir)?;
+        }
+        let tmp = self.temp_path();
+        if let Err(err) = fs::write(&tmp, text).and_then(|()| fs::rename(&tmp, &self.path)) {
+            let _ = fs::remove_file(&tmp);
+            return Err(err.into());
+        }
+        Ok(())
+    }
+
+    fn temp_path(&self) -> PathBuf {
+        let mut name = self
+            .path
+            .file_name()
+            .map(|n| n.to_os_string())
+            .unwrap_or_else(|| "accounts.json".into());
+        name.push(format!(".{}.tmp", std::process::id()));
+        self.path.with_file_name(name)
+    }
+
+    /// Every account, in file order.
+    pub fn list(&self) -> Vec<&Account> {
+        self.entries.iter().map(|e| &e.account).collect()
+    }
+
+    pub fn get(&self, id: &str) -> Option<&Account> {
+        self.entry(id).map(|e| &e.account)
+    }
+
+    fn entry(&self, id: &str) -> Option<&Entry> {
+        self.entries.iter().find(|e| e.account.id == id)
+    }
+
+    fn entry_mut(&mut self, id: &str) -> Option<&mut Entry> {
+        self.entries.iter_mut().find(|e| e.account.id == id)
+    }
+
+    /// Adds `account` or replaces the one with its id. With `secret: None` an
+    /// existing secret is kept.
+    pub fn upsert(&mut self, account: Account, secret: Option<Secret>) -> Result<(), StoreError> {
+        let sealed = match &secret {
+            Some(secret) => Some(seal(&account, secret)?),
+            None => None,
+        };
+        match self.entry_mut(&account.id) {
+            Some(entry) => {
+                entry.account = account;
+                if sealed.is_some() {
+                    entry.secret = sealed;
+                }
+            }
+            None => self.entries.push(Entry {
+                account,
+                secret: sealed,
+            }),
+        }
+        Ok(())
+    }
+
+    /// Removes an account (and clears it as active). Returns it if it existed.
+    pub fn remove(&mut self, id: &str) -> Option<Account> {
+        let index = self.entries.iter().position(|e| e.account.id == id)?;
+        if self.active.as_deref() == Some(id) {
+            self.active = None;
+        }
+        Some(self.entries.remove(index).account)
+    }
+
+    /// The active account, if it is set and still exists.
+    pub fn active(&self) -> Option<&Account> {
+        self.active.as_deref().and_then(|id| self.get(id))
+    }
+
+    /// Makes `id` the active account.
+    pub fn set_active(&mut self, id: &str) -> Result<(), StoreError> {
+        if self.get(id).is_none() {
+            return Err(StoreError::UnknownAccount(id.to_string()));
+        }
+        self.active = Some(id.to_string());
+        Ok(())
+    }
+
+    /// The decrypted secret of `id`, `None` if it has none.
+    pub fn secret(&self, id: &str) -> Result<Option<Secret>, StoreError> {
+        let entry = self
+            .entry(id)
+            .ok_or_else(|| StoreError::UnknownAccount(id.to_string()))?;
+        match &entry.secret {
+            Some(sealed) => open(id, sealed).map(Some),
+            None => Ok(None),
+        }
+    }
+
+    /// Replaces the secret of `id`.
+    pub fn set_secret(&mut self, id: &str, secret: Secret) -> Result<(), StoreError> {
+        let entry = self
+            .entry_mut(id)
+            .ok_or_else(|| StoreError::UnknownAccount(id.to_string()))?;
+        entry.secret = Some(seal(&entry.account, &secret)?);
+        Ok(())
+    }
+}
+
+/// Checks that `secret` fits `account`, then encrypts it for the file.
+fn seal(account: &Account, secret: &Secret) -> Result<String, StoreError> {
+    match (account.kind, secret) {
+        (AccountKind::Linked, _) => return Err(StoreError::LinkedSecret(account.id.clone())),
+        (AccountKind::Own, Secret::Own { .. }) | (AccountKind::ApiKey, Secret::ApiKey { .. }) => {}
+        _ => return Err(StoreError::SecretKindMismatch(account.id.clone())),
+    }
+    let mut plain = serde_json::to_vec(secret).map_err(StoreError::Json)?;
+    let blob = platform::protect(&plain);
+    plain.fill(0);
+    Ok(base64_encode(&blob?))
+}
+
+/// Decrypts a stored secret. Errors never include the decrypted bytes.
+fn open(id: &str, sealed: &str) -> Result<Secret, StoreError> {
+    let blob =
+        base64_decode(sealed).map_err(|_: Base64Error| StoreError::BadSecret(id.to_string()))?;
+    let mut plain = platform::unprotect(&blob)?;
+    let secret = serde_json::from_slice(&plain).map_err(|_| StoreError::BadSecret(id.to_string()));
+    plain.fill(0);
+    secret
+}
