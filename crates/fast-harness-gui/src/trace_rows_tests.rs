@@ -92,3 +92,35 @@ fn step_cells_follow_the_columns() {
     assert_eq!(cells[10], "read, grep");
     assert_eq!(cells[1], "2");
 }
+
+/// A 110K-character, 12 000-line tool output: Show all draws few enough lines
+/// that the software renderer's `i16` line positions never wrap round.
+#[test]
+fn huge_body_expands_within_the_renderer_limit() {
+    let body: String = (1..=12_000).map(|i| format!("{i:05}: ok\n")).collect();
+    assert!(body.chars().count() > 100_000);
+    let row = entry_row(&entry(
+        EntryKind::ToolResult,
+        "Tool result bash",
+        &body,
+        false,
+    ));
+    let shown = row.body.as_str();
+    // 100 characters a wrapped line, 20 px a line, 300% scale.
+    let wrapped: usize = shown.lines().map(|l| l.chars().count() / 100 + 1).sum();
+    assert!(wrapped * 20 * 3 < i16::MAX as usize, "{wrapped} lines");
+    assert!(shown.ends_with("(Copy takes all)"), "{shown}");
+    assert!(row.copy.as_str().ends_with("12000: ok"));
+    assert!(row.long && !row.preview.is_empty());
+}
+
+#[test]
+fn short_and_one_line_bodies_expand_whole_or_cut() {
+    assert_eq!(expanded("a\nb"), "a\nb");
+    let line = "x".repeat(EXPANDED_CHARS + 5);
+    let cut = expanded(&line);
+    assert!(cut.starts_with(&"x".repeat(EXPANDED_CHARS)));
+    assert!(cut.ends_with("(Copy takes all)"));
+    let exact = vec!["y"; EXPANDED_LINES].join("\n");
+    assert_eq!(expanded(&exact), exact);
+}

@@ -7,13 +7,22 @@ use fast_harness_core::{session, trace};
 use slint::{Model, ModelRc, SharedString, VecModel};
 
 use crate::app::App;
-use crate::format::{duration, shorten, tokens};
-use crate::rows::OUTPUT_CHARS;
+use crate::format::{duration, tokens};
 use crate::{MainWindow, TraceRow};
 
 /// A body longer than this many lines or characters starts collapsed.
 pub const PREVIEW_LINES: usize = 8;
 pub const PREVIEW_CHARS: usize = 800;
+
+/// What Show all draws at most; Copy still takes the whole body. The software
+/// renderer lays a Text's lines out in `i16` physical pixels
+/// (i-slint-core `textlayout.rs` `y += line_height`, i-slint-renderer-software
+/// `lib.rs` `PhysicalLength = Length<i16, _>`): past 32 767 px the lines wrap
+/// round and draw over each other, and the measured height wraps too. 300
+/// lines plus 12 000 characters wrapped at 100 a line stay under 450 lines,
+/// 450 x 20 px x 3 (300% scale) = 27 000 px.
+pub const EXPANDED_LINES: usize = 300;
+pub const EXPANDED_CHARS: usize = 12_000;
 
 /// The `kind` word `ui/trace.slint` draws each entry by.
 pub fn kind_word(kind: EntryKind) -> &'static str {
@@ -59,6 +68,35 @@ pub fn preview(kind: EntryKind, body: &str) -> String {
     out
 }
 
+/// What an expanded body shows: at most `EXPANDED_LINES` lines and
+/// `EXPANDED_CHARS` characters, with a note of what was left out.
+pub fn expanded(body: &str) -> String {
+    let total = body.lines().count();
+    let mut out = String::new();
+    let (mut lines, mut chars, mut cut) = (0, 0, total > EXPANDED_LINES);
+    for line in body.lines().take(EXPANDED_LINES) {
+        let room = EXPANDED_CHARS.saturating_sub(chars);
+        let len = line.chars().count();
+        if lines > 0 {
+            out.push('\n');
+        }
+        out.extend(line.chars().take(room));
+        chars += len.min(room) + 1;
+        lines += 1;
+        if len >= room {
+            cut |= len > room || lines < total;
+            break;
+        }
+    }
+    if cut {
+        let all = body.chars().count();
+        out.push_str(&format!(
+            "\n... {} more lines, {all} characters in all (Copy takes all)",
+            total - lines
+        ));
+    }
+    out
+}
 pub fn entry_row(entry: &Entry) -> TraceRow {
     // Thinking often ends in blank lines: they would only stretch the block.
     let body = entry.body.trim_end();
@@ -71,7 +109,7 @@ pub fn entry_row(entry: &Entry) -> TraceRow {
     TraceRow {
         kind: kind_word(entry.kind).into(),
         title: entry.title.as_str().into(),
-        body: shorten(body, OUTPUT_CHARS).into(),
+        body: expanded(body).into(),
         preview: if long {
             preview(entry.kind, body).into()
         } else {
