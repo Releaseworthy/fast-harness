@@ -119,7 +119,7 @@ fn resolve(pool: &AccountPool, name: &str) -> Result<String, String> {
     }
 }
 
-fn label(email: &Option<String>, name: &Option<String>) -> String {
+pub(crate) fn label(email: &Option<String>, name: &Option<String>) -> String {
     email
         .clone()
         .or_else(|| name.clone())
@@ -167,11 +167,11 @@ fn row(status: &AccountStatus, now: i64) -> String {
     )
 }
 
-fn percent(window: Option<&Window>) -> String {
+pub(crate) fn percent(window: Option<&Window>) -> String {
     window.map_or_else(|| "-".into(), |w| format!("{:.0}%", w.utilization))
 }
 
-fn state(status: &AccountStatus, now: i64) -> String {
+pub(crate) fn state(status: &AccountStatus, now: i64) -> String {
     if let Some(until) = status.held_until {
         let reason = status.hold_reason.as_deref().unwrap_or("held");
         return format!("held {} ({reason})", relative(until - now));
@@ -184,7 +184,7 @@ fn state(status: &AccountStatus, now: i64) -> String {
 }
 
 /// `in 2d 3h`, `in 45m`, `now`.
-fn relative(ms: i64) -> String {
+pub(crate) fn relative(ms: i64) -> String {
     if ms <= 0 {
         return "now".into();
     }

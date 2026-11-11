@@ -5,14 +5,23 @@ mod args;
 mod auth_choice;
 mod info;
 mod print;
+mod tui;
 
+use std::io::IsTerminal;
 use std::path::PathBuf;
 use std::process::ExitCode;
 
 use args::Command;
 
 fn main() -> ExitCode {
-    let command = match args::parse(std::env::args().skip(1).collect()) {
+    let argv: Vec<String> = std::env::args().skip(1).collect();
+    let terminal = std::io::stdin().is_terminal() && std::io::stdout().is_terminal();
+    let parsed = if argv.is_empty() && terminal {
+        Ok(Command::Tui(args::TuiArgs::default()))
+    } else {
+        args::parse(argv)
+    };
+    let command = match parsed {
         Ok(command) => command,
         Err(message) => {
             eprintln!("nh: {message}");
@@ -32,6 +41,7 @@ fn main() -> ExitCode {
         Command::Trace { id, json, cwd } => info::trace(id, json, cwd),
         Command::Accounts(action) => accounts_cmd::run(action),
         Command::Print(print_args) => print::run(print_args),
+        Command::Tui(tui_args) => tui::run(tui_args),
     };
     result.unwrap_or_else(|message| {
         eprintln!("nh: {message}");

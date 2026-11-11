@@ -10,6 +10,8 @@ Usage:
       Run one turn in print mode: the answer on stdout, notes on stderr.
       -c continues the newest session of the directory, --resume a given one.
       Exit code: 0 done, 1 failed or step limit, 130 cancelled (Ctrl+C).
+  nh [tui] [-c|--resume ID] [--cwd DIR]
+      The full-screen chat (`nh` alone on a terminal). F2 accounts, F3 trace, F4 model.
   nh sessions [--cwd DIR]          List the sessions of the directory, newest first.
   nh trace [ID|latest] [--json] [--cwd DIR]
       One row per step of a session (default latest); --json prints the raw events.
@@ -70,9 +72,17 @@ pub struct PrintArgs {
     pub cwd: Option<PathBuf>,
 }
 
+#[derive(Debug, Default, PartialEq)]
+pub struct TuiArgs {
+    pub continue_latest: bool,
+    pub resume: Option<String>,
+    pub cwd: Option<PathBuf>,
+}
+
 #[derive(Debug, PartialEq)]
 pub enum Command {
     Print(PrintArgs),
+    Tui(TuiArgs),
     Sessions {
         cwd: Option<PathBuf>,
     },
@@ -125,6 +135,20 @@ fn read_opts(args: Vec<String>) -> Result<Opts, String> {
     Ok(opts)
 }
 
+fn tui_args(opts: Opts) -> Result<Command, String> {
+    if opts.prompt.is_some() {
+        return Err("nh tui takes no prompt; use nh -p for print mode".into());
+    }
+    if opts.print.continue_latest && opts.print.resume.is_some() {
+        return Err("use either --continue or --resume, not both".into());
+    }
+    Ok(Command::Tui(TuiArgs {
+        continue_latest: opts.print.continue_latest,
+        resume: opts.print.resume,
+        cwd: opts.print.cwd,
+    }))
+}
+
 /// Parses the arguments after the program name.
 pub fn parse(args: Vec<String>) -> Result<Command, String> {
     let mut opts = read_opts(args)?;
@@ -138,6 +162,7 @@ pub fn parse(args: Vec<String>) -> Result<Command, String> {
     let cwd = opts.print.cwd.clone();
     match first {
         Some("sessions") if opts.positional.len() == 1 => return Ok(Command::Sessions { cwd }),
+        Some("tui") if opts.positional.len() == 1 => return tui_args(opts),
         Some("accounts") => {
             let action = accounts_action(&opts.positional[1..], opts.no_browser)?;
             return Ok(Command::Accounts(action));
@@ -203,6 +228,16 @@ mod tests {
         assert!(parse_str("--bogus").is_err());
         assert!(parse_str("frob").is_err());
         assert!(parse_str("-p x -c --resume y").is_err());
+        let tui = parse_str("tui -c --cwd d").unwrap();
+        let expected = TuiArgs {
+            continue_latest: true,
+            resume: None,
+            cwd: Some(PathBuf::from("d")),
+        };
+        assert_eq!(tui, Command::Tui(expected));
+        assert!(parse_str("tui -c --resume x").is_err());
+        assert!(parse_str("tui -p hi").is_err());
+        assert!(parse_str("tui extra").is_err());
     }
 
     #[test]
