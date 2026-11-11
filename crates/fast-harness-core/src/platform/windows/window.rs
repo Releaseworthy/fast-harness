@@ -3,9 +3,9 @@
 use windows_sys::Win32::Foundation::{HWND, LPARAM};
 use windows_sys::Win32::System::Threading::GetCurrentThreadId;
 use windows_sys::Win32::UI::WindowsAndMessaging::{
-    EnumThreadWindows, GetSystemMetrics, GetWindowLongPtrW, IsWindowVisible, LoadImageW,
-    SendMessageW, GWLP_HINSTANCE, ICON_BIG, IMAGE_ICON, LR_DEFAULTCOLOR, SM_CXICON, SM_CYICON,
-    WM_SETICON,
+    EnumThreadWindows, GetSystemMetrics, GetWindow, GetWindowLongPtrW, IsWindowVisible, LoadImageW,
+    SendMessageW, GWLP_HINSTANCE, GW_OWNER, ICON_BIG, IMAGE_ICON, LR_DEFAULTCOLOR, SM_CXICON,
+    SM_CYICON, WM_SETICON,
 };
 
 use crate::platform::PlatformError;
@@ -55,4 +55,33 @@ unsafe extern "system" fn set_icon_on(hwnd: HWND, lparam: LPARAM) -> i32 {
         }
     }
     1
+}
+
+/// The calling thread's first visible top-level window without an owner (the main
+/// window on the UI thread), as a raw HWND value.
+pub fn thread_window() -> Option<isize> {
+    let mut found: isize = 0;
+    // SAFETY: the callback only runs during this call, on this thread, and `found`
+    // outlives it.
+    unsafe {
+        EnumThreadWindows(
+            GetCurrentThreadId(),
+            Some(first_visible),
+            &mut found as *mut isize as LPARAM,
+        );
+    }
+    (found != 0).then_some(found)
+}
+
+/// `EnumThreadWindows` callback: stops at the first visible unowned window.
+unsafe extern "system" fn first_visible(hwnd: HWND, lparam: LPARAM) -> i32 {
+    // SAFETY: `hwnd` is a live window of this thread from EnumThreadWindows; `lparam`
+    // is the `&mut isize` thread_window keeps alive for the walk.
+    unsafe {
+        if IsWindowVisible(hwnd) == 0 || !GetWindow(hwnd, GW_OWNER).is_null() {
+            return 1;
+        }
+        *(lparam as *mut isize) = hwnd as isize;
+    }
+    0
 }
