@@ -15,9 +15,9 @@ A barebone coding agent harness in native Rust, in the spirit of DeepSeek Harnes
 | 2B | Accounts online: OAuth sign-in, refresh, usage polling, account pool | done |
 | 2C | `nh accounts`, the pool as default credential, shared `app::Runtime`; live call checked | done |
 | 3V | Shared transcript model (`view`) for the TUI and the GUI | done |
-| 3A | TUI (ratatui) | pending |
-| 3B | GUI (Slint) | pending |
-| 4 | Live checks, performance report | pending |
+| 3A | TUI (ratatui) | done |
+| 3B | GUI (Slint) | done |
+| 4 | Live checks, performance report (`docs/perf.md`) | done |
 
 ## Decisions
 

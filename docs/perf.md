@@ -38,3 +38,16 @@ The per-step time grows with the conversation because every request carries the 
 | 2 (answer) | 1,439 ms | 1,445 ms | 2 | 7 | 5,704 | 115 |
 
 Wall time 4.0 s for the turn. `nh.exe` release: 4.98 MB.
+
+## Phase 4: the finished binaries (2026-11-11, no other build running)
+
+| Measure | Result |
+|---|---|
+| `nh.exe` release size (CLI and TUI) | 5.76 MB |
+| `nh-gui.exe` release size (Slint, software and OpenGL renderers compiled in) | 19.9 MB |
+| `nh --version`, median of 10 | 13.2 ms |
+| `nh accounts` (load the store, read DSH's file, print 7 accounts), median of 5 | 13.2 ms |
+| `nh tui` idle in its own console after 3.5 s | working set 16.9 MB, private 6.0 MB |
+| `nh-gui` window created (cold, then warm) | 311 ms, then 30 to 31 ms |
+| `nh-gui` idle after 4 s with 7 accounts | working set 46.0 to 58.4 MB, private 76 MB |
+| DeepSeek Harness on the same machine | 9 processes, 1,680 MB working set |
