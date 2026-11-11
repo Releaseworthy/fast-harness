@@ -39,3 +39,9 @@ Rules for anyone (human or agent) changing this repo. Read `PLAN.md` first: it h
 - Opening the TUI creates a session file even if nothing is sent.
 - Slint's window `icon` sets only ICON_SMALL on the frameless winit window: the taskbar and Alt-Tab icon comes from `fast_harness_core::platform::set_big_window_icon` (WM_SETICON ICON_BIG from the exe's icon group 1).
 - The main card clips its children to the rounded corner and draws its border in an overlay after them: a border on the clipping rectangle itself left a gap along the curve.
+- Antigravity's Google OAuth client never enters the repo (D25): it lives encrypted in `~/.fast-harness/google-client.json` or in `FAST_HARNESS_GOOGLE_CLIENT_ID` and `_SECRET`. Before a push, `git grep -nI GOCSPX` finds nothing.
+- `llm` never imports `accounts`: the Hub User-Agent and hosts live in `llm/antigravity/hub.rs`, and the verification phrase is duplicated in `llm/antigravity/provider/error.rs`, tied to `accounts::google::is_validation` by a test.
+- Thinking and thought signatures go back only to the model that made them (`Message.model`, trace version 3): Antigravity sends `skip_thought_signature_validator` for calls of other models, Anthropic drops foreign thinking.
+- The folder picker declares the IFileOpenDialog and IShellItem vtables by hand (`platform/windows/folder.rs`): check GUIDs and method order against the `windows` crate source before changing them.
+- Live Antigravity check: `tests/antigravity_live.rs` (ignored) with `FAST_HARNESS_LIVE_GOOGLE_REFRESH` and the client variables set in the same process; it prints ids, stop reasons and token counts only.
+- Parallel worktrees can share the main `target` through `CARGO_TARGET_DIR`: cargo serializes on its lock and reuses the built dependencies.
