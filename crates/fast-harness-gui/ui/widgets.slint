@@ -1,14 +1,24 @@
 // Themed controls that replace the std-widgets ones, so every colour comes
 // from the `Theme` global (the Fluent widgets take the OS accent colour).
-import { Theme, Mark } from "parts.slint";
+import { Theme, Mark, AccentFill, Halo } from "parts.slint";
 import { Icons } from "icons.slint";
 
-// The 2px focus ring; users place it 1px outside the control (WCAG 2.4.7 and 2.4.13).
+// The 2px focus ring with a glow halo outside it; users place it 1px
+// outside the control (WCAG 2.4.7 and 2.4.13).
 export component FocusRing inherits Rectangle {
     in property <length> radius: Theme.radius-s;
     border-radius: root.radius + 3px;
     border-width: 2px;
     border-color: Theme.accent;
+    Rectangle {
+        x: -3px;
+        y: -3px;
+        width: parent.width + 6px;
+        height: parent.height + 6px;
+        border-radius: root.radius + 6px;
+        border-width: 3px;
+        border-color: Theme.glow.with-alpha(0.3);
+    }
 }
 
 // A push button. `variant`: "primary" (accent), "secondary" (default) or
@@ -23,22 +33,32 @@ export component ActionButton inherits Rectangle {
     callback clicked();
     property <bool> primary: root.variant == "primary";
     property <bool> ghost: root.variant == "ghost";
+    property <bool> vivid: root.primary && root.enabled;
     min-height: Theme.control-height;
     min-width: Theme.control-height;
-    border-radius: Theme.radius-s;
+    border-radius: Theme.radius-m;
     // Ghost buttons keep the 1px outline too: without it they read as text.
-    border-width: root.primary ? 0px : 1px;
-    border-color: root.enabled ? Theme.border : Theme.line;
+    border-width: root.vivid ? 0px : 1px;
+    border-color: !root.enabled ? Theme.line : ta.has-hover ? Theme.accent : Theme.border;
     background: !root.enabled ? (root.ghost ? transparent : Theme.surface)
-        : root.primary ? (ta.pressed ? Theme.accent.darker(0.15) : ta.has-hover ? Theme.accent.brighter(0.06) : Theme.accent)
+        : root.primary ? transparent
         : ta.pressed ? Theme.selection : ta.has-hover ? Theme.hover
         : root.ghost ? transparent : Theme.raised;
+    animate background, border-color { duration: Theme.quick; }
     opacity: root.enabled ? 1 : 0.6;
     forward-focus: fs;
     accessible-role: button;
     accessible-label: root.text;
     accessible-enabled: root.enabled;
     accessible-action-default => { if root.enabled { root.clicked(); } }
+    // The primary button: the accent gradient, a halo on hover, darker on press.
+    if root.vivid && ta.has-hover: Halo { radius: Theme.radius-m; }
+    if root.vivid: AccentFill { radius: Theme.radius-m; }
+    if root.vivid: Rectangle {
+        border-radius: Theme.radius-m;
+        background: Theme.shadow.with-alpha(ta.pressed ? 0.22 : 0);
+        animate background { duration: Theme.quick; }
+    }
     HorizontalLayout {
         padding-left: Theme.space-l - 2px;
         padding-right: Theme.space-l - 2px;
@@ -74,7 +94,7 @@ export component ActionButton inherits Rectangle {
             return reject;
         }
     }
-    if fs.has-focus: FocusRing { radius: Theme.radius-s; x: -3px; y: -3px; width: parent.width + 6px; height: parent.height + 6px; }
+    if fs.has-focus: FocusRing { radius: Theme.radius-m; x: -3px; y: -3px; width: parent.width + 6px; height: parent.height + 6px; }
 }
 
 // One row of the dropdown list. A `header` row is a group title: dim, not
@@ -87,7 +107,16 @@ component DropdownItem inherits Rectangle {
     callback picked();
     height: Theme.control-height;
     border-radius: Theme.radius-s - 2px;
-    background: root.header ? transparent : root.highlighted || ta.has-hover ? Theme.hover : root.selected ? Theme.selection : transparent;
+    background: root.header ? transparent : root.highlighted || ta.has-hover ? Theme.hover : root.selected ? Theme.accent-surface : transparent;
+    animate background { duration: Theme.quick; }
+    if root.selected && !root.header: Rectangle {
+        x: 0;
+        y: 8px;
+        width: 3px;
+        height: parent.height - 16px;
+        border-radius: 1.5px;
+        background: Theme.accent;
+    }
     if root.header: Text {
         x: Theme.space-s;
         width: parent.width - 2 * Theme.space-s;
@@ -208,10 +237,11 @@ export component Dropdown inherits Rectangle {
 
     min-height: Theme.control-height;
     min-width: 120px;
-    border-radius: Theme.radius-s;
+    border-radius: Theme.radius-m;
     border-width: 1px;
-    border-color: root.enabled ? Theme.border : Theme.line;
+    border-color: !root.enabled ? Theme.line : root.open || ta.has-hover ? Theme.accent : Theme.border;
     background: ta.has-hover && root.enabled ? Theme.hover : Theme.raised;
+    animate background, border-color { duration: Theme.quick; }
     opacity: root.enabled ? 1 : 0.6;
     forward-focus: fs;
     accessible-role: combobox;
@@ -241,7 +271,7 @@ export component Dropdown inherits Rectangle {
         }
         Mark {
             text: root.open ? Icons.chevron-up : Icons.chevron-down;
-            color: Theme.dim;
+            color: root.open || ta.has-hover ? Theme.accent : Theme.dim;
             font-size: Theme.font-m;
         }
     }
@@ -265,7 +295,7 @@ export component Dropdown inherits Rectangle {
             root.show-list();
         }
     }
-    if fs.has-focus: FocusRing { radius: Theme.radius-s; x: -3px; y: -3px; width: parent.width + 6px; height: parent.height + 6px; }
+    if fs.has-focus: FocusRing { radius: Theme.radius-m; x: -3px; y: -3px; width: parent.width + 6px; height: parent.height + 6px; }
     popup := PopupWindow {
         x: 0;
         y: root.drop-up ? -root.list-height - 4px : root.height + 4px;
@@ -285,7 +315,7 @@ export component Dropdown inherits Rectangle {
         }
         Rectangle {
             background: Theme.surface;
-            border-radius: Theme.radius-m;
+            border-radius: Theme.radius-l;
             border-width: 1px;
             border-color: Theme.border;
             drop-shadow-blur: 12px;
@@ -381,10 +411,12 @@ export component KeyInput inherits Rectangle {
     public function select-all() { input.select-all(); }
     min-height: Theme.control-height;
     min-width: 80px;
-    border-radius: Theme.radius-s;
+    border-radius: Theme.radius-m;
     border-width: 1px;
-    border-color: Theme.border;
+    border-color: input.has-focus ? Theme.accent : hover.has-hover ? Theme.dim : Theme.border;
     background: root.read-only ? Theme.surface : Theme.raised;
+    animate border-color { duration: Theme.quick; }
+    hover := TouchArea { mouse-cursor: MouseCursor.text; clicked => { input.focus(); } }
     forward-focus: input;
     input := TextInput {
         x: Theme.space-m;
@@ -410,7 +442,7 @@ export component KeyInput inherits Rectangle {
         font-size: Theme.font-m;
         accessible-role: none;
     }
-    if input.has-focus: FocusRing { radius: Theme.radius-s; x: -3px; y: -3px; width: parent.width + 6px; height: parent.height + 6px; }
+    if input.has-focus: FocusRing { radius: Theme.radius-m; x: -3px; y: -3px; width: parent.width + 6px; height: parent.height + 6px; }
 }
 
 // Three dots that pulse in turn while work runs.
@@ -427,7 +459,7 @@ export component BusySpinner {
         width: 6px;
         height: 6px;
         border-radius: 3px;
-        background: Theme.accent;
+        background: i == 0 ? Theme.accent : i == 1 ? Theme.accent.mix(Theme.accent2, 0.5) : Theme.accent2;
         opacity: 0.35 + 0.65 * (0.5 + 0.5 * Math.sin(root.phase - i * 60deg));
     }
 }
@@ -441,9 +473,10 @@ export component IconButton inherits Rectangle {
     callback clicked();
     width: Theme.control-height;
     height: Theme.control-height;
-    border-radius: Theme.radius-s;
+    border-radius: Theme.radius-m;
     background: ta.pressed ? (root.danger ? Theme.error.darker(0.1) : Theme.selection)
         : ta.has-hover ? (root.danger ? Theme.error : Theme.hover) : transparent;
+    animate background { duration: Theme.quick; }
     accessible-role: button;
     accessible-label: root.label;
     accessible-action-default => { root.clicked(); }

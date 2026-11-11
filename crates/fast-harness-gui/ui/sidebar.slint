@@ -1,23 +1,34 @@
 import { ListView } from "std-widgets.slint";
 import { ScrollBar } from "scrollbar.slint";
 import { SideRow } from "types.slint";
-import { Theme, Mark } from "parts.slint";
+import { Theme, Mark, AccentFill, Eyebrow } from "parts.slint";
 import { Icons } from "icons.slint";
 import { ActionButton, IconButton } from "widgets.slint";
-// A selected row: the selection colour, an accent bar on the left and a
+
+// Row geometry: the chevron and folder columns, so a session's title lines
+// up with its workspace's name.
+global SideGrid {
+    out property <length> pad: Theme.space-s;
+    out property <length> chevron: 12px;
+    out property <length> folder: 18px;
+    out property <length> gap: Theme.space-s;
+    out property <length> name-x: self.pad + self.chevron + self.gap + self.folder + self.gap;
+}
+
+// A selected row: the accent surface, a gradient bar on the left and a
 // heavier weight, so the state shows without colour alone.
 component RowMark inherits Rectangle {
     in property <bool> selected;
     in property <bool> hovered;
-    border-radius: Theme.radius-s;
-    background: root.selected ? Theme.selection : root.hovered ? Theme.hover : transparent;
+    border-radius: Theme.radius-m;
+    background: root.selected ? Theme.accent-surface : root.hovered ? Theme.hover : transparent;
+    animate background { duration: Theme.quick; }
     if root.selected: Rectangle {
         x: 0;
         y: (parent.height - self.height) / 2;
         width: 3px;
         height: parent.height - 14px;
-        border-radius: 1.5px;
-        background: Theme.accent;
+        background: @linear-gradient(180deg, Theme.accent 0%, Theme.accent2 100%);
     }
 }
 
@@ -37,7 +48,7 @@ component NavEntry inherits Rectangle {
         padding-left: Theme.space-m;
         spacing: Theme.space-s + 2px;
         alignment: start;
-        Mark { text: root.icon; color: Theme.text; font-size: Theme.font-l - 2px; }
+        Mark { text: root.icon; color: root.selected ? Theme.accent : Theme.text; font-size: Theme.font-l - 2px; }
         Text {
             text: root.text;
             color: Theme.text;
@@ -61,8 +72,8 @@ component Logo inherits HorizontalLayout {
     VerticalLayout {
         alignment: center;
         Image {
-            width: 22px;
-            height: 22px;
+            width: 26px;
+            height: 26px;
             source: Theme.greyscale ? @image-url("../assets/fast-harness-grey-64.png") : @image-url("../assets/fast-harness-64.png");
             accessible-role: none;
         }
@@ -78,16 +89,15 @@ component Logo inherits HorizontalLayout {
     VerticalLayout {
         alignment: center;
         Rectangle {
-            border-radius: 3px;
-            background: Theme.text;
+            AccentFill { radius: 4px; }
             HorizontalLayout {
-                padding-left: 5px;
-                padding-right: 5px;
-                padding-top: 1px;
-                padding-bottom: 1px;
+                padding-left: 6px;
+                padding-right: 6px;
+                padding-top: 2px;
+                padding-bottom: 2px;
                 Text {
                     text: "HARNESS";
-                    color: Theme.bg;
+                    color: Theme.on-accent;
                     font-size: Theme.font-xs;
                     font-weight: 700;
                     letter-spacing: 0.8px;
@@ -114,17 +124,21 @@ component WorkspaceEntry inherits Rectangle {
         clicked => { root.clicked(); }
         RowMark { selected: root.entry.current; hovered: wta.has-hover; }
         HorizontalLayout {
-            padding-left: Theme.space-s + 2px;
+            padding-left: SideGrid.pad;
             padding-right: Theme.space-xs;
-            spacing: Theme.space-s;
+            spacing: SideGrid.gap;
             Mark {
+                width: SideGrid.chevron;
+                horizontal-alignment: center;
                 text: root.entry.expanded ? Icons.chevron-down : Icons.chevron-right;
                 color: Theme.dim;
                 font-size: Theme.font-s;
             }
             Mark {
+                width: SideGrid.folder;
+                horizontal-alignment: center;
                 text: root.entry.current ? Icons.folder-opened : Icons.folder;
-                color: Theme.text;
+                color: root.entry.current ? Theme.accent : root.entry.expanded ? Theme.accent2 : Theme.dim;
                 font-size: Theme.font-l - 2px;
             }
             Text {
@@ -160,9 +174,20 @@ component SessionEntry inherits Rectangle {
     accessible-label: root.entry.title;
     accessible-item-selected: root.entry.current;
     accessible-action-default => { root.clicked(); }
-    RowMark { selected: root.entry.current; hovered: sta.has-hover; }
+    // A tree guide under the folder icon.
+    Rectangle {
+        x: SideGrid.pad + SideGrid.chevron + SideGrid.gap + SideGrid.folder / 2;
+        width: 1px;
+        background: Theme.line;
+    }
+    RowMark {
+        x: SideGrid.name-x - Theme.space-s - 2px;
+        width: parent.width - self.x;
+        selected: root.entry.current;
+        hovered: sta.has-hover;
+    }
     VerticalLayout {
-        padding-left: Theme.space-m + 30px;
+        padding-left: SideGrid.name-x;
         padding-right: Theme.space-s;
         alignment: center;
         spacing: 2px;
@@ -191,31 +216,30 @@ export component Sidebar inherits Rectangle {
     callback open-session(string, string);
     callback open-page(string);
     width: 260px;
-    background: Theme.surface;
+    background: transparent;
     VerticalLayout {
         padding: Theme.space-m;
         padding-top: Theme.space-xs;
         spacing: Theme.space-xs;
-        Logo { height: 32px; }
+        Logo { height: 36px; }
         Rectangle { height: Theme.space-s; }
         ActionButton {
             icon: Icons.add;
             text: "New session";
+            variant: "primary";
             clicked => { root.new-session(); }
         }
+        Rectangle { height: Theme.space-xs; }
         HorizontalLayout {
             height: 32px;
-            Text {
+            padding-left: SideGrid.pad;
+            Eyebrow {
                 text: "WORKSPACES";
                 horizontal-stretch: 1;
-                font-size: Theme.font-xs;
-                font-weight: 600;
-                letter-spacing: 0.6px;
-                color: Theme.dim;
-                vertical-alignment: bottom;
+                vertical-alignment: center;
             }
             VerticalLayout {
-                alignment: end;
+                alignment: center;
                 IconButton {
                     width: 26px;
                     height: 26px;
@@ -229,20 +253,20 @@ export component Sidebar inherits Rectangle {
         Rectangle {
             vertical-stretch: 1;
             side-list := ListView {
-            width: 100%;
-            height: 100%;
-            vertical-scrollbar-policy: ScrollBarPolicy.always-off;
-            for r in root.rows: VerticalLayout {
-                if r.kind == "workspace": WorkspaceEntry {
-                    entry: r;
-                    clicked => { root.select-workspace(r.id); }
-                    remove => { root.remove-workspace(r.id); }
+                width: 100%;
+                height: 100%;
+                vertical-scrollbar-policy: ScrollBarPolicy.always-off;
+                for r in root.rows: VerticalLayout {
+                    if r.kind == "workspace": WorkspaceEntry {
+                        entry: r;
+                        clicked => { root.select-workspace(r.id); }
+                        remove => { root.remove-workspace(r.id); }
+                    }
+                    if r.kind == "session": SessionEntry {
+                        entry: r;
+                        clicked => { root.open-session(r.workspace, r.id); }
+                    }
                 }
-                if r.kind == "session": SessionEntry {
-                    entry: r;
-                    clicked => { root.open-session(r.workspace, r.id); }
-                }
-            }
             }
             ScrollBar {
                 x: parent.width - self.width;

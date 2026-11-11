@@ -1,6 +1,6 @@
 // The main panel's frame: the tab strip at the top, the error banner and
 // the status bar at the bottom.
-import { Theme, Mark } from "parts.slint";
+import { Theme, Mark, Card } from "parts.slint";
 import { Icons } from "icons.slint";
 import { ActionButton, IconButton } from "widgets.slint";
 
@@ -14,8 +14,9 @@ component Tab inherits Rectangle {
     callback clicked();
     callback close();
     width: row.preferred-width;
-    border-radius: Theme.radius-s;
-    background: ta.has-hover && !root.selected ? Theme.hover : transparent;
+    border-radius: Theme.radius-m;
+    background: root.selected ? Theme.accent-surface : ta.has-hover ? Theme.hover : transparent;
+    animate background { duration: Theme.quick; }
     accessible-role: tab;
     accessible-label: root.text;
     accessible-item-selected: root.selected;
@@ -31,12 +32,12 @@ component Tab inherits Rectangle {
         Mark {
             text: root.icon;
             font-size: Theme.font-m;
-            color: root.selected ? Theme.text : Theme.dim;
+            color: root.selected ? Theme.accent : Theme.dim;
         }
         Text {
             text: root.text;
             font-size: Theme.font-s;
-            font-weight: root.selected ? 600 : 400;
+            font-weight: root.selected ? 700 : 500;
             color: root.selected ? Theme.text : Theme.dim;
             vertical-alignment: center;
             accessible-role: none;
@@ -58,8 +59,7 @@ component Tab inherits Rectangle {
         y: parent.height - 2px;
         width: parent.width - 2 * Theme.space-s;
         height: 2px;
-        border-radius: 1px;
-        background: Theme.accent;
+        background: @linear-gradient(90deg, Theme.accent 0%, Theme.accent2 100%);
     }
 }
 
@@ -69,12 +69,13 @@ export component TabStrip inherits Rectangle {
     in property <string> page;
     callback open-page(string);
     property <bool> extra: root.page == "settings" || root.page == "about" || root.page == "accounts";
-    height: 38px;
+    height: 44px;
     accessible-role: tab-list;
     Rectangle { y: parent.height - 1px; height: 1px; background: Theme.line; }
     HorizontalLayout {
-        padding-left: Theme.space-s;
-        padding-bottom: 1px;
+        padding-left: Theme.space-m;
+        padding-top: Theme.space-s - 2px;
+        padding-bottom: Theme.space-s - 2px;
         spacing: Theme.space-xs;
         alignment: start;
         Tab {
@@ -105,14 +106,23 @@ export component StatusBar inherits Rectangle {
     in property <string> account;
     in property <string> tokens;
     in property <string> timing;
-    height: 26px;
+    height: 28px;
     background: Theme.surface;
     Rectangle { y: 0; height: 1px; background: Theme.line; }
     HorizontalLayout {
         padding-left: Theme.space-m;
         padding-right: Theme.space-m;
         spacing: Theme.space-l;
-        Text { text: root.state; font-size: Theme.font-xs; color: Theme.text; vertical-alignment: center; }
+        // The state: a dot and the word (the dot's colour is never the only cue).
+        HorizontalLayout {
+            spacing: Theme.space-xs + 2px;
+            Mark {
+                text: Icons.circle-filled;
+                font-size: 8px;
+                color: root.state == "Ready" ? Theme.success : root.state == "Error" ? Theme.error : Theme.accent;
+            }
+            Text { text: root.state; font-size: Theme.font-xs; font-weight: 600; color: Theme.text; vertical-alignment: center; }
+        }
         Text { text: root.model; font-size: Theme.font-xs; color: Theme.dim; vertical-alignment: center; }
         Text { text: root.account; font-size: Theme.font-xs; color: Theme.dim; vertical-alignment: center; overflow: elide; }
         Rectangle { horizontal-stretch: 1; }
@@ -125,15 +135,24 @@ export component StatusBar inherits Rectangle {
 export component ErrorBanner inherits Rectangle {
     in property <string> text;
     callback dismiss();
-    border-radius: Theme.radius-m;
-    background: Theme.surface;
-    border-color: Theme.error;
-    border-width: 1px;
     accessible-role: AccessibleRole.text;
     accessible-label: "Error: " + root.text;
-    HorizontalLayout {
+    // The size comes from the content row, not from the card layers.
+    preferred-height: row.preferred-height;
+    min-height: row.min-height;
+    Card { radius: Theme.radius-l; edge: Theme.error; }
+    // The error stripe on the left edge, inside the rounded corners.
+    Rectangle {
+        x: 5px;
+        y: Theme.space-s;
+        width: 3px;
+        height: parent.height - 2 * Theme.space-s;
+        border-radius: 1.5px;
+        background: Theme.error;
+    }
+    row := HorizontalLayout {
         padding: Theme.space-s;
-        padding-left: Theme.space-m;
+        padding-left: Theme.space-l;
         spacing: Theme.space-m;
         Mark { text: Icons.error; color: Theme.error; font-size: Theme.font-l - 2px; }
         Text {

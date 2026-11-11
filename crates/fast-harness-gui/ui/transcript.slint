@@ -1,6 +1,6 @@
 import { ListView } from "std-widgets.slint";
 import { MsgRow } from "types.slint";
-import { Theme, LinkText, Columns, Mark } from "parts.slint";
+import { Theme, LinkText, Columns, Mark, AccentFill, Elevation, Card, Halo } from "parts.slint";
 import { Icons } from "icons.slint";
 import { BusySpinner, IconButton } from "widgets.slint";
 import { ScrollBar } from "scrollbar.slint";
@@ -13,10 +13,16 @@ component UserBubble {
         spacing: Theme.space-xs;
         HorizontalLayout {
             alignment: end;
+            // The bubble: rounded, with a tighter corner at the bottom right.
             Rectangle {
                 max-width: root.width * 0.8;
-                border-radius: Theme.radius-l;
+                border-top-left-radius: Theme.radius-xl;
+                border-top-right-radius: Theme.radius-xl;
+                border-bottom-left-radius: Theme.radius-xl;
+                border-bottom-right-radius: Theme.radius-s - 2px;
                 background: Theme.bubble;
+                border-width: 1px;
+                border-color: Theme.accent.with-alpha(0.35);
                 HorizontalLayout {
                     padding-left: Theme.space-l - 2px;
                     padding-right: Theme.space-l - 2px;
@@ -46,13 +52,30 @@ component AssistantBlock {
     callback link(string);
     VerticalLayout {
         spacing: Theme.space-s;
-        if msg.thinking != "": HorizontalLayout {
-            spacing: Theme.space-xs;
+        // The speaker: a gradient tile with the bolt and the name.
+        if msg.text != "" || msg.thinking != "": HorizontalLayout {
+            spacing: Theme.space-s;
             alignment: start;
-            Mark { text: msg.expanded ? Icons.chevron-down : Icons.chevron-right; color: Theme.dim; font-size: Theme.font-s; }
-            LinkText {
+            Rectangle {
+                width: 22px;
+                height: 22px;
+                AccentFill { radius: Theme.radius-s; }
+                Mark {
+                    width: parent.width;
+                    height: parent.height;
+                    horizontal-alignment: center;
+                    text: Icons.lightning-bolt;
+                    color: Theme.on-accent;
+                    font-size: Theme.font-s;
+                }
+            }
+            Text { text: "Fast Harness"; color: Theme.text; font-size: Theme.font-s; font-weight: 700; vertical-alignment: center; }
+            if msg.thinking != "": Rectangle { width: Theme.space-s; }
+            if msg.thinking != "": Mark { text: msg.expanded ? Icons.chevron-down : Icons.chevron-right; color: Theme.dim; font-size: Theme.font-s; }
+            if msg.thinking != "": LinkText {
                 text: msg.expanded ? "Hide thinking" : "Show thinking";
                 font-size: Theme.font-s;
+                vertical-alignment: center;
                 clicked => { root.toggle(); }
             }
         }
@@ -60,8 +83,7 @@ component AssistantBlock {
             spacing: Theme.space-m;
             Rectangle {
                 width: 2px;
-                border-radius: 1px;
-                background: Theme.line;
+                background: @linear-gradient(180deg, Theme.accent 0%, Theme.accent2 100%);
             }
             Text {
                 text: msg.thinking;
@@ -87,27 +109,29 @@ component AssistantBlock {
 
 // The status of a tool: dots while it runs, then a mark and a word, so the
 // state never rests on colour alone.
-component ToolStatus {
+component ToolStatus inherits Rectangle {
     in property <MsgRow> msg;
-    HorizontalLayout {
+    property <color> tone: msg.running ? Theme.accent : msg.error ? Theme.error : Theme.success;
+    border-radius: self.height / 2;
+    border-width: 1px;
+    border-color: root.tone.with-alpha(0.6);
+    width: chip.preferred-width;
+    chip := HorizontalLayout {
+        padding-left: Theme.space-s;
+        padding-right: Theme.space-s;
+        spacing: Theme.space-xs;
         if msg.running: BusySpinner { label: "Running " + msg.title; }
-        if !msg.running && !msg.error: Mark {
-            text: Icons.check;
-            color: Theme.success;
-            font-size: Theme.font-m;
-            accessible-role: text;
-            accessible-label: "done";
+        if !msg.running: Mark {
+            text: msg.error ? Icons.error : Icons.check;
+            color: root.tone;
+            font-size: Theme.font-s;
         }
-        if msg.error: HorizontalLayout {
-            spacing: Theme.space-xs;
-            Mark { text: Icons.error; color: Theme.error; font-size: Theme.font-s; }
-            Text {
-                text: "failed";
-                color: Theme.error;
-                font-size: Theme.font-s;
-                font-weight: 600;
-                vertical-alignment: center;
-            }
+        Text {
+            text: msg.running ? "running" : msg.error ? "failed" : "done";
+            color: root.tone;
+            font-size: Theme.font-xs;
+            font-weight: 700;
+            vertical-alignment: center;
         }
     }
 }
@@ -116,10 +140,11 @@ component ToolCard inherits Rectangle {
     in property <MsgRow> msg;
     callback copy(string);
     callback toggle();
-    border-radius: Theme.radius-m;
-    border-width: 1px;
-    border-color: msg.error ? Theme.error : Theme.line;
-    background: Theme.surface;
+    Card {
+        radius: Theme.radius-l;
+        edge: msg.error ? Theme.error : Theme.line;
+        elevation: 0.7;
+    }
     VerticalLayout {
         padding: Theme.space-s + 2px;
         padding-left: Theme.space-m;
@@ -127,7 +152,20 @@ component ToolCard inherits Rectangle {
         spacing: Theme.space-s;
         HorizontalLayout {
             spacing: Theme.space-s;
-            ToolStatus { msg: msg; }
+            Rectangle {
+                width: 24px;
+                height: 24px;
+                border-radius: Theme.radius-s;
+                background: Theme.accent-surface;
+                Mark {
+                    width: parent.width;
+                    height: parent.height;
+                    horizontal-alignment: center;
+                    text: Icons.tools;
+                    color: Theme.accent;
+                    font-size: Theme.font-s;
+                }
+            }
             Text {
                 text: msg.title;
                 font-family: Theme.mono;
@@ -144,6 +182,11 @@ component ToolCard inherits Rectangle {
                 vertical-alignment: center;
                 horizontal-stretch: 1;
             }
+            VerticalLayout {
+                alignment: center;
+                horizontal-stretch: 0;
+                ToolStatus { msg: msg; height: 20px; }
+            }
             if !msg.running: LinkText {
                 text: msg.expanded ? "Hide output" : "Show output";
                 vertical-alignment: center;
@@ -156,8 +199,10 @@ component ToolCard inherits Rectangle {
             }
         }
         if msg.expanded && !msg.running: Rectangle {
-            border-radius: Theme.radius-s;
+            border-radius: Theme.radius-m;
             background: Theme.code;
+            border-width: 1px;
+            border-color: Theme.line;
             HorizontalLayout {
                 padding: Theme.space-s + 2px;
                 Text {
@@ -305,19 +350,31 @@ export component TranscriptView {
         }
     }
 
+    // Jump to latest: a round gradient button with a halo on hover.
     if !root.follow: Rectangle {
         x: parent.width - self.width - Theme.space-xl;
         y: parent.height - self.height - Theme.space-m;
-        width: Theme.control-height;
-        height: Theme.control-height;
-        border-radius: Theme.radius-s;
-        border-width: 1px;
-        border-color: Theme.border;
-        background: Theme.raised;
-        IconButton {
-            icon: Icons.arrow-down;
-            label: "Jump to latest";
+        width: Theme.control-height + 4px;
+        height: Theme.control-height + 4px;
+        Elevation { radius: self.height / 2; level: 1.5; }
+        if jump.has-hover: Halo { radius: parent.height / 2; }
+        AccentFill { radius: parent.height / 2 - 1px; }
+        Mark {
+            width: parent.width;
+            height: parent.height;
+            horizontal-alignment: center;
+            text: Icons.arrow-down;
+            color: Theme.on-accent;
+            font-size: Theme.font-m + 2px;
+        }
+        jump := TouchArea {
+            mouse-cursor: pointer;
             clicked => { root.to-bottom(); }
+        }
+        Rectangle {
+            accessible-role: button;
+            accessible-label: "Jump to latest";
+            accessible-action-default => { root.to-bottom(); }
         }
     }
 }

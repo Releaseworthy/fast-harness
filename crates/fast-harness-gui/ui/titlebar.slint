@@ -14,16 +14,17 @@ component MenuButton inherits Rectangle {
     callback clicked();
     height: 28px;
     width: label.preferred-width + 2 * Theme.space-m;
-    border-radius: Theme.radius-s;
-    background: ta.has-hover ? Theme.hover : transparent;
+    border-radius: Theme.radius-m;
+    background: root.selected ? Theme.accent-surface : ta.has-hover ? Theme.hover : transparent;
+    animate background { duration: Theme.quick; }
     accessible-role: button;
     accessible-label: root.text + (root.selected ? " (open)" : "");
     accessible-action-default => { root.clicked(); }
     label := Text {
         text: root.text;
         font-size: Theme.font-s;
-        font-weight: root.selected ? 600 : 400;
-        color: root.selected ? Theme.text : Theme.dim;
+        font-weight: root.selected ? 700 : 500;
+        color: root.selected || ta.has-hover ? Theme.text : Theme.dim;
         vertical-alignment: center;
         accessible-role: none;
     }
@@ -32,8 +33,7 @@ component MenuButton inherits Rectangle {
         y: parent.height - 2px;
         width: parent.width - 2 * Theme.space-m;
         height: 2px;
-        border-radius: 1px;
-        background: Theme.accent;
+        background: @linear-gradient(90deg, Theme.accent 0%, Theme.accent2 100%);
     }
     ta := TouchArea {
         mouse-cursor: pointer;
@@ -60,7 +60,7 @@ export component TitleBar inherits Rectangle {
     callback bar-clicked();
     callback close();
     height: 40px;
-    background: Theme.surface;
+    background: transparent;
     WindowMoveArea {
         HorizontalLayout {
             padding-left: Theme.space-xs + 2px;

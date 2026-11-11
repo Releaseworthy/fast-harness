@@ -62,15 +62,22 @@ component ThemeTile inherits Rectangle {
     accessible-label: card.name + (card.dark ? ", dark" : ", light") + (card.custom ? ", custom" : "") + (card.current ? ", current" : "");
     accessible-action-default => { root.picked(); }
     Rectangle {
-        border-radius: Theme.radius-l;
-        clip: true;
-        Rectangle { background: @linear-gradient(135deg, card.bg 0%, card.bg-end 100%); }
-        // The name strip.
+        // The software renderer draws a gradient square (and clips square):
+        // the gradient runs top to bottom below the top corners, where it
+        // meets the rounded bg fill of the tile without a seam.
+        Rectangle {
+            y: Theme.radius-l;
+            height: parent.height - 46px - Theme.radius-l;
+            background: @linear-gradient(180deg, card.bg 0%, card.bg-end 100%);
+        }
+        // The name strip, rounded at the bottom like the tile.
         Rectangle {
             x: 0;
             y: parent.height - 46px;
             width: parent.width;
             height: 46px;
+            border-bottom-left-radius: Theme.radius-l;
+            border-bottom-right-radius: Theme.radius-l;
             background: card.surface.with-alpha(0.92);
             VerticalLayout {
                 padding-left: 12px;

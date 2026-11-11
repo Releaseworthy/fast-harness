@@ -155,7 +155,7 @@ export component AccountsPage inherits Rectangle {
         root.adding-key = false;
         fs.focus();
     }
-    background: Theme.bg;
+    background: transparent;
     fs := FocusScope {
         key-pressed(event) => {
             if event.text == Key.Escape && root.provider != "" {

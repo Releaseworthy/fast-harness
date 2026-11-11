@@ -4,7 +4,7 @@
 import { ListView, ScrollView } from "std-widgets.slint";
 import { ScrollBar } from "scrollbar.slint";
 import { TraceRow } from "types.slint";
-import { Theme, Columns, LinkText, Mark } from "parts.slint";
+import { Theme, Columns, LinkText, Mark, AccentFill, PageTitle } from "parts.slint";
 import { Icons } from "icons.slint";
 import { ActionButton, FocusRing } from "widgets.slint";
 import { StepsTable } from "steps.slint";
@@ -96,8 +96,10 @@ component EntryBody {
     in property <string> shown;
     VerticalLayout {
         if entry.kind == "user": Rectangle {
-            border-radius: Theme.radius-l;
+            border-radius: Theme.radius-xl;
             background: Theme.bubble;
+            border-width: 1px;
+            border-color: Theme.accent.with-alpha(0.3);
             HorizontalLayout {
                 padding: Theme.space-s + 2px;
                 padding-left: Theme.space-l - 2px;
@@ -107,7 +109,7 @@ component EntryBody {
         }
         if entry.kind == "thinking": HorizontalLayout {
             spacing: Theme.space-m;
-            Rectangle { width: 2px; border-radius: 1px; background: Theme.border; }
+            Rectangle { width: 2px; background: @linear-gradient(180deg, Theme.accent 0%, Theme.accent2 100%); }
             Text { text: root.shown; color: Theme.dim; font-size: Theme.font-s; font-italic: true; wrap: word-wrap; }
         }
         if entry.kind == "response": Text {
@@ -143,11 +145,23 @@ component TraceEntryView {
         spacing: Theme.space-xs + 2px;
         if entry.kind == "turn": HorizontalLayout {
             spacing: Theme.space-m;
-            Text { text: entry.title; color: Theme.text; font-size: Theme.font-m; font-weight: 700; vertical-alignment: center; }
+            Rectangle {
+                width: turn-label.preferred-width + 2 * Theme.space-m;
+                height: 24px;
+                AccentFill { radius: 12px; }
+                turn-label := Text {
+                    text: entry.title;
+                    color: Theme.on-accent;
+                    font-size: Theme.font-s;
+                    font-weight: 700;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+            }
             VerticalLayout {
                 alignment: center;
                 horizontal-stretch: 1;
-                Rectangle { height: 1px; background: Theme.border; }
+                Rectangle { height: 2px; background: @linear-gradient(90deg, Theme.accent2 0%, Theme.line 100%); }
             }
         }
         if entry.kind != "turn": EntryHead {
@@ -165,20 +179,22 @@ component Segment inherits Rectangle {
     in property <bool> checked;
     callback clicked();
     min-width: 84px;
-    border-radius: Theme.radius-s - 2px;
-    background: root.checked ? Theme.selection : ta.has-hover ? Theme.hover : transparent;
+    border-radius: Theme.radius-s;
+    background: !root.checked && ta.has-hover ? Theme.hover : transparent;
+    animate background { duration: Theme.quick; }
     accessible-role: tab;
     accessible-label: root.text;
     accessible-item-selected: root.checked;
     accessible-action-default => { root.clicked(); }
     forward-focus: fs;
+    if root.checked: AccentFill { radius: Theme.radius-s; }
     HorizontalLayout {
         alignment: center;
         spacing: Theme.space-xs + 2px;
-        if root.checked: Mark { text: Icons.circle-filled; font-size: Theme.font-xs; color: Theme.text; }
+        if root.checked: Mark { text: Icons.circle-filled; font-size: Theme.font-xs; color: Theme.on-accent; }
         Text {
             text: root.text;
-            color: Theme.text;
+            color: root.checked ? Theme.on-accent : Theme.text;
             font-size: Theme.font-s;
             font-weight: root.checked ? 700 : 500;
             vertical-alignment: center;
@@ -197,7 +213,7 @@ component Segment inherits Rectangle {
 
 component ModeSwitch inherits Rectangle {
     in-out property <string> mode;
-    border-radius: Theme.radius-s;
+    border-radius: Theme.radius-m;
     border-width: 1px;
     border-color: Theme.border;
     background: Theme.raised;
@@ -220,16 +236,15 @@ export component TracePage inherits Rectangle {
     callback refresh();
     callback toggle(int);
     callback copy(string);
-    background: Theme.bg;
+    background: transparent;
     VerticalLayout {
         Rectangle {
-            background: Theme.bg;
             HorizontalLayout {
                 padding: Theme.space-l;
                 padding-left: Theme.space-xl;
                 padding-right: Theme.space-xl;
                 spacing: Theme.space-m;
-                Text { text: "Trace"; color: Theme.text; font-size: Theme.font-l; font-weight: 600; vertical-alignment: center; }
+                PageTitle { text: "Trace"; horizontal-stretch: 0; }
                 Text {
                     text: root.session;
                     color: Theme.dim;
