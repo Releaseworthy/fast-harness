@@ -2,6 +2,7 @@
 
 use fast_harness_core::accounts::model::AccountKind;
 use fast_harness_core::accounts::pool::AccountStatus;
+use fast_harness_core::llm::catalog::{group_title, provider_of};
 use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Paragraph, Wrap};
@@ -161,17 +162,34 @@ fn draw_models(frame: &mut Frame, ui: &mut Ui, area: Rect) {
     let st = Styles::of(ui);
     let block = st.block(&title);
     let inner = block.inner(area);
-    let rows = ui
-        .models
-        .iter()
-        .map(|m| {
-            let mark = if m.id == ui.model { "*" } else { " " };
-            let ctx = m.context_window / 1000;
-            format!("{mark} {:<28} {:<24} {ctx}k context", m.id, m.display_name)
-        })
-        .collect();
-    let lines = list(rows, ui.selected, inner, &st);
+    let (rows, selected) = model_rows(ui);
+    let lines = list(rows, selected, inner, &st);
     frame.render_widget(Paragraph::new(lines).block(block), area);
+}
+
+/// The Models screen rows grouped by provider (a title row before each
+/// group, PLAN.md D24) and the row of the selected model.
+fn model_rows(ui: &Ui) -> (Vec<String>, usize) {
+    let mut rows = Vec::new();
+    let mut selected = 0;
+    let mut group = "";
+    for (index, m) in ui.models.iter().enumerate() {
+        let provider = provider_of(&m.id);
+        if provider != group {
+            group = provider;
+            rows.push(group_title(provider).to_string());
+        }
+        if index == ui.selected {
+            selected = rows.len();
+        }
+        let mark = if m.id == ui.model { "*" } else { " " };
+        let ctx = m.context_window / 1000;
+        rows.push(format!(
+            "{mark} {:<28} {:<24} {ctx}k context",
+            m.id, m.display_name
+        ));
+    }
+    (rows, selected)
 }
 
 fn draw_sessions(frame: &mut Frame, ui: &mut Ui, area: Rect) {

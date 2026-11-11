@@ -5,7 +5,7 @@
 use slint::{Model, ModelRc, SharedString, VecModel};
 
 use crate::app::App;
-use crate::pickers::{effort_index, effort_list, model_index, model_list, refit};
+use crate::pickers::{effort_index, effort_list, is_header, model_index, model_list, refit};
 use crate::MainWindow;
 
 /// `items` into `current` in place when it is a `VecModel` (an open list
@@ -14,8 +14,11 @@ fn strings<'a>(
     current: ModelRc<SharedString>,
     items: impl Iterator<Item = &'a str>,
 ) -> Option<ModelRc<SharedString>> {
-    let items: Vec<SharedString> = items.map(SharedString::from).collect();
-    match current.as_any().downcast_ref::<VecModel<SharedString>>() {
+    replace(current, items.map(SharedString::from).collect())
+}
+
+fn replace<T: Clone + 'static>(current: ModelRc<T>, items: Vec<T>) -> Option<ModelRc<T>> {
+    match current.as_any().downcast_ref::<VecModel<T>>() {
         Some(model) => {
             model.set_vec(items);
             None
@@ -31,8 +34,13 @@ pub fn fill(app: &mut App, ui: &MainWindow) {
     show_models(app, ui, list);
 }
 
-/// Shows `(id, label)` rows with the current model selected, then its efforts.
+/// Shows `(id, label)` rows (provider titles marked as headers) with the
+/// current model selected, then its efforts.
 pub fn show_models(app: &mut App, ui: &MainWindow, list: Vec<(String, String)>) {
+    let headers: Vec<bool> = list.iter().map(is_header).collect();
+    if let Some(model) = replace(ui.get_model_headers(), headers) {
+        ui.set_model_headers(model);
+    }
     let labels = list.iter().map(|(_, label)| label.as_str());
     if let Some(model) = strings(ui.get_models(), labels) {
         ui.set_models(model);
@@ -45,7 +53,7 @@ pub fn show_models(app: &mut App, ui: &MainWindow, list: Vec<(String, String)>) 
 /// The effort list of the current model and the current effort in it.
 fn fill_efforts(app: &App, ui: &MainWindow) {
     let list = effort_list(&app.rt.config.model);
-    if let Some(model) = strings(ui.get_efforts(), list.iter().copied()) {
+    if let Some(model) = strings(ui.get_efforts(), list.iter().map(String::as_str)) {
         ui.set_efforts(model);
     }
     ui.set_effort_index(effort_index(&list, app.rt.config.effort.as_deref()));
@@ -55,7 +63,8 @@ fn fill_efforts(app: &App, ui: &MainWindow) {
 /// fitted to it and the user told when it changed. Applies to the next turn.
 pub fn pick_model(app: &mut App, ui: &MainWindow, index: i32) {
     let picked = usize::try_from(index).ok().and_then(|i| app.models.get(i));
-    let Some(id) = picked.cloned() else {
+    // Title rows have an empty id and are never picked.
+    let Some(id) = picked.filter(|id| !id.is_empty()).cloned() else {
         return;
     };
     let (effort, note) = refit(&id, app.rt.config.effort.as_deref());

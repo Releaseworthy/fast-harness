@@ -148,7 +148,10 @@ impl Ui {
                 None => Action::None,
             },
             KeyCode::Char('e') | KeyCode::Tab | KeyCode::Right | KeyCode::Left => {
-                Action::SetEffort(next_effort(&self.model, self.effort.as_deref()).to_string())
+                match next_effort(&self.model, self.effort.as_deref()) {
+                    Some(effort) => Action::SetEffort(effort),
+                    None => Action::None,
+                }
             }
             _ => Action::None,
         }

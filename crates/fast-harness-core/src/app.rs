@@ -1,5 +1,7 @@
 //! Wiring shared by every front end (CLI print mode, TUI, GUI): settings,
-//! credentials, the provider, the transport and sessions.
+//! credentials, the providers, the transport and sessions. The model id picks
+//! the provider (PLAN.md D24): `antigravity/<id>` goes to Google Antigravity
+//! with the Google accounts, any other id to Claude.
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -11,6 +13,8 @@ use crate::auth::{AuthSource, StaticAuth};
 use crate::config::Config;
 use crate::http::Transport;
 use crate::llm::anthropic::Anthropic;
+use crate::llm::antigravity::Antigravity;
+use crate::llm::catalog::{provider_of, ANTIGRAVITY};
 use crate::llm::{Auth, Provider};
 use crate::net::UreqTransport;
 use crate::{platform, session};
@@ -21,11 +25,21 @@ pub struct Runtime {
     pub home: PathBuf,
     pub config: Config,
     pub pool: Arc<AccountPool>,
-    /// The Google accounts of the same pool (PLAN.md D23); not routed yet.
+    /// The Google accounts of the same pool (PLAN.md D23): the credential of
+    /// `antigravity/<id>` models.
     pub google: Arc<GoogleAuth>,
     pub transport: Arc<UreqTransport>,
+    /// Claude, for every model id without the `antigravity/` prefix.
     pub provider: Arc<Anthropic>,
+    /// Google Antigravity, for `antigravity/<id>` models.
+    pub antigravity: Arc<Antigravity>,
 }
+
+/// The provider and the credential source of one model.
+pub type Route = (Arc<dyn Provider>, Arc<dyn AuthSource>);
+
+/// Why an `antigravity/<id>` model cannot run: no Google account.
+pub const NO_GOOGLE_ACCOUNT: &str = "no Google account for Antigravity models: add one in Accounts > Add Google account, or run `fast-harness accounts login --google`";
 
 /// The account pool of `home`: `accounts.json` and `usage.json`.
 pub fn open_pool(home: &Path) -> Result<AccountPool, String> {
@@ -60,6 +74,7 @@ impl Runtime {
             google,
             transport: Arc::new(UreqTransport::new()),
             provider: Arc::new(Anthropic::default()),
+            antigravity: Arc::new(Antigravity::default()),
         })
     }
 
@@ -83,14 +98,32 @@ impl Runtime {
         Ok(self.pool.clone())
     }
 
-    /// Agent parts for `cwd` with the current settings.
+    /// The Google accounts as a credential source; [`NO_GOOGLE_ACCOUNT`] when there is none.
+    pub fn google_auth(&self) -> Result<Arc<dyn AuthSource>, String> {
+        if self.google.status().is_empty() {
+            return Err(NO_GOOGLE_ACCOUNT.into());
+        }
+        Ok(self.google.clone())
+    }
+
+    /// The provider and credential source of `model`.
+    pub fn route(&self, model: &str) -> Result<Route, String> {
+        if provider_of(model) == ANTIGRAVITY {
+            return Ok((self.antigravity.clone(), self.google_auth()?));
+        }
+        Ok((self.provider.clone(), self.auth()?))
+    }
+
+    /// Agent parts for `cwd` with the current settings; the provider and the
+    /// credential follow `config.model` ([`Runtime::route`]). Subagents get a
+    /// copy of these parts.
     pub fn parts(&self, cwd: &Path) -> Result<AgentParts, String> {
-        let provider: Arc<dyn Provider> = self.provider.clone();
+        let (provider, auth) = self.route(&self.config.model)?;
         let transport: Arc<dyn Transport> = self.transport.clone();
         Ok(AgentParts {
             provider,
             transport,
-            auth: self.auth()?,
+            auth,
             config: self.config.clone(),
             system: prompt::system_prompt(cwd),
             cwd: cwd.to_path_buf(),
@@ -126,21 +159,29 @@ impl Runtime {
     }
 }
 
-// Live model catalog: the cache and `GET /v1/models` (`app/models.rs`).
+// Live model catalog: the caches and each provider's list (`app/models.rs`,
+// `app/ag_models.rs`).
+mod ag_models;
 mod models;
 
+pub use ag_models::{read_ag_cache, write_ag_cache, AG_CACHE_FILE, AG_CACHE_VERSION};
 pub use models::{read_cache, write_cache, ModelSource, CACHE_FILE, CACHE_VERSION};
 
 impl Runtime {
-    /// The model catalog with the credential `auth()` picks now. Cheap: take
-    /// a new one each time a picker opens, then call `fetch` off the UI thread.
+    /// The model catalog with the credentials `auth()` and `google_auth()`
+    /// pick now. Cheap: take a new one each time a picker opens, then call
+    /// `fetch` off the UI thread.
     pub fn models(&self) -> ModelSource {
         let transport: Arc<dyn Transport> = self.transport.clone();
-        ModelSource::new(
+        let source = ModelSource::new(
             self.home.clone(),
             self.auth(),
             transport,
             self.provider.clone(),
-        )
+        );
+        match self.google_auth() {
+            Ok(google) => source.with_google(google, self.antigravity.hub.clone()),
+            Err(_) => source,
+        }
     }
 }

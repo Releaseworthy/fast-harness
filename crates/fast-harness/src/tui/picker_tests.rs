@@ -107,8 +107,11 @@ fn ctrl_p_picks_a_model_and_fits_the_effort() {
     key(&mut ui, KeyCode::PageDown);
     key(&mut ui, KeyCode::PageUp);
     let index = ui.picker.as_ref().unwrap();
+    assert_eq!(index.items[0], (String::new(), "Claude".to_string()));
+    // Home and PageUp land past the "Claude" title row, on row 1.
+    assert_eq!(index.selected, 1);
     let target = index.items.iter().position(|i| i.0 == "claude-opus-4-5");
-    for _ in 0..target.unwrap() {
+    for _ in 1..target.unwrap() {
         key(&mut ui, KeyCode::Down);
     }
     let picked = key(&mut ui, KeyCode::Enter);
@@ -147,8 +150,14 @@ fn ctrl_e_lists_the_efforts_of_the_model_and_esc_closes() {
     assert_eq!(key(&mut ui, KeyCode::Esc), Action::None);
     assert!(ui.picker.is_none());
     assert_eq!(ui.screen, Screen::Chat);
-    assert_eq!(next_effort("claude-opus-4-5", Some("off")), "low");
-    assert_eq!(next_effort("claude-opus-5-5", Some("high")), "xhigh");
+    assert_eq!(
+        next_effort("claude-opus-4-5", Some("off")).as_deref(),
+        Some("low")
+    );
+    assert_eq!(
+        next_effort("claude-opus-5-5", Some("high")).as_deref(),
+        Some("xhigh")
+    );
     ui.running = true;
     ctrl(&mut ui, 'p');
     assert!(ui.picker.is_some(), "the picker opens while a turn runs");

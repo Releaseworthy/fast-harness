@@ -28,6 +28,8 @@ const HEIGHT: u32 = 760;
 /// The composer's effort dropdown (sidebar 260 + card edge 1 + side 16 + padding 12
 /// + model 200 + gap 8).
 const EFFORT_X: f32 = 551.0;
+/// The composer's model dropdown (200 wide, left of the effort one).
+const MODEL_X: f32 = 443.0;
 /// The page content starts under the title bar (40), the card edge (1) and the tabs (38).
 const PAGE_Y: f32 = 79.0;
 const EFFORT_Y: f32 = 690.0;
@@ -156,19 +158,43 @@ fn google_rows() -> Vec<crate::GoogleRow> {
         .collect()
 }
 
+/// Three Claude models, then three Antigravity ones (both picker groups in
+/// the eight rows the list shows).
+fn catalog() -> Vec<fast_harness_core::llm::anthropic::ModelInfo> {
+    use fast_harness_core::llm::antigravity::models::{to_info, CatalogEntry};
+    let mut list = fast_harness_core::llm::anthropic::builtin_models();
+    list.truncate(3);
+    for (id, name) in [
+        ("gemini-3-flash", "Gemini 3 Flash"),
+        ("gemini-3.1-pro", "Gemini 3.1 Pro"),
+        ("claude-sonnet-5-5", "Claude Sonnet 5.5"),
+    ] {
+        list.push(to_info(&CatalogEntry {
+            id: id.into(),
+            display_name: name.into(),
+            ..CatalogEntry::default()
+        }));
+    }
+    list
+}
+
 fn fill(ui: &MainWindow) {
     ui.set_messages(model(messages()));
     ui.set_side_rows(model(side_rows()));
     ui.set_accounts(model(claude_rows()));
     ui.set_google_accounts(model(google_rows()));
-    let models = crate::pickers::model_list(
-        &fast_harness_core::llm::anthropic::builtin_models(),
-        "claude-opus-5-5",
-    );
+    let models = crate::pickers::model_list(&catalog(), "claude-opus-5-5");
     ui.set_models(model(models.iter().map(|(_, l)| l.into()).collect()));
+    ui.set_model_headers(model(
+        models.iter().map(crate::pickers::is_header).collect(),
+    ));
+    ui.set_model_index(crate::pickers::model_index(&models, "claude-opus-5-5"));
     let efforts = crate::pickers::effort_list("claude-opus-5-5");
     ui.set_efforts(model(
-        efforts.iter().map(|s| SharedString::from(*s)).collect(),
+        efforts
+            .iter()
+            .map(|s| SharedString::from(s.as_str()))
+            .collect(),
     ));
     ui.set_effort_index(2);
     ui.set_trace_entries(model(trace_entries()));
@@ -251,6 +277,11 @@ fn shots() {
         std::fs::write(dir.join(format!("{}-composer.png", core.id)), png).expect("write png");
         key(&window, slint::platform::Key::Escape.into());
         ui.set_picker_note("".into());
+        // The composer's model dropdown: the Claude and Google Antigravity groups.
+        click(&window, MODEL_X, EFFORT_Y);
+        let png = shots_png::encode(WIDTH, HEIGHT, &render(&window));
+        std::fs::write(dir.join(format!("{}-models.png", core.id)), png).expect("write png");
+        key(&window, slint::platform::Key::Escape.into());
         ui.set_page("settings".into());
         // The theme dropdown opened by a click, then closed with Escape.
         click(&window, 601.0, PAGE_Y + 104.0);

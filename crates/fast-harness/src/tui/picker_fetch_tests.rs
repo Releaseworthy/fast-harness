@@ -75,10 +75,39 @@ fn a_fetched_list_updates_the_open_picker_and_keeps_the_highlight() {
     let picker = ui.picker.as_ref().unwrap();
     assert_eq!(picker.note, None);
     let ids: Vec<&str> = picker.items.iter().map(|i| i.0.as_str()).collect();
-    assert_eq!(ids, ["claude-new-9", "claude-opus-5-5", "claude-old-1"]);
+    assert_eq!(ids, ["", "claude-new-9", "claude-opus-5-5", "claude-old-1"]);
     assert_eq!(picker.items[picker.selected].0, "claude-opus-5-5");
-    assert!(picker.items[2].1.contains("deprecated"));
-    assert!(!picker.items[0].1.contains("deprecated"));
+    assert!(picker.items[3].1.contains("deprecated"));
+    assert!(!picker.items[1].1.contains("deprecated"));
+}
+
+#[test]
+fn both_providers_show_as_groups_and_titles_are_skipped() {
+    let mut ui = Ui::new("antigravity/gemini-pick".into(), None);
+    ctrl(&mut ui, 'p');
+    let mut list = live_list();
+    list.push(model(
+        "antigravity/gemini-pick",
+        "Gemini Pick",
+        &["low"],
+        false,
+    ));
+    run_fetch(&mut ui, Box::new(move || Ok(list)));
+    let picker = ui.picker.as_ref().unwrap();
+    let titles: Vec<&str> = picker
+        .items
+        .iter()
+        .filter(|i| i.0.is_empty())
+        .map(|i| i.1.as_str())
+        .collect();
+    assert_eq!(titles, ["Claude", "Google Antigravity"]);
+    assert_eq!(picker.items[picker.selected].0, "antigravity/gemini-pick");
+    press(&mut ui, KeyCode::Up);
+    let picker = ui.picker.as_ref().unwrap();
+    assert_eq!(picker.items[picker.selected].0, "claude-old-1");
+    press(&mut ui, KeyCode::Home);
+    let picker = ui.picker.as_ref().unwrap();
+    assert_eq!(picker.items[picker.selected].0, "claude-new-9");
 }
 
 #[test]
@@ -115,4 +144,8 @@ fn a_list_arriving_after_the_picker_closed_only_updates_the_catalog() {
     run_fetch(&mut ui, Box::new(|| Ok(live_list())));
     assert!(ui.picker.is_none());
     assert_eq!(ui.catalog.len(), 3);
+}
+
+fn press(ui: &mut Ui, code: KeyCode) {
+    ui.picker_key(&KeyEvent::new(code, KeyModifiers::NONE));
 }

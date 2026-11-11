@@ -77,16 +77,32 @@ export component ActionButton inherits Rectangle {
     if fs.has-focus: FocusRing { radius: Theme.radius-s; x: -3px; y: -3px; width: parent.width + 6px; height: parent.height + 6px; }
 }
 
-// One row of the dropdown list.
+// One row of the dropdown list. A `header` row is a group title: dim, not
+// pickable and never highlighted.
 component DropdownItem inherits Rectangle {
     in property <string> text;
     in property <bool> selected;
     in property <bool> highlighted;
+    in property <bool> header;
     callback picked();
     height: Theme.control-height;
     border-radius: Theme.radius-s - 2px;
-    background: root.highlighted || ta.has-hover ? Theme.hover : root.selected ? Theme.selection : transparent;
-    HorizontalLayout {
+    background: root.header ? transparent : root.highlighted || ta.has-hover ? Theme.hover : root.selected ? Theme.selection : transparent;
+    if root.header: Text {
+        x: Theme.space-s;
+        width: parent.width - 2 * Theme.space-s;
+        height: parent.height;
+        text: root.text;
+        color: Theme.dim;
+        font-size: Theme.font-s;
+        font-weight: 600;
+        overflow: elide;
+        vertical-alignment: center;
+        accessible-role: AccessibleRole.text;
+    }
+    if !root.header: HorizontalLayout {
+        width: parent.width;
+        height: parent.height;
         padding-left: Theme.space-s;
         padding-right: Theme.space-s;
         spacing: Theme.space-s;
@@ -106,7 +122,8 @@ component DropdownItem inherits Rectangle {
         }
     }
     ta := TouchArea {
-        mouse-cursor: pointer;
+        enabled: !root.header;
+        mouse-cursor: root.header ? default : pointer;
         clicked => { root.picked(); }
     }
 }
@@ -116,8 +133,11 @@ component DropdownItem inherits Rectangle {
 // Esc closes. `selected(index)` fires after a pick changed `current-index`;
 // `opened()` fires each time the list opens (mouse, keyboard or a screen
 // reader). While `refreshing`, a mark shows the list is being refetched.
+// `headers[i]` true makes row i a group title: Up and Down skip it and
+// neither a click nor Enter picks it (two titles are never adjacent).
 export component Dropdown inherits Rectangle {
     in property <[string]> model;
+    in property <[bool]> headers;
     in-out property <int> current-index: 0;
     in property <bool> enabled: true;
     in property <string> label;
@@ -141,7 +161,26 @@ export component Dropdown inherits Rectangle {
         popup.show();
         root.opened();
     }
+    function is-header(index: int) -> bool {
+        return index >= 0 && index < root.headers.length && root.headers[index];
+    }
+    // The pickable row `delta` rows from `from`, past one title; `from` at an edge.
+    function step(from: int, delta: int) -> int {
+        if root.is-header(from + delta) {
+            return root.stay-or(from, from + 2 * delta);
+        }
+        return root.stay-or(from, from + delta);
+    }
+    function stay-or(from: int, next: int) -> int {
+        if next < 0 || next >= root.model.length || root.is-header(next) {
+            return from;
+        }
+        return next;
+    }
     function pick(index: int) {
+        if root.is-header(index) {
+            return;
+        }
         popup.close();
         root.open = false;
         fs.focus();
@@ -152,9 +191,9 @@ export component Dropdown inherits Rectangle {
     }
     function list-keys(event: KeyEvent) -> EventResult {
         if event.text == Key.UpArrow {
-            root.highlight = max(0, root.highlight - 1);
+            root.highlight = root.step(root.highlight, -1);
         } else if event.text == Key.DownArrow {
-            root.highlight = min(root.model.length - 1, root.highlight + 1);
+            root.highlight = root.step(root.highlight, 1);
         } else if event.text == Key.Return || event.text == " " {
             root.pick(root.highlight);
         } else if event.text == Key.Escape {
@@ -265,6 +304,7 @@ export component Dropdown inherits Rectangle {
                     text: item;
                     selected: i == root.current-index;
                     highlighted: i == root.highlight;
+                    header: root.is-header(i);
                     picked => { root.pick(i); }
                 }
             }
