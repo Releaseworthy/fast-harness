@@ -1,19 +1,26 @@
-import { Button, ComboBox, StandardTableView, AboutSlint, Palette } from "std-widgets.slint";
-import { Theme } from "parts.slint";
+import { StandardTableView, AboutSlint } from "std-widgets.slint";
+import { Theme, Columns } from "parts.slint";
+import { ActionButton, Dropdown } from "widgets.slint";
 
 export component TracePage inherits Rectangle {
     in property <[[StandardListViewItem]]> rows;
     in property <string> message;
     callback refresh();
-    background: Palette.background;
+    background: Theme.bg;
     VerticalLayout {
-        padding: 16px;
-        spacing: 10px;
+        padding: Theme.space-xl;
+        spacing: Theme.space-m;
         HorizontalLayout {
-            spacing: 8px;
-            Text { text: "Trace: steps of this session"; font-size: 18px; vertical-alignment: center; }
+            spacing: Theme.space-s;
+            Text {
+                text: "Trace: steps of this session";
+                color: Theme.text;
+                font-size: Theme.font-l;
+                font-weight: 600;
+                vertical-alignment: center;
+            }
             Rectangle { horizontal-stretch: 1; }
-            Button { text: "Refresh"; clicked => { root.refresh(); } }
+            ActionButton { text: "Refresh"; clicked => { root.refresh(); } }
         }
         if root.message != "": Text { text: root.message; color: Theme.dim; wrap: word-wrap; }
         StandardTableView {
@@ -28,52 +35,85 @@ export component TracePage inherits Rectangle {
     }
 }
 
+// A labelled settings row: the name, a dropdown and a caption under it.
+component SettingRow {
+    in property <string> label;
+    in property <string> caption;
+    in property <[string]> model;
+    in-out property <int> current-index;
+    callback selected(int);
+    VerticalLayout {
+        spacing: Theme.space-xs + 2px;
+        Text {
+            text: root.label;
+            color: Theme.text;
+            font-size: Theme.font-m;
+            font-weight: 600;
+        }
+        Dropdown {
+            label: root.label;
+            model: root.model;
+            current-index <=> root.current-index;
+            selected(i) => { root.selected(i); }
+        }
+        if root.caption != "": Text {
+            text: root.caption;
+            color: Theme.dim;
+            font-size: Theme.font-s;
+            wrap: word-wrap;
+        }
+    }
+}
+
 export component SettingsPage inherits Rectangle {
+    in property <[string]> themes;
+    in-out property <int> theme-index;
     in property <[string]> models;
     in property <[string]> efforts;
     in-out property <int> model-index;
     in-out property <int> effort-index;
+    callback changed-theme(int);
     callback changed-settings(int, int);
-    background: Palette.background;
+    background: Theme.bg;
     VerticalLayout {
-        padding: 16px;
-        spacing: 10px;
+        padding-top: Theme.space-xl;
+        padding-left: Columns.side(root.width, 560px);
+        padding-right: Columns.side(root.width, 560px);
+        spacing: Theme.space-l + 4px;
         alignment: start;
-        Text { text: "Settings"; font-size: 18px; }
-        Text { text: "Model and effort apply to the next turn."; color: Theme.dim; }
-        HorizontalLayout {
-            spacing: 8px;
-            Text { text: "Model"; width: 70px; vertical-alignment: center; }
-            ComboBox {
-                model: root.models;
-                current-index <=> root.model-index;
-                width: 320px;
-                selected => { root.changed-settings(root.model-index, root.effort-index); }
-            }
-            Rectangle { horizontal-stretch: 1; }
+        Text { text: "Settings"; color: Theme.text; font-size: Theme.font-l; font-weight: 600; }
+        SettingRow {
+            label: "Theme";
+            caption: "Applies at once. The theme is saved to config.json.";
+            model: root.themes;
+            current-index <=> root.theme-index;
+            selected(i) => { root.changed-theme(i); }
         }
-        HorizontalLayout {
-            spacing: 8px;
-            Text { text: "Effort"; width: 70px; vertical-alignment: center; }
-            ComboBox {
-                model: root.efforts;
-                current-index <=> root.effort-index;
-                width: 320px;
-                selected => { root.changed-settings(root.model-index, root.effort-index); }
-            }
-            Rectangle { horizontal-stretch: 1; }
+        Rectangle { height: 1px; background: Theme.line; }
+        SettingRow {
+            label: "Model";
+            model: root.models;
+            current-index <=> root.model-index;
+            selected => { root.changed-settings(root.model-index, root.effort-index); }
+        }
+        SettingRow {
+            label: "Effort";
+            caption: "Model and effort apply to the next turn of this window.";
+            model: root.efforts;
+            current-index <=> root.effort-index;
+            selected => { root.changed-settings(root.model-index, root.effort-index); }
         }
     }
 }
 
 export component AboutPage inherits Rectangle {
     in property <string> version;
-    background: Palette.background;
+    background: Theme.bg;
     VerticalLayout {
-        padding: 16px;
-        spacing: 12px;
+        padding: Theme.space-xl;
+        spacing: Theme.space-m;
         alignment: start;
-        Text { text: "native-harness " + root.version; font-size: 18px; }
+        Text { text: "native-harness " + root.version; color: Theme.text; font-size: Theme.font-l; font-weight: 600; }
         Text { text: "A coding agent harness. The interface is made with Slint."; color: Theme.dim; }
         AboutSlint { }
     }

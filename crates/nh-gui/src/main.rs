@@ -11,6 +11,11 @@ mod format;
 mod mirror;
 mod rows;
 mod settings;
+#[cfg(test)]
+mod shots_png;
+#[cfg(test)]
+mod shots_tests;
+mod theme;
 mod turn;
 mod wire;
 
@@ -49,6 +54,7 @@ fn main() {
     let stop = Arc::new(AtomicBool::new(false));
     match Runtime::load() {
         Ok(rt) => {
+            theme::apply(&ui, nh_core::theme::by_id(&rt.config.theme));
             let (pool, http) = (rt.pool.clone(), rt.transport.clone());
             app::install(app::App::new(&ui, rt, working_dir()));
             wire::connect(&ui);
@@ -56,6 +62,7 @@ fn main() {
             accounts::start_poller(pool, http, stop.clone());
         }
         Err(err) => {
+            theme::apply(&ui, nh_core::theme::by_id(nh_core::theme::DEFAULT_THEME));
             ui.set_error_text(format!("Cannot load the settings: {err}").into());
             wire::connect_minimal(&ui);
         }

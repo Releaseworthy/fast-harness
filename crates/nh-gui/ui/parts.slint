@@ -1,20 +1,69 @@
-import { Palette } from "std-widgets.slint";
-
+// The colour roles and design tokens every view draws with. The Rust side
+// (src/theme.rs) copies a `nh_core::theme::Theme` into this global; the
+// defaults are the dark theme so a preview without Rust looks the same.
 export global Theme {
-    out property <brush> dim: Palette.foreground.transparentize(45%);
-    out property <brush> card: Palette.alternate-background;
-    out property <brush> line: Palette.border;
-    out property <color> red: #d9534f;
-    out property <color> amber: #e0a030;
-    out property <color> green: #4caf50;
-    out property <color> accent: Palette.accent-background;
+    in-out property <bool> dark: true;
+    // Window, transcript and page background.
+    in-out property <color> bg: #1b1d22;
+    // Sidebar, status bar, cards and the composer.
+    in-out property <color> surface: #23262c;
+    // Inputs, dropdowns and buttons at rest.
+    in-out property <color> raised: #2b2f36;
+    in-out property <color> hover: #323741;
+    in-out property <color> selection: #2e3a50;
+    in-out property <color> bubble: #283244;
+    in-out property <color> code: #262a31;
+    // Decorative separators only (no contrast requirement).
+    in-out property <color> line: #343944;
+    // Borders of inputs, dropdowns and buttons (3:1 against the backgrounds).
+    in-out property <color> border: #7b8390;
+    in-out property <color> text: #dde1e7;
+    in-out property <color> dim: #bcc3cd;
+    // Links, the focus ring, active markers and the primary button.
+    in-out property <color> accent: #93bdf8;
+    in-out property <color> on-accent: #0f1420;
+    in-out property <color> error: #f5ada5;
+    in-out property <color> warning: #ebc985;
+    in-out property <color> success: #9ad7a9;
+
+    // Radius, spacing and type scale.
+    out property <length> radius-s: 6px;
+    out property <length> radius-m: 8px;
+    out property <length> radius-l: 12px;
+    out property <length> space-xs: 4px;
+    out property <length> space-s: 8px;
+    out property <length> space-m: 12px;
+    out property <length> space-l: 16px;
+    out property <length> space-xl: 24px;
+    out property <length> font-xs: 11px;
+    out property <length> font-s: 12px;
+    out property <length> font-m: 14px;
+    out property <length> font-l: 18px;
+    // Controls are at least this tall (WCAG 2.5.8 asks for 24px).
+    out property <length> control-height: 32px;
+    // The chat and accounts columns never grow wider than this.
+    out property <length> column-width: 860px;
+    out property <string> mono: "Consolas";
+    // Marks such as ✕ ↻ ▸ are missing from Segoe UI; elsewhere the default font serves.
+    out property <string> symbols: "Segoe UI Symbol";
 }
 
-// A small clickable text.
+// Side padding that centres a column of at most `Theme.column-width`.
+export global Columns {
+    pure public function side(width: length, max-width: length) -> length {
+        return max(Theme.space-l, (width - max-width) / 2);
+    }
+}
+
+// A small clickable text (keyboard reachable through the accessibility
+// action; the pages also offer every action as a button).
 export component LinkText inherits Text {
     callback clicked();
-    color: Theme.dim;
-    font-size: 11px;
+    color: ta.has-hover ? Theme.accent : Theme.dim;
+    font-size: Theme.font-xs;
+    accessible-role: button;
+    accessible-label: self.text;
+    accessible-action-default => { root.clicked(); }
     ta := TouchArea {
         mouse-cursor: pointer;
         clicked => {
@@ -23,57 +72,77 @@ export component LinkText inherits Text {
     }
 }
 
-// A label, a bar filled to `value` (0 to 1) and a caption.
+// A label, a bar filled to `value` (0 to 1) and a caption. The fill colour
+// follows the level; the caption carries the number, so colour is never
+// the only cue (WCAG 1.4.1).
 export component UsageBar {
     in property <string> label;
     in property <float> value;
     in property <string> caption;
     in property <length> label-width: 22px;
-    min-height: 14px;
+    min-height: 16px;
+    accessible-role: progress-indicator;
+    accessible-label: root.label;
+    accessible-value: root.caption;
     HorizontalLayout {
-        spacing: 6px;
+        spacing: Theme.space-s;
         Text {
             text: root.label;
             width: root.label-width;
-            font-size: 11px;
+            font-size: Theme.font-xs;
             color: Theme.dim;
             vertical-alignment: center;
         }
-        track := Rectangle {
+        Rectangle {
             horizontal-stretch: 1;
-            height: 6px;
-            y: (parent.height - self.height) / 2;
-            border-radius: 3px;
-            background: Theme.line;
             Rectangle {
-                x: 0;
-                width: parent.width * max(0, min(1, root.value));
-                height: parent.height;
+                y: (parent.height - self.height) / 2;
+                height: 6px;
                 border-radius: 3px;
-                background: root.value >= 0.9 ? Theme.red : root.value >= 0.7 ? Theme.amber : Theme.green;
+                background: Theme.line;
+                Rectangle {
+                    x: 0;
+                    width: parent.width * max(0, min(1, root.value));
+                    height: parent.height;
+                    border-radius: 3px;
+                    background: root.value >= 0.9 ? Theme.error : root.value >= 0.7 ? Theme.warning : Theme.success;
+                }
             }
         }
         Text {
             text: root.caption;
-            font-size: 11px;
+            font-size: Theme.font-xs;
             color: Theme.dim;
             vertical-alignment: center;
         }
     }
 }
 
+// A small rounded tag. `strong` uses the accent colours.
 export component Badge inherits Rectangle {
     in property <string> text;
-    in property <brush> tint: Theme.line;
+    in property <bool> strong;
     border-radius: 4px;
-    background: self.tint;
+    background: root.strong ? Theme.accent : Theme.raised;
+    border-width: root.strong ? 0px : 1px;
+    border-color: Theme.line;
     HorizontalLayout {
         padding-left: 6px;
         padding-right: 6px;
+        padding-top: 1px;
+        padding-bottom: 1px;
         Text {
             text: root.text;
-            font-size: 11px;
+            font-size: Theme.font-xs;
+            color: root.strong ? Theme.on-accent : Theme.dim;
             vertical-alignment: center;
         }
     }
+}
+
+// A status mark (✕, ↻, ⇄, ℹ, ▸) drawn with the symbol font.
+export component Mark inherits Text {
+    font-family: Theme.symbols;
+    vertical-alignment: center;
+    accessible-role: none;
 }

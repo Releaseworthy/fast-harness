@@ -1,4 +1,4 @@
-//! Settings: model and effort for the next turn (kept for this window only).
+//! Settings: the theme (saved), model and effort for the next turn (kept for\n//! this window only).
 
 use nh_core::llm::anthropic::builtin_models;
 use slint::{ModelRc, SharedString, VecModel};
@@ -27,6 +27,7 @@ pub fn effort_index(effort: Option<&str>) -> usize {
 }
 
 pub fn fill(app: &mut App, ui: &MainWindow) {
+    crate::theme::fill(ui, &app.rt.config.theme);
     let list = model_list(&app.rt.config.model);
     let labels: Vec<SharedString> = list.iter().map(|(_, label)| label.into()).collect();
     let index = list

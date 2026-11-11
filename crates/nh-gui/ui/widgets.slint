@@ -1,0 +1,365 @@
+// Themed controls that replace the std-widgets ones, so every colour comes
+// from the `Theme` global (the Fluent widgets take the OS accent colour).
+import { Theme } from "parts.slint";
+
+// The 2px focus ring; users place it 1px outside the control (WCAG 2.4.7 and 2.4.13).
+export component FocusRing inherits Rectangle {
+    in property <length> radius: Theme.radius-s;
+    border-radius: root.radius + 3px;
+    border-width: 2px;
+    border-color: Theme.accent;
+}
+
+// A push button. `variant`: "primary" (accent), "secondary" (default) or
+// "ghost" (no fill until hovered). Enter or Space activates it.
+export component ActionButton inherits Rectangle {
+    in property <string> text;
+    in property <string> variant: "secondary";
+    in property <bool> enabled: true;
+    out property <bool> has-focus: fs.has-focus;
+    callback clicked();
+    property <bool> primary: root.variant == "primary";
+    property <bool> ghost: root.variant == "ghost";
+    min-height: Theme.control-height;
+    min-width: Theme.control-height;
+    border-radius: Theme.radius-s;
+    border-width: root.ghost || root.primary ? 0px : 1px;
+    border-color: root.enabled ? Theme.border : Theme.line;
+    background: !root.enabled ? (root.ghost ? transparent : Theme.surface)
+        : root.primary ? (ta.pressed ? Theme.accent.darker(0.15) : ta.has-hover ? Theme.accent.brighter(0.06) : Theme.accent)
+        : ta.pressed ? Theme.selection : ta.has-hover ? Theme.hover
+        : root.ghost ? transparent : Theme.raised;
+    opacity: root.enabled ? 1 : 0.6;
+    forward-focus: fs;
+    accessible-role: button;
+    accessible-label: root.text;
+    accessible-enabled: root.enabled;
+    accessible-action-default => { if root.enabled { root.clicked(); } }
+    HorizontalLayout {
+        padding-left: Theme.space-l - 2px;
+        padding-right: Theme.space-l - 2px;
+        alignment: center;
+        Text {
+            text: root.text;
+            font-size: Theme.font-m;
+            font-weight: root.primary ? 600 : 500;
+            color: !root.enabled ? Theme.dim : root.primary ? Theme.on-accent : Theme.text;
+            vertical-alignment: center;
+            accessible-role: none;
+        }
+    }
+    ta := TouchArea {
+        enabled: root.enabled;
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+    fs := FocusScope {
+        enabled: root.enabled;
+        focus-on-click: false;
+        key-pressed(event) => {
+            if (event.text == Key.Return || event.text == " ") {
+                root.clicked();
+                return accept;
+            }
+            return reject;
+        }
+    }
+    if fs.has-focus: FocusRing { radius: Theme.radius-s; x: -3px; y: -3px; width: parent.width + 6px; height: parent.height + 6px; }
+}
+
+// One row of the dropdown list.
+component DropdownItem inherits Rectangle {
+    in property <string> text;
+    in property <bool> selected;
+    in property <bool> highlighted;
+    callback picked();
+    height: Theme.control-height;
+    border-radius: Theme.radius-s - 2px;
+    background: root.highlighted || ta.has-hover ? Theme.hover : root.selected ? Theme.selection : transparent;
+    HorizontalLayout {
+        padding-left: Theme.space-s;
+        padding-right: Theme.space-s;
+        spacing: Theme.space-s;
+        Text {
+            width: 14px;
+            text: root.selected ? "✓" : "";
+            color: Theme.accent;
+            vertical-alignment: center;
+        }
+        Text {
+            text: root.text;
+            color: Theme.text;
+            font-size: Theme.font-m;
+            font-weight: root.selected ? 600 : 400;
+            overflow: elide;
+            vertical-alignment: center;
+            horizontal-stretch: 1;
+        }
+    }
+    ta := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.picked(); }
+    }
+}
+
+// A dropdown: the current label and a chevron; a list in a popup.
+// Keyboard: Enter, Space or Down open it; Up and Down move; Enter picks;
+// Esc closes. `selected(index)` fires after a pick changed `current-index`.
+export component Dropdown inherits Rectangle {
+    in property <[string]> model;
+    in-out property <int> current-index: 0;
+    in property <bool> enabled: true;
+    in property <string> label;
+    out property <string> current-value: root.current-index >= 0 && root.current-index < root.model.length ? root.model[root.current-index] : "";
+    out property <bool> has-focus: fs.has-focus;
+    callback selected(int);
+    in-out property <int> highlight: -1;
+    property <length> list-height: min(8, max(1, root.model.length)) * Theme.control-height + 8px;
+    property <bool> open;
+
+    function show-list() {
+        root.highlight = root.current-index;
+        root.open = true;
+        popup.show();
+    }
+    function pick(index: int) {
+        popup.close();
+        root.open = false;
+        fs.focus();
+        if index >= 0 && index < root.model.length && index != root.current-index {
+            root.current-index = index;
+            root.selected(index);
+        }
+    }
+    function list-keys(event: KeyEvent) -> EventResult {
+        if event.text == Key.UpArrow {
+            root.highlight = max(0, root.highlight - 1);
+        } else if event.text == Key.DownArrow {
+            root.highlight = min(root.model.length - 1, root.highlight + 1);
+        } else if event.text == Key.Return || event.text == " " {
+            root.pick(root.highlight);
+        } else if event.text == Key.Escape {
+            popup.close();
+            root.open = false;
+            fs.focus();
+        } else {
+            return reject;
+        }
+        return accept;
+    }
+
+    min-height: Theme.control-height;
+    min-width: 120px;
+    border-radius: Theme.radius-s;
+    border-width: 1px;
+    border-color: root.enabled ? Theme.border : Theme.line;
+    background: ta.has-hover && root.enabled ? Theme.hover : Theme.raised;
+    opacity: root.enabled ? 1 : 0.6;
+    forward-focus: fs;
+    accessible-role: combobox;
+    accessible-label: root.label;
+    accessible-value: root.current-value;
+    accessible-enabled: root.enabled;
+    accessible-expanded: root.open;
+    accessible-action-expand => { root.show-list(); }
+    accessible-action-default => { root.show-list(); }
+    HorizontalLayout {
+        padding-left: Theme.space-m;
+        padding-right: Theme.space-m - 2px;
+        spacing: Theme.space-s;
+        Text {
+            text: root.current-value;
+            color: Theme.text;
+            font-size: Theme.font-m;
+            overflow: elide;
+            vertical-alignment: center;
+            horizontal-stretch: 1;
+            accessible-role: none;
+        }
+        VerticalLayout {
+            alignment: center;
+            Path {
+                width: 10px;
+                height: 6px;
+                viewbox-width: 10;
+                viewbox-height: 6;
+                commands: root.open ? "M 1 5 L 5 1 L 9 5" : "M 1 1 L 5 5 L 9 1";
+                stroke: Theme.dim;
+                stroke-width: 1.5px;
+                accessible-role: none;
+            }
+        }
+    }
+    ta := TouchArea {
+        enabled: root.enabled;
+        mouse-cursor: pointer;
+        clicked => { root.show-list(); }
+    }
+    fs := FocusScope {
+        enabled: root.enabled;
+        key-pressed(event) => {
+            if event.text == Key.Return || event.text == " " || event.text == Key.DownArrow {
+                root.show-list();
+                return accept;
+            }
+            return reject;
+        }
+    }
+    if fs.has-focus: FocusRing { radius: Theme.radius-s; x: -3px; y: -3px; width: parent.width + 6px; height: parent.height + 6px; }
+    popup := PopupWindow {
+        x: 0;
+        y: root.height + 4px;
+        width: root.width;
+        height: root.list-height;
+        close-policy: close-on-click-outside;
+        forward-focus: list-fs;
+        list-fs := FocusScope {
+            key-pressed(event) => { return root.list-keys(event); }
+        }
+        Rectangle {
+            background: Theme.surface;
+            border-radius: Theme.radius-m;
+            border-width: 1px;
+            border-color: Theme.border;
+            drop-shadow-blur: 12px;
+            drop-shadow-offset-y: 4px;
+            drop-shadow-color: #00000040;
+            Flickable {
+                x: 4px;
+                y: 4px;
+                width: parent.width - 8px;
+                height: parent.height - 8px;
+                content-height: root.model.length * Theme.control-height;
+                content-y: -max(0, root.highlight - 7) * Theme.control-height;
+                for item[i] in root.model: DropdownItem {
+                    y: i * Theme.control-height;
+                    width: parent.width;
+                    text: item;
+                    selected: i == root.current-index;
+                    highlighted: i == root.highlight;
+                    picked => { root.pick(i); }
+                }
+            }
+        }
+    }
+}
+
+// A multi-line text area: a TextInput in a Flickable that follows the
+// cursor (as the std TextEdit does), a placeholder and a focus state the
+// parent draws (`has-focus`). `key-pressed` runs before the input sees the
+// key, so a parent can take Enter and leave Shift+Enter to the input.
+export component TextArea {
+    in-out property <string> text <=> input.text;
+    in property <string> placeholder;
+    in property <length> min-lines-height: 44px;
+    in property <length> grow-limit: 200px;
+    in property <length> font-size: Theme.font-m;
+    out property <bool> has-focus: input.has-focus;
+    callback key-pressed(KeyEvent) -> EventResult;
+    callback edited(string);
+    public function select-all() { input.select-all(); }
+    forward-focus: input;
+    preferred-height: max(root.min-lines-height, min(root.grow-limit, input.preferred-height));
+    min-height: root.min-lines-height;
+    accessible-role: text-input;
+    accessible-label: root.placeholder;
+    accessible-value: root.text;
+    flick := Flickable {
+        content-height: max(self.height, input.preferred-height);
+        input := TextInput {
+            width: flick.width;
+            height: max(flick.height, self.preferred-height);
+            single-line: false;
+            wrap: word-wrap;
+            font-size: root.font-size;
+            color: Theme.text;
+            selection-background-color: Theme.selection;
+            selection-foreground-color: Theme.text;
+            page-height: flick.height;
+            accessible-role: none;
+            key-pressed(event) => { return root.key-pressed(event); }
+            edited => { root.edited(self.text); }
+            cursor-position-changed(cpos) => {
+                if cpos.y + flick.content-y < 0px {
+                    flick.content-y = -cpos.y;
+                } else if cpos.y + flick.content-y > flick.height - 20px {
+                    flick.content-y = min(0px, flick.height - cpos.y - 20px);
+                }
+            }
+        }
+    }
+    if root.text == "" && input.preedit-text == "": Text {
+        x: 0;
+        y: 0;
+        width: root.width;
+        text: root.placeholder;
+        color: Theme.dim;
+        font-size: root.font-size;
+        vertical-alignment: top;
+        overflow: elide;
+        accessible-role: none;
+    }
+}
+
+// A single-line input with a border and a focus ring. `password` hides
+// the text without the reveal button of the std LineEdit.
+export component KeyInput inherits Rectangle {
+    in-out property <string> text <=> input.text;
+    in property <string> placeholder;
+    in property <bool> password;
+    in property <bool> read-only;
+    out property <bool> has-focus: input.has-focus;
+    callback accepted(string);
+    public function select-all() { input.select-all(); }
+    min-height: Theme.control-height;
+    min-width: 80px;
+    border-radius: Theme.radius-s;
+    border-width: 1px;
+    border-color: Theme.border;
+    background: root.read-only ? Theme.surface : Theme.raised;
+    forward-focus: input;
+    input := TextInput {
+        x: Theme.space-m;
+        width: parent.width - 2 * Theme.space-m;
+        height: parent.height;
+        vertical-alignment: center;
+        single-line: true;
+        read-only: root.read-only;
+        input-type: root.password ? InputType.password : InputType.text;
+        font-size: Theme.font-m;
+        color: Theme.text;
+        selection-background-color: Theme.selection;
+        selection-foreground-color: Theme.text;
+        accessible-label: root.placeholder;
+        accepted => { root.accepted(self.text); }
+    }
+    if root.text == "" && input.preedit-text == "": Text {
+        x: Theme.space-m;
+        height: parent.height;
+        vertical-alignment: center;
+        text: root.placeholder;
+        color: Theme.dim;
+        font-size: Theme.font-m;
+        accessible-role: none;
+    }
+    if input.has-focus: FocusRing { radius: Theme.radius-s; x: -3px; y: -3px; width: parent.width + 6px; height: parent.height + 6px; }
+}
+
+// Three dots that pulse in turn while work runs.
+export component BusySpinner {
+    in property <string> label: "Running";
+    width: 22px;
+    height: 14px;
+    accessible-role: progress-indicator;
+    accessible-label: root.label;
+    property <angle> phase: (animation-tick() / 1ms) * 0.36deg;
+    for i in 3: Rectangle {
+        x: i * 8px;
+        y: (parent.height - self.height) / 2;
+        width: 6px;
+        height: 6px;
+        border-radius: 3px;
+        background: Theme.accent;
+        opacity: 0.35 + 0.65 * (0.5 + 0.5 * Math.sin(root.phase - i * 60deg));
+    }
+}
