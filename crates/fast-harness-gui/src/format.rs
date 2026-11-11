@@ -78,20 +78,6 @@ pub fn ago(then_ms: u64, now_ms: u64) -> String {
     }
 }
 
-/// At most `max` characters of `text`, with a marker when cut.
-pub fn shorten(text: &str, max: usize) -> String {
-    match text.char_indices().nth(max) {
-        None => text.to_string(),
-        Some((cut, _)) => {
-            let rest = text[cut..].chars().count();
-            format!(
-                "{}\n... {rest} more characters (Copy takes all)",
-                &text[..cut]
-            )
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -140,12 +126,5 @@ mod tests {
         assert_eq!(ago(0, 5 * 60_000), "5 min ago");
         assert_eq!(ago(0, 3 * 3_600_000), "3 h ago");
         assert_eq!(ago(10, 0), "just now");
-    }
-
-    #[test]
-    fn shorten_cuts_on_characters() {
-        assert_eq!(shorten("abc", 5), "abc");
-        let cut = shorten("ééééé", 2);
-        assert!(cut.starts_with("éé\n... 3 more"));
     }
 }

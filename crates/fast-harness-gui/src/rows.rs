@@ -7,28 +7,30 @@ use fast_harness_core::session::SessionSummary;
 use fast_harness_core::view::{Item, NoteKind};
 use slint::{SharedString, StyledText};
 
-use crate::format::{ago, duration, fraction, shorten, tokens, window_caption};
+use crate::format::{ago, duration, fraction, tokens, window_caption};
+use crate::trace_rows::expanded;
 use crate::{AccountRow, MsgRow, SessionRow};
-
-/// Tool output shown in a card; Copy still takes all of it.
-pub const OUTPUT_CHARS: usize = 20_000;
 
 /// Assistant text as styled text; plain text when the markdown is refused.
 pub fn markdown(text: &str) -> StyledText {
     StyledText::from_markdown(text).unwrap_or_else(|_| StyledText::from_plain_text(text))
 }
 
+/// Every drawn text goes through [xpanded]: the software renderer lays a
+/// Text out in `i16` pixels, so a longer one draws its lines over each other
+/// (`trace_rows::EXPANDED_LINES`). Copy takes the whole `text`.
 pub fn msg_row(item: &Item) -> MsgRow {
     let row = |kind: &str, text: &str| MsgRow {
         kind: kind.into(),
         text: text.into(),
+        shown: expanded(text).into(),
         ..MsgRow::default()
     };
     match item {
         Item::User { text } => row("user", text),
         Item::Assistant { text, thinking, .. } => MsgRow {
-            body: markdown(text),
-            thinking: thinking.into(),
+            body: markdown(&expanded(text)),
+            thinking: expanded(thinking).into(),
             ..row("assistant", text)
         },
         Item::Tool {
@@ -40,7 +42,7 @@ pub fn msg_row(item: &Item) -> MsgRow {
         } => MsgRow {
             title: name.into(),
             summary: summary.into(),
-            output: shorten(output.as_deref().unwrap_or(""), OUTPUT_CHARS).into(),
+            output: expanded(output.as_deref().unwrap_or("")).into(),
             running: output.is_none(),
             error: *is_error,
             ..row("tool", output.as_deref().unwrap_or(""))
