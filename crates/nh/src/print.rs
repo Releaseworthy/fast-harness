@@ -1,20 +1,14 @@
 //! Print mode: one turn, text deltas on stdout, one-line notes on stderr.
 
 use std::io::Write;
-use std::path::Path;
 use std::process::ExitCode;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
 
-use nh_core::agent::{prompt, Agent, AgentParts, Conversation};
-use nh_core::config::Config;
 use nh_core::events::{AgentEvent, TurnOutcome};
-use nh_core::llm::anthropic::Anthropic;
-use nh_core::net::UreqTransport;
 use nh_core::{platform, session};
 
 use crate::args::PrintArgs;
-use crate::auth_choice::auth_source;
+use crate::auth_choice::runtime;
 
 static CANCEL: AtomicBool = AtomicBool::new(false);
 
@@ -29,26 +23,22 @@ fn on_ctrl_c() {
 const NOTE_CHARS: usize = 120;
 
 pub fn run(args: PrintArgs) -> Result<ExitCode, String> {
-    let home = crate::home()?;
+    let mut rt = runtime()?;
     let cwd = crate::work_dir(args.cwd.clone())?;
-    let mut config = Config::load(&home)?;
     if let Some(model) = &args.model {
-        config.model = model.clone();
+        rt.config.model = model.clone();
     }
     if let Some(effort) = &args.effort {
-        config.set_effort(effort);
+        rt.config.set_effort(effort);
     }
-    let auth = auth_source()?;
-    let mut conv = open(&home, &cwd, &args)?;
-    let parts = AgentParts {
-        provider: Arc::new(Anthropic::default()),
-        transport: Arc::new(UreqTransport::new()),
-        auth,
-        config,
-        system: prompt::system_prompt(&cwd),
-        cwd,
-    };
-    let agent = Agent::with_subagent(parts, &home, &conv.id);
+    if args.continue_latest && args.resume.is_none() {
+        let latest = session::latest(&rt.home, &cwd).map_err(|err| format!("sessions: {err}"))?;
+        if latest.is_none() {
+            eprintln!("[note] no session to continue; starting a new one");
+        }
+    }
+    let mut conv = rt.open_conversation(&cwd, args.resume.as_deref(), args.continue_latest)?;
+    let agent = rt.agent(&cwd, &conv)?;
     if let Err(err) = platform::on_interrupt(on_ctrl_c) {
         eprintln!("[note] Ctrl+C will not cancel cleanly: {err}");
     }
@@ -60,26 +50,6 @@ pub fn run(args: PrintArgs) -> Result<ExitCode, String> {
         printer.event(event)
     });
     Ok(exit_code(outcome))
-}
-
-fn open(home: &Path, cwd: &Path, args: &PrintArgs) -> Result<Conversation, String> {
-    let id = match (&args.resume, args.continue_latest) {
-        (Some(id), _) => Some(id.clone()),
-        (None, true) => {
-            let latest = session::latest(home, cwd).map_err(|err| format!("sessions: {err}"))?;
-            if latest.is_none() {
-                eprintln!("[note] no session to continue; starting a new one");
-            }
-            latest.map(|summary| summary.id)
-        }
-        (None, false) => None,
-    };
-    match id {
-        Some(id) => {
-            Conversation::resume(home, cwd, &id).map_err(|err| format!("session {id}: {err}"))
-        }
-        None => Conversation::create(home, cwd, None).map_err(|err| format!("new session: {err}")),
-    }
 }
 
 fn exit_code(outcome: TurnOutcome) -> ExitCode {

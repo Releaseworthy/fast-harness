@@ -13,11 +13,52 @@ Usage:
   nh sessions [--cwd DIR]          List the sessions of the directory, newest first.
   nh trace [ID|latest] [--json] [--cwd DIR]
       One row per step of a session (default latest); --json prints the raw events.
+  nh accounts [list]               Accounts with their 5-hour and 7-day usage (* = active).
+  nh accounts login [--no-browser] Sign in with a Claude account in the browser.
+  nh accounts import               Add the claude-switch accounts of DSH (read-only, linked).
+  nh accounts use ID|EMAIL         Make an account the active one.
+  nh accounts remove ID|EMAIL      Remove an account from nh.
+  nh accounts add-key [LABEL]      Add an Anthropic API key (read from stdin).
+  nh accounts usage                Read the usage of every account now.
   nh --version                     Print the version.
   nh help                          Print this text.
 
-Credentials: ANTHROPIC_API_KEY (API key) or NH_OAUTH_TOKEN (Claude subscription token).
+Credentials: ANTHROPIC_API_KEY or NH_OAUTH_TOKEN when set, else the accounts of `nh accounts`
+(switched automatically on rate limits).
 Settings: <NH_HOME or ~/.nh>/config.json; NH_MODEL and NH_EFFORT override it.";
+
+#[derive(Debug, PartialEq)]
+pub enum AccountsAction {
+    List,
+    Login { browser: bool },
+    Import,
+    Use(String),
+    Remove(String),
+    AddKey { label: Option<String> },
+    Usage,
+}
+
+const ACCOUNTS_USAGE: &str =
+    "usage: nh accounts [list | login [--no-browser] | import | use ID | remove ID | add-key [LABEL] | usage]";
+
+fn accounts_action(rest: &[String], no_browser: bool) -> Result<AccountsAction, String> {
+    if rest.len() > 2 {
+        return Err(ACCOUNTS_USAGE.into());
+    }
+    let arg = rest.get(1).cloned();
+    Ok(match (rest.first().map(String::as_str), arg) {
+        (None | Some("list"), None) => AccountsAction::List,
+        (Some("login"), None) => AccountsAction::Login {
+            browser: !no_browser,
+        },
+        (Some("import"), None) => AccountsAction::Import,
+        (Some("use"), Some(id)) => AccountsAction::Use(id),
+        (Some("remove"), Some(id)) => AccountsAction::Remove(id),
+        (Some("add-key"), label) => AccountsAction::AddKey { label },
+        (Some("usage"), None) => AccountsAction::Usage,
+        _ => return Err(ACCOUNTS_USAGE.into()),
+    })
+}
 
 #[derive(Debug, Default, PartialEq)]
 pub struct PrintArgs {
@@ -40,6 +81,7 @@ pub enum Command {
         json: bool,
         cwd: Option<PathBuf>,
     },
+    Accounts(AccountsAction),
     Version,
     Help,
 }
@@ -49,6 +91,7 @@ struct Opts {
     print: PrintArgs,
     prompt: Option<String>,
     json: bool,
+    no_browser: bool,
     help: bool,
     version: bool,
     positional: Vec<String>,
@@ -70,6 +113,7 @@ fn read_opts(args: Vec<String>) -> Result<Opts, String> {
             "--cwd" => opts.print.cwd = Some(PathBuf::from(value(&mut args, &arg)?)),
             "-c" | "--continue" => opts.print.continue_latest = true,
             "--json" => opts.json = true,
+            "--no-browser" => opts.no_browser = true,
             "-h" | "--help" => opts.help = true,
             "-V" | "--version" => opts.version = true,
             flag if flag.starts_with('-') && flag.len() > 1 => {
@@ -94,6 +138,10 @@ pub fn parse(args: Vec<String>) -> Result<Command, String> {
     let cwd = opts.print.cwd.clone();
     match first {
         Some("sessions") if opts.positional.len() == 1 => return Ok(Command::Sessions { cwd }),
+        Some("accounts") => {
+            let action = accounts_action(&opts.positional[1..], opts.no_browser)?;
+            return Ok(Command::Accounts(action));
+        }
         Some("trace") if opts.positional.len() <= 2 => {
             let id = opts.positional.get(1).cloned();
             let json = opts.json;
@@ -155,5 +203,36 @@ mod tests {
         assert!(parse_str("--bogus").is_err());
         assert!(parse_str("frob").is_err());
         assert!(parse_str("-p x -c --resume y").is_err());
+    }
+
+    #[test]
+    fn parses_accounts() {
+        let accounts = |line: &str| match parse_str(line) {
+            Ok(Command::Accounts(action)) => Ok(action),
+            Ok(other) => panic!("not accounts: {other:?}"),
+            Err(err) => Err(err),
+        };
+        assert_eq!(accounts("accounts").unwrap(), AccountsAction::List);
+        assert_eq!(accounts("accounts list").unwrap(), AccountsAction::List);
+        let login = accounts("accounts login --no-browser").unwrap();
+        assert_eq!(login, AccountsAction::Login { browser: false });
+        assert_eq!(accounts("accounts import").unwrap(), AccountsAction::Import);
+        assert_eq!(
+            accounts("accounts use u-1").unwrap(),
+            AccountsAction::Use("u-1".into())
+        );
+        let remove = accounts("accounts remove a@b.c").unwrap();
+        assert_eq!(remove, AccountsAction::Remove("a@b.c".into()));
+        let key = accounts("accounts add-key work").unwrap();
+        assert_eq!(
+            key,
+            AccountsAction::AddKey {
+                label: Some("work".into())
+            }
+        );
+        assert_eq!(accounts("accounts usage").unwrap(), AccountsAction::Usage);
+        assert!(accounts("accounts use").is_err());
+        assert!(accounts("accounts frob").is_err());
+        assert!(accounts("accounts use a b").is_err());
     }
 }

@@ -1,5 +1,6 @@
 //! `nh`: command line front end of the native harness.
 
+mod accounts_cmd;
 mod args;
 mod auth_choice;
 mod info;
@@ -29,6 +30,7 @@ fn main() -> ExitCode {
         }
         Command::Sessions { cwd } => info::sessions(cwd),
         Command::Trace { id, json, cwd } => info::trace(id, json, cwd),
+        Command::Accounts(action) => accounts_cmd::run(action),
         Command::Print(print_args) => print::run(print_args),
     };
     result.unwrap_or_else(|message| {
