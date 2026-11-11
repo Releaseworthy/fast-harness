@@ -1,0 +1,154 @@
+// The main panel's frame: the tab strip at the top, the error banner and
+// the status bar at the bottom.
+import { Theme, Mark } from "parts.slint";
+import { Icons } from "icons.slint";
+import { ActionButton, IconButton } from "widgets.slint";
+
+// One tab: an icon and a word. The selected tab reads in the text colour,
+// bold, with a 2px accent underline (never colour alone).
+component Tab inherits Rectangle {
+    in property <string> icon;
+    in property <string> text;
+    in property <bool> selected;
+    in property <bool> closable;
+    callback clicked();
+    callback close();
+    width: row.preferred-width;
+    border-radius: Theme.radius-s;
+    background: ta.has-hover && !root.selected ? Theme.hover : transparent;
+    accessible-role: tab;
+    accessible-label: root.text;
+    accessible-item-selected: root.selected;
+    accessible-action-default => { root.clicked(); }
+    ta := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+    row := HorizontalLayout {
+        padding-left: Theme.space-m;
+        padding-right: root.closable ? Theme.space-xs : Theme.space-m;
+        spacing: Theme.space-s;
+        Mark {
+            text: root.icon;
+            font-size: Theme.font-m;
+            color: root.selected ? Theme.text : Theme.dim;
+        }
+        Text {
+            text: root.text;
+            font-size: Theme.font-s;
+            font-weight: root.selected ? 600 : 400;
+            color: root.selected ? Theme.text : Theme.dim;
+            vertical-alignment: center;
+            accessible-role: none;
+        }
+        if root.closable: VerticalLayout {
+            alignment: center;
+            IconButton {
+                width: 24px;
+                height: 24px;
+                icon: Icons.close;
+                icon-size: Theme.font-s;
+                label: "Close " + root.text;
+                clicked => { root.close(); }
+            }
+        }
+    }
+    if root.selected: Rectangle {
+        x: Theme.space-s;
+        y: parent.height - 2px;
+        width: parent.width - 2 * Theme.space-s;
+        height: 2px;
+        border-radius: 1px;
+        background: Theme.accent;
+    }
+}
+
+// Chat and Trace; while Settings, About or Accounts is open, a third tab
+// shows it, and its close button returns to Chat.
+export component TabStrip inherits Rectangle {
+    in property <string> page;
+    callback open-page(string);
+    property <bool> extra: root.page == "settings" || root.page == "about" || root.page == "accounts";
+    height: 38px;
+    accessible-role: tab-list;
+    Rectangle { y: parent.height - 1px; height: 1px; background: Theme.line; }
+    HorizontalLayout {
+        padding-left: Theme.space-s;
+        padding-bottom: 1px;
+        spacing: Theme.space-xs;
+        alignment: start;
+        Tab {
+            icon: Icons.comment-discussion;
+            text: "Chat";
+            selected: root.page == "chat";
+            clicked => { root.open-page("chat"); }
+        }
+        Tab {
+            icon: Icons.pulse;
+            text: "Trace";
+            selected: root.page == "trace";
+            clicked => { root.open-page("trace"); }
+        }
+        if root.extra: Tab {
+            icon: root.page == "settings" ? Icons.settings-gear : root.page == "about" ? Icons.info : Icons.account;
+            text: root.page == "settings" ? "Settings" : root.page == "about" ? "About" : "Accounts";
+            selected: true;
+            closable: true;
+            close => { root.open-page("chat"); }
+        }
+    }
+}
+
+export component StatusBar inherits Rectangle {
+    in property <string> state;
+    in property <string> model;
+    in property <string> account;
+    in property <string> tokens;
+    in property <string> timing;
+    height: 26px;
+    background: Theme.surface;
+    Rectangle { y: 0; height: 1px; background: Theme.line; }
+    HorizontalLayout {
+        padding-left: Theme.space-m;
+        padding-right: Theme.space-m;
+        spacing: Theme.space-l;
+        Text { text: root.state; font-size: Theme.font-xs; color: Theme.text; vertical-alignment: center; }
+        Text { text: root.model; font-size: Theme.font-xs; color: Theme.dim; vertical-alignment: center; }
+        Text { text: root.account; font-size: Theme.font-xs; color: Theme.dim; vertical-alignment: center; overflow: elide; }
+        Rectangle { horizontal-stretch: 1; }
+        Text { text: root.tokens; font-size: Theme.font-xs; color: Theme.dim; vertical-alignment: center; }
+        Text { text: root.timing; font-size: Theme.font-xs; color: Theme.dim; vertical-alignment: center; }
+    }
+}
+
+// An error: a mark and a word next to the colour (WCAG 1.4.1).
+export component ErrorBanner inherits Rectangle {
+    in property <string> text;
+    callback dismiss();
+    border-radius: Theme.radius-m;
+    background: Theme.surface;
+    border-color: Theme.error;
+    border-width: 1px;
+    accessible-role: AccessibleRole.text;
+    accessible-label: "Error: " + root.text;
+    HorizontalLayout {
+        padding: Theme.space-s;
+        padding-left: Theme.space-m;
+        spacing: Theme.space-m;
+        Mark { text: Icons.error; color: Theme.error; font-size: Theme.font-l - 2px; }
+        Text {
+            text: "Error";
+            color: Theme.error;
+            font-weight: 700;
+            vertical-alignment: center;
+        }
+        Text {
+            text: root.text;
+            color: Theme.text;
+            wrap: word-wrap;
+            vertical-alignment: center;
+            horizontal-stretch: 1;
+        }
+        ActionButton { text: "Dismiss"; variant: "ghost"; clicked => { root.dismiss(); } }
+    }
+}

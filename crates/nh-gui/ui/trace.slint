@@ -4,20 +4,21 @@
 import { ListView, ScrollView } from "std-widgets.slint";
 import { TraceRow } from "types.slint";
 import { Theme, Columns, LinkText, Mark } from "parts.slint";
+import { Icons } from "icons.slint";
 import { ActionButton, FocusRing } from "widgets.slint";
 import { StepsTable } from "steps.slint";
 
 // The mark and its colour for each entry kind.
 global TraceStyle {
     pure public function mark(entry: TraceRow) -> string {
-        if entry.kind == "request" { return "→"; }
-        if entry.kind == "answer" { return "←"; }
-        if entry.kind == "call" { return "▸"; }
-        if entry.kind == "result" { return entry.error ? "✕" : "✓"; }
-        if entry.kind == "failure" { return "✕"; }
-        if entry.kind == "retry" { return "↻"; }
-        if entry.kind == "switch" { return "⇄"; }
-        if entry.kind == "header" { return "≡"; }
+        if entry.kind == "request" { return Icons.arrow-up; }
+        if entry.kind == "answer" { return Icons.arrow-down; }
+        if entry.kind == "call" { return Icons.tools; }
+        if entry.kind == "result" { return entry.error ? Icons.error : Icons.check; }
+        if entry.kind == "failure" { return Icons.error; }
+        if entry.kind == "retry" { return Icons.refresh; }
+        if entry.kind == "switch" { return Icons.git-compare; }
+        if entry.kind == "header" { return Icons.list-flat; }
         return "";
     }
     pure public function tone(entry: TraceRow) -> color {
@@ -170,13 +171,17 @@ component Segment inherits Rectangle {
     accessible-item-selected: root.checked;
     accessible-action-default => { root.clicked(); }
     forward-focus: fs;
-    Text {
-        text: (root.checked ? "● " : "") + root.text;
-        color: Theme.text;
-        font-size: Theme.font-s;
-        font-weight: root.checked ? 700 : 500;
-        horizontal-alignment: center;
-        vertical-alignment: center;
+    HorizontalLayout {
+        alignment: center;
+        spacing: Theme.space-xs + 2px;
+        if root.checked: Mark { text: Icons.circle-filled; font-size: Theme.font-xs; color: Theme.text; }
+        Text {
+            text: root.text;
+            color: Theme.text;
+            font-size: Theme.font-s;
+            font-weight: root.checked ? 700 : 500;
+            vertical-alignment: center;
+        }
     }
     ta := TouchArea { mouse-cursor: pointer; clicked => { root.clicked(); } }
     fs := FocusScope {
@@ -234,7 +239,7 @@ export component TracePage inherits Rectangle {
                     horizontal-stretch: 1;
                 }
                 ModeSwitch { mode <=> root.mode; }
-                ActionButton { text: "Refresh"; clicked => { root.refresh(); } }
+                ActionButton { icon: Icons.refresh; text: "Refresh"; clicked => { root.refresh(); } }
             }
             Rectangle { y: parent.height - 1px; height: 1px; background: Theme.line; }
         }

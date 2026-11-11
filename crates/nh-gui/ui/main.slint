@@ -1,78 +1,35 @@
 import { Palette } from "std-widgets.slint";
 import { MsgRow, SessionRow, AccountRow, TraceRow } from "types.slint";
-import { Theme, Mark } from "parts.slint";
-import { ActionButton, Dropdown } from "widgets.slint";
+import { Theme } from "parts.slint";
+import { Dropdown } from "widgets.slint";
 import { Composer } from "composer.slint";
 import { TranscriptView } from "transcript.slint";
 import { Sidebar } from "sidebar.slint";
 import { AccountsPage } from "accounts.slint";
 import { SettingsPage, AboutPage } from "pages.slint";
 import { TracePage } from "trace.slint";
+import { TitleBar } from "titlebar.slint";
+import { TabStrip, StatusBar, ErrorBanner } from "panel.slint";
+// The icon font (Symbols Nerd Font subset); `Theme.symbols` names it.
+import "../fonts/FastHarnessIcons.ttf";
 
 export { MsgRow, SessionRow, AccountRow, TraceRow, Theme }
 
-component StatusBar inherits Rectangle {
-    in property <string> state;
-    in property <string> model;
-    in property <string> account;
-    in property <string> tokens;
-    in property <string> timing;
-    height: 26px;
-    background: Theme.surface;
-    Rectangle { y: 0; height: 1px; background: Theme.line; }
-    HorizontalLayout {
-        padding-left: Theme.space-m;
-        padding-right: Theme.space-m;
-        spacing: Theme.space-l;
-        Text { text: root.state; font-size: Theme.font-xs; color: Theme.text; vertical-alignment: center; }
-        Text { text: root.model; font-size: Theme.font-xs; color: Theme.dim; vertical-alignment: center; }
-        Text { text: root.account; font-size: Theme.font-xs; color: Theme.dim; vertical-alignment: center; overflow: elide; }
-        Rectangle { horizontal-stretch: 1; }
-        Text { text: root.tokens; font-size: Theme.font-xs; color: Theme.dim; vertical-alignment: center; }
-        Text { text: root.timing; font-size: Theme.font-xs; color: Theme.dim; vertical-alignment: center; }
-    }
-}
-
-// An error: a mark and a word next to the colour (WCAG 1.4.1).
-component ErrorBanner inherits Rectangle {
-    in property <string> text;
-    callback dismiss();
-    border-radius: Theme.radius-m;
-    background: Theme.surface;
-    border-color: Theme.error;
-    border-width: 1px;
-    accessible-role: AccessibleRole.text;
-    accessible-label: "Error: " + root.text;
-    HorizontalLayout {
-        padding: Theme.space-s;
-        padding-left: Theme.space-m;
-        spacing: Theme.space-m;
-        Mark { text: "✕"; color: Theme.error; }
-        Text {
-            text: "Error";
-            color: Theme.error;
-            font-weight: 700;
-            vertical-alignment: center;
-        }
-        Text {
-            text: root.text;
-            color: Theme.text;
-            wrap: word-wrap;
-            vertical-alignment: center;
-            horizontal-stretch: 1;
-        }
-        ActionButton { text: "Dismiss"; variant: "ghost"; clicked => { root.dismiss(); } }
-    }
-}
-
+// No native frame: the title bar (titlebar.slint) draws the window
+// controls; a 1px line edges the window while it is not maximized.
 export component MainWindow inherits Window {
-    title: "native-harness";
+    title: "Fast Harness";
+    icon: @image-url("../assets/fast-harness-256.png");
+    no-frame: true;
+    resize-border-width: 6px;
     preferred-width: 1100px;
     preferred-height: 740px;
     min-width: 640px;
     min-height: 420px;
-    background: Theme.bg;
+    background: Theme.surface;
     default-font-size: Theme.font-m;
+
+    in-out property <bool> sidebar-open: true;
 
     in property <[string]> themes;
     in-out property <int> theme-index;
@@ -128,6 +85,8 @@ export component MainWindow inherits Window {
     callback model-picked(int);
     callback effort-picked(int);
     callback theme-changed(int);
+    // A click on the empty title bar (two within 500 ms maximize or restore).
+    callback title-bar-clicked();
 
     // Copy: a hidden TextInput takes the text, selects it and copies it
     // (StyledText has no selection in Slint 1.18).
@@ -160,135 +119,167 @@ export component MainWindow inherits Window {
         opacity: 0;
     }
 
-    HorizontalLayout {
-        Sidebar {
-            sessions: root.sessions;
+
+    VerticalLayout {
+        TitleBar {
             page: root.page;
+            sidebar-open: root.sidebar-open;
+            maximized: root.maximized;
             chip-name: root.chip-name;
             chip-five: root.chip-five;
             chip-five-text: root.chip-five-text;
             chip-seven: root.chip-seven;
             chip-seven-text: root.chip-seven-text;
-            new-session => { root.new-session(); }
-            open-session(id) => { root.open-session(id); }
+            toggle-sidebar => { root.sidebar-open = !root.sidebar-open; }
             open-page(p) => { root.open-page(p); }
+            minimize => { root.minimized = true; }
+            toggle-maximize => { root.maximized = !root.maximized; }
+            bar-clicked => { root.title-bar-clicked(); }
+            close => { root.close(); }
         }
-        VerticalLayout {
-            horizontal-stretch: 1;
+        HorizontalLayout {
+            if root.sidebar-open: Sidebar {
+                sessions: root.sessions;
+                page: root.page;
+                new-session => { root.new-session(); }
+                open-session(id) => { root.open-session(id); }
+                open-page(p) => { root.open-page(p); }
+            }
+            // The main card: rounded top-left corner, flush right and bottom.
             Rectangle {
-                vertical-stretch: 1;
-                chat := VerticalLayout {
-                    // The banner and the composer sit in a centred column;
-                    // explicit geometry keeps the width out of the layout.
-                    property <length> column: min(self.width - 2 * Theme.space-l, Theme.column-width);
-                    if root.error-text != "": Rectangle {
-                        height: banner.preferred-height + Theme.space-m;
-                        banner := ErrorBanner {
-                            x: (parent.width - self.width) / 2;
-                            y: Theme.space-m;
-                            width: chat.column;
-                            height: self.preferred-height;
-                            text: root.error-text;
-                            dismiss => { root.error-text = ""; }
-                        }
-                    }
-                    transcript := TranscriptView {
-                        vertical-stretch: 1;
-                        rows: root.messages;
-                        toggle(i) => { root.toggle(i); }
-                        copy(t) => { root.copy-text(t); }
-                        link(u) => { root.open-url(u); }
+                horizontal-stretch: 1;
+                background: Theme.bg;
+                border-top-left-radius: Theme.radius-l;
+                border-width: 1px;
+                border-color: Theme.line;
+                VerticalLayout {
+                    padding-left: 1px;
+                    padding-top: 1px;
+                    TabStrip {
+                        page: root.page;
+                        open-page(p) => { root.open-page(p); }
                     }
                     Rectangle {
-                        height: composer.preferred-height + Theme.space-s + Theme.space-l;
-                        composer := Composer {
-                            x: (parent.width - self.width) / 2;
-                            y: Theme.space-s;
-                            width: chat.column;
-                            height: self.preferred-height;
-                            busy: root.busy;
-                            note: root.picker-note;
-                            submit => { root.submit(); }
-                            stop => { root.stop(); }
-                            Dropdown {
-                                label: "Model";
-                                min-width: 200px;
-                                max-width: 200px;
-                                drop-up: true;
-                                list-width: 320px;
-                                model: root.models;
-                                current-index <=> root.model-index;
-                                selected(i) => { root.model-picked(i); }
+                        vertical-stretch: 1;
+                        chat := VerticalLayout {
+                            // The banner and the composer sit in a centred column;
+                            // explicit geometry keeps the width out of the layout.
+                            property <length> column: min(self.width - 2 * Theme.space-l, Theme.column-width);
+                            if root.error-text != "": Rectangle {
+                                height: banner.preferred-height + Theme.space-m;
+                                banner := ErrorBanner {
+                                    x: (parent.width - self.width) / 2;
+                                    y: Theme.space-m;
+                                    width: chat.column;
+                                    height: self.preferred-height;
+                                    text: root.error-text;
+                                    dismiss => { root.error-text = ""; }
+                                }
                             }
-                            Dropdown {
-                                label: "Thinking effort";
-                                placeholder: "default";
-                                min-width: 110px;
-                                max-width: 110px;
-                                drop-up: true;
-                                model: root.efforts;
-                                current-index <=> root.effort-index;
-                                selected(i) => { root.effort-picked(i); }
+                            transcript := TranscriptView {
+                                vertical-stretch: 1;
+                                rows: root.messages;
+                                toggle(i) => { root.toggle(i); }
+                                copy(t) => { root.copy-text(t); }
+                                link(u) => { root.open-url(u); }
+                            }
+                            Rectangle {
+                                height: composer.preferred-height + Theme.space-s + Theme.space-l;
+                                composer := Composer {
+                                    x: (parent.width - self.width) / 2;
+                                    y: Theme.space-s;
+                                    width: chat.column;
+                                    height: self.preferred-height;
+                                    busy: root.busy;
+                                    note: root.picker-note;
+                                    submit => { root.submit(); }
+                                    stop => { root.stop(); }
+                                    Dropdown {
+                                        label: "Model";
+                                        min-width: 200px;
+                                        max-width: 200px;
+                                        drop-up: true;
+                                        list-width: 320px;
+                                        model: root.models;
+                                        current-index <=> root.model-index;
+                                        selected(i) => { root.model-picked(i); }
+                                    }
+                                    Dropdown {
+                                        label: "Thinking effort";
+                                        placeholder: "default";
+                                        min-width: 110px;
+                                        max-width: 110px;
+                                        drop-up: true;
+                                        model: root.efforts;
+                                        current-index <=> root.effort-index;
+                                        selected(i) => { root.effort-picked(i); }
+                                    }
+                                }
                             }
                         }
+                        if root.page == "accounts": AccountsPage {
+                            width: parent.width;
+                            height: parent.height;
+                            accounts: root.accounts;
+                            login-url: root.login-url;
+                            message: root.accounts-message;
+                            working: root.accounts-working;
+                            adding-key <=> root.adding-key;
+                            sign-in => { root.sign-in(); }
+                            cancel-sign-in => { root.cancel-sign-in(); }
+                            add-key(k, l) => { root.add-key(k, l); }
+                            refresh => { root.refresh-usage(); }
+                            use(id) => { root.use-account(id); }
+                            remove(id) => { root.remove-account(id); }
+                            open-url(u) => { root.open-url(u); }
+                            copy(t) => { root.copy-text(t); }
+                        }
+                        if root.page == "trace": TracePage {
+                            width: parent.width;
+                            height: parent.height;
+                            entries: root.trace-entries;
+                            steps: root.trace-steps;
+                            session: root.trace-session;
+                            message: root.trace-message;
+                            mode <=> root.trace-mode;
+                            refresh => { root.refresh-trace(); }
+                            toggle(i) => { root.trace-toggle(i); }
+                            copy(t) => { root.copy-text(t); }
+                        }
+                        if root.page == "settings": SettingsPage {
+                            width: parent.width;
+                            height: parent.height;
+                            themes: root.themes;
+                            theme-index <=> root.theme-index;
+                            changed-theme(i) => { root.theme-changed(i); }
+                            models: root.models;
+                            efforts: root.efforts;
+                            model-index <=> root.model-index;
+                            effort-index <=> root.effort-index;
+                            note: root.picker-note;
+                            model-picked(i) => { root.model-picked(i); }
+                            effort-picked(i) => { root.effort-picked(i); }
+                        }
+                        if root.page == "about": AboutPage {
+                            width: parent.width;
+                            height: parent.height;
+                            version: root.version;
+                        }
+                    }
+                    StatusBar {
+                        state: root.status-state;
+                        model: root.status-model;
+                        account: root.status-account;
+                        tokens: root.status-tokens;
+                        timing: root.status-timing;
                     }
                 }
-                if root.page == "accounts": AccountsPage {
-                    width: parent.width;
-                    height: parent.height;
-                    accounts: root.accounts;
-                    login-url: root.login-url;
-                    message: root.accounts-message;
-                    working: root.accounts-working;
-                    adding-key <=> root.adding-key;
-                    sign-in => { root.sign-in(); }
-                    cancel-sign-in => { root.cancel-sign-in(); }
-                    add-key(k, l) => { root.add-key(k, l); }
-                    refresh => { root.refresh-usage(); }
-                    use(id) => { root.use-account(id); }
-                    remove(id) => { root.remove-account(id); }
-                    open-url(u) => { root.open-url(u); }
-                    copy(t) => { root.copy-text(t); }
-                }
-                if root.page == "trace": TracePage {
-                    width: parent.width;
-                    height: parent.height;
-                    entries: root.trace-entries;
-                    steps: root.trace-steps;
-                    session: root.trace-session;
-                    message: root.trace-message;
-                    mode <=> root.trace-mode;
-                    refresh => { root.refresh-trace(); }
-                    toggle(i) => { root.trace-toggle(i); }
-                    copy(t) => { root.copy-text(t); }
-                }
-                if root.page == "settings": SettingsPage {
-                    width: parent.width;
-                    height: parent.height;
-                    themes: root.themes;
-                    theme-index <=> root.theme-index;
-                    changed-theme(i) => { root.theme-changed(i); }
-                    models: root.models;
-                    efforts: root.efforts;
-                    model-index <=> root.model-index;
-                    effort-index <=> root.effort-index;
-                    note: root.picker-note;
-                    model-picked(i) => { root.model-picked(i); }
-                    effort-picked(i) => { root.effort-picked(i); }
-                }
-                if root.page == "about": AboutPage {
-                    width: parent.width;
-                    height: parent.height;
-                    version: root.version;
-                }
-            }
-            StatusBar {
-                state: root.status-state;
-                model: root.status-model;
-                account: root.status-account;
-                tokens: root.status-tokens;
-                timing: root.status-timing;
             }
         }
+    }
+    // The window edge (no shadow on a frameless window).
+    if !root.maximized: Rectangle {
+        border-width: 1px;
+        border-color: Theme.line;
     }
 }

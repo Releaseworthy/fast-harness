@@ -25,8 +25,11 @@ fn trace_entries() -> Vec<TraceRow> {
 
 const WIDTH: u32 = 1100;
 const HEIGHT: u32 = 760;
-/// The composer's effort dropdown (sidebar 260 + side 16 + padding 12 + model 200 + gap 8).
-const EFFORT_X: f32 = 550.0;
+/// The composer's effort dropdown (sidebar 260 + card edge 1 + side 16 + padding 12
+/// + model 200 + gap 8).
+const EFFORT_X: f32 = 551.0;
+/// The page content starts under the title bar (40), the card edge (1) and the tabs (38).
+const PAGE_Y: f32 = 79.0;
 const EFFORT_Y: f32 = 690.0;
 
 struct ShotPlatform(Rc<MinimalSoftwareWindow>);
@@ -190,7 +193,7 @@ fn shots() {
     for core in THEMES.iter() {
         theme::apply(&ui, core);
         theme::fill(&ui, core.id);
-        for shot in ["chat", "accounts", "settings", "trace", "steps"] {
+        for shot in ["chat", "accounts", "settings", "about", "trace", "steps"] {
             let page = if shot == "steps" { "trace" } else { shot };
             ui.set_trace_mode(if shot == "steps" { "steps" } else { "timeline" }.into());
             ui.set_page(page.into());
@@ -218,12 +221,17 @@ fn shots() {
         ui.set_picker_note("".into());
         ui.set_page("settings".into());
         // The theme dropdown opened by a click, then closed with Escape.
-        click(&window, 600.0, 104.0);
+        click(&window, 601.0, PAGE_Y + 104.0);
         // A second open by keyboard is a no-op when the click already opened it.
         key(&window, slint::platform::Key::Return.into());
         let png = shots_png::encode(WIDTH, HEIGHT, &render(&window));
         std::fs::write(dir.join(format!("{}-dropdown.png", core.id)), png).expect("write png");
         key(&window, slint::platform::Key::Escape.into());
+        ui.set_page("chat".into());
+        ui.set_sidebar_open(false);
+        let png = shots_png::encode(WIDTH, HEIGHT, &render(&window));
+        std::fs::write(dir.join(format!("{}-nosidebar.png", core.id)), png).expect("write png");
+        ui.set_sidebar_open(true);
     }
 }
 

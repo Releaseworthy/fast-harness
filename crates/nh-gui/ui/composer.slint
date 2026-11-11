@@ -1,4 +1,5 @@
 import { Theme } from "parts.slint";
+import { Icons } from "icons.slint";
 import { ActionButton, TextArea } from "widgets.slint";
 
 // The message composer: a rounded card with the text area on top and a
@@ -24,7 +25,7 @@ export component Composer inherits Rectangle {
         padding-top: Theme.space-m + 2px;
         spacing: Theme.space-s;
         area := TextArea {
-            placeholder: "Message native-harness";
+            placeholder: "Message Fast Harness";
             key-pressed(event) => {
                 if (event.text == Key.Return && !event.modifiers.shift) {
                     if (!root.busy) {
@@ -53,7 +54,8 @@ export component Composer inherits Rectangle {
                 horizontal-stretch: 1;
             }
             ActionButton {
-                text: root.busy ? "■ Stop" : "Send";
+                icon: root.busy ? Icons.debug-stop : Icons.send;
+                text: root.busy ? "Stop" : "Send";
                 variant: root.busy ? "secondary" : "primary";
                 min-width: 84px;
                 clicked => {

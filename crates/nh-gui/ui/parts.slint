@@ -3,6 +3,8 @@
 // defaults are the dark theme so a preview without Rust looks the same.
 export global Theme {
     in-out property <bool> dark: true;
+    // Text and backgrounds are pure greys: the logo uses its grey copy.
+    in-out property <bool> greyscale;
     // Window, transcript and page background.
     in-out property <color> bg: #1b1d22;
     // Sidebar, status bar, cards and the composer.
@@ -44,8 +46,8 @@ export global Theme {
     // The chat and accounts columns never grow wider than this.
     out property <length> column-width: 860px;
     out property <string> mono: "Consolas";
-    // Marks such as ✕ ↻ ▸ are missing from Segoe UI; elsewhere the default font serves.
-    out property <string> symbols: "Segoe UI Symbol";
+    // Icons and status marks: the Nerd Font subset in fonts/ (see icons.slint).
+    out property <string> symbols: "Fast Harness Icons";
 }
 
 // Side padding that centres a column of at most `Theme.column-width`.
@@ -140,7 +142,7 @@ export component Badge inherits Rectangle {
     }
 }
 
-// A status mark (✕, ↻, ⇄, ℹ, ▸) drawn with the symbol font.
+// An icon or status mark (a code point from `Icons`) drawn with the icon font.
 export component Mark inherits Text {
     font-family: Theme.symbols;
     vertical-alignment: center;

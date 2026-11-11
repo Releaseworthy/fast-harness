@@ -1,6 +1,7 @@
 import { ListView } from "std-widgets.slint";
 import { AccountRow } from "types.slint";
 import { Theme, UsageBar, Badge, Columns, Mark } from "parts.slint";
+import { Icons } from "icons.slint";
 import { ActionButton, KeyInput } from "widgets.slint";
 
 component AccountCard inherits Rectangle {
@@ -26,13 +27,15 @@ component AccountCard inherits Rectangle {
             }
             VerticalLayout { alignment: center; Badge { text: info.kind; height: 20px; } }
             if info.plan != "": VerticalLayout { alignment: center; Badge { text: info.plan; height: 20px; } }
-            if info.active: VerticalLayout { alignment: center; Badge { text: "✓ active"; strong: true; height: 20px; } }
+            if info.active: VerticalLayout { alignment: center; Badge { text: "Active"; strong: true; height: 20px; } }
             Rectangle { horizontal-stretch: 1; }
             if !info.active: ActionButton {
+                icon: Icons.check;
                 text: "Use";
                 clicked => { root.use(info.id); }
             }
             ActionButton {
+                icon: Icons.trash;
                 text: "Remove";
                 variant: "ghost";
                 clicked => { root.remove(info.id); }
@@ -42,13 +45,13 @@ component AccountCard inherits Rectangle {
         UsageBar { label: "7d"; value: info.seven; caption: info.seven-text; }
         if info.hold != "": HorizontalLayout {
             spacing: Theme.space-s;
-            Mark { text: "⏸"; color: Theme.warning; font-size: Theme.font-s; }
-            Text { text: info.hold; color: Theme.warning; font-size: Theme.font-s; wrap: word-wrap; }
+            Mark { text: Icons.debug-pause; color: Theme.warning; font-size: Theme.font-s; }
+            Text { text: info.hold; color: Theme.warning; font-size: Theme.font-s; wrap: word-wrap; horizontal-stretch: 1; }
         }
         if !info.token-ok: HorizontalLayout {
             spacing: Theme.space-s;
-            Mark { text: "✕"; color: Theme.error; font-size: Theme.font-s; }
-            Text { text: "Token rejected: sign in again."; color: Theme.error; font-size: Theme.font-s; }
+            Mark { text: Icons.error; color: Theme.error; font-size: Theme.font-s; }
+            Text { text: "Token rejected: sign in again."; color: Theme.error; font-size: Theme.font-s; horizontal-stretch: 1; }
         }
     }
 }
@@ -75,8 +78,8 @@ component LoginWait inherits Rectangle {
         HorizontalLayout {
             spacing: Theme.space-s;
             alignment: start;
-            ActionButton { text: "Open again"; variant: "primary"; clicked => { root.open-url(root.url); } }
-            ActionButton { text: "Copy URL"; clicked => { root.copy(root.url); } }
+            ActionButton { icon: Icons.link-external; text: "Open again"; variant: "primary"; clicked => { root.open-url(root.url); } }
+            ActionButton { icon: Icons.copy; text: "Copy URL"; clicked => { root.copy(root.url); } }
             ActionButton { text: "Cancel"; variant: "ghost"; clicked => { root.cancel(); } }
         }
     }
@@ -142,9 +145,9 @@ export component AccountsPage inherits Rectangle {
                 vertical-alignment: center;
             }
             Rectangle { horizontal-stretch: 1; }
-            ActionButton { text: "Sign in"; variant: "primary"; enabled: root.login-url == ""; clicked => { root.sign-in(); } }
-            ActionButton { text: "Add API key"; clicked => { root.adding-key = true; } }
-            ActionButton { text: "Refresh usage"; enabled: !root.working; clicked => { root.refresh(); } }
+            ActionButton { icon: Icons.sign-in; text: "Sign in"; variant: "primary"; enabled: root.login-url == ""; clicked => { root.sign-in(); } }
+            ActionButton { icon: Icons.key; text: "Add API key"; clicked => { root.adding-key = true; } }
+            ActionButton { icon: Icons.refresh; text: "Refresh usage"; enabled: !root.working; clicked => { root.refresh(); } }
         }
         if root.message != "": Text { text: root.message; wrap: word-wrap; color: Theme.dim; font-size: Theme.font-s; }
         if root.login-url != "": LoginWait {
