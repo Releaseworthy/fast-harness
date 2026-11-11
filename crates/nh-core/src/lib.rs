@@ -19,3 +19,4 @@ pub mod sse;
 pub mod tools;
 pub mod trace;
 pub mod types;
+pub mod view;
