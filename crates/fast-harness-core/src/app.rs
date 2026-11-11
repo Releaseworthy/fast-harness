@@ -114,27 +114,42 @@ impl Runtime {
         Ok((self.provider.clone(), self.auth()?))
     }
 
+    /// The system prompt for `cwd` and the current model (PLAN.md D31), read
+    /// from the prompt files now.
+    pub fn prompt(&self, cwd: &Path) -> prompt::Rendered {
+        prompt::render(&self.home, cwd, &self.config.model)
+    }
+
     /// Agent parts for `cwd` with the current settings; the provider and the
     /// credential follow `config.model` ([`Runtime::route`]). Subagents get a
     /// copy of these parts.
     pub fn parts(&self, cwd: &Path) -> Result<AgentParts, String> {
+        Ok(self.parts_noted(cwd)?.0)
+    }
+
+    /// [`Runtime::parts`] and the notes of the prompt files skipped.
+    fn parts_noted(&self, cwd: &Path) -> Result<(AgentParts, Vec<String>), String> {
         let (provider, auth) = self.route(&self.config.model)?;
         let transport: Arc<dyn Transport> = self.transport.clone();
-        Ok(AgentParts {
+        let prompt = self.prompt(cwd);
+        let parts = AgentParts {
             provider,
             transport,
             auth,
             config: self.config.clone(),
-            system: prompt::system_prompt(cwd),
+            system: prompt.text,
             cwd: cwd.to_path_buf(),
-        })
+        };
+        Ok((parts, prompt.notes))
     }
 
-    /// An agent with the built-in tools plus the subagent tool for `conv`.
-    pub fn agent(&self, cwd: &Path, conv: &Conversation) -> Result<Agent, String> {
-        Ok(Agent::with_subagent(self.parts(cwd)?, &self.home, &conv.id))
+    /// An agent with the built-in tools plus the subagent tool for `conv`,
+    /// and the notes of the prompt files skipped (an unreadable file). Front
+    /// ends build one per turn, so a prompt edit applies from the next turn.
+    pub fn agent(&self, cwd: &Path, conv: &Conversation) -> Result<(Agent, Vec<String>), String> {
+        let (parts, notes) = self.parts_noted(cwd)?;
+        Ok((Agent::with_subagent(parts, &self.home, &conv.id), notes))
     }
-
     /// `resume` when given, else the newest session of `cwd` when
     /// `continue_latest` (a new one when there is none), else a new session.
     pub fn open_conversation(

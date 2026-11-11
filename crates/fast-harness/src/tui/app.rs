@@ -202,10 +202,15 @@ impl Tui {
             self.ui.status = "a turn is running".into();
             return;
         };
-        let agent: Result<Agent, String> = self.rt.agent(&self.cwd, &conv);
+        let agent: Result<(Agent, Vec<String>), String> = self.rt.agent(&self.cwd, &conv);
         self.transcript.push_user(text.clone());
         let agent = match agent {
-            Ok(agent) => agent,
+            Ok((agent, notes)) => {
+                for note in notes {
+                    self.note(NoteKind::Error, note);
+                }
+                agent
+            }
             Err(err) => {
                 self.conv = Some(conv);
                 self.note(NoteKind::Error, format!("{err} (F2 opens the accounts)"));

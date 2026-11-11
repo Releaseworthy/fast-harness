@@ -13,6 +13,9 @@ Usage:
   fast-harness [tui] [-c|--resume ID] [--cwd DIR]
       The full-screen chat (`fast-harness` alone on a terminal). F2 accounts, F3 trace, F4 model.
   fast-harness sessions [--cwd DIR]          List the sessions of the directory, newest first.
+  fast-harness prompt [--cwd DIR]
+      The system prompt file that applies to the directory (prompts/<slug>.md, else
+      system-prompt.md, else the built-in default) and the rendered prompt.
   fast-harness trace [ID|latest] [--steps] [--json] [--cwd DIR]
       A session (default latest): what the user sent, each request, the model's thinking,
       answers and tool calls, then one row per step. --steps prints only the step table,
@@ -105,6 +108,9 @@ pub enum Command {
     Sessions {
         cwd: Option<PathBuf>,
     },
+    Prompt {
+        cwd: Option<PathBuf>,
+    },
     Trace {
         id: Option<String>,
         steps: bool,
@@ -191,6 +197,7 @@ pub fn parse(args: Vec<String>) -> Result<Command, String> {
     let cwd = opts.print.cwd.clone();
     match first {
         Some("sessions") if opts.positional.len() == 1 => return Ok(Command::Sessions { cwd }),
+        Some("prompt") if opts.positional.len() == 1 => return Ok(Command::Prompt { cwd }),
         Some("tui") if opts.positional.len() == 1 => return tui_args(opts),
         Some("accounts") => {
             let action = accounts_action(&opts.positional[1..], &opts)?;
@@ -341,5 +348,17 @@ mod tests {
         let json = parse_str("models --json").unwrap();
         assert_eq!(json, Command::Models { json: true });
         assert!(parse_str("models extra").is_err());
+    }
+
+    #[test]
+    fn parses_prompt() {
+        let cwd = Some(PathBuf::from("d"));
+        assert_eq!(parse_str("prompt").unwrap(), Command::Prompt { cwd: None });
+        assert_eq!(
+            parse_str("prompt --cwd d").unwrap(),
+            Command::Prompt { cwd }
+        );
+        assert!(parse_str("prompt extra").is_err());
+        assert!(USAGE.contains("fast-harness prompt [--cwd DIR]"));
     }
 }

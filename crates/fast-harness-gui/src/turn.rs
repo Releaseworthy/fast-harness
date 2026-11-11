@@ -8,6 +8,7 @@ use std::thread;
 
 use fast_harness_core::agent::Conversation;
 use fast_harness_core::events::AgentEvent;
+use fast_harness_core::view::{Item, NoteKind};
 
 use crate::app::{show_error, with_app, App};
 use crate::{accounts, MainWindow};
@@ -41,8 +42,8 @@ pub fn send(app: &mut App, ui: &MainWindow, text: &str) -> bool {
             }
         },
     };
-    let agent = match app.rt.agent(&app.cwd, &conv) {
-        Ok(agent) => agent,
+    let (agent, notes) = match app.rt.agent(&app.cwd, &conv) {
+        Ok(made) => made,
         Err(err) => {
             app.conv = Some(conv);
             show_error(ui, err);
@@ -51,7 +52,7 @@ pub fn send(app: &mut App, ui: &MainWindow, text: &str) -> bool {
     };
     let new_session = app.conv_id.as_deref() != Some(conv.id.as_str());
     app.conv_id = Some(conv.id.clone());
-    start(app, ui, text, conv, agent);
+    start(app, ui, text, conv, (agent, notes));
     if new_session {
         app.refresh_sessions(ui);
     }
@@ -63,11 +64,16 @@ fn start(
     ui: &MainWindow,
     text: String,
     conv: Conversation,
-    agent: fast_harness_core::agent::Agent,
+    (agent, notes): (fast_harness_core::agent::Agent, Vec<String>),
 ) {
     ui.set_error_text("".into());
     ui.set_picker_note("".into());
     app.turn_from = app.view.items.len();
+    // Prompt files skipped (unreadable), before the message they apply to.
+    for text in notes {
+        let kind = NoteKind::Error;
+        app.view.items.push(Item::Note { kind, text });
+    }
     app.view.push_user(text.as_str());
     app.sync_rows();
     app.busy = true;

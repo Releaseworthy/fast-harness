@@ -3,6 +3,8 @@
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
+use fast_harness_core::agent::prompt;
+use fast_harness_core::config::Config;
 use fast_harness_core::session;
 use fast_harness_core::trace::{self, detail, report};
 
@@ -64,5 +66,20 @@ pub fn trace(
         }
         print!("{}", report::format_table(&report::step_rows(&events)));
     }
+    Ok(ExitCode::SUCCESS)
+}
+
+/// `fast-harness prompt`: which template file applies to the directory, then
+/// the rendered system prompt (PLAN.md D31).
+pub fn prompt(cwd: Option<PathBuf>) -> Result<ExitCode, String> {
+    let (home, cwd) = (crate::home()?, crate::work_dir(cwd)?);
+    let model = Config::load(&home)?.model;
+    let rendered = prompt::render(&home, &cwd, &model);
+    for note in &rendered.notes {
+        eprintln!("[note] {note}");
+    }
+    println!("Source: {}", rendered.source);
+    println!("Placeholders: {}\n", prompt::PLACEHOLDERS.join(" "));
+    print!("{}", rendered.text);
     Ok(ExitCode::SUCCESS)
 }
