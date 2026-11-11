@@ -8,6 +8,9 @@ export component Composer inherits Rectangle {
     in-out property <string> text <=> area.text;
     in property <bool> busy;
     in property <string> hint: "Enter to send · Shift+Enter for a new line";
+    // A note that replaces the hint until the next send (e.g. the effort
+    // changed with the model).
+    in property <string> note;
     // Fired on Enter or the Send button; the parent clears `text` itself.
     callback submit();
     callback stop();
@@ -40,9 +43,10 @@ export component Composer inherits Rectangle {
                 @children
             }
             Text {
-                text: root.hint;
-                color: Theme.dim;
-                font-size: Theme.font-xs;
+                text: root.note != "" ? root.note : root.hint;
+                color: root.note != "" ? Theme.text : Theme.dim;
+                font-size: root.note != "" ? Theme.font-s : Theme.font-xs;
+                wrap: root.note != "" ? word-wrap : no-wrap;
                 horizontal-alignment: right;
                 vertical-alignment: center;
                 overflow: elide;

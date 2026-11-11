@@ -65,6 +65,7 @@ fn start(
     agent: nh_core::agent::Agent,
 ) {
     ui.set_error_text("".into());
+    ui.set_picker_note("".into());
     app.turn_from = app.view.items.len();
     app.view.push_user(text.as_str());
     app.sync_rows();

@@ -1,44 +1,12 @@
-import { StandardTableView, AboutSlint } from "std-widgets.slint";
+import { AboutSlint } from "std-widgets.slint";
 import { Theme, Columns } from "parts.slint";
 import { ActionButton, Dropdown } from "widgets.slint";
-
-export component TracePage inherits Rectangle {
-    in property <[[StandardListViewItem]]> rows;
-    in property <string> message;
-    callback refresh();
-    background: Theme.bg;
-    VerticalLayout {
-        padding: Theme.space-xl;
-        spacing: Theme.space-m;
-        HorizontalLayout {
-            spacing: Theme.space-s;
-            Text {
-                text: "Trace: steps of this session";
-                color: Theme.text;
-                font-size: Theme.font-l;
-                font-weight: 600;
-                vertical-alignment: center;
-            }
-            Rectangle { horizontal-stretch: 1; }
-            ActionButton { text: "Refresh"; clicked => { root.refresh(); } }
-        }
-        if root.message != "": Text { text: root.message; color: Theme.dim; wrap: word-wrap; }
-        StandardTableView {
-            vertical-stretch: 1;
-            columns: [
-                { title: "Turn" }, { title: "Step" }, { title: "Model" }, { title: "Account" },
-                { title: "TTFB" }, { title: "Total" }, { title: "In" }, { title: "Out" },
-                { title: "Cache read" }, { title: "Cache write" }, { title: "Tools" }, { title: "Retries" },
-            ];
-            rows: root.rows;
-        }
-    }
-}
 
 // A labelled settings row: the name, a dropdown and a caption under it.
 component SettingRow {
     in property <string> label;
     in property <string> caption;
+    in property <string> placeholder;
     in property <[string]> model;
     in-out property <int> current-index;
     callback selected(int);
@@ -52,6 +20,7 @@ component SettingRow {
         }
         Dropdown {
             label: root.label;
+            placeholder: root.placeholder;
             model: root.model;
             current-index <=> root.current-index;
             selected(i) => { root.selected(i); }
@@ -73,7 +42,10 @@ export component SettingsPage inherits Rectangle {
     in-out property <int> model-index;
     in-out property <int> effort-index;
     callback changed-theme(int);
-    callback changed-settings(int, int);
+    // A note after a pick (the effort changed with the model).
+    in property <string> note;
+    callback model-picked(int);
+    callback effort-picked(int);
     background: Theme.bg;
     VerticalLayout {
         padding-top: Theme.space-xl;
@@ -94,15 +66,17 @@ export component SettingsPage inherits Rectangle {
             label: "Model";
             model: root.models;
             current-index <=> root.model-index;
-            selected => { root.changed-settings(root.model-index, root.effort-index); }
+            selected(i) => { root.model-picked(i); }
         }
         SettingRow {
-            label: "Effort";
-            caption: "Model and effort apply to the next turn of this window.";
+            label: "Thinking effort";
+            caption: "Model and effort apply to the next turn of this window (also while a turn runs) and are not saved. The composer has the same pickers.";
+            placeholder: "default";
             model: root.efforts;
             current-index <=> root.effort-index;
-            selected => { root.changed-settings(root.model-index, root.effort-index); }
+            selected(i) => { root.effort-picked(i); }
         }
+        if root.note != "": Text { text: root.note; color: Theme.text; font-size: Theme.font-s; wrap: word-wrap; }
     }
 }
 

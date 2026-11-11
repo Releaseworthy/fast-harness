@@ -9,13 +9,17 @@ mod accounts;
 mod app;
 mod format;
 mod mirror;
+mod pickers;
 mod rows;
 mod settings;
 #[cfg(test)]
 mod shots_png;
 #[cfg(test)]
 mod shots_tests;
+#[cfg(test)]
+mod shots_trace;
 mod theme;
+mod trace_rows;
 mod turn;
 mod wire;
 

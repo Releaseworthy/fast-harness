@@ -1,0 +1,62 @@
+// The step table of the Trace page: one row per model call, in the column
+// order of `src/trace_rows.rs` (step_cells). Numbers align right; the table
+// scrolls sideways when the window is narrower than the columns.
+import { ScrollView } from "std-widgets.slint";
+import { Theme } from "parts.slint";
+
+export component StepsTable {
+    in property <[[string]]> rows;
+    property <[string]> titles: ["Turn", "Step", "Model", "Account", "TTFB", "Total", "In", "Out", "Cache read", "Cache write", "Tools", "Retries"];
+    property <[length]> widths: [44px, 44px, 136px, 168px, 72px, 64px, 56px, 56px, 80px, 84px, 150px, 60px];
+    property <[length]> xs: [0px, 44px, 88px, 224px, 392px, 464px, 528px, 584px, 640px, 720px, 804px, 954px];
+    property <length> total: 1014px;
+    property <length> row-height: 30px;
+    property <length> head-height: 34px;
+    property <length> pad: Theme.space-s;
+    // Text columns align left; the counts and times align right.
+    pure function text-column(c: int) -> bool { return c == 2 || c == 3 || c == 10; }
+
+    ScrollView {
+        content-width: max(self.visible-width, root.total + 2 * Theme.space-xl);
+        content-height: root.head-height + root.rows.length * root.row-height + Theme.space-xl;
+        Rectangle {
+            x: Theme.space-xl;
+            y: 0;
+            width: root.total;
+            height: root.head-height;
+            Rectangle { y: parent.height - 2px; height: 2px; background: Theme.border; }
+            for title[c] in root.titles: Text {
+                x: root.xs[c] + root.pad;
+                width: root.widths[c] - 2 * root.pad;
+                height: parent.height - 2px;
+                text: title;
+                color: Theme.dim;
+                font-size: Theme.font-xs;
+                font-weight: 700;
+                horizontal-alignment: root.text-column(c) ? left : right;
+                vertical-alignment: center;
+                overflow: elide;
+            }
+        }
+        for row[r] in root.rows: Rectangle {
+            x: Theme.space-xl;
+            y: root.head-height + r * root.row-height;
+            width: root.total;
+            height: root.row-height;
+            background: ta.has-hover ? Theme.hover : Math.mod(r, 2) == 1 ? Theme.surface : transparent;
+            ta := TouchArea { }
+            Rectangle { y: parent.height - 1px; height: 1px; background: Theme.line; }
+            for cell[c] in row: Text {
+                x: root.xs[c] + root.pad;
+                width: root.widths[c] - 2 * root.pad;
+                text: cell;
+                color: c < 2 ? Theme.dim : Theme.text;
+                font-size: Theme.font-s;
+                font-family: root.text-column(c) ? "" : Theme.mono;
+                horizontal-alignment: root.text-column(c) ? left : right;
+                vertical-alignment: center;
+                overflow: elide;
+            }
+        }
+    }
+}

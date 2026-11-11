@@ -4,7 +4,7 @@ use nh_core::platform;
 use slint::ComponentHandle;
 
 use crate::app::{show_error, with_app};
-use crate::{accounts, mirror, settings, theme, turn, MainWindow};
+use crate::{accounts, mirror, settings, theme, trace_rows, turn, MainWindow};
 
 pub fn connect(ui: &MainWindow) {
     ui.on_send(|text| with_app(|app, ui| turn::send(app, ui, &text)).unwrap_or(false));
@@ -26,8 +26,14 @@ pub fn connect(ui: &MainWindow) {
     ui.on_refresh_trace(|| {
         with_app(|app, ui| app.refresh_trace(ui));
     });
-    ui.on_settings_changed(|model, effort| {
-        with_app(|app, ui| settings::apply(app, ui, model, effort));
+    ui.on_trace_toggle(|index| {
+        with_app(|_, ui| trace_rows::toggle(ui, index));
+    });
+    ui.on_model_picked(|index| {
+        with_app(|app, ui| settings::pick_model(app, ui, index));
+    });
+    ui.on_effort_picked(|index| {
+        with_app(|app, ui| settings::pick_effort(app, ui, index));
     });
     ui.on_theme_changed(|index| {
         with_app(|app, ui| theme::pick(app, ui, index));

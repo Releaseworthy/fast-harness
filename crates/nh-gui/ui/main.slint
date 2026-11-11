@@ -1,14 +1,15 @@
 import { Palette } from "std-widgets.slint";
-import { MsgRow, SessionRow, AccountRow } from "types.slint";
+import { MsgRow, SessionRow, AccountRow, TraceRow } from "types.slint";
 import { Theme, Mark } from "parts.slint";
-import { ActionButton } from "widgets.slint";
+import { ActionButton, Dropdown } from "widgets.slint";
 import { Composer } from "composer.slint";
 import { TranscriptView } from "transcript.slint";
 import { Sidebar } from "sidebar.slint";
 import { AccountsPage } from "accounts.slint";
-import { TracePage, SettingsPage, AboutPage } from "pages.slint";
+import { SettingsPage, AboutPage } from "pages.slint";
+import { TracePage } from "trace.slint";
 
-export { MsgRow, SessionRow, AccountRow, Theme }
+export { MsgRow, SessionRow, AccountRow, TraceRow, Theme }
 
 component StatusBar inherits Rectangle {
     in property <string> state;
@@ -78,12 +79,17 @@ export component MainWindow inherits Window {
     in property <[MsgRow]> messages;
     in property <[SessionRow]> sessions;
     in property <[AccountRow]> accounts;
-    in property <[[StandardListViewItem]]> trace-rows;
+    in property <[TraceRow]> trace-entries;
+    in property <[[string]]> trace-steps;
+    in property <string> trace-session;
     in property <string> trace-message;
+    in-out property <string> trace-mode: "timeline";
     in property <[string]> models;
     in property <[string]> efforts;
     in-out property <int> model-index;
     in-out property <int> effort-index;
+    // Shown under the pickers until the next send.
+    in property <string> picker-note;
     in-out property <string> page: "chat";
     in property <bool> busy;
     in-out property <string> error-text;
@@ -119,7 +125,9 @@ export component MainWindow inherits Window {
     callback use-account(string);
     callback remove-account(string);
     callback refresh-trace();
-    callback settings-changed(int, int);
+    callback trace-toggle(int);
+    callback model-picked(int);
+    callback effort-picked(int);
     callback theme-changed(int);
 
     // Copy: a hidden TextInput takes the text, selects it and copies it
@@ -200,8 +208,29 @@ export component MainWindow inherits Window {
                             width: chat.column;
                             height: self.preferred-height;
                             busy: root.busy;
+                            note: root.picker-note;
                             submit => { root.submit(); }
                             stop => { root.stop(); }
+                            Dropdown {
+                                label: "Model";
+                                min-width: 200px;
+                                max-width: 200px;
+                                drop-up: true;
+                                list-width: 320px;
+                                model: root.models;
+                                current-index <=> root.model-index;
+                                selected(i) => { root.model-picked(i); }
+                            }
+                            Dropdown {
+                                label: "Thinking effort";
+                                placeholder: "default";
+                                min-width: 110px;
+                                max-width: 110px;
+                                drop-up: true;
+                                model: root.efforts;
+                                current-index <=> root.effort-index;
+                                selected(i) => { root.effort-picked(i); }
+                            }
                         }
                     }
                 }
@@ -226,9 +255,14 @@ export component MainWindow inherits Window {
                 if root.page == "trace": TracePage {
                     width: parent.width;
                     height: parent.height;
-                    rows: root.trace-rows;
+                    entries: root.trace-entries;
+                    steps: root.trace-steps;
+                    session: root.trace-session;
                     message: root.trace-message;
+                    mode <=> root.trace-mode;
                     refresh => { root.refresh-trace(); }
+                    toggle(i) => { root.trace-toggle(i); }
+                    copy(t) => { root.copy-text(t); }
                 }
                 if root.page == "settings": SettingsPage {
                     width: parent.width;
@@ -240,7 +274,9 @@ export component MainWindow inherits Window {
                     efforts: root.efforts;
                     model-index <=> root.model-index;
                     effort-index <=> root.effort-index;
-                    changed-settings(m, e) => { root.settings-changed(m, e); }
+                    note: root.picker-note;
+                    model-picked(i) => { root.model-picked(i); }
+                    effort-picked(i) => { root.effort-picked(i); }
                 }
                 if root.page == "about": AboutPage {
                     width: parent.width;

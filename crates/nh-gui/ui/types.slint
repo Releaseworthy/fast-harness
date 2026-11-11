@@ -21,6 +21,23 @@ export struct MsgRow {
     tone: string,
 }
 
+// One entry of the trace timeline (src/trace_rows.rs). `kind`: turn, user,
+// header, request, thinking, response, call, result, answer, retry,
+// failure, switch or end.
+export struct TraceRow {
+    kind: string,
+    title: string,
+    // The full body (shortened when huge) and what a collapsed one shows.
+    body: string,
+    preview: string,
+    // Starts collapsed; `expanded` once the user picked Show all.
+    long: bool,
+    expanded: bool,
+    error: bool,
+    // What Copy puts on the clipboard: the title and the whole body.
+    copy: string,
+}
+
 export struct SessionRow {
     id: string,
     title: string,

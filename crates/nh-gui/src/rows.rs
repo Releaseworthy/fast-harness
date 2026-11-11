@@ -4,9 +4,8 @@ use nh_core::accounts::model::{Account, AccountKind};
 use nh_core::accounts::pool::AccountStatus;
 use nh_core::accounts::usage::{current_usage, Window};
 use nh_core::session::SessionSummary;
-use nh_core::trace::report::StepRow;
 use nh_core::view::{Item, NoteKind};
-use slint::{SharedString, StandardListViewItem, StyledText};
+use slint::{SharedString, StyledText};
 
 use crate::format::{ago, duration, fraction, shorten, tokens, window_caption};
 use crate::{AccountRow, MsgRow, SessionRow};
@@ -157,29 +156,6 @@ pub fn session_row(summary: &SessionSummary, current: Option<&str>, now_ms: u64)
         time: ago(summary.last_time, now_ms).into(),
         current: current == Some(summary.id.as_str()),
     }
-}
-
-/// The cells of the Trace table, in the column order of `ui/pages.slint`.
-pub fn trace_cells(row: &StepRow) -> Vec<StandardListViewItem> {
-    let tools: Vec<&str> = row.tools.iter().map(|(name, _)| name.as_str()).collect();
-    let cells = [
-        row.turn.to_string(),
-        row.step.to_string(),
-        row.model.clone(),
-        row.account.clone(),
-        duration(row.ttfb_ms),
-        duration(row.total_ms),
-        tokens(row.usage.input),
-        tokens(row.usage.output),
-        tokens(row.usage.cache_read),
-        tokens(row.usage.cache_write),
-        tools.join(", "),
-        row.retries.to_string(),
-    ];
-    cells
-        .iter()
-        .map(|c| StandardListViewItem::from(c.as_str()))
-        .collect()
 }
 
 #[cfg(test)]
