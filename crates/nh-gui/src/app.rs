@@ -15,7 +15,7 @@ use slint::{ComponentHandle, ModelRc, SharedString, VecModel, Weak};
 
 use crate::format::{duration, tokens};
 use crate::mirror::Mirror;
-use crate::rows::{session_row, trace_cells};
+use crate::rows::session_row;
 use crate::{MainWindow, MsgRow};
 
 pub struct App {
@@ -131,31 +131,7 @@ impl App {
     }
 
     pub fn refresh_trace(&self, ui: &MainWindow) {
-        let Some(id) = self.conv_id.as_deref() else {
-            ui.set_trace_message("No session yet: send a message or open a session.".into());
-            ui.set_trace_rows(ModelRc::default());
-            return;
-        };
-        let path = session::log_path(&self.rt.home, &self.cwd, id);
-        match trace::read(&path) {
-            Ok((_, events)) => {
-                let steps = trace::report::step_rows(&events);
-                let rows: Vec<ModelRc<slint::StandardListViewItem>> = steps
-                    .iter()
-                    .map(|r| ModelRc::new(VecModel::from(trace_cells(r))))
-                    .collect();
-                let note = if rows.is_empty() {
-                    "No model step in this session yet."
-                } else {
-                    ""
-                };
-                ui.set_trace_message(note.into());
-                ui.set_trace_rows(ModelRc::new(VecModel::from(rows)));
-            }
-            Err(err) => {
-                ui.set_trace_message(format!("Cannot read {}: {err}", path.display()).into())
-            }
-        }
+        crate::trace_rows::refresh(self, ui);
     }
 
     /// Shows `view` from its first row.

@@ -137,7 +137,7 @@ fn account_rows() {
 }
 
 #[test]
-fn session_and_trace_rows() {
+fn session_rows() {
     let summary = SessionSummary {
         id: "s1".into(),
         created_at: 0,
@@ -151,13 +151,4 @@ fn session_and_trace_rows() {
         ("(no message yet)", "2 min ago")
     );
     assert!(row.current);
-    let step = StepRow {
-        turn: 1,
-        step: 2,
-        tools: vec![("read".into(), 5), ("grep".into(), 7)],
-        ..StepRow::default()
-    };
-    let cells = trace_cells(&step);
-    assert_eq!(cells.len(), 12);
-    assert_eq!(cells[10].text, "read, grep");
 }

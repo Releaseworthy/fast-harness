@@ -12,10 +12,22 @@ use slint::platform::{Platform, WindowAdapter};
 use slint::{ComponentHandle, ModelRc, PhysicalSize, Rgb8Pixel, SharedString, VecModel};
 
 use crate::rows::markdown;
-use crate::{shots_png, theme, AccountRow, MainWindow, MsgRow, SessionRow};
+use crate::{shots_png, shots_trace, theme, AccountRow, MainWindow, MsgRow, SessionRow, TraceRow};
+
+/// The sample timeline with the failed tool output opened by the user.
+fn trace_entries() -> Vec<TraceRow> {
+    let mut rows = shots_trace::entries();
+    if let Some(row) = rows.iter_mut().find(|r| r.kind == "thinking") {
+        row.expanded = true;
+    }
+    rows
+}
 
 const WIDTH: u32 = 1100;
 const HEIGHT: u32 = 760;
+/// The composer's effort dropdown (sidebar 260 + side 16 + padding 12 + model 200 + gap 8).
+const EFFORT_X: f32 = 550.0;
+const EFFORT_Y: f32 = 690.0;
 
 struct ShotPlatform(Rc<MinimalSoftwareWindow>);
 
@@ -122,20 +134,16 @@ fn fill(ui: &MainWindow) {
         ),
         account("spare@example.com", false, 0.05, 0.02, ""),
     ]));
-    let labels = [
-        "Claude Opus 5.5 (claude-opus-5-5)",
-        "Claude Sonnet 5 (claude-sonnet-5)",
-    ];
-    ui.set_models(model(
-        labels.iter().map(|s| SharedString::from(*s)).collect(),
-    ));
+    let models = crate::pickers::model_list("claude-opus-5-5");
+    ui.set_models(model(models.iter().map(|(_, l)| l.into()).collect()));
+    let efforts = crate::pickers::effort_list("claude-opus-5-5");
     ui.set_efforts(model(
-        crate::settings::EFFORTS
-            .iter()
-            .map(|s| SharedString::from(*s))
-            .collect(),
+        efforts.iter().map(|s| SharedString::from(*s)).collect(),
     ));
-    ui.set_effort_index(3);
+    ui.set_effort_index(2);
+    ui.set_trace_entries(model(trace_entries()));
+    ui.set_trace_steps(model(shots_trace::steps()));
+    ui.set_trace_session("2026-11-11T22-51-40-3f9c".into());
     ui.set_chip_name("work@example.com".into());
     ui.set_chip_five(0.42);
     ui.set_chip_five_text("42%".into());
@@ -182,7 +190,9 @@ fn shots() {
     for core in THEMES.iter() {
         theme::apply(&ui, core);
         theme::fill(&ui, core.id);
-        for page in ["chat", "accounts", "settings"] {
+        for shot in ["chat", "accounts", "settings", "trace", "steps"] {
+            let page = if shot == "steps" { "trace" } else { shot };
+            ui.set_trace_mode(if shot == "steps" { "steps" } else { "timeline" }.into());
             ui.set_page(page.into());
             ui.set_error_text(
                 if page == "chat" {
@@ -193,9 +203,20 @@ fn shots() {
                 .into(),
             );
             let png = shots_png::encode(WIDTH, HEIGHT, &render(&window));
-            let path = dir.join(format!("{}-{page}.png", core.id));
+            let path = dir.join(format!("{}-{shot}.png", core.id));
             std::fs::write(&path, png).expect("write png");
         }
+        ui.set_page("chat".into());
+        ui.set_error_text("".into());
+        ui.set_picker_note("Effort set to high: claude-opus-4-5 does not take max.".into());
+        // The effort dropdown of the composer, opened upwards.
+        click(&window, EFFORT_X, EFFORT_Y);
+        key(&window, slint::platform::Key::Return.into());
+        let png = shots_png::encode(WIDTH, HEIGHT, &render(&window));
+        std::fs::write(dir.join(format!("{}-composer.png", core.id)), png).expect("write png");
+        key(&window, slint::platform::Key::Escape.into());
+        ui.set_picker_note("".into());
+        ui.set_page("settings".into());
         // The theme dropdown opened by a click, then closed with Escape.
         click(&window, 600.0, 104.0);
         // A second open by keyboard is a no-op when the click already opened it.

@@ -1,0 +1,262 @@
+// The Trace page: the timeline of the session log (what the user sent, each
+// request, the thinking, the response, tool calls and results) and the
+// step table. Marks and words carry every state next to the colour.
+import { ListView, ScrollView } from "std-widgets.slint";
+import { TraceRow } from "types.slint";
+import { Theme, Columns, LinkText, Mark } from "parts.slint";
+import { ActionButton, FocusRing } from "widgets.slint";
+import { StepsTable } from "steps.slint";
+
+// The mark and its colour for each entry kind.
+global TraceStyle {
+    pure public function mark(entry: TraceRow) -> string {
+        if entry.kind == "request" { return "→"; }
+        if entry.kind == "answer" { return "←"; }
+        if entry.kind == "call" { return "▸"; }
+        if entry.kind == "result" { return entry.error ? "✕" : "✓"; }
+        if entry.kind == "failure" { return "✕"; }
+        if entry.kind == "retry" { return "↻"; }
+        if entry.kind == "switch" { return "⇄"; }
+        if entry.kind == "header" { return "≡"; }
+        return "";
+    }
+    pure public function tone(entry: TraceRow) -> color {
+        if entry.error || entry.kind == "failure" { return Theme.error; }
+        if entry.kind == "retry" || entry.kind == "switch" { return Theme.warning; }
+        if entry.kind == "result" { return Theme.success; }
+        if entry.kind == "call" { return Theme.accent; }
+        return Theme.dim;
+    }
+    // Captions are dim and small; the others read as headings.
+    pure public function caption(entry: TraceRow) -> bool {
+        return entry.kind == "request" || entry.kind == "answer" || entry.kind == "end" || entry.kind == "header";
+    }
+}
+
+// The title line: mark, title, then Show all / Show less and Copy.
+component EntryHead {
+    in property <TraceRow> entry;
+    callback toggle();
+    callback copy(string);
+    HorizontalLayout {
+        spacing: Theme.space-s;
+        if TraceStyle.mark(entry) != "": Mark {
+            text: TraceStyle.mark(entry);
+            color: TraceStyle.tone(entry);
+            font-size: Theme.font-s;
+        }
+        Text {
+            text: entry.title;
+            color: entry.error ? Theme.error : TraceStyle.caption(entry) ? Theme.dim : Theme.text;
+            font-size: TraceStyle.caption(entry) ? Theme.font-xs : Theme.font-s;
+            font-weight: TraceStyle.caption(entry) ? 400 : 600;
+            font-italic: entry.kind == "thinking";
+            vertical-alignment: center;
+            wrap: word-wrap;
+            horizontal-stretch: 1;
+        }
+        if entry.long: LinkText {
+            text: entry.expanded ? "Show less" : "Show all";
+            vertical-alignment: center;
+            clicked => { root.toggle(); }
+        }
+        LinkText {
+            text: "Copy";
+            vertical-alignment: center;
+            clicked => { root.copy(entry.copy); }
+        }
+    }
+}
+
+// Tool arguments, tool output and the system prompt: monospace on `code`.
+component CodeBody inherits Rectangle {
+    in property <string> text;
+    in property <bool> error;
+    border-radius: Theme.radius-m;
+    border-width: 1px;
+    border-color: root.error ? Theme.error : Theme.line;
+    background: Theme.code;
+    HorizontalLayout {
+        padding: Theme.space-s + 2px;
+        padding-left: Theme.space-m;
+        Text {
+            text: root.text;
+            color: Theme.text;
+            font-family: Theme.mono;
+            font-size: Theme.font-s;
+            wrap: word-wrap;
+        }
+    }
+}
+
+component EntryBody {
+    in property <TraceRow> entry;
+    in property <string> shown;
+    VerticalLayout {
+        if entry.kind == "user": Rectangle {
+            border-radius: Theme.radius-l;
+            background: Theme.bubble;
+            HorizontalLayout {
+                padding: Theme.space-s + 2px;
+                padding-left: Theme.space-l - 2px;
+                padding-right: Theme.space-l - 2px;
+                Text { text: root.shown; color: Theme.text; font-size: Theme.font-m; wrap: word-wrap; }
+            }
+        }
+        if entry.kind == "thinking": HorizontalLayout {
+            spacing: Theme.space-m;
+            Rectangle { width: 2px; border-radius: 1px; background: Theme.border; }
+            Text { text: root.shown; color: Theme.dim; font-size: Theme.font-s; font-italic: true; wrap: word-wrap; }
+        }
+        if entry.kind == "response": Text {
+            text: root.shown;
+            color: Theme.text;
+            font-size: Theme.font-m;
+            wrap: word-wrap;
+        }
+        if entry.kind == "call" || entry.kind == "result" || entry.kind == "header": CodeBody {
+            text: root.shown;
+            error: entry.error;
+        }
+        if entry.kind == "failure" || entry.kind == "retry" || entry.kind == "switch": Text {
+            text: root.shown;
+            color: Theme.dim;
+            font-size: Theme.font-s;
+            wrap: word-wrap;
+        }
+    }
+}
+
+// One timeline entry in the centred column; a turn is a section header.
+component TraceEntryView {
+    in property <TraceRow> entry;
+    callback toggle();
+    callback copy(string);
+    property <string> shown: entry.long && !entry.expanded ? entry.preview : entry.body;
+    VerticalLayout {
+        padding-left: Columns.side(root.width, Theme.column-width);
+        padding-right: Columns.side(root.width, Theme.column-width);
+        padding-top: entry.kind == "turn" ? Theme.space-xl : entry.kind == "user" || entry.kind == "request" ? Theme.space-m : Theme.space-s;
+        padding-bottom: entry.kind == "turn" ? Theme.space-xs : 2px;
+        spacing: Theme.space-xs + 2px;
+        if entry.kind == "turn": HorizontalLayout {
+            spacing: Theme.space-m;
+            Text { text: entry.title; color: Theme.text; font-size: Theme.font-m; font-weight: 700; vertical-alignment: center; }
+            VerticalLayout {
+                alignment: center;
+                horizontal-stretch: 1;
+                Rectangle { height: 1px; background: Theme.border; }
+            }
+        }
+        if entry.kind != "turn": EntryHead {
+            entry: entry;
+            toggle => { root.toggle(); }
+            copy(t) => { root.copy(t); }
+        }
+        if entry.kind != "turn" && root.shown != "": EntryBody { entry: entry; shown: root.shown; }
+    }
+}
+
+// Timeline | Steps: a two-way switch; the picked side is filled and bold.
+component Segment inherits Rectangle {
+    in property <string> text;
+    in property <bool> checked;
+    callback clicked();
+    min-width: 84px;
+    border-radius: Theme.radius-s - 2px;
+    background: root.checked ? Theme.selection : ta.has-hover ? Theme.hover : transparent;
+    accessible-role: tab;
+    accessible-label: root.text;
+    accessible-item-selected: root.checked;
+    accessible-action-default => { root.clicked(); }
+    forward-focus: fs;
+    Text {
+        text: (root.checked ? "● " : "") + root.text;
+        color: Theme.text;
+        font-size: Theme.font-s;
+        font-weight: root.checked ? 700 : 500;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+    ta := TouchArea { mouse-cursor: pointer; clicked => { root.clicked(); } }
+    fs := FocusScope {
+        focus-on-click: false;
+        key-pressed(event) => {
+            if event.text == Key.Return || event.text == " " { root.clicked(); return accept; }
+            return reject;
+        }
+    }
+    if fs.has-focus: FocusRing { radius: Theme.radius-s - 2px; x: -3px; y: -3px; width: parent.width + 6px; height: parent.height + 6px; }
+}
+
+component ModeSwitch inherits Rectangle {
+    in-out property <string> mode;
+    border-radius: Theme.radius-s;
+    border-width: 1px;
+    border-color: Theme.border;
+    background: Theme.raised;
+    accessible-role: tab-list;
+    accessible-label: "Trace view";
+    HorizontalLayout {
+        padding: 3px;
+        spacing: 2px;
+        Segment { text: "Timeline"; checked: root.mode == "timeline"; clicked => { root.mode = "timeline"; } }
+        Segment { text: "Steps"; checked: root.mode == "steps"; clicked => { root.mode = "steps"; } }
+    }
+}
+
+export component TracePage inherits Rectangle {
+    in property <[TraceRow]> entries;
+    in property <[[string]]> steps;
+    in property <string> session;
+    in property <string> message;
+    in-out property <string> mode: "timeline";
+    callback refresh();
+    callback toggle(int);
+    callback copy(string);
+    background: Theme.bg;
+    VerticalLayout {
+        Rectangle {
+            background: Theme.bg;
+            HorizontalLayout {
+                padding: Theme.space-l;
+                padding-left: Theme.space-xl;
+                padding-right: Theme.space-xl;
+                spacing: Theme.space-m;
+                Text { text: "Trace"; color: Theme.text; font-size: Theme.font-l; font-weight: 600; vertical-alignment: center; }
+                Text {
+                    text: root.session;
+                    color: Theme.dim;
+                    font-size: Theme.font-xs;
+                    font-family: Theme.mono;
+                    vertical-alignment: center;
+                    overflow: elide;
+                    horizontal-stretch: 1;
+                }
+                ModeSwitch { mode <=> root.mode; }
+                ActionButton { text: "Refresh"; clicked => { root.refresh(); } }
+            }
+            Rectangle { y: parent.height - 1px; height: 1px; background: Theme.line; }
+        }
+        if root.message != "": Text {
+            text: root.message;
+            color: Theme.dim;
+            wrap: word-wrap;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+            height: 80px;
+        }
+        if root.mode == "timeline": ListView {
+            vertical-stretch: 1;
+            for item[i] in root.entries: TraceEntryView {
+                entry: item;
+                toggle => { root.toggle(i); }
+                copy(t) => { root.copy(t); }
+            }
+        }
+        if root.mode == "steps": StepsTable {
+            vertical-stretch: 1;
+            rows: root.steps;
+        }
+    }
+}
