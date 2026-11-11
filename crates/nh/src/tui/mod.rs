@@ -7,12 +7,16 @@ mod draw;
 mod input;
 mod markdown;
 mod panels;
+mod picker;
+#[cfg(test)]
+mod picker_tests;
 mod screens;
 #[cfg(test)]
 mod tests;
 mod theme;
 #[cfg(test)]
 mod theme_tests;
+mod timeline;
 mod transcript;
 mod ui;
 mod worker;

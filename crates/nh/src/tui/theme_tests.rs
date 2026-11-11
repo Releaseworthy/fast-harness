@@ -83,7 +83,8 @@ fn frame(theme: &'static Theme, setup: impl FnOnce(&mut Ui)) -> Buffer {
 }
 
 /// The frames every check runs on: chat idle, chat running with a status
-/// message, and the model list with a selected row.
+/// message, the model list with a selected row, the trace timeline and
+/// the open model picker.
 fn frames(theme: &'static Theme) -> Vec<Buffer> {
     vec![
         frame(theme, |_| {}),
@@ -96,6 +97,13 @@ fn frames(theme: &'static Theme) -> Vec<Buffer> {
             ui.models = builtin_models();
             ui.selected = 1;
         }),
+        frame(theme, |ui| {
+            ui.screen = Screen::Trace;
+            let steps = vec!["turn step model".into()];
+            ui.trace
+                .set(super::picker_tests::sample_entries(), steps, None);
+        }),
+        frame(theme, |ui| ui.open_picker(super::picker::PickerKind::Model)),
     ]
 }
 

@@ -10,10 +10,11 @@ use ratatui::crossterm::event::{
 };
 
 use super::input::Input;
+use super::picker::{Picker, PickerKind};
+use super::timeline::TraceView;
 
 /// Lines one mouse wheel notch scrolls.
 pub const WHEEL_LINES: usize = 3;
-pub const EFFORTS: [&str; 5] = ["low", "medium", "high", "max", "off"];
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Screen {
@@ -78,7 +79,10 @@ pub struct Ui {
     pub accounts: Vec<AccountStatus>,
     pub sessions: Vec<SessionSummary>,
     pub models: Vec<ModelInfo>,
-    pub trace: Vec<String>,
+    /// The trace screen: timeline entries, steps table and drawn lines.
+    pub trace: TraceView,
+    /// The open model or effort picker of the chat box.
+    pub picker: Option<Picker>,
     pub model: String,
     pub effort: Option<String>,
     pub frame: usize,
@@ -103,7 +107,8 @@ impl Ui {
             accounts: Vec::new(),
             sessions: Vec::new(),
             models: Vec::new(),
-            trace: Vec::new(),
+            trace: TraceView::default(),
+            picker: None,
             model,
             effort,
             frame: 0,
@@ -169,7 +174,7 @@ impl Ui {
     }
 
     pub fn trace_scroll(&mut self, delta: isize) {
-        let max = self.trace.len().saturating_sub(self.view_height);
+        let max = self.trace.lines.len().saturating_sub(self.view_height);
         let next = self.trace_top.saturating_add_signed(delta);
         self.trace_top = next.min(max);
     }
@@ -183,6 +188,9 @@ impl Ui {
         let ctrl_c = is_ctrl(&key, 'c');
         if !ctrl_c {
             self.quit_armed = false;
+        }
+        if self.picker.is_some() && self.screen == Screen::Chat {
+            return self.picker_key(&key);
         }
         if let Some(action) = self.global_key(&key) {
             return action;
@@ -253,6 +261,8 @@ impl Ui {
             }
             KeyCode::Char('t') if ctrl && !alt => self.show_thinking = !self.show_thinking,
             KeyCode::Char('n') if ctrl && !alt => return self.new_session(),
+            KeyCode::Char('p') if ctrl && !alt => self.open_picker(PickerKind::Model),
+            KeyCode::Char('e') if ctrl && !alt => self.open_picker(PickerKind::Effort),
             KeyCode::PageUp => self.scroll_up(self.page()),
             KeyCode::PageDown => self.scroll_down(self.page()),
             KeyCode::Home if ctrl || self.input.is_empty() => self.top = Some(0),
@@ -305,10 +315,4 @@ pub fn is_ctrl(key: &KeyEvent, letter: char) -> bool {
     key.modifiers.contains(KeyModifiers::CONTROL)
         && !key.modifiers.contains(KeyModifiers::ALT)
         && matches!(key.code, KeyCode::Char(c) if c.eq_ignore_ascii_case(&letter))
-}
-
-/// The effort after `current` in [`EFFORTS`].
-pub fn next_effort(current: Option<&str>) -> &'static str {
-    let index = EFFORTS.iter().position(|e| Some(*e) == current);
-    EFFORTS[index.map_or(0, |i| (i + 1) % EFFORTS.len())]
 }
