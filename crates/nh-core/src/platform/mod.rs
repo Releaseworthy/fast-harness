@@ -6,6 +6,8 @@
 //! - `random`: `random_fill(&mut [u8]) -> Result<()>` (the OS CSPRNG).
 //! - `open`: `open_url(&str) -> Result<()>` (the default browser).
 //! - `process`: `ProcessGroup` (a process and every process it starts, killed together).
+//! - `window`: `set_big_window_icon() -> Result<usize>` (the taskbar icon from the exe's icon
+//!   group 1 on the calling thread's visible windows; a no-op returning 0 elsewhere).
 //!
 //! An OS without a backend uses `unsupported`, whose items return
 //! `PlatformError::Unsupported`, so the core still builds there.

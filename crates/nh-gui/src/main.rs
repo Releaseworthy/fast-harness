@@ -73,6 +73,14 @@ fn main() {
             wire::connect_minimal(&ui);
         }
     }
-    let _ = ui.run();
+    if ui.show().is_ok() {
+        // The window exists once the event loop runs: then give it the big
+        // (taskbar, Alt-Tab) icon; winit only sets the small one.
+        slint::Timer::single_shot(std::time::Duration::from_millis(50), || {
+            let _ = nh_core::platform::set_big_window_icon();
+        });
+        let _ = slint::run_event_loop();
+        let _ = ui.hide();
+    }
     stop.store(true, Ordering::SeqCst);
 }

@@ -147,6 +147,9 @@ export component MainWindow inherits Window {
             close => { root.close(); }
         }
         HorizontalLayout {
+            // Without the sidebar the card stays inset, so its rounded
+            // corner does not sit on the window edge.
+            padding-left: root.sidebar-open ? 0px : Theme.space-s;
             if root.sidebar-open: Sidebar {
                 sessions: root.sessions;
                 page: root.page;
@@ -161,6 +164,8 @@ export component MainWindow inherits Window {
                 border-top-left-radius: Theme.radius-l;
                 border-width: 1px;
                 border-color: Theme.line;
+                // No child may paint square over the rounded corner.
+                clip: true;
                 VerticalLayout {
                     padding-left: 1px;
                     padding-top: 1px;
