@@ -106,10 +106,12 @@ impl Turn<'_> {
     fn finish_step(
         &mut self,
         step: u32,
-        done: Completion,
+        mut done: Completion,
         lease: &Lease,
     ) -> Res<Option<TurnOutcome>> {
         let turn = self.turn;
+        // Provenance for every provider: the full model id of this call.
+        done.message.model = Some(self.agent.parts.config.model.clone());
         self.agent.parts.auth.observe(lease, &done.head);
         (self.sink)(AgentEvent::UsageUpdate {
             account: lease.account.clone(),

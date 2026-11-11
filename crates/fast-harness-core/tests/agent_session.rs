@@ -20,6 +20,7 @@ fn call(id: &str) -> Block {
         id: id.into(),
         name: "echo".into(),
         arguments: "{}".into(),
+        signature: None,
     }
 }
 
@@ -31,6 +32,7 @@ fn result_message(id: &str) -> Message {
             content: format!("result {id}"),
             is_error: false,
         }],
+        model: None,
     }
 }
 
@@ -44,6 +46,7 @@ fn write_crashed_log(env: &Env, id: &str) {
     let assistant = Message {
         role: Role::Assistant,
         content: vec![call("toolu_1"), call("toolu_2"), call("toolu_3")],
+        model: None,
     };
     let usage = Usage::default();
     let timing = Timing::default();

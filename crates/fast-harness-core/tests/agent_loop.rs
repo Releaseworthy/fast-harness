@@ -76,6 +76,7 @@ fn two_step_turn_writes_the_exact_trace() {
         roles,
         [Role::User, Role::Assistant, Role::Tool, Role::Assistant]
     );
+    check_provenance(&conv, &transport.requests()[0].body);
     check_two_step_trace(&conv);
     assert!(transport.requests()[1].body.contains("tool_result"));
     // A second turn with the same prompt and tools writes no new request/header.
@@ -85,6 +86,15 @@ fn two_step_turn_writes_the_exact_trace() {
     assert_eq!(kinds.iter().filter(|k| *k == "request/header").count(), 1);
     assert_eq!(conv.turn, 2);
     drop(env);
+}
+
+/// Assistant messages carry the model id of their call; the others none.
+fn check_provenance(conv: &Conversation, first_body: &str) {
+    let sent: serde_json::Value = serde_json::from_str(first_body).unwrap();
+    let model = sent["model"].as_str();
+    assert!(model.is_some());
+    let models: Vec<Option<&str>> = conv.messages.iter().map(|m| m.model.as_deref()).collect();
+    assert_eq!(models, [None, model, None, model]);
 }
 
 fn check_two_step_trace(conv: &Conversation) {

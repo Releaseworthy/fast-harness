@@ -37,6 +37,10 @@ pub enum Block {
         id: String,
         name: String,
         arguments: String,
+        /// The Gemini thought signature of this call (Antigravity), sent back
+        /// unchanged only to the model that produced it.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        signature: Option<String>,
     },
     ToolResult {
         call_id: String,
@@ -50,6 +54,11 @@ pub enum Block {
 pub struct Message {
     pub role: Role,
     pub content: Vec<Block>,
+    /// The full model id that produced an assistant message (`claude-...` or
+    /// `antigravity/<id>`); None for user and tool messages and for logs
+    /// written before trace version 3.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model: Option<String>,
 }
 
 impl Message {
@@ -57,6 +66,7 @@ impl Message {
         Message {
             role: Role::User,
             content: vec![Block::Text { text: text.into() }],
+            model: None,
         }
     }
 
@@ -78,6 +88,7 @@ impl Message {
                 id,
                 name,
                 arguments,
+                ..
             } => Some((id.as_str(), name.as_str(), arguments.as_str())),
             _ => None,
         })
@@ -142,8 +153,10 @@ mod tests {
                     id: "c1".into(),
                     name: "read".into(),
                     arguments: "{}".into(),
+                    signature: None,
                 },
             ],
+            model: None,
         };
         let json = serde_json::to_string(&message).unwrap();
         assert_eq!(
@@ -156,6 +169,41 @@ mod tests {
             back.tool_calls().collect::<Vec<_>>(),
             vec![("c1", "read", "{}")]
         );
+    }
+
+    #[test]
+    fn message_and_tool_call_round_trip_with_model_and_signature() {
+        let with_provenance = Message {
+            role: Role::Assistant,
+            content: vec![Block::ToolCall {
+                id: "c1".into(),
+                name: "read".into(),
+                arguments: "{}".into(),
+                signature: Some("gemini-sig".into()),
+            }],
+            model: Some("antigravity/gemini-2.5-pro".into()),
+        };
+        let json = serde_json::to_string(&with_provenance).unwrap();
+        assert!(json.contains(r#""model":"antigravity/gemini-2.5-pro""#));
+        assert!(json.contains(r#""signature":"gemini-sig""#));
+        let back: Message = serde_json::from_str(&json).unwrap();
+        assert_eq!(back, with_provenance);
+
+        let without_provenance = Message {
+            role: Role::Assistant,
+            content: vec![Block::ToolCall {
+                id: "c1".into(),
+                name: "read".into(),
+                arguments: "{}".into(),
+                signature: None,
+            }],
+            model: None,
+        };
+        let json_without = serde_json::to_string(&without_provenance).unwrap();
+        assert!(!json_without.contains("model"));
+        assert!(!json_without.contains("signature"));
+        let back_without: Message = serde_json::from_str(&json_without).unwrap();
+        assert_eq!(back_without, without_provenance);
     }
 
     #[test]

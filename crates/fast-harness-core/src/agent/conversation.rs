@@ -130,6 +130,7 @@ fn fill_missing(out: &mut Vec<Message>, index: usize) {
         let empty = Message {
             role: Role::Tool,
             content: Vec::new(),
+            model: None,
         };
         out.insert(index + 1, empty);
     }
