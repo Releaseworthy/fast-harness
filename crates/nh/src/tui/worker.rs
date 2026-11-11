@@ -11,6 +11,8 @@ use std::time::Duration;
 use nh_core::accounts::oauth;
 use nh_core::accounts::pool::{AccountPool, USAGE_EVERY_MS};
 use nh_core::agent::{Agent, Conversation};
+use nh_core::app::Runtime;
+use nh_core::llm::anthropic::ModelInfo;
 use nh_core::net::UreqTransport;
 use nh_core::platform;
 use ratatui::crossterm::event;
@@ -39,6 +41,25 @@ pub fn start_turn(
             };
             let outcome = agent.run_turn(&mut conv, &prompt, &cancel, &mut sink);
             let _ = tx.send(Msg::TurnDone(Box::new(conv), outcome));
+        })
+        .map(|_| ())
+}
+
+/// One live model list read, run off the UI thread.
+pub type FetchJob = Box<dyn FnOnce() -> Result<Vec<ModelInfo>, String> + Send>;
+
+/// The real fetch: GET /v1/models with the credential of this moment.
+pub fn live_fetch(rt: &Runtime) -> FetchJob {
+    let source = rt.models();
+    Box::new(move || source.fetch())
+}
+
+/// Runs job on a thread; the result comes back in Msg::Models.
+pub fn start_fetch(job: FetchJob, tx: Sender<Msg>) -> io::Result<()> {
+    thread::Builder::new()
+        .name("nh-models".into())
+        .spawn(move || {
+            let _ = tx.send(Msg::Models(job()));
         })
         .map(|_| ())
 }
@@ -111,6 +132,20 @@ impl Tui {
         };
         self.ui.status = result.unwrap_or_else(|err| err.to_string());
         self.refresh_accounts();
+    }
+
+    /// Starts one live model list fetch unless one is running.
+    pub fn fetch_models(&mut self) {
+        if self.ui.fetching {
+            return;
+        }
+        let job = (self.fetcher)(&self.rt);
+        match start_fetch(job, self.tx.clone()) {
+            Ok(()) => self.ui.fetch_started(),
+            Err(err) => self
+                .ui
+                .models_fetched(Err(format!("model list thread: {err}"))),
+        }
     }
 
     fn poll_now(&mut self) {

@@ -2,7 +2,7 @@
 //! above the input. Ctrl+P opens the models, Ctrl+E the efforts of the
 //! current model; Enter picks, Esc closes, other keys are ignored.
 
-use nh_core::llm::anthropic::{builtin_models, efforts, fit_effort};
+use nh_core::llm::anthropic::{builtin_models, efforts, fit_effort, ModelInfo};
 use ratatui::crossterm::event::{KeyCode, KeyEvent};
 use ratatui::layout::Rect;
 use ratatui::style::Modifier;
@@ -30,6 +30,8 @@ pub struct Picker {
     pub current: Option<String>,
     /// Visible rows at the last draw (page size).
     pub rows: usize,
+    /// Shown after the title: the live list is loading, or why it failed.
+    pub note: Option<String>,
 }
 
 /// The display name of `model`, else its id.
@@ -47,26 +49,43 @@ pub fn next_effort(model: &str, current: Option<&str>) -> &'static str {
     list[index.map_or(0, |i| (i + 1) % list.len())]
 }
 
+/// The model rows of `catalog`, with `model` first when it is not listed.
+fn model_items(catalog: &[ModelInfo], model: &str) -> Vec<(String, String)> {
+    let mut items: Vec<(String, String)> = catalog
+        .iter()
+        .map(|m| {
+            let tag = if m.deprecated { "  deprecated" } else { "" };
+            let label = format!("{:<18} {}{tag}", m.display_name, m.id);
+            (m.id.clone(), label)
+        })
+        .collect();
+    if !items.iter().any(|(id, _)| id == model) {
+        items.insert(0, (model.to_string(), model.to_string()));
+    }
+    items
+}
+
+/// The efforts `catalog` lists for `model`, else the known ones.
+fn effort_items(catalog: &[ModelInfo], model: &str) -> Vec<(String, String)> {
+    let listed = catalog
+        .iter()
+        .find(|m| m.id == model)
+        .map(|m| m.efforts.clone())
+        .filter(|list| !list.is_empty());
+    let list = listed.unwrap_or_else(|| efforts(model).into_iter().map(String::from).collect());
+    list.into_iter().map(|e| (e.clone(), e)).collect()
+}
+
 impl Picker {
-    pub fn new(kind: PickerKind, model: &str, effort: Option<&str>) -> Picker {
-        let (items, current): (Vec<(String, String)>, Option<String>) = match kind {
-            PickerKind::Model => {
-                let mut items: Vec<(String, String)> = builtin_models()
-                    .into_iter()
-                    .map(|m| (m.id.clone(), format!("{:<18} {}", m.display_name, m.id)))
-                    .collect();
-                if !items.iter().any(|(id, _)| id == model) {
-                    items.insert(0, (model.to_string(), model.to_string()));
-                }
-                (items, Some(model.to_string()))
-            }
-            PickerKind::Effort => {
-                let items = efforts(model)
-                    .into_iter()
-                    .map(|e| (e.to_string(), e.to_string()))
-                    .collect();
-                (items, effort.map(String::from))
-            }
+    pub fn new(
+        kind: PickerKind,
+        catalog: &[ModelInfo],
+        model: &str,
+        effort: Option<&str>,
+    ) -> Picker {
+        let (items, current) = match kind {
+            PickerKind::Model => (model_items(catalog, model), Some(model.to_string())),
+            PickerKind::Effort => (effort_items(catalog, model), effort.map(String::from)),
         };
         let selected = items
             .iter()
@@ -78,22 +97,66 @@ impl Picker {
             selected,
             current,
             rows: 8,
+            note: None,
         }
     }
 
-    pub fn title(&self) -> &'static str {
-        match self.kind {
+    pub fn title(&self) -> String {
+        let title = match self.kind {
             PickerKind::Model => "Model for the next turn",
             PickerKind::Effort => "Thinking effort",
+        };
+        match &self.note {
+            Some(note) => format!("{title} · {note}"),
+            None => title.to_string(),
         }
     }
 }
 
+/// Picker note while the live list loads.
+pub const REFRESHING: &str = "refreshing...";
+
 impl Ui {
     pub(super) fn open_picker(&mut self, kind: PickerKind) {
-        self.picker = Some(Picker::new(kind, &self.model, self.effort.as_deref()));
+        let mut picker = Picker::new(kind, &self.catalog, &self.model, self.effort.as_deref());
+        picker.note = self.fetching.then(|| REFRESHING.to_string());
+        self.picker = Some(picker);
     }
 
+    /// A live fetch of the model list started.
+    pub fn fetch_started(&mut self) {
+        self.fetching = true;
+        if let Some(picker) = self.picker.as_mut() {
+            picker.note = Some(REFRESHING.into());
+        }
+    }
+
+    /// The fetch ended: a list replaces the catalog and refreshes the open
+    /// picker in place (same highlighted value); an error is shown in its
+    /// title and the list stays.
+    pub fn models_fetched(&mut self, result: Result<Vec<ModelInfo>, String>) {
+        self.fetching = false;
+        let list = match result {
+            Ok(list) => list,
+            Err(err) => {
+                if let Some(picker) = self.picker.as_mut() {
+                    picker.note = Some(format!("error: {err}"));
+                }
+                return;
+            }
+        };
+        self.catalog = list;
+        let Some(old) = self.picker.take() else {
+            return;
+        };
+        let mut picker = Picker::new(old.kind, &self.catalog, &self.model, self.effort.as_deref());
+        let keep = old.items.get(old.selected).map(|item| &item.0);
+        if let Some(index) = picker.items.iter().position(|i| Some(&i.0) == keep) {
+            picker.selected = index;
+        }
+        picker.rows = old.rows;
+        self.picker = Some(picker);
+    }
     /// Keys while a picker is open: it takes every key.
     pub(super) fn picker_key(&mut self, key: &KeyEvent) -> Action {
         let Some(picker) = self.picker.as_mut() else {
@@ -161,12 +224,12 @@ fn rows(picker: &Picker, width: usize, height: usize, st: &Styles) -> Vec<Line<'
             let label = clip(label, label_width);
             let fill = " ".repeat(label_width.saturating_sub(text_width(&label)));
             let check = if Some(value) == picker.current.as_ref() {
-                "✓"
+                st.icons.ok
             } else {
                 " "
             };
             if index == picker.selected {
-                let text = format!("› {label}{fill} {check}");
+                let text = format!("{} {label}{fill} {check}", st.icons.pointer);
                 Line::from(Span::styled(text, st.selected()))
             } else {
                 let mark = Span::styled(format!(" {check}"), st.success());
@@ -178,12 +241,12 @@ fn rows(picker: &Picker, width: usize, height: usize, st: &Styles) -> Vec<Line<'
 
 /// Draws the open picker just above `input`, inside `body`.
 pub fn draw(frame: &mut Frame, ui: &mut Ui, input: Rect, body: Rect) {
-    let st = Styles::new(ui.theme);
+    let st = Styles::of(ui);
     let Some(picker) = ui.picker.as_mut() else {
         return;
     };
     let widest = picker.items.iter().map(|(_, l)| text_width(l)).max();
-    let wanted = widest.unwrap_or(0).max(text_width(picker.title()) + 2) + 6;
+    let wanted = widest.unwrap_or(0).max(text_width(&picker.title()) + 2) + 6;
     let width = (wanted as u16).min(body.width);
     let height = (picker.items.len() as u16 + 2).min(body.height);
     if width < 8 || height < 3 {

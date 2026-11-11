@@ -2,10 +2,12 @@
 
 use nh_core::view::{State, Transcript};
 use ratatui::layout::{Constraint, Layout, Position, Rect};
+use ratatui::style::Modifier;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Paragraph};
 use ratatui::Frame;
 
+use super::icons::lead;
 use super::panels;
 use super::picker::{self, model_name};
 use super::theme::Styles;
@@ -60,10 +62,14 @@ fn account_text(ui: &Ui) -> String {
     format!("{name} 5h {five} 7d {seven}")
 }
 
+/// The app name with its mark, first in the header.
+pub const APP_NAME: &str = "Fast Harness";
+
 pub fn header_text(ui: &Ui, view: &View<'_>, now_ms: u64) -> String {
     let t = view.transcript;
     format!(
-        "{} {} │ {} │ {} │ {} │ in {} out {} cache r {} w {}",
+        "{}{APP_NAME} │ {} {} │ {} │ {} │ {} │ in {} out {} cache r {} w {}",
+        lead(ui.icons.app),
         ui.model,
         ui.effort.as_deref().unwrap_or("default"),
         account_text(ui),
@@ -93,10 +99,33 @@ fn hint_text(ui: &Ui) -> String {
     }
 }
 
+/// The tabs of a session: the current one is bold and reversed, so it
+/// stands out without colour; F3 switches between them.
+pub fn tab_line(ui: &Ui, st: &Styles) -> Line<'static> {
+    let tabs = [
+        (Screen::Chat, ui.icons.chat, "Chat"),
+        (Screen::Trace, ui.icons.trace, "Trace"),
+    ];
+    let mut spans = Vec::new();
+    for (index, (screen, icon, name)) in tabs.into_iter().enumerate() {
+        if index > 0 {
+            spans.push(Span::styled("|", st.dim()));
+        }
+        let style = if ui.screen == screen {
+            st.base().add_modifier(Modifier::BOLD | Modifier::REVERSED)
+        } else {
+            st.dim()
+        };
+        spans.push(Span::styled(format!(" {}{name} ", lead(icon)), style));
+    }
+    spans.push(Span::styled("  F3 switches", st.dim()));
+    Line::from(spans)
+}
+
 /// Draws the whole frame.
 pub fn draw(frame: &mut Frame, ui: &mut Ui, view: &mut View<'_>, now_ms: u64) {
     let area = frame.area();
-    let st = Styles::new(ui.theme);
+    let st = Styles::of(ui);
     frame.render_widget(Block::default().style(st.base()), area);
     let width = usize::from(area.width);
     let (rows, cursor) = ui.input.layout(width.saturating_sub(2));
@@ -105,7 +134,8 @@ pub fn draw(frame: &mut Frame, ui: &mut Ui, view: &mut View<'_>, now_ms: u64) {
     } else {
         0
     };
-    let [head, body, input, hint] = Layout::vertical([
+    let [head, tabs, body, input, hint] = Layout::vertical([
+        Constraint::Length(1),
         Constraint::Length(1),
         Constraint::Min(1),
         Constraint::Length(input_height),
@@ -114,6 +144,7 @@ pub fn draw(frame: &mut Frame, ui: &mut Ui, view: &mut View<'_>, now_ms: u64) {
     .areas(area);
     let header = clip(&header_text(ui, view, now_ms), width);
     frame.render_widget(Paragraph::new(header).style(st.bar()), head);
+    frame.render_widget(Paragraph::new(tab_line(ui, &st)).style(st.base()), tabs);
     match ui.screen {
         Screen::Chat => {
             draw_transcript(frame, ui, view, body);
@@ -137,7 +168,7 @@ fn draw_transcript(frame: &mut Frame, ui: &mut Ui, view: &mut View<'_>, area: Re
         show_thinking: ui.show_thinking,
         running: ui.running,
         frame: ui.frame,
-        styles: Styles::new(ui.theme),
+        styles: Styles::of(ui),
     };
     let lines = view.cache.lines(&view.transcript.items, opts);
     let height = usize::from(area.height);
@@ -150,7 +181,7 @@ fn draw_transcript(frame: &mut Frame, ui: &mut Ui, view: &mut View<'_>, area: Re
         .collect();
     if visible.is_empty() {
         let hello = Line::styled(
-            "nh: type a prompt and press Enter (F2 for accounts)",
+            "Fast Harness: type a prompt and press Enter (F2 for accounts)",
             opts.styles.dim(),
         );
         frame.render_widget(Paragraph::new(hello), area);
@@ -158,7 +189,8 @@ fn draw_transcript(frame: &mut Frame, ui: &mut Ui, view: &mut View<'_>, area: Re
     }
     frame.render_widget(Paragraph::new(visible), area);
     if ui.top.is_some() {
-        let more = Span::styled(" ↓ more (End) ", opts.styles.badge());
+        let text = format!(" {} more (End) ", opts.styles.icons.more);
+        let more = Span::styled(text, opts.styles.badge());
         let at = Rect::new(
             area.right().saturating_sub(15),
             area.bottom().saturating_sub(1),
@@ -172,7 +204,7 @@ fn draw_transcript(frame: &mut Frame, ui: &mut Ui, view: &mut View<'_>, area: Re
 /// The input box title: the model and effort of the next turn.
 fn settings_title(ui: &Ui, st: &Styles) -> Line<'static> {
     Line::from(vec![
-        Span::styled(" ", st.dim()),
+        Span::styled(format!(" {}", lead(st.icons.settings)), st.dim()),
         Span::styled(model_name(&ui.model), st.accent()),
         Span::styled(" · effort ", st.dim()),
         Span::styled(
@@ -184,7 +216,7 @@ fn settings_title(ui: &Ui, st: &Styles) -> Line<'static> {
 }
 
 fn draw_input(frame: &mut Frame, ui: &Ui, rows: &[String], cursor: (usize, usize), area: Rect) {
-    let st = Styles::new(ui.theme);
+    let st = Styles::of(ui);
     let inner_rows = usize::from(area.height.saturating_sub(2)).max(1);
     let skip = (cursor.0 + 1).saturating_sub(inner_rows);
     let text: Vec<Line<'static>> = rows

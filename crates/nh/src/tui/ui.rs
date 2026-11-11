@@ -2,13 +2,14 @@
 //! the state and return an [`Action`] that the controller carries out.
 
 use nh_core::accounts::pool::AccountStatus;
-use nh_core::llm::anthropic::ModelInfo;
+use nh_core::llm::anthropic::{builtin_models, ModelInfo};
 use nh_core::session::SessionSummary;
 use nh_core::theme::{self, Theme};
 use ratatui::crossterm::event::{
     KeyCode, KeyEvent, KeyEventKind, KeyModifiers, MouseEvent, MouseEventKind,
 };
 
+use super::icons::{self, Icons};
 use super::input::Input;
 use super::picker::{Picker, PickerKind};
 use super::timeline::TraceView;
@@ -55,6 +56,8 @@ pub enum Action {
     PollUsage,
     SetModel(String),
     SetEffort(String),
+    /// Fetch the live model list unless a fetch is running.
+    FetchModels,
     /// Switch to the next theme and save it.
     CycleTheme,
 }
@@ -78,6 +81,10 @@ pub struct Ui {
     pub accounts: Vec<AccountStatus>,
     pub sessions: Vec<SessionSummary>,
     pub models: Vec<ModelInfo>,
+    /// The model list the pickers show: cached, then live.
+    pub catalog: Vec<ModelInfo>,
+    /// A live model list fetch is running.
+    pub fetching: bool,
     /// The trace screen: timeline entries, steps table and drawn lines.
     pub trace: TraceView,
     /// The open model or effort picker of the chat box.
@@ -86,6 +93,8 @@ pub struct Ui {
     pub effort: Option<String>,
     pub frame: usize,
     pub theme: &'static Theme,
+    /// The mark set; plain until the controller reads the setting.
+    pub icons: &'static Icons,
 }
 
 impl Ui {
@@ -106,12 +115,15 @@ impl Ui {
             accounts: Vec::new(),
             sessions: Vec::new(),
             models: Vec::new(),
+            catalog: builtin_models(),
+            fetching: false,
             trace: TraceView::default(),
             picker: None,
             model,
             effort,
             frame: 0,
             theme: theme::by_id(theme::DEFAULT_THEME),
+            icons: &icons::PLAIN,
         }
     }
 
@@ -213,6 +225,7 @@ impl Ui {
         }
         let open = match key.code {
             KeyCode::F(2) => Screen::Accounts,
+            KeyCode::F(3) if self.screen == Screen::Trace => Screen::Chat,
             KeyCode::F(3) => Screen::Trace,
             KeyCode::F(4) => Screen::Models,
             _ if self.typing_key() => return None,
@@ -260,8 +273,14 @@ impl Ui {
             }
             KeyCode::Char('t') if ctrl && !alt => self.show_thinking = !self.show_thinking,
             KeyCode::Char('n') if ctrl && !alt => return self.new_session(),
-            KeyCode::Char('p') if ctrl && !alt => self.open_picker(PickerKind::Model),
-            KeyCode::Char('e') if ctrl && !alt => self.open_picker(PickerKind::Effort),
+            KeyCode::Char('p') if ctrl && !alt => {
+                self.open_picker(PickerKind::Model);
+                return Action::FetchModels;
+            }
+            KeyCode::Char('e') if ctrl && !alt => {
+                self.open_picker(PickerKind::Effort);
+                return Action::FetchModels;
+            }
             KeyCode::PageUp => self.scroll_up(self.page()),
             KeyCode::PageDown => self.scroll_down(self.page()),
             KeyCode::Home if ctrl || self.input.is_empty() => self.top = Some(0),

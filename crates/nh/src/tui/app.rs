@@ -9,7 +9,7 @@ use std::sync::Arc;
 use nh_core::agent::{Agent, Conversation};
 use nh_core::app::Runtime;
 use nh_core::events::{AgentEvent, TurnOutcome};
-use nh_core::llm::anthropic::builtin_models;
+use nh_core::llm::anthropic::ModelInfo;
 use nh_core::session;
 use nh_core::trace::{self, detail, report};
 use nh_core::view::{Item, NoteKind, Transcript};
@@ -28,6 +28,8 @@ pub enum Msg {
     /// The label of the signed-in account, or the error.
     Login(Result<String, String>),
     Polled(usize),
+    /// The live model list, or why it could not be read.
+    Models(Result<Vec<ModelInfo>, String>),
 }
 
 pub struct Tui {
@@ -42,6 +44,8 @@ pub struct Tui {
     pub tx: Sender<Msg>,
     cancel: Arc<AtomicBool>,
     login_cancel: Option<Arc<AtomicBool>>,
+    /// Makes the job of one live model list fetch (tests swap it).
+    pub fetcher: fn(&Runtime) -> worker::FetchJob,
     pub quit: bool,
 }
 
@@ -57,6 +61,8 @@ impl Tui {
     pub fn new(rt: Runtime, cwd: PathBuf, conv: Conversation, tx: Sender<Msg>) -> Tui {
         let mut ui = Ui::new(rt.config.model.clone(), rt.config.effort.clone());
         ui.theme = nh_core::theme::by_id(&rt.config.theme);
+        ui.catalog = rt.models().cached();
+        ui.icons = super::icons::by_id(&rt.config.icons);
         let mut tui = Tui {
             rt,
             cwd,
@@ -69,6 +75,7 @@ impl Tui {
             tx,
             cancel: Arc::new(AtomicBool::new(false)),
             login_cancel: None,
+            fetcher: worker::live_fetch,
             quit: false,
         };
         tui.set_conversation(conv);
@@ -118,6 +125,7 @@ impl Tui {
             }
             Msg::TurnDone(conv, outcome) => self.turn_done(*conv, outcome),
             Msg::Login(result) => self.login_done(result),
+            Msg::Models(result) => self.ui.models_fetched(result),
             Msg::Polled(count) => {
                 self.refresh_accounts();
                 // The 10-minute poller reports silently;  asked for this one.
@@ -176,6 +184,7 @@ impl Tui {
                 };
                 self.ui.status = format!("{when}: effort {effort}");
             }
+            Action::FetchModels => self.fetch_models(),
             Action::CycleTheme => {
                 let theme = super::theme::cycle(&mut self.ui, &self.rt.home);
                 self.rt.config.theme = theme.id.to_string();
@@ -243,7 +252,7 @@ impl Tui {
             }
             Screen::Trace => self.load_trace(),
             Screen::Models => {
-                self.ui.models = builtin_models();
+                self.ui.models = self.ui.catalog.clone();
                 let current = self.ui.models.iter().position(|m| m.id == self.ui.model);
                 self.ui.selected = current.unwrap_or(0);
             }

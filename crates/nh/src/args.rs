@@ -3,7 +3,7 @@
 use std::path::PathBuf;
 
 pub const USAGE: &str = "\
-nh: a coding agent harness
+Fast Harness (nh): a coding agent harness
 
 Usage:
   nh -p <prompt> [--model M] [--effort E] [-c|--continue] [--resume ID] [--cwd DIR]
@@ -31,8 +31,9 @@ Usage:
 
 Credentials: ANTHROPIC_API_KEY or NH_OAUTH_TOKEN when set, else the accounts of `nh accounts`
 (switched automatically on rate limits).
-Settings: <NH_HOME or ~/.nh>/config.json (model, effort, theme, wire); NH_MODEL, NH_EFFORT,
-NH_THEME and NH_WIRE override it. Raw wire capture (<session>.wire/) is off unless wire is true.";
+Settings: <NH_HOME or ~/.nh>/config.json (model, effort, theme, icons, wire); icons is
+nerd (Nerd Font, the default) or plain. NH_MODEL, NH_EFFORT, NH_THEME, NH_ICONS and NH_WIRE
+override it. Raw wire capture (<session>.wire/) is off unless wire is true.";
 
 #[derive(Debug, PartialEq)]
 pub enum AccountsAction {

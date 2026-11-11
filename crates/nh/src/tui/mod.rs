@@ -4,13 +4,18 @@
 
 mod app;
 mod draw;
+mod icons;
 mod input;
 mod markdown;
 mod panels;
 mod picker;
 #[cfg(test)]
+mod picker_fetch_tests;
+#[cfg(test)]
 mod picker_tests;
 mod screens;
+#[cfg(test)]
+mod tabs_tests;
 #[cfg(test)]
 mod tests;
 mod theme;

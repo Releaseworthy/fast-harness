@@ -25,8 +25,8 @@ fn list(rows: Vec<String>, selected: usize, size: Rect, st: &Styles) -> Vec<Line
             let row = clip(&row, width.saturating_sub(2));
             if index == selected {
                 let fill = " ".repeat(width.saturating_sub(2 + super::wrap::text_width(&row)));
-                Line::from(vec![Span::raw("› "), Span::raw(row), Span::raw(fill)])
-                    .style(st.selected())
+                let mark = Span::raw(format!("{} ", st.icons.pointer));
+                Line::from(vec![mark, Span::raw(row), Span::raw(fill)]).style(st.selected())
             } else {
                 Line::from(format!("  {row}"))
             }
@@ -35,7 +35,7 @@ fn list(rows: Vec<String>, selected: usize, size: Rect, st: &Styles) -> Vec<Line
 }
 
 /// One accounts row: active marker, kind, name, plan, 5h and 7d, reset, state.
-pub fn account_row(status: &AccountStatus, now: i64) -> String {
+pub fn account_row(status: &AccountStatus, now: i64, mark: &str) -> String {
     let account = &status.account;
     let kind = match account.kind {
         AccountKind::Own => "own",
@@ -48,7 +48,7 @@ pub fn account_row(status: &AccountStatus, now: i64) -> String {
     let seven_reset = seven.and_then(|w| w.resets_at).map(|at| relative(at - now));
     format!(
         "{} {:<6} {:<28} {:<6} 5h {:>4} {:<10} 7d {:>4} {:<10} {}",
-        if status.active { "*" } else { " " },
+        if status.active { mark } else { " " },
         kind,
         clip(&label(&account.email, &account.name), 28),
         clip(account.plan.as_deref().unwrap_or("-"), 6),
@@ -92,13 +92,17 @@ fn dialog_lines(dialog: &Dialog, st: &Styles) -> Option<Vec<Line<'static>>> {
 
 fn draw_accounts(frame: &mut Frame, ui: &mut Ui, area: Rect, now_ms: u64) {
     let now = i64::try_from(now_ms).unwrap_or(i64::MAX);
-    let st = Styles::new(ui.theme);
+    let st = Styles::of(ui);
     let dialog = dialog_lines(&ui.dialog, &st);
     let dialog_height = if dialog.is_some() { 6 } else { 0 };
     let [top, bottom] =
         Layout::vertical([Constraint::Min(3), Constraint::Length(dialog_height)]).areas(area);
     let inner = st.block("Accounts").inner(top);
-    let rows: Vec<String> = ui.accounts.iter().map(|s| account_row(s, now)).collect();
+    let rows: Vec<String> = ui
+        .accounts
+        .iter()
+        .map(|s| account_row(s, now, st.icons.account))
+        .collect();
     let lines = if rows.is_empty() {
         vec![Line::raw("No accounts: l signs in, k adds an API key.")]
     } else {
@@ -114,7 +118,7 @@ fn draw_accounts(frame: &mut Frame, ui: &mut Ui, area: Rect, now_ms: u64) {
 }
 
 fn draw_trace(frame: &mut Frame, ui: &mut Ui, area: Rect) {
-    let st = Styles::new(ui.theme);
+    let st = Styles::of(ui);
     let block = st.block(ui.trace.title());
     let inner = block.inner(area);
     ui.view_height = usize::from(inner.height).max(1);
@@ -137,7 +141,7 @@ fn draw_models(frame: &mut Frame, ui: &mut Ui, area: Rect) {
         ui.model,
         ui.effort.as_deref().unwrap_or("default")
     );
-    let st = Styles::new(ui.theme);
+    let st = Styles::of(ui);
     let block = st.block(&title);
     let inner = block.inner(area);
     let rows = ui
@@ -154,7 +158,7 @@ fn draw_models(frame: &mut Frame, ui: &mut Ui, area: Rect) {
 }
 
 fn draw_sessions(frame: &mut Frame, ui: &mut Ui, area: Rect) {
-    let st = Styles::new(ui.theme);
+    let st = Styles::of(ui);
     let block = st.block("Sessions of this directory, newest first");
     let inner = block.inner(area);
     let rows: Vec<String> = ui

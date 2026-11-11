@@ -5,6 +5,7 @@ use nh_core::view::{Item, NoteKind};
 use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 
+use super::icons::lead;
 use super::markdown;
 use super::theme::Styles;
 use super::wrap::{clip, sanitize, wrap_line};
@@ -34,7 +35,11 @@ fn text_lines(text: &str, style: Style, width: usize, indent: usize) -> Vec<Line
 fn user_lines(text: &str, width: usize, st: &Styles) -> Vec<Line<'static>> {
     let mut lines = text_lines(text, st.text(), width.saturating_sub(2), 0);
     for (index, line) in lines.iter_mut().enumerate() {
-        let lead = if index == 0 { "› " } else { "  " };
+        let lead = if index == 0 {
+            lead(st.icons.pointer)
+        } else {
+            "  ".into()
+        };
         let marker = Span::styled(lead, st.user_marker());
         line.spans.insert(0, marker);
     }
@@ -48,10 +53,12 @@ fn thinking_lines(thinking: &str, o: &Opts) -> Vec<Line<'static>> {
             .lines()
             .find(|l| !l.trim().is_empty())
             .unwrap_or("");
-        let text = clip(&format!("✻ Thinking: {}", first.trim()), o.width);
+        let mark = lead(o.styles.icons.thinking);
+        let text = clip(&format!("{mark}Thinking: {}", first.trim()), o.width);
         return vec![Line::styled(text, style)];
     }
-    let mut lines = vec![Line::styled("✻ Thinking", style)];
+    let head = format!("{}Thinking", lead(o.styles.icons.thinking));
+    let mut lines = vec![Line::styled(head, style)];
     lines.extend(text_lines(thinking.trim(), style, o.width, 0));
     lines
 }
@@ -70,9 +77,9 @@ fn tool_lines(item: &Item, o: &Opts) -> Vec<Line<'static>> {
     // A mark per state, not only a colour: greyscale themes read the same.
     let (mark, mark_style) = match (output, is_error) {
         (None, _) if o.running => (SPINNER[o.frame % SPINNER.len()], st.accent()),
-        (None, _) => ("○", st.dim()),
-        (Some(_), true) => ("✗", st.error()),
-        (Some(_), false) => ("✓", st.success()),
+        (None, _) => (st.icons.pending, st.dim()),
+        (Some(_), true) => (st.icons.error, st.error()),
+        (Some(_), false) => (st.icons.ok, st.success()),
     };
     let head = clip(summary, o.width.saturating_sub(2));
     let mut lines = vec![Line::from(vec![
@@ -99,12 +106,12 @@ fn tool_lines(item: &Item, o: &Opts) -> Vec<Line<'static>> {
 /// A note with a mark for its kind, so greyscale themes still tell them apart.
 fn note_lines(kind: NoteKind, text: &str, width: usize, st: &Styles) -> Vec<Line<'static>> {
     let (mark, style) = match kind {
-        NoteKind::Retry => ("↻ ", st.warning()),
-        NoteKind::AccountSwitch => ("⇄ ", st.warning()),
-        NoteKind::Error => ("✗ ", st.error()),
-        NoteKind::Info => ("", st.dim()),
+        NoteKind::Retry => (st.icons.retry, st.warning()),
+        NoteKind::AccountSwitch => (st.icons.switch, st.warning()),
+        NoteKind::Error => (st.icons.error, st.error()),
+        NoteKind::Info => (st.icons.info, st.dim()),
     };
-    text_lines(&format!("{mark}{text}"), style, width, 2)
+    text_lines(&format!("{}{text}", lead(mark)), style, width, 2)
 }
 
 /// Seconds with one decimal.

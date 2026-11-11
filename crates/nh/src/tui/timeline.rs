@@ -6,6 +6,7 @@ use nh_core::trace::detail::{Entry, EntryKind};
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 
+use super::icons::lead;
 use super::theme::Styles;
 use super::wrap::{clip, sanitize, text_width, wrap_line};
 
@@ -85,26 +86,27 @@ pub fn lines(entries: &[Entry], full: bool, width: usize, st: &Styles) -> Vec<Li
 }
 
 /// The mark and the styles of an entry title: (mark, mark style, title style).
-fn look(entry: &Entry, st: &Styles) -> (&'static str, Style, Style) {
+fn look(entry: &Entry, st: &Styles) -> (String, Style, Style) {
     let bold = st.text().add_modifier(Modifier::BOLD);
-    match entry.kind {
+    let i = st.icons;
+    let (mark, mark_style, style) = match entry.kind {
         EntryKind::Turn => ("", st.accent(), st.accent().add_modifier(Modifier::BOLD)),
-        EntryKind::User => ("› ", st.user_marker(), bold),
-        EntryKind::Header => ("≡ ", st.dim(), st.dim()),
-        EntryKind::Request => ("→ ", st.dim(), st.dim()),
-        EntryKind::Thinking => ("✻ ", st.thinking(), st.thinking()),
-        EntryKind::Response => ("◆ ", st.accent(), st.text()),
-        EntryKind::ToolCall => ("▸ ", st.marker(), st.code()),
-        EntryKind::ToolResult if entry.is_error => ("✗ ", st.error(), st.code()),
-        EntryKind::ToolResult => ("✓ ", st.success(), st.code()),
-        EntryKind::Answer => ("← ", st.dim(), st.dim()),
-        EntryKind::Retry => ("↻ ", st.warning(), st.warning()),
-        EntryKind::Failure => ("✗ ", st.error(), st.error()),
-        EntryKind::Switch => ("⇄ ", st.warning(), st.warning()),
-        EntryKind::TurnEnd => ("■ ", st.dim(), st.dim()),
-    }
+        EntryKind::User => (i.pointer, st.user_marker(), bold),
+        EntryKind::Header => ("≡", st.dim(), st.dim()),
+        EntryKind::Request => ("→", st.dim(), st.dim()),
+        EntryKind::Thinking => (i.thinking, st.thinking(), st.thinking()),
+        EntryKind::Response => (i.response, st.accent(), st.text()),
+        EntryKind::ToolCall => (i.tool, st.marker(), st.code()),
+        EntryKind::ToolResult if entry.is_error => (i.error, st.error(), st.code()),
+        EntryKind::ToolResult => (i.ok, st.success(), st.code()),
+        EntryKind::Answer => ("←", st.dim(), st.dim()),
+        EntryKind::Retry => (i.retry, st.warning(), st.warning()),
+        EntryKind::Failure => (i.error, st.error(), st.error()),
+        EntryKind::Switch => (i.switch, st.warning(), st.warning()),
+        EntryKind::TurnEnd => ("■", st.dim(), st.dim()),
+    };
+    (lead(mark), mark_style, style)
 }
-
 fn title_line(entry: &Entry, width: usize, st: &Styles) -> Line<'static> {
     let (mark, mark_style, style) = look(entry, st);
     if entry.kind == EntryKind::Turn {

@@ -233,13 +233,19 @@ fn config_theme_wire_and_save_setting() {
     let none = |_: &str| None;
     let config = Config::load_with(&dir.0, &none).unwrap();
     assert_eq!((config.theme.as_str(), config.wire), ("dark", false));
+    assert_eq!(config.icons, "nerd");
     let env = |key: &str| match key {
         "NH_THEME" => Some(" light ".to_string()),
         "NH_WIRE" => Some("ON".to_string()),
+        "NH_ICONS" => Some(" plain".to_string()),
         _ => None,
     };
     let config = Config::load_with(&dir.0, &env).unwrap();
     assert_eq!((config.theme.as_str(), config.wire), ("light", true));
+    assert_eq!(config.icons, "plain");
+    std::fs::write(dir.0.join("config.json"), r#"{"icons":"plain"}"#).unwrap();
+    assert_eq!(Config::load_with(&dir.0, &none).unwrap().icons, "plain");
+    std::fs::remove_file(dir.0.join("config.json")).unwrap();
     let odd = |key: &str| (key == "NH_WIRE").then(|| "maybe".to_string());
     assert!(!Config::load_with(&dir.0, &odd).unwrap().wire);
     // The first save creates the folder and the file; later saves keep the other keys.

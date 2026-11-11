@@ -1,4 +1,4 @@
-//! `nh`: command line front end of the native harness.
+//! `nh`: command line front end of Fast Harness.
 
 mod accounts_cmd;
 mod args;
@@ -31,7 +31,7 @@ fn main() -> ExitCode {
     };
     let result = match command {
         Command::Version => {
-            println!("nh {}", env!("CARGO_PKG_VERSION"));
+            println!("Fast Harness (nh) {}", env!("CARGO_PKG_VERSION"));
             Ok(ExitCode::SUCCESS)
         }
         Command::Help => {
