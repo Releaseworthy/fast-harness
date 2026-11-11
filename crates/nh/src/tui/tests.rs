@@ -241,10 +241,6 @@ fn screens_open_and_dispatch() {
         press(&mut ui, KeyCode::Char('r'), KeyModifiers::NONE),
         Action::PollUsage
     );
-    assert_eq!(
-        press(&mut ui, KeyCode::Char('i'), KeyModifiers::NONE),
-        Action::Import
-    );
     press(&mut ui, KeyCode::Char('k'), KeyModifiers::NONE);
     typed(&mut ui, "sk-abc");
     let screen = rows(&render(&mut ui, &Transcript::new(), 80, 20));

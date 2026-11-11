@@ -28,12 +28,12 @@ pub(super) struct Backoff {
 }
 
 impl State {
-    /// Own and linked accounts not read for `USAGE_EVERY_MS` and not paused.
+    /// Own accounts not read for `USAGE_EVERY_MS` and not paused.
     fn due_for_poll(&self, now: u64) -> Vec<String> {
         self.store
             .list()
             .into_iter()
-            .filter(|a| matches!(a.kind, AccountKind::Own | AccountKind::Linked))
+            .filter(|a| a.kind == AccountKind::Own)
             .filter(|a| {
                 self.snapshot
                     .read_at(&a.id)
@@ -66,7 +66,7 @@ impl AccountPool {
         let mut read = 0;
         let mut first = true;
         for id in due {
-            let auth = self.lock().token_for(self.dsh_path(), &id, http, false);
+            let auth = self.lock().token_for(&id, http, false);
             let Some(Auth::OAuth(access)) = auth else {
                 continue;
             };

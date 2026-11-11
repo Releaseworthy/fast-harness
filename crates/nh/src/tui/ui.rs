@@ -50,7 +50,6 @@ pub enum Action {
     UseAccount(String),
     Login,
     CancelLogin,
-    Import,
     AddKey(String),
     Remove(String),
     PollUsage,

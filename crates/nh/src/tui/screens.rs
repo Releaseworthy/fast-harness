@@ -87,7 +87,6 @@ impl Ui {
         match (key.code, id) {
             (KeyCode::Enter, Some(id)) => Action::UseAccount(id),
             (KeyCode::Char('l'), _) => Action::Login,
-            (KeyCode::Char('i'), _) => Action::Import,
             (KeyCode::Char('k'), _) => {
                 self.dialog = Dialog::AddKey(Input::masked());
                 Action::None

@@ -95,9 +95,6 @@ impl Tui {
             Action::AddKey(key) => pool
                 .add_api_key(&key, "API key")
                 .map(|account| format!("added {}", account.id)),
-            Action::Import => pool
-                .import_linked()
-                .map(|n| format!("{n} claude-switch account(s) added or updated")),
             Action::Login => {
                 self.login();
                 return;

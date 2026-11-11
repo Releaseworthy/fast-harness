@@ -49,9 +49,6 @@ fn connect_accounts(ui: &MainWindow) {
     ui.on_cancel_sign_in(|| {
         with_app(accounts::cancel_sign_in);
     });
-    ui.on_import_linked(|| {
-        with_app(|app, ui| accounts::import(app, ui));
-    });
     ui.on_add_key(|key, label| {
         with_app(|app, ui| accounts::add_key(app, ui, &key, &label));
     });

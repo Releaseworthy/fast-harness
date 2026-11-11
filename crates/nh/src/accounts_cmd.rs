@@ -1,5 +1,4 @@
-//! `nh accounts`: list, sign in, import from claude-switch, choose, remove,
-//! add an API key, read usage.
+//! `nh accounts`: list, sign in, choose, remove, add an API key, read usage.
 
 use std::io::BufRead;
 use std::process::ExitCode;
@@ -33,11 +32,6 @@ pub fn run(action: AccountsAction) -> Result<ExitCode, String> {
     match action {
         AccountsAction::List => print_list(pool),
         AccountsAction::Login { browser } => login(pool, browser)?,
-        AccountsAction::Import => {
-            let changed = pool.import_linked().map_err(|err| err.to_string())?;
-            println!("{changed} claude-switch account(s) added or updated (read-only, linked)");
-            print_list(pool);
-        }
         AccountsAction::Use(name) => {
             let id = resolve(pool, &name)?;
             pool.set_active(&id).map_err(|err| err.to_string())?;
@@ -129,7 +123,7 @@ pub(crate) fn label(email: &Option<String>, name: &Option<String>) -> String {
 fn print_list(pool: &AccountPool) {
     let list = pool.status();
     if list.is_empty() {
-        println!("no accounts: `nh accounts login`, `nh accounts import` or `nh accounts add-key`");
+        println!("no accounts: `nh accounts login` or `nh accounts add-key`");
         return;
     }
     println!(
@@ -146,7 +140,6 @@ fn row(status: &AccountStatus, now: i64) -> String {
     let account = &status.account;
     let kind = match account.kind {
         AccountKind::Own => "own",
-        AccountKind::Linked => "linked",
         AccountKind::ApiKey => "key",
     };
     let usage = status.usage.as_ref();

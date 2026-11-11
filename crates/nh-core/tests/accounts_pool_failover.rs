@@ -1,5 +1,5 @@
 //! AccountPool failover on rate limits and auth errors, against
-//! `ScriptedTransport`, a temporary NH folder and a synthetic DSH file.
+//! `ScriptedTransport` and a temporary NH folder.
 
 use nh_core::accounts::model::{now_unix_ms, Account, AccountKind, Secret};
 use nh_core::accounts::pool::AccountPool;
@@ -15,35 +15,14 @@ const MODEL: &str = "claude-opus-5-5";
 
 struct Fixture {
     dir: PathBuf,
-    dsh: PathBuf,
-    dsh_bytes: Vec<u8>,
 }
 
 impl Fixture {
     fn new(name: &str) -> Fixture {
         let dir = std::env::temp_dir().join(format!("nh-pool-fail-{name}-{}", std::process::id()));
         let _ = fs::remove_dir_all(&dir);
-        fs::create_dir_all(dir.join("dsh")).unwrap();
-        let mut fixture = Fixture {
-            dsh: dir.join("dsh").join(".credentials.yaml"),
-            dir,
-            dsh_bytes: Vec::new(),
-        };
-        fixture.write_dsh(&[]);
-        fixture
-    }
-
-    /// Writes the synthetic DSH file: `(uuid, access token, expiry ms)`.
-    fn write_dsh(&mut self, records: &[(&str, &str, u64)]) {
-        let mut text = String::from("version: 1\nrecords:\n");
-        for (uuid, access, expires) in records {
-            text.push_str(&format!(
-                "  claude-switch/u-{uuid}:\n    payload:\n      type: oauth\n      \
-refresh: test-refresh-{uuid}\n      access: {access}\n      expires: {expires}\n"
-            ));
-        }
-        fs::write(&self.dsh, &text).unwrap();
-        self.dsh_bytes = text.into_bytes();
+        fs::create_dir_all(&dir).unwrap();
+        Fixture { dir }
     }
 
     fn store_path(&self) -> PathBuf {
@@ -73,11 +52,7 @@ refresh: test-refresh-{uuid}\n      access: {access}\n      expires: {expires}\n
 
     fn pool(&self) -> AccountPool {
         let usage = self.dir.join("usage.json");
-        AccountPool::open(self.store_path(), Some(self.dsh.clone()), usage).unwrap()
-    }
-
-    fn check_dsh(&self) {
-        assert_eq!(fs::read(&self.dsh).unwrap(), self.dsh_bytes);
+        AccountPool::open(self.store_path(), usage).unwrap()
     }
 }
 
@@ -186,7 +161,6 @@ fn rate_limit_fails_over_in_switch_order_with_the_48_hour_rule() {
     // After the wait the held active account is simply tried again.
     assert_eq!(pool.lease(&http).unwrap().account, c);
     assert!(http.requests().is_empty());
-    fx.check_dsh();
 }
 
 #[test]
@@ -207,7 +181,6 @@ fn wait_is_the_soonest_hold_when_under_a_minute() {
         pool.on_failure(&lease, &overload, MODEL, &http),
         Failover::Fail
     );
-    fx.check_dsh();
 }
 
 #[test]
@@ -235,54 +208,29 @@ fn own_auth_failure_forces_one_refresh_then_fails_over() {
         .find(|s| s.account.id == a)
         .unwrap();
     assert_eq!(held.hold_reason.as_deref(), Some("credentials refused"));
-    fx.check_dsh();
 }
 
 #[test]
-fn linked_auth_failure_retries_only_on_a_new_token() {
-    let mut fx = Fixture::new("linked-auth");
-    let now = now_unix_ms();
-    fx.write_dsh(&[
-        ("1111", "test-access-1", now + HOUR),
-        ("2222", "test-access-2", now + HOUR),
-    ]);
+fn own_auth_failure_with_a_refused_refresh_and_nobody_left_waits() {
+    let fx = Fixture::new("own-dead");
+    let a = fx.add_own("aaaa");
     let pool = fx.pool();
-    assert_eq!(pool.import_linked().unwrap(), 2);
-    pool.set_active("u-1111").unwrap();
-    let http = ScriptedTransport::new(Vec::new());
+    let refused = ScriptedResponse::new(400, r#"{"error":"invalid_grant"}"#, 4);
+    let http = ScriptedTransport::new(vec![refused]);
     let err = LlmError::new(ErrorKind::Auth, "401");
     let lease = pool.lease(&http).unwrap();
-    assert_eq!(pool.on_failure(&lease, &err, MODEL, &http), Failover::Retry);
-    assert_eq!(active(&pool), "u-2222");
-    let held = pool
-        .status()
-        .into_iter()
-        .find(|s| s.account.id == "u-1111")
-        .unwrap();
-    assert!(held.held_until.is_some());
-    let lease = pool.lease(&http).unwrap();
-    assert_eq!(lease.auth, Auth::OAuth("test-access-2".into()));
-    fx.write_dsh(&[
-        ("1111", "test-access-1", now + HOUR),
-        ("2222", "test-access-2b", now + HOUR),
-    ]);
-    assert_eq!(pool.on_failure(&lease, &err, MODEL, &http), Failover::Retry);
-    let fresh = pool
-        .status()
-        .into_iter()
-        .find(|s| s.account.id == "u-2222")
-        .unwrap();
-    assert!(fresh.held_until.is_none());
-    assert_eq!(
-        pool.lease(&http).unwrap().auth,
-        Auth::OAuth("test-access-2b".into())
-    );
-    // Unchanged again with nobody left: wait (at most a minute), never refresh.
-    let lease = pool.lease(&http).unwrap();
+    assert_eq!(lease.auth, Auth::OAuth("test-access-aaaa".into()));
     assert_eq!(
         pool.on_failure(&lease, &err, MODEL, &http),
         Failover::Wait(60_000)
     );
-    assert!(http.requests().is_empty());
-    fx.check_dsh();
+    assert_eq!(http.requests().len(), 1);
+    let held = pool.status().into_iter().find(|s| s.account.id == a);
+    assert!(held.unwrap().held_until.is_some());
+    // Within the same failure streak the refresh is never tried again.
+    assert_eq!(
+        pool.on_failure(&lease, &err, MODEL, &http),
+        Failover::Wait(60_000)
+    );
+    assert_eq!(http.requests().len(), 1);
 }

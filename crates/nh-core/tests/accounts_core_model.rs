@@ -47,9 +47,11 @@ fn optional_fields_are_omitted() {
         json!({"id": account.id, "kind": "apiKey", "addedAt": 5})
     );
     assert_eq!(
-        serde_json::to_value(AccountKind::Linked).unwrap(),
-        json!("linked")
+        serde_json::to_value(AccountKind::Own).unwrap(),
+        json!("own")
     );
+    // Linked accounts were removed (PLAN.md D8): the kind no longer parses.
+    assert!(serde_json::from_value::<AccountKind>(json!("linked")).is_err());
 }
 
 #[test]

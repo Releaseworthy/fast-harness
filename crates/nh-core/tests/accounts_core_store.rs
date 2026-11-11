@@ -59,7 +59,7 @@ fn accounts_without_secrets_round_trip() {
     let home = TempHome::new();
     let mut store = AccountStore::load(home.file()).unwrap();
     store
-        .upsert(account("u-linked-1", AccountKind::Linked), None)
+        .upsert(account("k-0011aabb", AccountKind::ApiKey), None)
         .unwrap();
     store
         .upsert(account("u-own-1", AccountKind::Own), None)
@@ -75,12 +75,16 @@ fn accounts_without_secrets_round_trip() {
     let loaded = AccountStore::load(home.file()).unwrap();
     assert_eq!(loaded.list().len(), 2);
     assert_eq!(loaded.active().unwrap().id, "u-own-1");
-    assert_eq!(loaded.get("u-linked-1").unwrap().kind, AccountKind::Linked);
-    assert!(loaded.secret("u-linked-1").unwrap().is_none());
+    assert_eq!(loaded.get("k-0011aabb").unwrap().kind, AccountKind::ApiKey);
+    assert!(loaded.secret("k-0011aabb").unwrap().is_none());
     let raw: serde_json::Value =
         serde_json::from_str(&std::fs::read_to_string(home.file()).unwrap()).unwrap();
-    assert_eq!(raw["version"], 1);
+    assert_eq!(raw["version"], 2);
     assert_eq!(raw["active"], "u-own-1");
+    assert_eq!(
+        AccountStore::load(home.file()).unwrap().list(),
+        loaded.list()
+    );
     assert!(raw["accounts"][0].get("secret").is_none());
 }
 
@@ -121,10 +125,10 @@ fn unknown_ids_and_wrong_secrets_are_errors() {
         store.set_secret("u-x", key.clone()),
         Err(StoreError::UnknownAccount(_))
     ));
-    let linked = account("u-l", AccountKind::Linked);
+    let own = account("u-l", AccountKind::Own);
     assert!(matches!(
-        store.upsert(linked, Some(key.clone())),
-        Err(StoreError::LinkedSecret(_))
+        store.upsert(own, Some(key.clone())),
+        Err(StoreError::SecretKindMismatch(_))
     ));
     assert!(store.list().is_empty());
     store
@@ -140,12 +144,62 @@ fn unknown_ids_and_wrong_secrets_are_errors() {
 fn bad_files_are_errors() {
     let home = TempHome::new();
     std::fs::create_dir_all(home.file().parent().unwrap()).unwrap();
-    std::fs::write(home.file(), r#"{"version":2,"accounts":[]}"#).unwrap();
+    std::fs::write(home.file(), r#"{"version":3,"accounts":[]}"#).unwrap();
     assert!(matches!(
         AccountStore::load(home.file()),
-        Err(StoreError::UnsupportedVersion(2))
+        Err(StoreError::UnsupportedVersion(3))
     ));
     std::fs::write(home.file(), "{not json").unwrap();
+    assert!(matches!(
+        AccountStore::load(home.file()),
+        Err(StoreError::Json(_))
+    ));
+}
+
+/// A version 1 file: an own, an API-key and two linked records (no secrets).
+fn v1_file(active: &str) -> String {
+    let rec = |id: &str, kind: &str| {
+        format!(r#"{{"id":"{id}","kind":"{kind}","email":"{id}@example.test","addedAt":1}}"#)
+    };
+    format!(
+        r#"{{"version":1,"active":"{active}","accounts":[{},{},{},{}]}}"#,
+        rec("u-link-1", "linked"),
+        rec("u-own-1", "own"),
+        rec("k-0011aabb", "apiKey"),
+        rec("u-link-2", "linked")
+    )
+}
+
+#[test]
+fn version_1_drops_linked_records_and_saves_as_version_2() {
+    let home = TempHome::new();
+    std::fs::create_dir_all(home.file().parent().unwrap()).unwrap();
+    std::fs::write(home.file(), v1_file("k-0011aabb")).unwrap();
+    let store = AccountStore::load(home.file()).unwrap();
+    let ids: Vec<&str> = store.list().iter().map(|a| a.id.as_str()).collect();
+    assert_eq!(ids, ["u-own-1", "k-0011aabb"]);
+    assert_eq!(store.active().unwrap().id, "k-0011aabb");
+    store.save().unwrap();
+    let text = std::fs::read_to_string(home.file()).unwrap();
+    let raw: serde_json::Value = serde_json::from_str(&text).unwrap();
+    assert_eq!(raw["version"], 2);
+    assert_eq!(raw["accounts"].as_array().unwrap().len(), 2);
+    assert!(!text.contains("linked"));
+    let again = AccountStore::load(home.file()).unwrap();
+    assert_eq!(again.list(), store.list());
+    assert_eq!(again.active().unwrap().id, "k-0011aabb");
+}
+
+#[test]
+fn version_1_active_on_a_linked_record_falls_back() {
+    let home = TempHome::new();
+    std::fs::create_dir_all(home.file().parent().unwrap()).unwrap();
+    std::fs::write(home.file(), v1_file("u-link-2")).unwrap();
+    let store = AccountStore::load(home.file()).unwrap();
+    assert_eq!(store.active().unwrap().id, "u-own-1");
+    // Version 2 never holds linked records: one is a schema error.
+    let v2 = v1_file("u-own-1").replace(r#""version":1"#, r#""version":2"#);
+    std::fs::write(home.file(), v2).unwrap();
     assert!(matches!(
         AccountStore::load(home.file()),
         Err(StoreError::Json(_))

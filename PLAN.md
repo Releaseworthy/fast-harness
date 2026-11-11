@@ -10,7 +10,7 @@ A barebone coding agent harness in native Rust, in the spirit of DeepSeek Harnes
 | 1A | Claude adapter: SSE, request body, streaming assembly, OAuth identity, errors, models | done |
 | 1B | Tools: read, write, edit, shell, grep, glob | done |
 | 1C | Trace, wire capture, sessions, `nh trace` | done |
-| 1D | Accounts core: encrypted store, claude-switch import, usage, switch order | done |
+| 1D | Accounts core: encrypted store, usage, switch order (the claude-switch import was removed 2026-11-11) | done |
 | 2A | Agent loop, subagents, config, CLI print mode | done |
 | 2B | Accounts online: OAuth sign-in, refresh, usage polling, account pool | done |
 | 2C | `nh accounts`, the pool as default credential, shared `app::Runtime`; live call checked | done |
@@ -31,10 +31,10 @@ A barebone coding agent harness in native Rust, in the spirit of DeepSeek Harnes
 | D5 | GUI | Slint (royalty-free licence: the app shows a "made with Slint" credit). |
 | D6 | TUI | ratatui and crossterm. |
 | D7 | Trace | DSH event vocabulary with our own format version; raw wire capture off by default (owner, 2026-11-11), on with `"wire": true` in `config.json` or `NH_WIRE=1`. |
-| D8 | claude-switch import | Linked, read-only: nh uses the access token DSH holds and never refreshes it. |
+| D8 | claude-switch import | Removed 2026-11-11 at the owner's request: no import, no linked accounts, nh never reads DSH's credential file. Linked accounts in older `accounts.json` files are dropped on load. |
 | D9 | Token storage | `accounts.json`, secrets encrypted with DPAPI on Windows. |
 | D10 | Auto switch | The claude-switch rules (below), usage of idle accounts polled only while the TUI or GUI is open. |
-| D11 | Credentials | Anthropic API keys and Claude subscription OAuth. |
+| D11 | Credentials | Anthropic API keys and Claude subscription OAuth signed in by nh itself. |
 | D12 | v1 scope | Agent loop; tools read, write, edit, shell, grep, glob, subagent; sessions; AGENTS.md in the system prompt; trace and `nh trace`; Claude provider; accounts; CLI print mode; TUI; GUI. |
 | D13 | Default model | `claude-opus-5-5`, effort `high`; model list from `/v1/models`. |
 | D14 | Repo | Public, `Releaseworthy/native-harness`, licence MIT OR Apache-2.0; binaries `nh` and `nh-gui`. |
@@ -59,7 +59,7 @@ A barebone coding agent harness in native Rust, in the spirit of DeepSeek Harnes
 ## Files on disk
 
 - `~/.nh/config.json`: model, effort, cache TTL, limits, `theme` (colour theme id) and `wire` (raw wire capture, default `false`). `NH_MODEL`, `NH_EFFORT`, `NH_THEME` and `NH_WIRE` override it; `NH_HOME` moves `~/.nh`.
-- `~/.nh/accounts.json`: accounts and usage; tokens and keys encrypted (DPAPI on Windows).
+- `~/.nh/accounts.json` (version 2): own and API-key accounts; tokens and keys encrypted (DPAPI on Windows). Version 1 also held linked accounts: they are dropped on load (an `active` pointing at one falls back to the first remaining account) and the next save writes version 2. Readers accept versions 1 and 2 and reject any other.
 - `~/.nh/sessions/<cwd slug>/<session id>.jsonl`: one log per session (transcript and trace).
 - `~/.nh/sessions/<cwd slug>/<session id>.wire/`, only with wire capture on: per model call attempt, the request (headers with credentials redacted, body) and the raw response stream.
 
@@ -97,8 +97,7 @@ One JSON object per line. A header line, then events `{type, seq, time, data}`; 
 
 ## Accounts
 
-- Own accounts: OAuth sign-in in the browser (PKCE, loopback callback), refreshed by nh; or an API key.
-- Linked accounts (D8): imported from claude-switch, which keeps each account in `~/.dsh/.credentials.yaml` as `claude-switch/u-<uuid>` (refresh, access, expires, account email and plan). A refresh token works once, so nh never refreshes a linked token: it reads the access token DSH holds and reads the file again when it expires. An expired linked account stays unusable until DSH refreshes it.
+- Own accounts: OAuth sign-in in the browser (PKCE, loopback callback), refreshed by nh; or an API key. These are the only kinds: claude-switch links were removed 2026-11-11 (D8).
 - Live usage: response headers `anthropic-ratelimit-unified-5h-utilization`, `-7d-utilization` (fractions), `-5h-reset`, `-7d-reset` (Unix seconds), `-status`, `-representative-claim`; idle accounts read `GET https://api.anthropic.com/api/oauth/usage`.
 - Auto switch (D10), on a 429 or quota error: hold the current account until its window resets (15 minutes when unknown); skip held, rejected, Free plan and exhausted accounts; order the rest with claude-switch's `switchOrder`: unread accounts last; accounts whose 7-day window resets within 48 hours first, lowest 7-day percent first among them; otherwise the soonest 7-day reset; then the emptier 5-hour window; then the emptier fullest window. Install the first that works and retry at once; with nobody left, wait for the soonest hold and retry every minute.
 

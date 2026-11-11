@@ -119,7 +119,6 @@ export component AccountsPage inherits Rectangle {
     in-out property <bool> adding-key;
     callback sign-in();
     callback cancel-sign-in();
-    callback import-linked();
     callback add-key(string, string);
     callback refresh();
     callback use(string);
@@ -144,7 +143,6 @@ export component AccountsPage inherits Rectangle {
             }
             Rectangle { horizontal-stretch: 1; }
             ActionButton { text: "Sign in"; variant: "primary"; enabled: root.login-url == ""; clicked => { root.sign-in(); } }
-            ActionButton { text: "Import from claude-switch"; clicked => { root.import-linked(); } }
             ActionButton { text: "Add API key"; clicked => { root.adding-key = true; } }
             ActionButton { text: "Refresh usage"; enabled: !root.working; clicked => { root.refresh(); } }
         }
@@ -160,7 +158,7 @@ export component AccountsPage inherits Rectangle {
             cancel => { root.adding-key = false; }
         }
         if root.accounts.length == 0: Text {
-            text: "No account yet: sign in, import the claude-switch accounts or add an API key.";
+            text: "No account yet: sign in or add an API key.";
             color: Theme.dim;
             wrap: word-wrap;
         }

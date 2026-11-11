@@ -99,7 +99,6 @@ pub fn account_label(account: &Account) -> String {
 fn kind_word(kind: AccountKind) -> &'static str {
     match kind {
         AccountKind::Own => "own",
-        AccountKind::Linked => "linked",
         AccountKind::ApiKey => "key",
     }
 }

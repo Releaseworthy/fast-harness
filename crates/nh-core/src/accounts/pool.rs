@@ -1,15 +1,12 @@
 //! The account pool: the saved accounts, their usage and holds, behind one
 //! mutex. It is the agent's [`crate::auth::AuthSource`] (`pool/auth.rs`):
 //! leases a credential, records live usage, and fails over on limits and auth
-//! errors with claude-switch's rules. Linked accounts are read-only (PLAN.md
-//! D8): their tokens are read from DSH's file on every use and never refreshed
-//! or written.
+//! errors with claude-switch's rules.
 
 mod auth;
 mod poll;
 mod snapshot;
 
-use crate::accounts::dsh_import::{read_linked, DshError};
 use crate::accounts::model::{now_unix_ms, Account, AccountKind, Secret};
 use crate::accounts::oauth::{self, LoginFlow, OAuthError};
 use crate::accounts::order::{Hold, Holds};
@@ -20,7 +17,7 @@ use crate::platform::{self, PlatformError};
 use snapshot::Snapshot;
 use std::collections::{HashMap, HashSet};
 use std::fmt;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicU64};
 use std::sync::{Mutex, MutexGuard, PoisonError};
 use std::time::Duration;
@@ -37,7 +34,7 @@ pub struct AccountStatus {
     /// Unix milliseconds when a running hold ends.
     pub held_until: Option<i64>,
     pub hold_reason: Option<String>,
-    /// A credential is on hand (an own refresh token, an unexpired linked token, a key).
+    /// A credential is on hand (an own refresh token or a key).
     pub token_ok: bool,
 }
 
@@ -45,11 +42,8 @@ pub struct AccountStatus {
 #[derive(Debug)]
 pub enum PoolError {
     Store(StoreError),
-    Dsh(DshError),
     OAuth(OAuthError),
     Platform(PlatformError),
-    /// The pool was opened without DSH's credentials path.
-    NoDshFile,
     UnknownAccount(String),
     EmptyKey,
 }
@@ -58,10 +52,8 @@ impl fmt::Display for PoolError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             PoolError::Store(err) => write!(f, "{err}"),
-            PoolError::Dsh(err) => write!(f, "DSH credentials: {err}"),
             PoolError::OAuth(err) => write!(f, "{err}"),
             PoolError::Platform(err) => write!(f, "{err}"),
-            PoolError::NoDshFile => f.write_str("no DSH credentials file is known"),
             PoolError::UnknownAccount(id) => write!(f, "no account {id}"),
             PoolError::EmptyKey => f.write_str("the API key is empty"),
         }
@@ -73,12 +65,6 @@ impl std::error::Error for PoolError {}
 impl From<StoreError> for PoolError {
     fn from(err: StoreError) -> Self {
         PoolError::Store(err)
-    }
-}
-
-impl From<DshError> for PoolError {
-    fn from(err: DshError) -> Self {
-        PoolError::Dsh(err)
     }
 }
 
@@ -110,15 +96,12 @@ struct State {
 /// The saved accounts. `Send + Sync`; every method takes `&self`.
 pub struct AccountPool {
     state: Mutex<State>,
-    dsh: Option<PathBuf>,
     read_gap_ms: AtomicU64,
 }
 
 impl fmt::Debug for AccountPool {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("AccountPool")
-            .field("dsh", &self.dsh)
-            .finish_non_exhaustive()
+        f.debug_struct("AccountPool").finish_non_exhaustive()
     }
 }
 
@@ -128,11 +111,9 @@ fn now_ms() -> i64 {
 }
 
 impl AccountPool {
-    /// Opens the store at `store_path`, DSH's file at `dsh_credentials` (read
-    /// only) and the usage snapshot at `usage_path` (`<nh_home>/usage.json`).
+    /// Opens the store at `store_path` and the usage snapshot at `usage_path` (`<nh_home>/usage.json`).
     pub fn open(
         store_path: impl Into<PathBuf>,
-        dsh_credentials: Option<PathBuf>,
         usage_path: impl Into<PathBuf>,
     ) -> Result<AccountPool, PoolError> {
         let state = State {
@@ -145,7 +126,6 @@ impl AccountPool {
         };
         Ok(AccountPool {
             state: Mutex::new(state),
-            dsh: dsh_credentials,
             read_gap_ms: AtomicU64::new(READ_GAP_MS),
         })
     }
@@ -156,21 +136,16 @@ impl AccountPool {
         self.state.lock().unwrap_or_else(PoisonError::into_inner)
     }
 
-    fn dsh_path(&self) -> Option<&Path> {
-        self.dsh.as_deref()
-    }
-
     /// Every account with its usage, hold and credential state.
     pub fn status(&self) -> Vec<AccountStatus> {
         let state = self.lock();
         let now = now_ms();
         let active = state.store.active().map(|a| a.id.clone());
-        let linked = self.dsh_path().and_then(|p| read_linked(p).ok());
         let list = state.store.list().into_iter().cloned().collect::<Vec<_>>();
         list.into_iter()
             .map(|account| {
                 let hold = state.holds.get(&account.id).filter(|h| h.until > now);
-                let token_ok = state.token_on_hand(&account, linked.as_deref());
+                let token_ok = state.token_on_hand(&account);
                 AccountStatus {
                     active: active.as_deref() == Some(account.id.as_str()),
                     usage: state
@@ -232,41 +207,6 @@ impl AccountPool {
         state.activate_if_none(&account.id)?;
         state.store.save()?;
         Ok(account)
-    }
-
-    /// Adds or updates the claude-switch accounts of DSH's file as Linked
-    /// accounts (without their tokens). An own or key account with the same id
-    /// is left alone. Returns how many records changed.
-    pub fn import_linked(&self) -> Result<usize, PoolError> {
-        let path = self.dsh_path().ok_or(PoolError::NoDshFile)?;
-        let linked = read_linked(path)?;
-        let mut state = self.lock();
-        let mut changed = 0;
-        for item in linked {
-            let existing = state.store.get(&item.id).cloned();
-            if existing
-                .as_ref()
-                .is_some_and(|a| a.kind != AccountKind::Linked)
-            {
-                continue;
-            }
-            let account = Account {
-                added_at: existing.as_ref().map_or(now_unix_ms(), |a| a.added_at),
-                id: item.id,
-                kind: AccountKind::Linked,
-                email: item.email,
-                name: item.name,
-                plan: item.plan,
-            };
-            if existing.as_ref() != Some(&account) {
-                state.store.upsert(account, None)?;
-                changed += 1;
-            }
-        }
-        if changed > 0 {
-            state.store.save()?;
-        }
-        Ok(changed)
     }
 
     /// Signs an own account in: opens the browser when asked, waits for the
@@ -359,15 +299,8 @@ impl State {
     }
 
     /// Whether a credential is on hand, without any network call.
-    fn token_on_hand(
-        &self,
-        account: &Account,
-        linked: Option<&[crate::accounts::dsh_import::LinkedAccount]>,
-    ) -> bool {
+    fn token_on_hand(&self, account: &Account) -> bool {
         match account.kind {
-            AccountKind::Linked => linked
-                .and_then(|list| list.iter().find(|l| l.id == account.id))
-                .is_some_and(|l| !l.token.is_expired(now_unix_ms())),
             AccountKind::Own => {
                 matches!(self.store.secret(&account.id), Ok(Some(Secret::Own { .. })))
             }

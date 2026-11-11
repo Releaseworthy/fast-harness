@@ -119,7 +119,6 @@ export component MainWindow inherits Window {
     callback open-url(string);
     callback sign-in();
     callback cancel-sign-in();
-    callback import-linked();
     callback add-key(string, string);
     callback refresh-usage();
     callback use-account(string);
@@ -244,7 +243,6 @@ export component MainWindow inherits Window {
                     adding-key <=> root.adding-key;
                     sign-in => { root.sign-in(); }
                     cancel-sign-in => { root.cancel-sign-in(); }
-                    import-linked => { root.import-linked(); }
                     add-key(k, l) => { root.add-key(k, l); }
                     refresh => { root.refresh-usage(); }
                     use(id) => { root.use-account(id); }

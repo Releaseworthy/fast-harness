@@ -1,10 +1,14 @@
 //! `~/.nh/accounts.json` with encrypted secrets.
 //!
-//! Schema (version 1):
-//! `{"version":1,"active":<id or null>,"accounts":[{...account fields,"secret":"<base64>"}]}`.
-//! A secret is base64(platform::protect(serde_json bytes of [`Secret`])); accounts
-//! without a secret (linked ones) have no `secret` key. Unknown top-level keys are
-//! kept on save.
+//! Schema (version 2):
+//! `{"version":2,"active":<id or null>,"accounts":[{...account fields,"secret":"<base64>"}]}`.
+//! A secret is base64(platform::protect(serde_json bytes of [`Secret`])). Unknown
+//! top-level keys are kept on save.
+//!
+//! Version 1 is version 2 plus accounts of kind `linked` (claude-switch links,
+//! removed 2026-11-11, PLAN.md D8). They never held a secret: loading a version
+//! 1 file drops them (and an `active` pointing at one falls back to the first
+//! remaining account); the next save writes version 2.
 
 use crate::accounts::crypto::{base64_decode, base64_encode, Base64Error};
 use crate::accounts::model::{Account, AccountKind, Secret};
@@ -17,7 +21,9 @@ use std::io;
 use std::path::{Path, PathBuf};
 
 /// The schema version this code reads and writes.
-pub const VERSION: u64 = 1;
+pub const VERSION: u64 = 2;
+/// The older version this code still reads (see the module docs).
+pub const VERSION_V1: u64 = 1;
 
 /// Errors of the account store. None of them carries a secret value.
 #[derive(Debug)]
@@ -30,8 +36,6 @@ pub enum StoreError {
     /// The stored secret of this account cannot be decoded or decrypted.
     BadSecret(String),
     UnknownAccount(String),
-    /// Linked accounts keep their tokens in DSH's file, never here (PLAN.md D8).
-    LinkedSecret(String),
     /// The secret type does not fit the account kind.
     SecretKindMismatch(String),
 }
@@ -47,7 +51,6 @@ impl fmt::Display for StoreError {
             StoreError::Platform(err) => write!(f, "secret encryption: {err}"),
             StoreError::BadSecret(id) => write!(f, "the secret of account {id} cannot be read"),
             StoreError::UnknownAccount(id) => write!(f, "no account {id}"),
-            StoreError::LinkedSecret(id) => write!(f, "linked account {id} cannot hold a secret"),
             StoreError::SecretKindMismatch(id) => {
                 write!(f, "secret type does not fit account {id}")
             }
@@ -77,7 +80,7 @@ struct Entry {
     secret: Option<String>,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize)]
 struct FileData {
     version: u64,
     #[serde(default)]
@@ -86,6 +89,32 @@ struct FileData {
     accounts: Vec<Entry>,
     #[serde(flatten)]
     extra: Map<String, Value>,
+}
+
+/// The file as read: accounts stay raw JSON until the version is known.
+#[derive(Deserialize)]
+struct RawFile {
+    version: u64,
+    #[serde(default)]
+    active: Option<String>,
+    #[serde(default)]
+    accounts: Vec<Value>,
+    #[serde(flatten)]
+    extra: Map<String, Value>,
+}
+
+/// The entries of a file of `version`; version 1 `linked` records are dropped.
+fn entries_of(version: u64, accounts: Vec<Value>) -> Result<Vec<Entry>, StoreError> {
+    if version != VERSION && version != VERSION_V1 {
+        return Err(StoreError::UnsupportedVersion(version));
+    }
+    accounts
+        .into_iter()
+        .filter(|a| {
+            version != VERSION_V1 || a.get("kind").and_then(Value::as_str) != Some("linked")
+        })
+        .map(|a| serde_json::from_value(a).map_err(StoreError::Json))
+        .collect()
 }
 
 /// The accounts file in memory. Changes reach the disk on [`AccountStore::save`].
@@ -130,12 +159,15 @@ impl AccountStore {
         if text.trim().is_empty() {
             return Ok(store);
         }
-        let data: FileData = serde_json::from_str(&text).map_err(StoreError::Json)?;
-        if data.version != VERSION {
-            return Err(StoreError::UnsupportedVersion(data.version));
+        let data: RawFile = serde_json::from_str(&text).map_err(StoreError::Json)?;
+        store.entries = entries_of(data.version, data.accounts)?;
+        let pointed = data.active.is_some();
+        store.active = data.active.filter(|id| {
+            data.version == VERSION || store.entries.iter().any(|e| &e.account.id == id)
+        });
+        if pointed && store.active.is_none() {
+            store.active = store.entries.first().map(|e| e.account.id.clone());
         }
-        store.active = data.active;
-        store.entries = data.accounts;
         store.extra = data.extra;
         Ok(store)
     }
@@ -262,7 +294,6 @@ impl AccountStore {
 /// Checks that `secret` fits `account`, then encrypts it for the file.
 fn seal(account: &Account, secret: &Secret) -> Result<String, StoreError> {
     match (account.kind, secret) {
-        (AccountKind::Linked, _) => return Err(StoreError::LinkedSecret(account.id.clone())),
         (AccountKind::Own, Secret::Own { .. }) | (AccountKind::ApiKey, Secret::ApiKey { .. }) => {}
         _ => return Err(StoreError::SecretKindMismatch(account.id.clone())),
     }

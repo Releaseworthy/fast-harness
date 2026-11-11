@@ -11,8 +11,6 @@ use std::time::{SystemTime, UNIX_EPOCH};
 pub enum AccountKind {
     /// OAuth sign-in done by nh; nh refreshes its tokens.
     Own,
-    /// Imported from DSH's claude-switch, read-only (PLAN.md D8).
-    Linked,
     /// An Anthropic API key.
     ApiKey,
 }
