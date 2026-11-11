@@ -1,6 +1,8 @@
 import { ScrollView } from "std-widgets.slint";
-import { AccountRow, GoogleRow } from "types.slint";
+import { AccountRow, GoogleRow, ProviderCard } from "types.slint";
 import { GoogleSection } from "google.slint";
+import { ClientForm } from "google_client.slint";
+import { ProviderGrid, ProviderHeader } from "providers.slint";
 import { Theme, UsageBar, Badge, Columns, Mark } from "parts.slint";
 import { Icons } from "icons.slint";
 import { ActionButton, KeyInput } from "widgets.slint";
@@ -115,6 +117,8 @@ component KeyForm inherits Rectangle {
     }
 }
 
+// Opens on the provider cards (`provider` empty); a card opens that
+// provider's page, Back or Esc returns to the cards (PLAN.md D32).
 export component AccountsPage inherits Rectangle {
     in property <[AccountRow]> accounts;
     in property <string> login-url;
@@ -133,60 +137,106 @@ export component AccountsPage inherits Rectangle {
     callback google-sign-in();
     callback google-use(string);
     callback google-remove(string);
+    in property <[ProviderCard]> providers;
+    // "" (the cards), "claude" or "google".
+    in-out property <string> provider;
+    in property <bool> client-ready;
+    in property <string> client-id;
+    in property <string> client-note;
+    in property <bool> client-error;
+    callback save-client(string, string);
+    property <ProviderCard> current: root.providers[root.provider == "google" ? 1 : 0];
+    function open(id: string) {
+        root.provider = id;
+        fs.focus();
+    }
+    function back() {
+        root.provider = "";
+        root.adding-key = false;
+        fs.focus();
+    }
     background: Theme.bg;
-    VerticalLayout {
-        padding-top: Theme.space-xl;
-        padding-bottom: Theme.space-l;
-        padding-left: Columns.side(root.width, Theme.column-width);
-        padding-right: Columns.side(root.width, Theme.column-width);
-        spacing: Theme.space-m;
-        HorizontalLayout {
-            spacing: Theme.space-s;
-            Text {
-                text: "Accounts";
-                color: Theme.text;
-                font-size: Theme.font-l;
-                font-weight: 600;
-                vertical-alignment: center;
+    fs := FocusScope {
+        key-pressed(event) => {
+            if event.text == Key.Escape && root.provider != "" {
+                root.back();
+                return accept;
             }
-            Rectangle { horizontal-stretch: 1; }
-            ActionButton { icon: Icons.sign-in; text: "Sign in"; variant: "primary"; enabled: root.login-url == ""; clicked => { root.sign-in(); } }
-            ActionButton { icon: Icons.key; text: "Add API key"; clicked => { root.adding-key = true; } }
-            ActionButton { icon: Icons.refresh; text: "Refresh usage"; enabled: !root.working; clicked => { root.refresh(); } }
+            return reject;
         }
-        if root.message != "": Text { text: root.message; wrap: word-wrap; color: Theme.dim; font-size: Theme.font-s; }
-        if root.login-url != "": LoginWait {
-            url: root.login-url;
-            open-url(u) => { root.open-url(u); }
-            copy(u) => { root.copy(u); }
-            cancel => { root.cancel-sign-in(); }
-        }
-        if root.adding-key: KeyForm {
-            save(k, l) => { root.add-key(k, l); }
-            cancel => { root.adding-key = false; }
-        }
-        ScrollView {
-            vertical-stretch: 1;
-            VerticalLayout {
-                alignment: start;
-                spacing: Theme.space-s + 2px;
-                if root.accounts.length == 0: Text {
-                    text: "No Claude account yet: sign in or add an API key.";
-                    color: Theme.dim;
-                    wrap: word-wrap;
+        VerticalLayout {
+            padding-top: Theme.space-xl;
+            padding-bottom: Theme.space-l;
+            padding-left: Columns.side(root.width, Theme.column-width);
+            padding-right: Columns.side(root.width, Theme.column-width);
+            spacing: Theme.space-m;
+            if root.provider == "": HorizontalLayout {
+                spacing: Theme.space-s;
+                VerticalLayout {
+                    spacing: 2px;
+                    Text { text: "Accounts"; color: Theme.text; font-size: Theme.font-l; font-weight: 600; }
+                    Text { text: "Pick a provider to manage its accounts."; color: Theme.dim; font-size: Theme.font-s; }
                 }
-                for a in root.accounts: AccountCard {
-                    info: a;
-                    use(id) => { root.use(id); }
-                    remove(id) => { root.remove(id); }
+                Rectangle { horizontal-stretch: 1; }
+                VerticalLayout {
+                    alignment: center;
+                    ActionButton { icon: Icons.refresh; text: "Refresh usage"; enabled: !root.working; clicked => { root.refresh(); } }
                 }
-                GoogleSection {
-                    accounts: root.google-accounts;
-                    signing-in: root.login-url != "";
-                    add => { root.google-sign-in(); }
-                    use(id) => { root.google-use(id); }
-                    remove(id) => { root.google-remove(id); }
-                    open-url(u) => { root.open-url(u); }
+            }
+            if root.provider != "": ProviderHeader {
+                info: root.current;
+                back => { root.back(); }
+                if root.provider == "claude": ActionButton { icon: Icons.sign-in; text: "Sign in"; variant: "primary"; enabled: root.login-url == ""; clicked => { root.sign-in(); } }
+                if root.provider == "claude": ActionButton { icon: Icons.key; text: "Add API key"; clicked => { root.adding-key = true; } }
+                if root.provider == "claude": ActionButton { icon: Icons.refresh; text: "Refresh usage"; enabled: !root.working; clicked => { root.refresh(); } }
+                if root.provider == "google": ActionButton { icon: Icons.sign-in; text: "Add Google account"; variant: "primary"; enabled: root.login-url == ""; clicked => { root.google-sign-in(); } }
+            }
+            if root.message != "": Text { text: root.message; wrap: word-wrap; color: Theme.dim; font-size: Theme.font-s; }
+            if root.login-url != "": LoginWait {
+                url: root.login-url;
+                open-url(u) => { root.open-url(u); }
+                copy(u) => { root.copy(u); }
+                cancel => { root.cancel-sign-in(); }
+            }
+            if root.provider == "claude" && root.adding-key: KeyForm {
+                save(k, l) => { root.add-key(k, l); }
+                cancel => { root.adding-key = false; }
+            }
+            ScrollView {
+                vertical-stretch: 1;
+                VerticalLayout {
+                    alignment: start;
+                    spacing: Theme.space-s + 2px;
+                    if root.provider == "": ProviderGrid {
+                        cards: root.providers;
+                        open(id) => { root.open(id); }
+                    }
+                    if root.provider == "claude" && root.accounts.length == 0: Text {
+                        text: "No Claude account yet: sign in or add an API key.";
+                        color: Theme.dim;
+                        wrap: word-wrap;
+                    }
+                    if root.provider == "claude": VerticalLayout {
+                        spacing: Theme.space-s + 2px;
+                        for a in root.accounts: AccountCard {
+                            info: a;
+                            use(id) => { root.use(id); }
+                            remove(id) => { root.remove(id); }
+                        }
+                    }
+                    if root.provider == "google": ClientForm {
+                        ready: root.client-ready;
+                        saved-id: root.client-id;
+                        note: root.client-note;
+                        error: root.client-error;
+                        save(id, secret) => { root.save-client(id, secret); }
+                    }
+                    if root.provider == "google": GoogleSection {
+                        accounts: root.google-accounts;
+                        use(id) => { root.google-use(id); }
+                        remove(id) => { root.google-remove(id); }
+                        open-url(u) => { root.open-url(u); }
+                    }
                 }
             }
         }

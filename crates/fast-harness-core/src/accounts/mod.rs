@@ -9,6 +9,7 @@
 //! - `remote`: usage of idle accounts from the usage endpoint.
 //! - `pool`: the Anthropic accounts as the agent's `AuthSource`, with failover.
 //! - `google`: Google Antigravity sign-in, project, plan and quota.
+//! - `providers`: the per-provider summaries the Accounts views open on.
 
 pub mod crypto;
 pub mod google;
@@ -16,6 +17,7 @@ pub mod model;
 pub mod oauth;
 pub mod order;
 pub mod pool;
+pub mod providers;
 pub mod remote;
 pub mod store;
 pub mod usage;

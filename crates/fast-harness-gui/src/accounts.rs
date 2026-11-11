@@ -33,17 +33,17 @@ pub(crate) fn say(ui: &MainWindow, text: impl Into<slint::SharedString>) {
     ui.set_accounts_message(text.into());
 }
 
-/// The account cards: Claude ones, then the Google section.
+/// The provider cards, the Claude account cards and the Google ones.
 pub fn refresh(app: &App, ui: &MainWindow) {
-    let now = now_ms() as i64;
-    let statuses = app.rt.pool.status();
-    let rows: Vec<_> = statuses
-        .iter()
-        .filter(|s| s.account.provider != Provider::Google)
-        .map(|s| account_row(s, now))
-        .collect();
+    let now_ms = now_ms();
+    let now = now_ms as i64;
+    let mut statuses = app.rt.pool.status();
+    statuses.retain(|s| s.account.provider != Provider::Google);
+    let rows: Vec<_> = statuses.iter().map(|s| account_row(s, now)).collect();
     ui.set_accounts(ModelRc::new(VecModel::from(rows)));
-    crate::google::refresh_rows(app, ui);
+    let google = app.rt.google.status();
+    crate::google::refresh_rows(app, ui, &google);
+    crate::providers::fill(ui, &app.rt.home, &statuses, &google, now_ms);
 }
 
 pub fn use_account(app: &App, ui: &MainWindow, id: &str) {

@@ -76,34 +76,13 @@ component GoogleCard inherits Rectangle {
     }
 }
 
-// Header with the Add button, then one card per Google account.
+// One card per Google account (the page header holds Add Google account).
 export component GoogleSection inherits VerticalLayout {
     in property <[GoogleRow]> accounts;
-    in property <bool> signing-in;
-    callback add();
     callback use(string);
     callback remove(string);
     callback open-url(string);
     spacing: Theme.space-s + 2px;
-    HorizontalLayout {
-        spacing: Theme.space-s;
-        padding-top: Theme.space-m;
-        Mark { text: Icons.google; color: Theme.text; vertical-alignment: center; }
-        Text {
-            text: "Google Antigravity";
-            color: Theme.text;
-            font-size: Theme.font-m;
-            font-weight: 600;
-            vertical-alignment: center;
-        }
-        Rectangle { horizontal-stretch: 1; }
-        ActionButton {
-            icon: Icons.sign-in;
-            text: "Add Google account";
-            enabled: !root.signing-in;
-            clicked => { root.add(); }
-        }
-    }
     if root.accounts.length == 0: Text {
         text: "No Google account yet: Add Google account signs in through the browser.";
         color: Theme.dim;

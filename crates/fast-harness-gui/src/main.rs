@@ -15,6 +15,7 @@ mod google_rows;
 mod mirror;
 mod model_refresh;
 mod pickers;
+mod providers;
 mod rows;
 mod settings;
 #[cfg(test)]
