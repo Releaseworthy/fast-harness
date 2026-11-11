@@ -1,5 +1,6 @@
-//! The system prompt: identity, date, tool guidance and every AGENTS.md from
-//! the filesystem root down to the working directory.
+//! The system prompt: one identity line, one tool line and the AGENTS.md
+//! files of the session's project (from the repository root down to the
+//! working directory, never above it).
 
 use std::path::{Path, PathBuf};
 
@@ -9,19 +10,13 @@ use crate::trace;
 /// Largest AGENTS.md text put into the prompt, all files together.
 pub const MAX_AGENTS_BYTES: usize = 32 * 1024;
 
-const TOOL_GUIDE: &str = "\
-Tools:
-- read, grep and glob to look before you change anything; read only the ranges you need.
-- edit for targeted changes to an existing file, write for new files or full rewrites.
-- shell for builds, tests and git; commands run in the working directory.
-- subagent for a self-contained task that would fill this conversation with detail.
-Independent tool calls in one step run in parallel.
-Keep answers short; report only what you observed.";
+const TOOL_LINE: &str = "Use the tools to read, search and change files and to run commands; \
+independent calls in one step run in parallel. Be brief.";
 
 /// The full system prompt for an agent working in `cwd`.
 pub fn system_prompt(cwd: &Path) -> String {
     let mut out = format!(
-        "You are nh, a coding agent working in {} on {}.\nToday is {} (UTC).\n\n{TOOL_GUIDE}\n",
+        "You are a coding agent in Fast Harness, working in {} on {}. Today is {} (UTC).\n{TOOL_LINE}\n",
         cwd.display(),
         os_name(),
         today()
@@ -34,10 +29,24 @@ pub fn system_prompt(cwd: &Path) -> String {
     out
 }
 
-/// `(path, text)` of every readable `AGENTS.md` from the root down to `cwd`.
+/// The directories whose AGENTS.md belongs to the session, outermost first:
+/// from the nearest ancestor of `cwd` (itself included) holding a `.git`
+/// entry (directory or file) down to `cwd`; only `cwd` without one.
+pub fn project_dirs(cwd: &Path) -> Vec<&Path> {
+    let mut dirs = Vec::new();
+    for dir in cwd.ancestors() {
+        dirs.push(dir);
+        if std::fs::symlink_metadata(dir.join(".git")).is_ok() {
+            dirs.reverse();
+            return dirs;
+        }
+    }
+    vec![cwd]
+}
+
+/// `(path, text)` of every readable `AGENTS.md` of [`project_dirs`], outermost first.
 pub fn agents_files(cwd: &Path) -> Vec<(PathBuf, String)> {
-    let mut dirs: Vec<&Path> = cwd.ancestors().collect();
-    dirs.reverse();
+    let dirs = project_dirs(cwd);
     dirs.into_iter()
         .filter_map(|dir| {
             let path = dir.join("AGENTS.md");

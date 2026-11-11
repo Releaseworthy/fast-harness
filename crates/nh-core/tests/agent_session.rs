@@ -103,9 +103,20 @@ fn prompt_includes_agents_files_root_first() {
     std::fs::create_dir_all(&sub).unwrap();
     std::fs::write(root.0.join("AGENTS.md"), "ROOT RULES").unwrap();
     std::fs::write(sub.join("AGENTS.md"), "SUB RULES").unwrap();
+    // No `.git` anywhere above: only the working directory's own file.
     let text = prompt::system_prompt(&sub);
-    assert!(text.starts_with("You are nh, a coding agent working in"));
-    assert!(text.contains(&sub.display().to_string()));
+    assert!(text.contains("SUB RULES") && !text.contains("ROOT RULES"));
+    std::fs::create_dir(root.0.join(".git")).unwrap();
+    let text = prompt::system_prompt(&sub);
+    let start = format!(
+        "You are a coding agent in Fast Harness, working in {} on ",
+        sub.display()
+    );
+    assert!(text.starts_with(&start), "{text}");
+    assert!(text.contains(
+        " (UTC).\nUse the tools to read, search and change files and to run \
+        commands; independent calls in one step run in parallel. Be brief.\n"
+    ));
     let root_at = text.find("ROOT RULES").unwrap();
     let sub_at = text.find("SUB RULES").unwrap();
     assert!(root_at < sub_at);
@@ -115,6 +126,35 @@ fn prompt_includes_agents_files_root_first() {
     assert!(text.contains("cut at 32 KB"));
     assert!(text.len() < prompt::MAX_AGENTS_BYTES + 4096);
     drop(root);
+}
+
+#[test]
+fn prompt_agents_files_stop_at_the_repository_root() {
+    let outer = TempDir::new("prompt-git");
+    let repo = outer.0.join("repo");
+    let sub = repo.join("sub");
+    std::fs::create_dir_all(&sub).unwrap();
+    std::fs::create_dir(outer.0.join(".git")).unwrap();
+    for (dir, text) in [(&outer.0, "OUTER"), (&repo, "REPO"), (&sub, "SUB")] {
+        std::fs::write(dir.join("AGENTS.md"), text).unwrap();
+    }
+    let names = |cwd: &std::path::Path| -> Vec<String> {
+        prompt::agents_files(cwd)
+            .into_iter()
+            .map(|(_, text)| text)
+            .collect()
+    };
+    assert_eq!(names(&sub), ["OUTER", "REPO", "SUB"]);
+    // A nested repository (a `.git` directory) starts its own project.
+    std::fs::create_dir(repo.join(".git")).unwrap();
+    assert_eq!(names(&sub), ["REPO", "SUB"]);
+    assert_eq!(names(&repo), ["REPO"]);
+    // A `.git` file (worktree or submodule) counts too.
+    std::fs::remove_dir(repo.join(".git")).unwrap();
+    std::fs::write(repo.join(".git"), "gitdir: elsewhere").unwrap();
+    assert_eq!(names(&sub), ["REPO", "SUB"]);
+    assert!(!prompt::system_prompt(&sub).contains("OUTER"));
+    drop(outer);
 }
 
 #[test]
