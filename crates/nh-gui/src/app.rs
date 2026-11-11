@@ -37,6 +37,8 @@ pub struct App {
     pub login_cancel: Option<Arc<AtomicBool>>,
     /// Model ids in the order of the Settings list.
     pub models: Vec<String>,
+    /// A model list fetch runs (model_refresh).
+    pub models_fetching: bool,
 }
 
 thread_local! {
@@ -85,6 +87,7 @@ impl App {
             stopping: false,
             login_cancel: None,
             models: Vec::new(),
+            models_fetching: false,
         }
     }
 

@@ -1,16 +1,23 @@
 //! The model and effort choices shared by the composer and the Settings
 //! page: one list in Rust, both views bind the same window properties.
 
-use nh_core::llm::anthropic::{builtin_models, efforts, fit_effort};
+use nh_core::llm::anthropic::{efforts, fit_effort, ModelInfo};
 
-/// Model ids and labels of the built-in table, with `configured` first
-/// (labelled by its id) when the table lacks it.
-pub fn model_list(configured: &str) -> Vec<(String, String)> {
-    let table: Vec<(String, String)> = builtin_models()
-        .into_iter()
-        .map(|m| (m.id, m.display_name))
+/// Model ids and labels of `models` (the cached or fetched list), with
+/// `configured` first (labelled by its id) when the list lacks it, and
+/// " (deprecated)" after the label of a deprecated model.
+pub fn model_list(models: &[ModelInfo], configured: &str) -> Vec<(String, String)> {
+    let table: Vec<(String, String)> = models
+        .iter()
+        .map(|m| (m.id.clone(), m.display_name.clone()))
         .collect();
-    labelled(&table, configured)
+    let mut list = labelled(&table, configured);
+    for (id, label) in &mut list {
+        if models.iter().any(|m| &m.id == id && m.deprecated) {
+            label.push_str(" (deprecated)");
+        }
+    }
+    list
 }
 
 /// `(id, display name)` pairs to `(id, label)`: the display name, plus the
@@ -101,7 +108,10 @@ mod tests {
 
     #[test]
     fn builtin_labels_are_unique() {
-        let list = model_list("claude-opus-5-5");
+        let list = model_list(
+            &nh_core::llm::anthropic::builtin_models(),
+            "claude-opus-5-5",
+        );
         assert_eq!(list[0].1, "Claude Opus 5.5");
         let mut labels: Vec<&str> = list.iter().map(|(_, l)| l.as_str()).collect();
         assert!(labels.contains(&"Claude Opus 4.5 (claude-opus-4-5-20251101)"));

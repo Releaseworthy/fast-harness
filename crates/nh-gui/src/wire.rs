@@ -1,13 +1,12 @@
 //! Slint callbacks to the app.
 
-use std::cell::Cell;
-use std::time::{Duration, Instant};
-
 use nh_core::platform;
 use slint::ComponentHandle;
 
 use crate::app::{show_error, with_app};
-use crate::{accounts, mirror, settings, theme, trace_rows, turn, MainWindow};
+use crate::{
+    accounts, mirror, model_refresh, settings, theme, trace_rows, turn, window_state, MainWindow,
+};
 
 pub fn connect(ui: &MainWindow) {
     ui.on_send(|text| with_app(|app, ui| turn::send(app, ui, &text)).unwrap_or(false));
@@ -38,34 +37,15 @@ pub fn connect(ui: &MainWindow) {
     ui.on_effort_picked(|index| {
         with_app(|app, ui| settings::pick_effort(app, ui, index));
     });
+    ui.on_pickers_opened(|| {
+        with_app(model_refresh::start);
+    });
     ui.on_theme_changed(|index| {
         with_app(|app, ui| theme::pick(app, ui, index));
     });
     connect_accounts(ui);
     connect_open_url(ui);
-    connect_title_bar(ui);
-}
-
-/// Two clicks on the empty title bar within this time maximize or restore.
-const DOUBLE_CLICK: Duration = Duration::from_millis(500);
-
-/// True when a click at `now` follows the one at `last` within `DOUBLE_CLICK`.
-fn is_double(last: Option<Instant>, now: Instant) -> bool {
-    last.is_some_and(|t| now.saturating_duration_since(t) < DOUBLE_CLICK)
-}
-
-fn connect_title_bar(ui: &MainWindow) {
-    let weak = ui.as_weak();
-    let last = Cell::new(None::<Instant>);
-    ui.on_title_bar_clicked(move || {
-        let now = Instant::now();
-        let double = is_double(last.get(), now);
-        last.set(if double { None } else { Some(now) });
-        if let (true, Some(ui)) = (double, weak.upgrade()) {
-            let window = ui.window();
-            window.set_maximized(!window.is_maximized());
-        }
-    });
+    window_state::connect(ui);
 }
 
 fn connect_accounts(ui: &MainWindow) {
@@ -120,7 +100,7 @@ pub fn connect_minimal(ui: &MainWindow) {
         false
     });
     connect_open_url(ui);
-    connect_title_bar(ui);
+    window_state::connect(ui);
 }
 
 fn open_page(app: &mut crate::app::App, ui: &MainWindow, page: &str) {
@@ -140,17 +120,4 @@ pub fn first_paint() {
         app.refresh_status(ui);
         accounts::refresh(app, ui);
     });
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn double_click_needs_two_clicks_within_the_interval() {
-        let t = Instant::now();
-        assert!(!is_double(None, t));
-        assert!(is_double(Some(t), t + Duration::from_millis(300)));
-        assert!(!is_double(Some(t), t + Duration::from_millis(700)));
-    }
 }
