@@ -90,7 +90,7 @@ fn hint_text(ui: &Ui) -> String {
         Screen::Chat if ui.picker.is_some() => "↑↓ PgUp PgDn choose · Enter pick · Esc close".into(),
         Screen::Chat if ui.running => "Esc cancel · Ctrl+P model · Ctrl+E effort · PgUp/PgDn scroll · Ctrl+T thinking · F3 trace · F5 theme".into(),
         Screen::Chat => "Enter send · Alt+Enter newline · Ctrl+P model · Ctrl+E effort · Ctrl+T thinking · Ctrl+N new · Ctrl+O sessions · F2 accounts · F3 trace · F5 theme".into(),
-        Screen::Accounts => "Enter use · l sign in · k add key · d remove · r read usage · Esc back".into(),
+        Screen::Accounts => "Enter use · l Claude sign-in · g Google sign-in · k add key · d remove · r read usage · Esc back".into(),
         Screen::Trace if ui.trace.show_steps => "s timeline · ↑↓ PgUp PgDn Home End scroll · Esc back".into(),
         Screen::Trace if ui.trace.full => "f cut bodies · s steps table · ↑↓ PgUp PgDn Home End scroll · Esc back".into(),
         Screen::Trace => "f full bodies · s steps table · ↑↓ PgUp PgDn Home End scroll · Esc back".into(),

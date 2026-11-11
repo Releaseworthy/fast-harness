@@ -131,10 +131,8 @@ fn model<T: Clone + 'static>(items: Vec<T>) -> ModelRc<T> {
     ModelRc::new(VecModel::from(items))
 }
 
-fn fill(ui: &MainWindow) {
-    ui.set_messages(model(messages()));
-    ui.set_side_rows(model(side_rows()));
-    ui.set_accounts(model(vec![
+fn claude_rows() -> Vec<AccountRow> {
+    vec![
         account("work@example.com", true, 0.42, 0.18, ""),
         account(
             "home@example.com",
@@ -144,7 +142,25 @@ fn fill(ui: &MainWindow) {
             "On hold until 14:20: 5h limit reached",
         ),
         account("spare@example.com", false, 0.05, 0.02, ""),
-    ]));
+    ]
+}
+
+/// Two fake Google accounts (active with quota, held for verification).
+fn google_rows() -> Vec<crate::GoogleRow> {
+    let now = 1_800_000_000_000;
+    let list = crate::google_fixtures::statuses(now);
+    let project = |i| (i == 0).then(|| "proj-example-1".to_string());
+    list.iter()
+        .enumerate()
+        .map(|(i, s)| crate::google_rows::google_row(s, project(i), now))
+        .collect()
+}
+
+fn fill(ui: &MainWindow) {
+    ui.set_messages(model(messages()));
+    ui.set_side_rows(model(side_rows()));
+    ui.set_accounts(model(claude_rows()));
+    ui.set_google_accounts(model(google_rows()));
     let models = crate::pickers::model_list(
         &fast_harness_core::llm::anthropic::builtin_models(),
         "claude-opus-5-5",
@@ -199,8 +215,18 @@ fn shots() {
     for core in THEMES.iter() {
         theme::apply(&ui, core);
         theme::fill(&ui, core.id);
-        for shot in ["chat", "accounts", "settings", "about", "trace", "steps"] {
-            let page = if shot == "steps" { "trace" } else { shot };
+        for shot in [
+            "chat", "accounts", "google", "settings", "about", "trace", "steps",
+        ] {
+            let page = match shot {
+                "steps" => "trace",
+                "google" => "accounts",
+                _ => shot,
+            };
+            // The Google shot keeps one Claude card so its section is in view.
+            let mut claude = claude_rows();
+            claude.truncate(if shot == "google" { 1 } else { 3 });
+            ui.set_accounts(model(claude));
             ui.set_trace_mode(if shot == "steps" { "steps" } else { "timeline" }.into());
             ui.set_page(page.into());
             ui.set_error_text(

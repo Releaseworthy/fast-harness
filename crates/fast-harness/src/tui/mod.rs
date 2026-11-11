@@ -4,6 +4,7 @@
 
 mod app;
 mod draw;
+mod google;
 mod icons;
 mod input;
 mod markdown;
@@ -58,8 +59,13 @@ pub fn run(args: TuiArgs) -> Result<ExitCode, String> {
     let conv = rt.open_conversation(&cwd, args.resume.as_deref(), args.continue_latest)?;
     let (tx, rx) = mpsc::channel();
     let mut tui = Tui::new(rt, cwd, conv, tx.clone());
-    let _poller = worker::start_poller(tui.rt.pool.clone(), tui.rt.transport.clone(), tx.clone())
-        .map_err(|err| format!("usage thread: {err}"))?;
+    let _poller = worker::start_poller(
+        tui.rt.pool.clone(),
+        tui.rt.google.clone(),
+        tui.rt.transport.clone(),
+        tx.clone(),
+    )
+    .map_err(|err| format!("usage thread: {err}"))?;
     let mut terminal = enter().map_err(|err| format!("terminal: {err}"))?;
     let _guard = Guard;
     worker::start_reader(tx).map_err(|err| format!("input thread: {err}"))?;

@@ -1,0 +1,118 @@
+// The Google Antigravity section of the Accounts page (PLAN.md D23).
+import { GoogleRow, GoogleQuotaRow } from "types.slint";
+import { Theme, UsageBar, Badge, Mark } from "parts.slint";
+import { Icons } from "icons.slint";
+import { ActionButton } from "widgets.slint";
+
+component QuotaGroup inherits VerticalLayout {
+    in property <GoogleQuotaRow> info;
+    spacing: Theme.space-xs;
+    Text { text: info.name; color: Theme.dim; font-size: Theme.font-s; }
+    UsageBar { label: "5h"; label-width: 40px; value: info.five; caption: info.five-text; }
+    UsageBar { label: "Week"; label-width: 40px; value: info.week; caption: info.week-text; }
+}
+
+component GoogleCard inherits Rectangle {
+    in property <GoogleRow> info;
+    callback use(string);
+    callback remove(string);
+    callback open-url(string);
+    border-radius: Theme.radius-m;
+    border-width: 1px;
+    border-color: info.active ? Theme.accent : Theme.line;
+    background: Theme.surface;
+    VerticalLayout {
+        padding: Theme.space-l - 2px;
+        spacing: Theme.space-s;
+        HorizontalLayout {
+            spacing: Theme.space-s;
+            VerticalLayout { alignment: center; Mark { text: Icons.google; color: Theme.dim; } }
+            Text {
+                text: info.name;
+                color: Theme.text;
+                font-size: Theme.font-m;
+                font-weight: 600;
+                overflow: elide;
+                vertical-alignment: center;
+            }
+            if info.plan != "": VerticalLayout { alignment: center; Badge { text: info.plan; height: 20px; } }
+            if info.active: VerticalLayout { alignment: center; Badge { text: "Active"; strong: true; height: 20px; } }
+            Rectangle { horizontal-stretch: 1; }
+            if !info.active: ActionButton {
+                icon: Icons.check;
+                text: "Use";
+                clicked => { root.use(info.id); }
+            }
+            ActionButton {
+                icon: Icons.trash;
+                text: "Remove";
+                variant: "ghost";
+                clicked => { root.remove(info.id); }
+            }
+        }
+        if info.project != "": Text {
+            text: "Project " + info.project;
+            color: Theme.dim;
+            font-size: Theme.font-s;
+            overflow: elide;
+        }
+        for group in info.quota: QuotaGroup { info: group; }
+        if info.hold != "": HorizontalLayout {
+            spacing: Theme.space-s;
+            Mark { text: Icons.debug-pause; color: Theme.warning; font-size: Theme.font-s; }
+            Text { text: info.hold; color: Theme.warning; font-size: Theme.font-s; wrap: word-wrap; horizontal-stretch: 1; vertical-alignment: center; }
+            if info.verify-url != "": ActionButton {
+                icon: Icons.link-external;
+                text: "Verify";
+                clicked => { root.open-url(info.verify-url); }
+            }
+        }
+        if info.error != "": HorizontalLayout {
+            spacing: Theme.space-s;
+            Mark { text: Icons.error; color: Theme.error; font-size: Theme.font-s; }
+            Text { text: info.error; color: Theme.error; font-size: Theme.font-s; wrap: word-wrap; horizontal-stretch: 1; }
+        }
+        Text { text: info.read; color: Theme.dim; font-size: Theme.font-s; }
+    }
+}
+
+// Header with the Add button, then one card per Google account.
+export component GoogleSection inherits VerticalLayout {
+    in property <[GoogleRow]> accounts;
+    in property <bool> signing-in;
+    callback add();
+    callback use(string);
+    callback remove(string);
+    callback open-url(string);
+    spacing: Theme.space-s + 2px;
+    HorizontalLayout {
+        spacing: Theme.space-s;
+        padding-top: Theme.space-m;
+        Mark { text: Icons.google; color: Theme.text; vertical-alignment: center; }
+        Text {
+            text: "Google Antigravity";
+            color: Theme.text;
+            font-size: Theme.font-m;
+            font-weight: 600;
+            vertical-alignment: center;
+        }
+        Rectangle { horizontal-stretch: 1; }
+        ActionButton {
+            icon: Icons.sign-in;
+            text: "Add Google account";
+            enabled: !root.signing-in;
+            clicked => { root.add(); }
+        }
+    }
+    if root.accounts.length == 0: Text {
+        text: "No Google account yet: Add Google account signs in through the browser.";
+        color: Theme.dim;
+        wrap: word-wrap;
+    }
+    for a in root.accounts: GoogleCard {
+        info: a;
+        use(id) => { root.use(id); }
+        remove(id) => { root.remove(id); }
+        open-url(u) => { root.open-url(u); }
+    }
+}

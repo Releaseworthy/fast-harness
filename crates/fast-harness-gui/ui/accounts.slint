@@ -1,5 +1,6 @@
-import { ListView } from "std-widgets.slint";
-import { AccountRow } from "types.slint";
+import { ScrollView } from "std-widgets.slint";
+import { AccountRow, GoogleRow } from "types.slint";
+import { GoogleSection } from "google.slint";
 import { Theme, UsageBar, Badge, Columns, Mark } from "parts.slint";
 import { Icons } from "icons.slint";
 import { ActionButton, KeyInput } from "widgets.slint";
@@ -128,6 +129,10 @@ export component AccountsPage inherits Rectangle {
     callback remove(string);
     callback open-url(string);
     callback copy(string);
+    in property <[GoogleRow]> google-accounts;
+    callback google-sign-in();
+    callback google-use(string);
+    callback google-remove(string);
     background: Theme.bg;
     VerticalLayout {
         padding-top: Theme.space-xl;
@@ -160,19 +165,28 @@ export component AccountsPage inherits Rectangle {
             save(k, l) => { root.add-key(k, l); }
             cancel => { root.adding-key = false; }
         }
-        if root.accounts.length == 0: Text {
-            text: "No account yet: sign in or add an API key.";
-            color: Theme.dim;
-            wrap: word-wrap;
-        }
-        ListView {
+        ScrollView {
             vertical-stretch: 1;
-            for a in root.accounts: VerticalLayout {
-                padding-bottom: Theme.space-s + 2px;
-                AccountCard {
+            VerticalLayout {
+                alignment: start;
+                spacing: Theme.space-s + 2px;
+                if root.accounts.length == 0: Text {
+                    text: "No Claude account yet: sign in or add an API key.";
+                    color: Theme.dim;
+                    wrap: word-wrap;
+                }
+                for a in root.accounts: AccountCard {
                     info: a;
                     use(id) => { root.use(id); }
                     remove(id) => { root.remove(id); }
+                }
+                GoogleSection {
+                    accounts: root.google-accounts;
+                    signing-in: root.login-url != "";
+                    add => { root.google-sign-in(); }
+                    use(id) => { root.google-use(id); }
+                    remove(id) => { root.google-remove(id); }
+                    open-url(u) => { root.open-url(u); }
                 }
             }
         }

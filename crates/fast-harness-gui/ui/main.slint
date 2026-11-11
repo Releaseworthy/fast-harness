@@ -1,5 +1,5 @@
 import { Palette } from "std-widgets.slint";
-import { MsgRow, SessionRow, SideRow, AccountRow, TraceRow } from "types.slint";
+import { MsgRow, SessionRow, SideRow, AccountRow, TraceRow, GoogleRow, GoogleQuotaRow } from "types.slint";
 import { Theme } from "parts.slint";
 import { Dropdown } from "widgets.slint";
 import { Composer } from "composer.slint";
@@ -13,7 +13,7 @@ import { TabStrip, StatusBar, ErrorBanner } from "panel.slint";
 // The icon font (Symbols Nerd Font subset); `Theme.symbols` names it.
 import "../fonts/FastHarnessIcons.ttf";
 
-export { MsgRow, SessionRow, SideRow, AccountRow, TraceRow, Theme }
+export { MsgRow, SessionRow, SideRow, AccountRow, TraceRow, GoogleRow, GoogleQuotaRow, Theme }
 
 // No native frame: the title bar (titlebar.slint) draws the window
 // controls; a 1px line edges the window while it is not maximized.
@@ -36,6 +36,7 @@ export component MainWindow inherits Window {
     in property <[MsgRow]> messages;
     in property <[SideRow]> side-rows;
     in property <[AccountRow]> accounts;
+    in property <[GoogleRow]> google-accounts;
     in property <[TraceRow]> trace-entries;
     in property <[[string]]> trace-steps;
     in property <string> trace-session;
@@ -82,6 +83,9 @@ export component MainWindow inherits Window {
     callback refresh-usage();
     callback use-account(string);
     callback remove-account(string);
+    callback google-sign-in();
+    callback google-use(string);
+    callback google-remove(string);
     callback refresh-trace();
     callback trace-toggle(int);
     callback model-picked(int);
@@ -231,6 +235,10 @@ export component MainWindow inherits Window {
                             width: parent.width;
                             height: parent.height;
                             accounts: root.accounts;
+                            google-accounts: root.google-accounts;
+                            google-sign-in => { root.google-sign-in(); }
+                            google-use(id) => { root.google-use(id); }
+                            google-remove(id) => { root.google-remove(id); }
                             login-url: root.login-url;
                             message: root.accounts-message;
                             working: root.accounts-working;
