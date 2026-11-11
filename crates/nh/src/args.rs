@@ -3,7 +3,7 @@
 use std::path::PathBuf;
 
 pub const USAGE: &str = "\
-nh: a coding agent harness
+Fast Harness (nh): a coding agent harness
 
 Usage:
   nh -p <prompt> [--model M] [--effort E] [-c|--continue] [--resume ID] [--cwd DIR]

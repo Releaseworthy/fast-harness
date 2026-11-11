@@ -225,6 +225,7 @@ impl Ui {
         }
         let open = match key.code {
             KeyCode::F(2) => Screen::Accounts,
+            KeyCode::F(3) if self.screen == Screen::Trace => Screen::Chat,
             KeyCode::F(3) => Screen::Trace,
             KeyCode::F(4) => Screen::Models,
             _ if self.typing_key() => return None,

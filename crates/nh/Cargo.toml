@@ -4,7 +4,7 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "native-harness command line: print mode, TUI, accounts, sessions, trace."
+description = "Fast Harness command line: print mode, TUI, accounts, sessions, trace."
 
 [[bin]]
 name = "nh"
