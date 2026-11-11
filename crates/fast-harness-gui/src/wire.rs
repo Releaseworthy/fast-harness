@@ -5,8 +5,8 @@ use slint::ComponentHandle;
 
 use crate::app::{show_error, with_app};
 use crate::{
-    accounts, google, mirror, model_refresh, settings, theme, trace_rows, turn, window_state,
-    workspaces, MainWindow,
+    accounts, google, mirror, model_refresh, prompt_settings, settings, theme, trace_rows, turn,
+    window_state, workspaces, MainWindow,
 };
 
 pub fn connect(ui: &MainWindow) {
@@ -21,7 +21,10 @@ pub fn connect(ui: &MainWindow) {
         with_app(|app, ui| workspaces::open_session(app, ui, &ws, &id));
     });
     ui.on_select_workspace(|path| {
-        with_app(|app, ui| workspaces::select(app, ui, &path));
+        with_app(|app, ui| {
+            workspaces::select(app, ui, &path);
+            prompt_settings::show(app, ui, "");
+        });
     });
     ui.on_remove_workspace(|path| {
         with_app(|app, ui| workspaces::remove(app, ui, &path));
@@ -54,6 +57,7 @@ pub fn connect(ui: &MainWindow) {
         with_app(|app, ui| theme::pick(app, ui, index));
     });
     connect_accounts(ui);
+    prompt_settings::connect(ui);
     connect_google(ui);
     connect_open_url(ui);
     window_state::connect(ui);
@@ -130,6 +134,7 @@ fn open_page(app: &mut crate::app::App, ui: &MainWindow, page: &str) {
     match page {
         "accounts" => accounts::refresh(app, ui),
         "trace" => app.refresh_trace(ui),
+        "settings" => prompt_settings::show(app, ui, ""),
         _ => {}
     }
     ui.set_page(page.into());
@@ -139,6 +144,7 @@ fn open_page(app: &mut crate::app::App, ui: &MainWindow, page: &str) {
 pub fn first_paint() {
     with_app(|app, ui| {
         settings::fill(app, ui);
+        prompt_settings::show(app, ui, "");
         app.refresh_sessions(ui);
         app.refresh_status(ui);
         accounts::refresh(app, ui);

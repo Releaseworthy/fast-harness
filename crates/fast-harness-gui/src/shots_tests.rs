@@ -296,6 +296,8 @@ fn shots() {
         std::fs::write(dir.join(format!("{}-nosidebar.png", core.id)), png).expect("write png");
         ui.set_sidebar_open(true);
         outside_click_closes(&ui, &window);
+        let size = (WIDTH, HEIGHT);
+        crate::shots_prompt::shot(&ui, &window, &dir, core.id, size, || render(&window));
     }
 }
 
