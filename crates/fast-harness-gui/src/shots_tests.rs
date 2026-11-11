@@ -159,6 +159,29 @@ fn google_rows() -> Vec<crate::GoogleRow> {
         .collect()
 }
 
+/// The Claude card as the three sample accounts make it, and the Google
+/// card of the fixtures without an OAuth client (Needs setup).
+fn provider_cards() -> Vec<crate::ProviderCard> {
+    use fast_harness_core::accounts::providers::{summaries, ClientState};
+    let now = 1_800_000_000_000;
+    let google = crate::google_fixtures::statuses(now);
+    let missing = ClientState::Missing;
+    let mut cards: Vec<_> = summaries(&[], &google, &missing, now)
+        .iter()
+        .map(|s| crate::providers::provider_card(s, &missing))
+        .collect();
+    cards[0] = crate::ProviderCard {
+        count: "3 accounts".into(),
+        status: "Active: work@example.com".into(),
+        tone: "ready".into(),
+        has_left: true,
+        left: 0.58,
+        left_text: "58% left at the lowest".into(),
+        ..cards[0].clone()
+    };
+    cards
+}
+
 /// Three Claude models, then three Antigravity ones (both picker groups in
 /// the eight rows the list shows).
 fn catalog() -> Vec<fast_harness_core::llm::anthropic::ModelInfo> {
@@ -184,6 +207,7 @@ fn fill(ui: &MainWindow) {
     ui.set_side_rows(model(side_rows()));
     ui.set_accounts(model(claude_rows()));
     ui.set_google_accounts(model(google_rows()));
+    ui.set_providers(model(provider_cards()));
     let models = crate::pickers::model_list(&catalog(), "claude-opus-5-5");
     ui.set_models(model(models.iter().map(|(_, l)| l.into()).collect()));
     ui.set_model_headers(model(
@@ -243,17 +267,19 @@ fn shots() {
         theme::apply(&ui, core);
         theme::fill(&ui, core.id);
         for shot in [
-            "chat", "accounts", "google", "settings", "about", "trace", "steps",
+            "chat", "accounts", "claude", "google", "settings", "about", "trace", "steps",
         ] {
             let page = match shot {
                 "steps" => "trace",
-                "google" => "accounts",
+                "claude" | "google" => "accounts",
                 _ => shot,
             };
-            // The Google shot keeps one Claude card so its section is in view.
-            let mut claude = claude_rows();
-            claude.truncate(if shot == "google" { 1 } else { 3 });
-            ui.set_accounts(model(claude));
+            let provider = if page == "accounts" && shot != "accounts" {
+                shot
+            } else {
+                ""
+            };
+            ui.set_accounts_provider(provider.into());
             ui.set_trace_mode(if shot == "steps" { "steps" } else { "timeline" }.into());
             ui.set_page(page.into());
             ui.set_error_text(
@@ -296,6 +322,7 @@ fn shots() {
         let png = shots_png::encode(WIDTH, HEIGHT, &render(&window));
         std::fs::write(dir.join(format!("{}-nosidebar.png", core.id)), png).expect("write png");
         ui.set_sidebar_open(true);
+        provider_states(&ui, &window, &dir, core.id);
         outside_click_closes(&ui, &window);
         let size = (WIDTH, HEIGHT);
         crate::shots_prompt::shot(&ui, &window, &dir, core.id, size, || render(&window));
@@ -352,4 +379,48 @@ fn key(window: &MinimalSoftwareWindow, text: SharedString) {
     use slint::platform::WindowEvent;
     window.dispatch_event(WindowEvent::KeyPressed { text: text.clone() });
     window.dispatch_event(WindowEvent::KeyReleased { text });
+}
+
+fn save(window: &MinimalSoftwareWindow, dir: &std::path::Path, name: &str) {
+    let png = shots_png::encode(WIDTH, HEIGHT, &render(window));
+    std::fs::write(dir.join(format!("{name}.png")), png).expect("write png");
+}
+
+/// The Accounts cards: a hovered card, a click opens it and Esc returns;
+/// by keyboard, Tab reaches the Claude card (after Refresh usage) and
+/// Enter opens it.
+fn provider_states(
+    ui: &MainWindow,
+    window: &MinimalSoftwareWindow,
+    dir: &std::path::Path,
+    theme: &str,
+) {
+    use slint::platform::{Key, WindowEvent};
+    let card = slint::LogicalPosition::new(470.0, PAGE_Y + 180.0);
+    ui.set_page("accounts".into());
+    ui.set_accounts_provider("".into());
+    window.dispatch_event(WindowEvent::PointerMoved { position: card });
+    save(window, dir, &format!("{theme}-accounts-hover"));
+    click(window, card.x, card.y);
+    assert_eq!(
+        ui.get_accounts_provider(),
+        "claude",
+        "a click opens the card"
+    );
+    key(window, Key::Escape.into());
+    assert_eq!(ui.get_accounts_provider(), "", "Esc returns to the cards");
+    window.dispatch_event(WindowEvent::PointerMoved {
+        position: slint::LogicalPosition::new(OUTSIDE.0, 700.0),
+    });
+    key(window, Key::Tab.into());
+    key(window, Key::Tab.into());
+    save(window, dir, &format!("{theme}-accounts-focus"));
+    key(window, Key::Return.into());
+    assert_eq!(
+        ui.get_accounts_provider(),
+        "claude",
+        "Enter opens the focused card"
+    );
+    key(window, Key::Escape.into());
+    ui.set_page("chat".into());
 }

@@ -1,5 +1,6 @@
 //! Keys of the accounts, trace, model and session screens.
 
+use fast_harness_core::accounts::providers::ProviderKey;
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 use super::input::Input;
@@ -7,11 +8,13 @@ use super::picker::next_effort;
 use super::ui::{Action, Dialog, Screen, Ui};
 
 impl Ui {
-    fn list_len(&self) -> usize {
-        match self.screen {
-            Screen::Accounts => self.accounts.len() + self.google.len(),
-            Screen::Models => self.models.len(),
-            Screen::Sessions => self.sessions.len(),
+    pub(super) fn list_len(&self) -> usize {
+        match (self.screen, self.account_provider) {
+            (Screen::Accounts, None) => ProviderKey::ALL.len(),
+            (Screen::Accounts, Some(ProviderKey::Claude)) => self.accounts.len(),
+            (Screen::Accounts, Some(ProviderKey::Google)) => self.google.len(),
+            (Screen::Models, _) => self.models.len(),
+            (Screen::Sessions, _) => self.sessions.len(),
             _ => 0,
         }
     }
@@ -32,6 +35,17 @@ impl Ui {
     pub(super) fn screen_key(&mut self, key: &KeyEvent) -> Action {
         if self.screen == Screen::Accounts && !matches!(self.dialog, Dialog::None) {
             return self.dialog_key(key);
+        }
+        if let (Screen::Accounts, Some(open), KeyCode::Esc) =
+            (self.screen, self.account_provider, key.code)
+        {
+            // Back to the provider list, on the provider just left.
+            self.account_provider = None;
+            self.selected = ProviderKey::ALL
+                .iter()
+                .position(|p| *p == open)
+                .unwrap_or(0);
+            return Action::None;
         }
         if key.code == KeyCode::Esc || key.code == KeyCode::Char('q') {
             self.screen = Screen::Chat;
@@ -76,19 +90,35 @@ impl Ui {
         }
     }
 
-    /// The id of the selected row: Claude accounts first, then Google ones.
+    /// The id of the selected row of the open provider.
     fn selected_account(&self) -> Option<String> {
-        let claude = self.accounts.iter().map(|s| &s.account);
-        let google = self.google.iter().map(|s| &s.account);
-        claude
-            .chain(google)
-            .nth(self.selected)
-            .map(|a| a.id.clone())
+        let account = match self.account_provider? {
+            ProviderKey::Claude => &self.accounts.get(self.selected)?.account,
+            ProviderKey::Google => &self.google.get(self.selected)?.account,
+        };
+        Some(account.id.clone())
+    }
+
+    /// Enter on the provider list opens one, on its active account.
+    fn open_provider(&mut self) {
+        let Some(&provider) = ProviderKey::ALL.get(self.selected) else {
+            return;
+        };
+        self.account_provider = Some(provider);
+        let active = match provider {
+            ProviderKey::Claude => self.accounts.iter().position(|s| s.active),
+            ProviderKey::Google => self.google.iter().position(|s| s.active),
+        };
+        self.selected = active.unwrap_or(0);
     }
 
     fn accounts_key(&mut self, key: &KeyEvent) -> Action {
         let id = self.selected_account();
         if key.modifiers.contains(KeyModifiers::CONTROL) {
+            return Action::None;
+        }
+        if self.account_provider.is_none() && key.code == KeyCode::Enter {
+            self.open_provider();
             return Action::None;
         }
         match (key.code, id) {

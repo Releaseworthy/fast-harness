@@ -73,6 +73,21 @@ export struct AccountRow {
     token-ok: bool,
 }
 
+// One provider card of the Accounts page (src/providers.rs, PLAN.md D32).
+// `id`: claude or google. `tone`: ready, empty or attention (the status
+// words always say what the colour means).
+export struct ProviderCard {
+    id: string,
+    name: string,
+    count: string,
+    status: string,
+    tone: string,
+    // The lowest quota left of the active account (0 to 1), when known.
+    has-left: bool,
+    left: float,
+    left-text: string,
+}
+
 // One quota group of a Google account: 5 h and weekly bars.
 export struct GoogleQuotaRow {
     name: string,

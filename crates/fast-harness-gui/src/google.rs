@@ -17,12 +17,9 @@ use crate::rows::account_label;
 use crate::MainWindow;
 
 /// The Google account cards.
-pub fn refresh_rows(app: &App, ui: &MainWindow) {
+pub fn refresh_rows(app: &App, ui: &MainWindow, statuses: &[google::GoogleStatus]) {
     let now = now_ms();
-    let rows: Vec<_> = app
-        .rt
-        .google
-        .status()
+    let rows: Vec<_> = statuses
         .iter()
         .map(|s| google_row(s, app.rt.pool.google_project(&s.account.id), now))
         .collect();

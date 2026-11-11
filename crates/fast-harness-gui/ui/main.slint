@@ -1,5 +1,5 @@
 import { Palette } from "std-widgets.slint";
-import { MsgRow, SessionRow, SideRow, AccountRow, TraceRow, GoogleRow, GoogleQuotaRow } from "types.slint";
+import { MsgRow, SessionRow, SideRow, AccountRow, TraceRow, GoogleRow, GoogleQuotaRow, ProviderCard } from "types.slint";
 import { Theme } from "parts.slint";
 import { Dropdown } from "widgets.slint";
 import { Composer } from "composer.slint";
@@ -14,7 +14,7 @@ import { TabStrip, StatusBar, ErrorBanner } from "panel.slint";
 // The icon font (Symbols Nerd Font subset); `Theme.symbols` names it.
 import "../fonts/FastHarnessIcons.ttf";
 
-export { MsgRow, SessionRow, SideRow, AccountRow, TraceRow, GoogleRow, GoogleQuotaRow, Theme }
+export { MsgRow, SessionRow, SideRow, AccountRow, TraceRow, GoogleRow, GoogleQuotaRow, ProviderCard, Theme }
 
 // No native frame: the title bar (titlebar.slint) draws the window
 // controls; a 1px line edges the window while it is not maximized.
@@ -40,6 +40,13 @@ export component MainWindow inherits Window {
     in property <[SideRow]> side-rows;
     in property <[AccountRow]> accounts;
     in property <[GoogleRow]> google-accounts;
+    // The Accounts page: the provider cards and the open provider ("" for the cards).
+    in property <[ProviderCard]> providers;
+    in-out property <string> accounts-provider;
+    in property <bool> google-client-ready;
+    in property <string> google-client-id;
+    in property <string> google-client-note;
+    in property <bool> google-client-error;
     in property <[TraceRow]> trace-entries;
     in property <[[string]]> trace-steps;
     in property <string> trace-session;
@@ -91,6 +98,7 @@ export component MainWindow inherits Window {
     callback google-sign-in();
     callback google-use(string);
     callback google-remove(string);
+    callback google-save-client(string, string);
     callback refresh-trace();
     callback trace-toggle(int);
     callback model-picked(int);
@@ -245,6 +253,13 @@ export component MainWindow inherits Window {
                             google-sign-in => { root.google-sign-in(); }
                             google-use(id) => { root.google-use(id); }
                             google-remove(id) => { root.google-remove(id); }
+                            providers: root.providers;
+                            provider <=> root.accounts-provider;
+                            client-ready: root.google-client-ready;
+                            client-id: root.google-client-id;
+                            client-note: root.google-client-note;
+                            client-error: root.google-client-error;
+                            save-client(id, secret) => { root.google-save-client(id, secret); }
                             login-url: root.login-url;
                             message: root.accounts-message;
                             working: root.accounts-working;

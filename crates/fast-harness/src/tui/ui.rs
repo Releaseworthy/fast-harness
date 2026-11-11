@@ -3,6 +3,7 @@
 
 use fast_harness_core::accounts::google::GoogleStatus;
 use fast_harness_core::accounts::pool::AccountStatus;
+use fast_harness_core::accounts::providers::{ClientState, ProviderKey};
 use fast_harness_core::llm::anthropic::{builtin_models, ModelInfo};
 use fast_harness_core::session::SessionSummary;
 use fast_harness_core::theme::{self, Theme};
@@ -84,6 +85,10 @@ pub struct Ui {
     pub accounts: Vec<AccountStatus>,
     /// The Google accounts, listed after ccounts (one selection over both).
     pub google: Vec<GoogleStatus>,
+    /// The open provider of the accounts screen; `None` lists the providers (D32).
+    pub account_provider: Option<ProviderKey>,
+    /// Whether Google sign-in has an OAuth client ("Needs setup" without one).
+    pub google_client: ClientState,
     pub sessions: Vec<SessionSummary>,
     pub models: Vec<ModelInfo>,
     /// The model list the pickers show: cached, then live.
@@ -119,6 +124,8 @@ impl Ui {
             status: String::new(),
             accounts: Vec::new(),
             google: Vec::new(),
+            account_provider: None,
+            google_client: ClientState::Missing,
             sessions: Vec::new(),
             models: Vec::new(),
             catalog: builtin_models(),

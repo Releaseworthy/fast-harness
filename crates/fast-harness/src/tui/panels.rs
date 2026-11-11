@@ -2,6 +2,9 @@
 
 use fast_harness_core::accounts::model::AccountKind;
 use fast_harness_core::accounts::pool::AccountStatus;
+use fast_harness_core::accounts::providers::{
+    summaries, ClientState, ProviderKey, ProviderSummary,
+};
 use fast_harness_core::llm::catalog::{group_title, provider_of};
 use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::text::{Line, Span};
@@ -62,6 +65,49 @@ pub fn account_row(status: &AccountStatus, now: i64, mark: &str) -> String {
     )
 }
 
+/// One provider row: name, account count, status and the lowest quota left (D32).
+pub fn provider_row(summary: &ProviderSummary) -> String {
+    let left = summary
+        .left
+        .map(|l| format!(" · {l:.0}% left"))
+        .unwrap_or_default();
+    format!(
+        "{:<20} {:<12} {}{left}",
+        summary.key.name(),
+        summary.count_text,
+        summary.status
+    )
+}
+
+/// The title, the rows and the empty-list words of the accounts screen:
+/// the providers, or the accounts of the open one.
+fn account_rows(ui: &Ui, now_ms: u64, mark: &str) -> (String, Vec<String>, &'static str) {
+    let now = i64::try_from(now_ms).unwrap_or(i64::MAX);
+    let Some(provider) = ui.account_provider else {
+        let rows = summaries(&ui.accounts, &ui.google, &ui.google_client, now_ms)
+            .iter()
+            .map(provider_row)
+            .collect();
+        return ("Accounts: Enter opens a provider".into(), rows, "");
+    };
+    let title = format!("Accounts · {}", provider.name());
+    match provider {
+        ProviderKey::Claude => {
+            let rows = ui.accounts.iter().map(|s| account_row(s, now, mark));
+            let empty = "No Claude account: l signs in, k adds an API key.";
+            (title, rows.collect(), empty)
+        }
+        ProviderKey::Google => {
+            let rows = ui.google.iter().map(|s| google_row(s, now_ms, mark));
+            let empty = match ui.google_client {
+                ClientState::Missing => "Needs setup: run `fast-harness accounts google-client --id <id>` (the secret from stdin), then g signs in.",
+                _ => "No Google account: g signs in through the browser.",
+            };
+            (title, rows.collect(), empty)
+        }
+    }
+}
+
 /// Who a sign-in URL belongs to.
 fn login_target(url: &str) -> &'static str {
     if url.starts_with("https://accounts.google.com/") {
@@ -105,28 +151,20 @@ fn dialog_lines(dialog: &Dialog, st: &Styles) -> Option<Vec<Line<'static>>> {
 }
 
 fn draw_accounts(frame: &mut Frame, ui: &mut Ui, area: Rect, now_ms: u64) {
-    let now = i64::try_from(now_ms).unwrap_or(i64::MAX);
     let st = Styles::of(ui);
     let dialog = dialog_lines(&ui.dialog, &st);
     let dialog_height = if dialog.is_some() { 6 } else { 0 };
     let [top, bottom] =
         Layout::vertical([Constraint::Min(3), Constraint::Length(dialog_height)]).areas(area);
-    let inner = st.block("Accounts").inner(top);
-    let mark = st.icons.account;
-    let rows: Vec<String> = ui
-        .accounts
-        .iter()
-        .map(|s| account_row(s, now, mark))
-        .chain(ui.google.iter().map(|s| google_row(s, now_ms, mark)))
-        .collect();
+    let (title, rows, empty) = account_rows(ui, now_ms, st.icons.account);
+    let inner = st.block(&title).inner(top);
     let lines = if rows.is_empty() {
-        vec![Line::raw(
-            "No accounts: l signs in to Claude, g to Google Antigravity, k adds an API key.",
-        )]
+        vec![Line::raw(empty)]
     } else {
         list(rows, ui.selected, inner, &st)
     };
-    frame.render_widget(Paragraph::new(lines).block(st.block("Accounts")), top);
+    let widget = Paragraph::new(lines).wrap(Wrap { trim: false });
+    frame.render_widget(widget.block(st.block(&title)), top);
     if let Some(lines) = dialog {
         let widget = Paragraph::new(lines)
             .wrap(Wrap { trim: false })

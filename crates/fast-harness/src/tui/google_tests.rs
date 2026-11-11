@@ -82,14 +82,30 @@ fn google_row_states() {
 }
 
 #[test]
-fn accounts_keys_reach_google_rows() {
+fn accounts_list_providers_then_google_rows() {
     use super::super::ui::{Action, Screen, Ui};
+    use fast_harness_core::accounts::providers::ProviderKey;
     use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
     let mut ui = Ui::new("m".into(), None);
     ui.screen = Screen::Accounts;
     ui.google = vec![status(None, None)];
-    let mut press = |code| ui.key(KeyEvent::new(code, KeyModifiers::NONE));
-    assert_eq!(press(KeyCode::Char('g')), Action::LoginGoogle);
-    // No Claude account: the first row is the Google one.
-    assert_eq!(press(KeyCode::Enter), Action::UseAccount("g-1".into()));
+    let press = |ui: &mut Ui, code| ui.key(KeyEvent::new(code, KeyModifiers::NONE));
+    // The providers first: Claude, then Google; Enter opens, uses nothing.
+    assert_eq!(press(&mut ui, KeyCode::Down), Action::None);
+    assert_eq!(press(&mut ui, KeyCode::Down), Action::None);
+    assert_eq!(ui.selected, 1, "two providers");
+    assert_eq!(press(&mut ui, KeyCode::Enter), Action::None);
+    assert_eq!(ui.account_provider, Some(ProviderKey::Google));
+    // Inside, the keys work as before.
+    assert_eq!(press(&mut ui, KeyCode::Char('g')), Action::LoginGoogle);
+    assert_eq!(
+        press(&mut ui, KeyCode::Enter),
+        Action::UseAccount("g-1".into())
+    );
+    // Esc goes back to the list on Google, a second Esc to the chat.
+    assert_eq!(press(&mut ui, KeyCode::Esc), Action::None);
+    assert_eq!((ui.account_provider, ui.selected), (None, 1));
+    assert_eq!(ui.screen, Screen::Accounts);
+    press(&mut ui, KeyCode::Esc);
+    assert_eq!(ui.screen, Screen::Chat);
 }

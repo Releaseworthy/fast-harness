@@ -1,0 +1,199 @@
+// The provider cards the Accounts page opens on and the header of a
+// provider page (PLAN.md D32).
+import { ProviderCard } from "types.slint";
+import { Theme, Mark } from "parts.slint";
+import { Icons } from "icons.slint";
+import { FocusRing, IconButton } from "widgets.slint";
+
+// The monochrome provider logo on a tile tinted from the theme.
+export component ProviderLogo inherits Rectangle {
+    in property <string> provider;
+    in property <length> size: 48px;
+    in property <bool> lit;
+    width: root.size;
+    height: root.size;
+    border-radius: root.size * 0.28;
+    background: root.lit ? Theme.accent : Theme.selection;
+    Mark {
+        width: parent.width;
+        height: parent.height;
+        horizontal-alignment: center;
+        text: root.provider == "google" ? Icons.google : Icons.claude;
+        font-size: root.size * 0.5;
+        color: root.lit ? Theme.on-accent : Theme.accent;
+    }
+}
+
+// The status line: a mark and the words, so the colour is never the only cue.
+component ToneLine inherits HorizontalLayout {
+    in property <string> tone;
+    in property <string> text;
+    spacing: Theme.space-s;
+    Mark {
+        text: root.tone == "ready" ? Icons.check : root.tone == "attention" ? Icons.warning : Icons.circle-slash;
+        color: root.tone == "ready" ? Theme.success : root.tone == "attention" ? Theme.warning : Theme.dim;
+        font-size: Theme.font-m;
+    }
+    Text {
+        text: root.text;
+        color: root.tone == "attention" ? Theme.warning : Theme.text;
+        font-size: Theme.font-m;
+        font-weight: 500;
+        overflow: elide;
+        vertical-alignment: center;
+        horizontal-stretch: 1;
+    }
+}
+
+// The lowest quota left as a slim meter and its words; a hint without one.
+component LeftMeter inherits HorizontalLayout {
+    in property <ProviderCard> info;
+    spacing: Theme.space-m;
+    if root.info.has-left: Rectangle {
+        horizontal-stretch: 1;
+        Rectangle {
+            y: (parent.height - self.height) / 2;
+            height: 6px;
+            border-radius: 3px;
+            background: Theme.line;
+            Rectangle {
+                x: 0;
+                width: parent.width * max(0, min(1, root.info.left));
+                height: parent.height;
+                border-radius: 3px;
+                background: root.info.left <= 0.1 ? Theme.error : root.info.left <= 0.3 ? Theme.warning : Theme.success;
+            }
+        }
+    }
+    Text {
+        text: root.info.left-text;
+        color: Theme.dim;
+        font-size: Theme.font-s;
+        vertical-alignment: center;
+        horizontal-stretch: root.info.has-left ? 0 : 1;
+        overflow: elide;
+    }
+}
+
+// One provider card: hover, pressed and focus states; Enter or Space opens it.
+export component ProviderTile inherits Rectangle {
+    in property <ProviderCard> info;
+    callback open();
+    property <bool> lit: ta.has-hover || fs.has-focus;
+    border-radius: Theme.radius-l;
+    border-width: 1px;
+    border-color: root.lit ? Theme.border : Theme.line;
+    background: ta.pressed ? Theme.selection : ta.has-hover ? Theme.raised : Theme.surface;
+    forward-focus: fs;
+    accessible-role: button;
+    accessible-label: root.info.name + ", " + root.info.count + ", " + root.info.status;
+    accessible-action-default => { root.open(); }
+    // The logo again, large and faint in the corner (clipped to the card).
+    Rectangle {
+        clip: true;
+        border-radius: Theme.radius-l;
+        Mark {
+            x: parent.width - 132px;
+            y: parent.height - 118px;
+            text: root.info.id == "google" ? Icons.google : Icons.claude;
+            font-size: 168px;
+            color: Theme.accent;
+            opacity: root.lit ? 0.12 : 0.06;
+        }
+    }
+    VerticalLayout {
+        padding: Theme.space-l + Theme.space-xs;
+        spacing: Theme.space-m;
+        HorizontalLayout {
+            spacing: Theme.space-m;
+            ProviderLogo { provider: root.info.id; lit: root.lit; }
+            VerticalLayout {
+                alignment: center;
+                spacing: 2px;
+                Text { text: root.info.name; color: Theme.text; font-size: Theme.font-l; font-weight: 600; overflow: elide; }
+                Text { text: root.info.count; color: Theme.dim; font-size: Theme.font-s; }
+            }
+            Rectangle { horizontal-stretch: 1; }
+            VerticalLayout {
+                alignment: start;
+                Rectangle {
+                    width: 28px;
+                    height: 28px;
+                    border-radius: 14px;
+                    border-width: 1px;
+                    border-color: root.lit ? Theme.accent : Theme.line;
+                    background: root.lit ? Theme.accent : transparent;
+                    Mark {
+                        width: parent.width;
+                        height: parent.height;
+                        horizontal-alignment: center;
+                        text: Icons.chevron-right;
+                        color: root.lit ? Theme.on-accent : Theme.dim;
+                        font-size: Theme.font-m;
+                    }
+                }
+            }
+        }
+        Rectangle { vertical-stretch: 1; }
+        ToneLine { tone: root.info.tone; text: root.info.status; }
+        LeftMeter { info: root.info; height: 16px; }
+    }
+    ta := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.open(); }
+    }
+    fs := FocusScope {
+        focus-on-click: false;
+        key-pressed(event) => {
+            if (event.text == Key.Return || event.text == " ") {
+                root.open();
+                return accept;
+            }
+            return reject;
+        }
+    }
+    if fs.has-focus: FocusRing { radius: Theme.radius-l; x: -3px; y: -3px; width: parent.width + 6px; height: parent.height + 6px; }
+}
+
+// The cards in as many columns as fit (at least 300px each); they wrap
+// into one column when the page is narrow. A 4px inset keeps the focus
+// ring inside the scroll view, which clips its children.
+export component ProviderGrid {
+    in property <[ProviderCard]> cards;
+    callback open(string);
+    property <length> inset: 4px;
+    property <length> gap: Theme.space-l;
+    property <length> card-height: 172px;
+    property <length> inner: root.width - 2 * root.inset;
+    property <int> cols: max(1, min(root.cards.length, Math.floor((root.inner + root.gap) / (300px + root.gap))));
+    property <length> card-width: (root.inner - (root.cols - 1) * root.gap) / root.cols;
+    min-height: Math.ceil(root.cards.length / root.cols) * (root.card-height + root.gap) - root.gap + 2 * root.inset;
+    for card[i] in root.cards: ProviderTile {
+        x: root.inset + Math.mod(i, root.cols) * (root.card-width + root.gap);
+        y: root.inset + Math.floor(i / root.cols) * (root.card-height + root.gap);
+        width: root.card-width;
+        height: root.card-height;
+        info: card;
+        open => { root.open(card.id); }
+    }
+}
+
+// A provider page title: Back, the logo, the name and count, then the
+// page's actions (the children).
+export component ProviderHeader inherits HorizontalLayout {
+    in property <ProviderCard> info;
+    callback back();
+    spacing: Theme.space-m;
+    VerticalLayout {
+        alignment: center;
+        IconButton { icon: Icons.arrow-left; label: "Back to the providers (Esc)"; clicked => { root.back(); } }
+    }
+    VerticalLayout { alignment: center; ProviderLogo { provider: root.info.id; size: 36px; } }
+    VerticalLayout {
+        alignment: center;
+        Text { text: root.info.name; color: Theme.text; font-size: Theme.font-l; font-weight: 600; overflow: elide; }
+        Text { text: root.info.count; color: Theme.dim; font-size: Theme.font-s; }
+    }
+    Rectangle { horizontal-stretch: 1; }
+    @children
+}

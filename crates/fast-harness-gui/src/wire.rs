@@ -5,7 +5,8 @@ use slint::ComponentHandle;
 
 use crate::app::{show_error, with_app};
 use crate::{
-    accounts, google, mirror, model_refresh, prompt_settings, settings, theme, trace_rows, turn,
+    accounts, google, mirror, model_refresh, prompt_settings, providers, settings, theme,
+    trace_rows, turn,
     window_state, workspaces, MainWindow,
 };
 
@@ -94,6 +95,9 @@ fn connect_google(ui: &MainWindow) {
     ui.on_google_remove(|id| {
         with_app(|app, ui| google::remove(app, ui, &id));
     });
+    ui.on_google_save_client(|id, secret| {
+        with_app(|app, ui| providers::save_from_form(app, ui, &id, &secret));
+    });
 }
 
 fn connect_open_url(ui: &MainWindow) {
@@ -132,7 +136,11 @@ pub fn connect_minimal(ui: &MainWindow) {
 
 fn open_page(app: &mut crate::app::App, ui: &MainWindow, page: &str) {
     match page {
-        "accounts" => accounts::refresh(app, ui),
+        "accounts" => {
+            // The page opens on the provider cards.
+            ui.set_accounts_provider("".into());
+            accounts::refresh(app, ui);
+        }
         "trace" => app.refresh_trace(ui),
         "settings" => prompt_settings::show(app, ui, ""),
         _ => {}

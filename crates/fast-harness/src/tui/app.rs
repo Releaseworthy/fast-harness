@@ -7,6 +7,7 @@ use std::sync::mpsc::Sender;
 use std::sync::Arc;
 
 use fast_harness_core::accounts::model::Provider;
+use fast_harness_core::accounts::providers::ClientState;
 use fast_harness_core::agent::{Agent, Conversation};
 use fast_harness_core::app::Runtime;
 use fast_harness_core::events::{AgentEvent, TurnOutcome};
@@ -104,7 +105,8 @@ impl Tui {
         all.retain(|s| s.account.provider != Provider::Google);
         self.ui.accounts = all;
         self.ui.google = self.rt.google.status();
-        let len = self.ui.accounts.len() + self.ui.google.len();
+        self.ui.google_client = ClientState::of(&self.rt.home);
+        let len = self.ui.list_len();
         if self.ui.screen == Screen::Accounts && self.ui.selected >= len {
             self.ui.selected = len.saturating_sub(1);
         }
@@ -258,8 +260,9 @@ impl Tui {
         self.ui.selected = 0;
         match screen {
             Screen::Accounts => {
+                // The screen opens on the provider list.
+                self.ui.account_provider = None;
                 self.refresh_accounts();
-                self.ui.selected = self.ui.accounts.iter().position(|s| s.active).unwrap_or(0);
             }
             Screen::Trace => self.load_trace(),
             Screen::Models => {

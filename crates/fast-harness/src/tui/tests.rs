@@ -303,3 +303,20 @@ fn pasted_enter_becomes_a_newline() {
         .collect();
     assert_eq!(mods, [KeyModifiers::ALT, KeyModifiers::NONE]);
 }
+
+#[test]
+fn accounts_screen_lists_providers_first() {
+    let mut ui = Ui::new("m".into(), None);
+    ui.screen = Screen::Accounts;
+    let screen = rows(&render(&mut ui, &Transcript::new(), 110, 20));
+    find(&screen, "Accounts: Enter opens a provider");
+    find(&screen, "Claude");
+    find(&screen, "Google Antigravity");
+    find(&screen, "Needs setup");
+    find(&screen, "Enter open provider");
+    press(&mut ui, KeyCode::Enter, KeyModifiers::NONE);
+    let screen = rows(&render(&mut ui, &Transcript::new(), 110, 20));
+    find(&screen, "Accounts · Claude");
+    find(&screen, "No Claude account: l signs in");
+    find(&screen, "Esc providers");
+}

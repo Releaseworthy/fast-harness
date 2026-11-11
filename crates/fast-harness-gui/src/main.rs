@@ -18,6 +18,7 @@ mod pickers;
 mod prompt_settings;
 #[cfg(test)]
 mod prompt_settings_tests;
+mod providers;
 mod rows;
 #[cfg(test)]
 mod scroll_tests;
