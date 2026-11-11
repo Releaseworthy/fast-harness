@@ -6,11 +6,11 @@ A barebone coding agent harness in native Rust, in the spirit of DeepSeek Harnes
 
 | Phase | Content | State |
 |---|---|---|
-| 0 | Spike: Slint window, ratatui screen, one Claude call; size, start time, idle RAM | pending |
-| 1A | Claude adapter: SSE, request body, streaming assembly, OAuth identity, errors, models | pending |
-| 1B | Tools: read, write, edit, shell, grep, glob | pending |
-| 1C | Trace, wire capture, sessions, `nh trace` | pending |
-| 1D | Accounts core: encrypted store, claude-switch import, usage, switch order | pending |
+| 0 | Spike: Slint window, ratatui screen, one Claude call; size, start time, idle RAM | done (`docs/perf.md`) |
+| 1A | Claude adapter: SSE, request body, streaming assembly, OAuth identity, errors, models | done |
+| 1B | Tools: read, write, edit, shell, grep, glob | done |
+| 1C | Trace, wire capture, sessions, `nh trace` | in progress |
+| 1D | Accounts core: encrypted store, claude-switch import (done); usage and switch order (in progress) | in progress |
 | 2A | Agent loop, subagents, config, CLI print mode | pending |
 | 2B | Accounts online: OAuth sign-in, refresh, usage polling, account pool | pending |
 | 3A | TUI (ratatui) | pending |
