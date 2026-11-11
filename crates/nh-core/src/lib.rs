@@ -17,6 +17,7 @@ pub mod net;
 pub mod platform;
 pub mod session;
 pub mod sse;
+pub mod theme;
 pub mod tools;
 pub mod trace;
 pub mod types;

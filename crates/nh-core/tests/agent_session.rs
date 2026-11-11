@@ -7,7 +7,7 @@ use std::sync::Arc;
 
 use agent_support::*;
 use nh_core::agent::{prompt, Agent, Conversation, MISSING_RESULT};
-use nh_core::config::Config;
+use nh_core::config::{save_setting, Config};
 use nh_core::events::TurnOutcome;
 use nh_core::http::ScriptedTransport;
 use nh_core::llm::Timing;
@@ -184,5 +184,45 @@ fn config_defaults_file_and_env_overrides() {
     std::fs::write(dir.0.join("config.json"), "{oops").unwrap();
     let err = Config::load_with(&dir.0, &none).unwrap_err();
     assert!(err.contains("config.json"), "{err}");
+    drop(dir);
+}
+
+#[test]
+fn config_theme_wire_and_save_setting() {
+    let dir = TempDir::new("config-save");
+    let none = |_: &str| None;
+    let config = Config::load_with(&dir.0, &none).unwrap();
+    assert_eq!((config.theme.as_str(), config.wire), ("dark", false));
+    let env = |key: &str| match key {
+        "NH_THEME" => Some(" light ".to_string()),
+        "NH_WIRE" => Some("ON".to_string()),
+        _ => None,
+    };
+    let config = Config::load_with(&dir.0, &env).unwrap();
+    assert_eq!((config.theme.as_str(), config.wire), ("light", true));
+    let odd = |key: &str| (key == "NH_WIRE").then(|| "maybe".to_string());
+    assert!(!Config::load_with(&dir.0, &odd).unwrap().wire);
+    // The first save creates the folder and the file; later saves keep the other keys.
+    let home = dir.0.join("home");
+    save_setting(&home, "theme", serde_json::json!("greyscale-dark")).unwrap();
+    assert_eq!(
+        Config::load_with(&home, &none).unwrap().theme,
+        "greyscale-dark"
+    );
+    let file = home.join("config.json");
+    std::fs::write(&file, r#"{"model":"m1","wire":true,"other":[1]}"#).unwrap();
+    save_setting(&home, "theme", serde_json::json!("greyscale-light")).unwrap();
+    let config = Config::load_with(&home, &none).unwrap();
+    assert_eq!(
+        (config.model.as_str(), config.theme.as_str(), config.wire),
+        ("m1", "greyscale-light", true)
+    );
+    let raw: serde_json::Value = serde_json::from_slice(&std::fs::read(&file).unwrap()).unwrap();
+    assert_eq!(raw["other"], serde_json::json!([1]));
+    assert!(!home.join("config.json.tmp").exists());
+    std::fs::write(&file, "[1]").unwrap();
+    let err = save_setting(&home, "theme", serde_json::json!("dark")).unwrap_err();
+    assert!(err.contains("not a JSON object"), "{err}");
+    assert_eq!(std::fs::read_to_string(&file).unwrap(), "[1]");
     drop(dir);
 }

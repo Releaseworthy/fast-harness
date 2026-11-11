@@ -14,7 +14,7 @@ mod wire;
 use std::sync::atomic::Ordering;
 use std::time::Instant;
 
-pub use models::{builtin_models, ModelInfo};
+pub use models::{builtin_models, efforts, fit_effort, ModelInfo};
 
 use crate::http::{Flow, HttpHead, HttpRequest, Transport};
 use crate::llm::{Auth, ChatRequest, Completion, Delta, ErrorKind, LlmError, Provider, Timing};

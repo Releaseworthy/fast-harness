@@ -120,6 +120,34 @@ pub fn builtin_models() -> Vec<ModelInfo> {
     MODELS.iter().map(ModelSpec::info).collect()
 }
 
+/// The effort levels `model` takes, lowest first: `low`, `medium`, `high`,
+/// then the model's own extra levels (`xhigh`, `max`), then `off` where
+/// thinking can be switched off. A model outside the table gets them all.
+pub fn efforts(model: &str) -> Vec<&'static str> {
+    let mut out = vec!["low", "medium", "high"];
+    match find(model) {
+        Some(spec) => {
+            out.extend_from_slice(spec.extra_efforts);
+            if !spec.no_off {
+                out.push("off");
+            }
+        }
+        None => out.extend_from_slice(&["xhigh", "max", "off"]),
+    }
+    out
+}
+
+/// `effort` when `model` takes it, `None` (the model default) as it is,
+/// else `high`, which every model takes.
+pub fn fit_effort(model: &str, effort: Option<&str>) -> Option<String> {
+    let level = effort?;
+    if efforts(model).contains(&level) {
+        Some(level.to_string())
+    } else {
+        Some("high".to_string())
+    }
+}
+
 /// One page of `GET /v1/models`: a 200 body or the mapped error.
 fn fetch_page(
     http: &dyn Transport,
@@ -210,5 +238,34 @@ mod tests {
         );
         assert!(merge(&json!({"display_name": "no id"})).is_none());
         assert_eq!(builtin_models()[0].id, "claude-opus-5-5");
+    }
+
+    #[test]
+    fn efforts_per_model() {
+        let all = ["low", "medium", "high", "xhigh", "max"];
+        assert_eq!(efforts("claude-opus-5-5"), all);
+        assert_eq!(efforts("claude-opus-4-7"), [&all[..], &["off"]].concat());
+        assert_eq!(
+            efforts("claude-opus-4-6"),
+            ["low", "medium", "high", "max", "off"]
+        );
+        assert_eq!(
+            efforts("claude-haiku-4-5"),
+            ["low", "medium", "high", "off"]
+        );
+        assert_eq!(efforts("claude-new"), [&all[..], &["off"]].concat());
+        assert_eq!(
+            fit_effort("claude-opus-5-5", Some("xhigh")).as_deref(),
+            Some("xhigh")
+        );
+        assert_eq!(
+            fit_effort("claude-opus-5-5", Some("off")).as_deref(),
+            Some("high")
+        );
+        assert_eq!(
+            fit_effort("claude-haiku-4-5", Some("max")).as_deref(),
+            Some("high")
+        );
+        assert_eq!(fit_effort("claude-haiku-4-5", None), None);
     }
 }
