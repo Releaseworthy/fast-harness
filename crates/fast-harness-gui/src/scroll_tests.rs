@@ -1,12 +1,12 @@
 //! The transcript's follow mode driven through a real (software rendered)
 //! window: a small wheel scroll up stops following at once, new output does not
-//! pull the view back down, and Jump to latest follows again.
+//! pull the view back down, and Jump to latest follows again. The themed\n//! scroll bar counts as a user scroll too.
 
 use std::rc::Rc;
 use std::time::Duration;
 
 use slint::platform::software_renderer::{MinimalSoftwareWindow, RepaintBufferType};
-use slint::platform::{Platform, WindowAdapter, WindowEvent};
+use slint::platform::{Platform, PointerEventButton, WindowAdapter, WindowEvent};
 use slint::{ComponentHandle, LogicalPosition, Model, PhysicalSize, Rgb8Pixel, VecModel};
 
 use crate::rows::markdown;
@@ -100,4 +100,81 @@ fn wheel_up_stops_following_and_output_does_not_pull_down() {
     ui.invoke_to_bottom();
     frames(&window, 100);
     assert!(ui.get_transcript_follow(), "Jump to latest follows again");
+}
+
+/// A window at the bottom of a long chat, following.
+fn following() -> (Rc<MinimalSoftwareWindow>, MainWindow, Rc<VecModel<MsgRow>>) {
+    let window = MinimalSoftwareWindow::new(RepaintBufferType::NewBuffer);
+    slint::platform::set_platform(Box::new(TestPlatform(window.clone()))).expect("platform");
+    window.set_size(PhysicalSize::new(WIDTH, HEIGHT));
+    let ui = MainWindow::new().expect("window");
+    ui.show().expect("show");
+    let rows = Rc::new(VecModel::from(chat()));
+    ui.set_messages(rows.clone().into());
+    ui.set_page("chat".into());
+    frames(&window, 100);
+    ui.invoke_to_bottom();
+    frames(&window, 100);
+    assert!(ui.get_transcript_follow(), "follows at the bottom");
+    (window, ui, rows)
+}
+
+#[test]
+fn dragging_the_scroll_bar_stops_following() {
+    let (window, ui, rows) = following();
+    let (x, y) = (ui.get_transcript_thumb_x(), ui.get_transcript_thumb_y());
+    assert!(
+        x > (WIDTH - 20) as f32,
+        "the bar sits on the right edge: {x}"
+    );
+    let button = PointerEventButton::Left;
+    let mut position = LogicalPosition::new(x, y);
+    window.dispatch_event(WindowEvent::PointerMoved { position });
+    window.dispatch_event(WindowEvent::PointerPressed { position, button });
+    // Small steps while the ListView re-estimates the heights of the rows
+    // coming into view: the old bar's moves could snap back to the bottom.
+    for _ in 0..10 {
+        position.y -= 12.0;
+        window.dispatch_event(WindowEvent::PointerMoved { position });
+        frames(&window, 32);
+    }
+    window.dispatch_event(WindowEvent::PointerReleased { position, button });
+    frames(&window, 300);
+    assert!(!ui.get_transcript_follow(), "a drag stops following");
+    let moved = ui.get_transcript_thumb_y();
+    assert!(moved < y - 40.0, "the view moved up: {y} to {moved}");
+    rows.push(row("note", "Session saved."));
+    frames(&window, 300);
+    assert!(!ui.get_transcript_follow(), "output does not pull it down");
+}
+
+#[test]
+fn the_wheel_over_the_bar_and_a_track_click_stop_following() {
+    let (window, ui, _rows) = following();
+    let (x, y) = (ui.get_transcript_thumb_x(), ui.get_transcript_thumb_y());
+    let position = LogicalPosition::new(x, y);
+    window.dispatch_event(WindowEvent::PointerMoved { position });
+    window.dispatch_event(WindowEvent::PointerScrolled {
+        position,
+        delta_x: 0.0,
+        delta_y: 3.0,
+    });
+    frames(&window, 200);
+    assert!(!ui.get_transcript_follow(), "the wheel over the bar");
+    ui.invoke_to_bottom();
+    frames(&window, 100);
+    assert!(ui.get_transcript_follow());
+    let above = LogicalPosition::new(x, 120.0);
+    let button = PointerEventButton::Left;
+    window.dispatch_event(WindowEvent::PointerMoved { position: above });
+    window.dispatch_event(WindowEvent::PointerPressed {
+        position: above,
+        button,
+    });
+    window.dispatch_event(WindowEvent::PointerReleased {
+        position: above,
+        button,
+    });
+    frames(&window, 200);
+    assert!(!ui.get_transcript_follow(), "a click on the track pages up");
 }

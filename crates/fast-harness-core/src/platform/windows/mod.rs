@@ -10,7 +10,7 @@ mod window;
 
 pub use folder::pick_folder;
 pub use interrupt::on_interrupt;
-pub use open::open_url;
+pub use open::{open_folder, open_url};
 pub use process::ProcessGroup;
 pub use random::random_fill;
 pub use secret::{protect, unprotect};

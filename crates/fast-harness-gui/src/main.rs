@@ -7,6 +7,9 @@
 
 mod accounts;
 mod app;
+mod appearance;
+#[cfg(test)]
+mod appearance_tests;
 mod format;
 mod google;
 #[cfg(test)]
@@ -23,6 +26,8 @@ mod rows;
 #[cfg(test)]
 mod scroll_tests;
 mod settings;
+#[cfg(test)]
+mod shots_appearance;
 #[cfg(test)]
 mod shots_png;
 #[cfg(test)]

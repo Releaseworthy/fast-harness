@@ -8,6 +8,7 @@ import { Sidebar } from "sidebar.slint";
 import { AccountsPage } from "accounts.slint";
 import { SettingsPage, AboutPage } from "pages.slint";
 export { PromptUi } from "prompt_settings.slint";
+export { AppearanceUi, ThemeCard } from "appearance.slint";
 import { TracePage } from "trace.slint";
 import { TitleBar } from "titlebar.slint";
 import { TabStrip, StatusBar, ErrorBanner } from "panel.slint";
@@ -32,11 +33,12 @@ export component MainWindow inherits Window {
 
     in-out property <bool> sidebar-open: true;
 
-    in property <[string]> themes;
-    in-out property <int> theme-index;
     in property <[MsgRow]> messages;
     // True while the transcript follows new output (read by the tests).
     out property <bool> transcript-follow: transcript.follow;
+    // The transcript scroll bar's thumb centre (read by the tests).
+    out property <length> transcript-thumb-x: transcript.thumb-x;
+    out property <length> transcript-thumb-y: transcript.thumb-y;
     in property <[SideRow]> side-rows;
     in property <[AccountRow]> accounts;
     in property <[GoogleRow]> google-accounts;
@@ -108,7 +110,6 @@ export component MainWindow inherits Window {
     // Window controls: the app reads and changes the real window state.
     callback window-minimize();
     callback window-toggle-maximize();
-    callback theme-changed(int);
     // A click on the empty title bar (two within 500 ms maximize or restore).
     callback title-bar-clicked();
 
@@ -288,9 +289,6 @@ export component MainWindow inherits Window {
                         if root.page == "settings": SettingsPage {
                             width: parent.width;
                             height: parent.height;
-                            themes: root.themes;
-                            theme-index <=> root.theme-index;
-                            changed-theme(i) => { root.theme-changed(i); }
                             models: root.models;
                             model-headers: root.model-headers;
                             efforts: root.efforts;

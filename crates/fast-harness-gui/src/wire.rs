@@ -5,7 +5,7 @@ use slint::ComponentHandle;
 
 use crate::app::{show_error, with_app};
 use crate::{
-    accounts, google, mirror, model_refresh, prompt_settings, providers, settings, theme,
+    accounts, appearance, google, mirror, model_refresh, prompt_settings, providers, settings,
     trace_rows, turn, window_state, workspaces, MainWindow,
 };
 
@@ -53,9 +53,7 @@ pub fn connect(ui: &MainWindow) {
     ui.on_pickers_opened(|| {
         with_app(model_refresh::start);
     });
-    ui.on_theme_changed(|index| {
-        with_app(|app, ui| theme::pick(app, ui, index));
-    });
+    appearance::connect(ui);
     connect_accounts(ui);
     prompt_settings::connect(ui);
     connect_google(ui);

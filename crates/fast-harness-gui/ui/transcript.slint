@@ -3,6 +3,7 @@ import { MsgRow } from "types.slint";
 import { Theme, LinkText, Columns, Mark } from "parts.slint";
 import { Icons } from "icons.slint";
 import { BusySpinner, IconButton } from "widgets.slint";
+import { ScrollBar } from "scrollbar.slint";
 
 // The user's message: a bubble on the right, at most 80% of the column.
 component UserBubble {
@@ -232,8 +233,10 @@ component MessageView {
 // The transcript list. It follows the bottom while `follow` is true. Any
 // user scroll clears it at once: the wheel calls `scrolled` before its
 // animation moves `content-y` (so `content-y` cannot tell the direction
-// there), and the scroll bar's arrows and wheel move `content-y` without
-// `scrolled`, which the `changed content-y` check catches. Coming back to
+// there). The ListView's own bar is off: the themed bar (scrollbar.slint)
+// clears `follow` before it moves `content-y`, so a drag, a track click or
+// the wheel over it during a ListView re-estimate never snaps back down;
+// the `changed content-y` check still catches other moves. Coming back to
 // the bottom sets it again; "Jump to latest" does it in one click.
 export component TranscriptView {
     in property <[MsgRow]> rows;
@@ -249,6 +252,9 @@ export component TranscriptView {
     callback toggle(int);
     callback copy(string);
     callback link(string);
+    // The themed bar's thumb centre in window coordinates (for the tests).
+    out property <length> thumb-x: bar.thumb-x;
+    out property <length> thumb-y: bar.thumb-y;
 
     public function to-bottom() {
         root.follow = true;
@@ -259,6 +265,7 @@ export component TranscriptView {
     list := ListView {
         width: 100%;
         height: 100%;
+        vertical-scrollbar-policy: ScrollBarPolicy.always-off;
         for item[i] in root.rows: MessageView {
             msg: item;
             copy(t) => { root.copy(t); }
@@ -283,6 +290,18 @@ export component TranscriptView {
                 // A snap to the same `content-y` fires no `changed content-y`.
                 root.last-height = self.content-height;
             }
+        }
+    }
+
+    bar := ScrollBar {
+        x: parent.width - self.width;
+        height: parent.height;
+        content-y: list.content-y;
+        content-height: list.content-height;
+        visible-height: list.visible-height;
+        scroll-to(y) => {
+            root.follow = false;
+            list.content-y = y;
         }
     }
 

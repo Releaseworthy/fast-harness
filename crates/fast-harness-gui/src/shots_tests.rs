@@ -265,7 +265,7 @@ fn shots() {
     std::fs::create_dir_all(&dir).expect("shots directory");
     for core in builtins() {
         theme::apply(&ui, core, 0);
-        theme::fill(&ui, &core.id);
+        crate::appearance::fill(&ui, &core.id, 0);
         for shot in [
             "chat", "accounts", "claude", "google", "settings", "about", "trace", "steps",
         ] {
@@ -309,14 +309,6 @@ fn shots() {
         let png = shots_png::encode(WIDTH, HEIGHT, &render(&window));
         std::fs::write(dir.join(format!("{}-models.png", core.id)), png).expect("write png");
         key(&window, slint::platform::Key::Escape.into());
-        ui.set_page("settings".into());
-        // The theme dropdown opened by a click, then closed with Escape.
-        click(&window, 601.0, PAGE_Y + 104.0);
-        // A second open by keyboard is a no-op when the click already opened it.
-        key(&window, slint::platform::Key::Return.into());
-        let png = shots_png::encode(WIDTH, HEIGHT, &render(&window));
-        std::fs::write(dir.join(format!("{}-dropdown.png", core.id)), png).expect("write png");
-        key(&window, slint::platform::Key::Escape.into());
         ui.set_page("chat".into());
         ui.set_sidebar_open(false);
         let png = shots_png::encode(WIDTH, HEIGHT, &render(&window));
@@ -326,6 +318,7 @@ fn shots() {
         outside_click_closes(&ui, &window);
         let size = (WIDTH, HEIGHT);
         crate::shots_prompt::shot(&ui, &window, &dir, &core.id, size, || render(&window));
+        crate::shots_appearance::shot(&ui, &dir, &core.id, size, || render(&window));
     }
 }
 

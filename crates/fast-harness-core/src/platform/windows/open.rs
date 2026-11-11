@@ -1,4 +1,7 @@
-//! Opening a URL in the default browser (ShellExecuteW).
+//! Opening a URL in the default browser and a folder in Explorer
+//! (ShellExecuteW).
+
+use std::path::Path;
 
 use crate::platform::PlatformError;
 use windows_sys::Win32::UI::Shell::ShellExecuteW;
@@ -17,8 +20,24 @@ pub fn open_url(url: &str) -> Result<(), PlatformError> {
             message: "only http:// and https:// URLs are opened".into(),
         });
     }
-    let verb = wide("open");
-    let file = wide(url);
+    shell_execute("open", url)
+}
+
+/// Opens an existing folder in Explorer. Anything that is not a directory
+/// is refused, so the shell never runs a program for it.
+pub fn open_folder(path: &Path) -> Result<(), PlatformError> {
+    if !path.is_dir() {
+        return Err(PlatformError::Os {
+            code: INVALID_PARAMETER,
+            message: format!("{} is not a folder", path.display()),
+        });
+    }
+    shell_execute("explore", &path.to_string_lossy())
+}
+
+fn shell_execute(verb: &str, target: &str) -> Result<(), PlatformError> {
+    let verb = wide(verb);
+    let file = wide(target);
     // SAFETY: `verb` and `file` are NUL-terminated UTF-16 buffers that live
     // until the call returns; a null window, null parameters and a null
     // directory are documented as allowed for ShellExecuteW.
@@ -76,6 +95,13 @@ mod tests {
     #[test]
     fn other_schemes_are_refused_before_the_shell() {
         let err = open_url("javascript:alert(1)").unwrap_err();
+        assert!(matches!(err, PlatformError::Os { code: 87, .. }));
+    }
+
+    #[test]
+    fn a_missing_folder_is_refused_before_the_shell() {
+        let missing = std::env::temp_dir().join("fast-harness-no-such-folder-7f3a");
+        let err = open_folder(&missing).unwrap_err();
         assert!(matches!(err, PlatformError::Os { code: 87, .. }));
     }
 }

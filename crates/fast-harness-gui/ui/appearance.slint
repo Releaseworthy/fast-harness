@@ -1,0 +1,262 @@
+// Settings > Appearance (PLAN.md D33): a gallery of theme cards, each a live
+// preview in that theme's own colours, the greyscale setting (a slider and a
+// number box kept in sync), the user themes folder and the load notes. State
+// lives in the AppearanceUi global, so the Settings page only places it.
+import { Theme, Mark } from "parts.slint";
+import { Icons } from "icons.slint";
+import { ActionButton, FocusRing } from "widgets.slint";
+import { Slider, NumberBox } from "controls.slint";
+
+// One theme as its card shows it: the colours already at the greyscale level.
+export struct ThemeCard {
+    id: string,
+    name: string,
+    dark: bool,
+    // A user theme from <home>/themes.
+    custom: bool,
+    current: bool,
+    // The failing contrast pairs with their ratios, one per line ("" passes).
+    failures: string,
+    bg: color,
+    bg-end: color,
+    surface: color,
+    raised: color,
+    line: color,
+    text: color,
+    dim: color,
+    accent: color,
+    accent2: color,
+    on-accent: color,
+}
+
+export global AppearanceUi {
+    in property <[ThemeCard]> themes;
+    // The user themes that fail the contrast check.
+    in property <[ThemeCard]> failing;
+    // 0 full colour to 100 pure greys.
+    in-out property <int> greyscale;
+    // Notes of the last theme load (bad files, skipped ids), one per line.
+    in property <string> notes;
+    // The user themes folder, in words.
+    in property <string> folder;
+    callback pick(int);
+    callback greyscale-changed(int);
+    callback open-folder();
+    callback reload();
+}
+
+// A theme card: a mini window in the theme's colours, its name and kind.
+component ThemeTile inherits Rectangle {
+    in property <ThemeCard> card;
+    callback picked();
+    property <bool> lit: ta.has-hover || fs.has-focus;
+    border-radius: Theme.radius-l;
+    // The software renderer draws a gradient square: a rounded clip shapes it.
+    background: card.bg;
+    drop-shadow-blur: root.lit ? 18px : 8px;
+    drop-shadow-offset-y: root.lit ? 6px : 2px;
+    drop-shadow-color: root.card.current ? Theme.glow.with-alpha(0.45) : Theme.shadow.with-alpha(root.lit ? 0.55 : 0.35);
+    animate drop-shadow-blur, drop-shadow-offset-y { duration: 150ms; }
+    forward-focus: fs;
+    accessible-role: button;
+    accessible-label: card.name + (card.dark ? ", dark" : ", light") + (card.custom ? ", custom" : "") + (card.current ? ", current" : "");
+    accessible-action-default => { root.picked(); }
+    Rectangle {
+        border-radius: Theme.radius-l;
+        clip: true;
+        Rectangle { background: @linear-gradient(135deg, card.bg 0%, card.bg-end 100%); }
+        // The name strip.
+        Rectangle {
+            x: 0;
+            y: parent.height - 46px;
+            width: parent.width;
+            height: 46px;
+            background: card.surface.with-alpha(0.92);
+            VerticalLayout {
+                padding-left: 12px;
+                padding-right: 10px;
+                padding-top: 5px;
+                padding-bottom: 6px;
+                HorizontalLayout {
+                    spacing: 4px;
+                    if card.failures != "": Mark { text: Icons.warning; color: card.text; font-size: Theme.font-s; }
+                    Text { text: card.name; color: card.text; font-size: Theme.font-m; font-weight: 700; overflow: elide; horizontal-stretch: 1; }
+                    if card.custom: Rectangle {
+                        border-radius: 7px;
+                        background: card.raised;
+                        border-width: 1px;
+                        border-color: card.dim;
+                        HorizontalLayout {
+                            padding-left: 6px;
+                            padding-right: 6px;
+                            Text { text: "Custom"; color: card.text; font-size: 10px; font-weight: 600; vertical-alignment: center; }
+                        }
+                    }
+                }
+                HorizontalLayout {
+                    spacing: 4px;
+                    Text { text: card.dark ? "Dark" : "Light"; color: card.dim; font-size: Theme.font-xs; horizontal-stretch: 1; }
+                    if card.current: Mark { text: Icons.check; color: card.text; font-size: Theme.font-xs; }
+                    if card.current: Text { text: "Current"; color: card.text; font-size: Theme.font-xs; font-weight: 700; }
+                }
+            }
+        }
+    }
+    // The preview: a panel in the surface colour with text and an accent chip.
+    Rectangle {
+        x: 12px;
+        y: 12px;
+        width: parent.width - 24px;
+        height: parent.height - 64px;
+        border-radius: Theme.radius-m;
+        background: card.surface;
+        border-width: 1px;
+        border-color: card.line;
+        Text {
+            x: 10px;
+            y: 6px;
+            text: "Aa";
+            color: card.text;
+            font-size: 24px;
+            font-weight: 700;
+        }
+        Text {
+            x: 48px;
+            y: 15px;
+            text: "Aa";
+            color: card.dim;
+            font-size: Theme.font-m;
+            font-weight: 600;
+        }
+        Rectangle {
+            x: 10px;
+            y: parent.height - 14px;
+            width: parent.width * 0.45;
+            height: 4px;
+            border-radius: 2px;
+            background: card.raised;
+        }
+        Rectangle {
+            x: parent.width - self.width - 10px;
+            y: parent.height - self.height - 10px;
+            width: 46px;
+            height: 20px;
+            border-radius: 10px;
+            clip: true;
+            Rectangle { background: @linear-gradient(90deg, card.accent 0%, card.accent2 100%); }
+            Text { text: "Go"; color: card.on-accent; font-size: Theme.font-xs; font-weight: 700; }
+        }
+    }
+    // The outline: the accent ring on the current card, the card's line otherwise.
+    Rectangle {
+        border-radius: Theme.radius-l;
+        border-width: card.current ? 2px : 1px;
+        border-color: card.current ? Theme.accent : root.lit ? Theme.border : card.line;
+    }
+    ta := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.picked(); }
+    }
+    fs := FocusScope {
+        focus-on-click: false;
+        key-pressed(e) => {
+            if (e.text == Key.Return || e.text == " ") {
+                root.picked();
+                return accept;
+            }
+            return reject;
+        }
+    }
+    if fs.has-focus: FocusRing { radius: Theme.radius-l; x: -4px; y: -4px; width: parent.width + 8px; height: parent.height + 8px; }
+}
+
+// The gallery: as many columns of cards as fit, at least 140px wide.
+component Gallery {
+    property <int> columns: max(1, floor((root.width + 14px) / 154px));
+    property <length> tile-width: (root.width - (root.columns - 1) * 14px) / root.columns;
+    property <length> tile-height: 136px;
+    property <int> rows: ceil(AppearanceUi.themes.length / root.columns);
+    min-height: root.rows * (root.tile-height + 14px) - 14px;
+    for card[i] in AppearanceUi.themes: ThemeTile {
+        x: mod(i, root.columns) * (root.tile-width + 14px);
+        y: floor(i / root.columns) * (root.tile-height + 14px);
+        width: root.tile-width;
+        height: root.tile-height;
+        card: card;
+        picked => { AppearanceUi.pick(i); }
+    }
+}
+
+// A warning box: a mark, a title and lines of detail.
+component WarningBox inherits Rectangle {
+    in property <string> title;
+    in property <string> detail;
+    border-radius: Theme.radius-m;
+    background: Theme.raised;
+    border-width: 1px;
+    border-color: Theme.warning;
+    HorizontalLayout {
+        padding: Theme.space-m;
+        spacing: Theme.space-s;
+        Mark { width: 16px; text: Icons.warning; color: Theme.warning; font-size: Theme.font-m; vertical-alignment: top; }
+        VerticalLayout {
+            spacing: 2px;
+            Text { text: root.title; color: Theme.text; font-size: Theme.font-s; font-weight: 600; wrap: word-wrap; }
+            Text { text: root.detail; color: Theme.dim; font-size: Theme.font-s; wrap: word-wrap; }
+        }
+    }
+}
+
+export component Appearance {
+    VerticalLayout {
+        spacing: Theme.space-m;
+        Text { text: "Appearance"; color: Theme.text; font-size: Theme.font-m; font-weight: 600; }
+        Text {
+            text: "Pick a theme: it applies at once and is saved to config.json. Add your own as a JSON file in the themes folder.";
+            color: Theme.dim;
+            font-size: Theme.font-s;
+            wrap: word-wrap;
+        }
+        Gallery { }
+        for card in AppearanceUi.failing: VerticalLayout {
+            WarningBox {
+                title: card.name + " fails the contrast check (it still loads):";
+                detail: card.failures;
+            }
+        }
+        HorizontalLayout {
+            spacing: Theme.space-s;
+            alignment: start;
+            ActionButton { icon: Icons.folder-opened; text: "Open themes folder"; clicked => { AppearanceUi.open-folder(); } }
+            ActionButton { icon: Icons.refresh; text: "Reload themes"; clicked => { AppearanceUi.reload(); } }
+        }
+        if AppearanceUi.folder != "": Text { text: AppearanceUi.folder; color: Theme.dim; font-size: Theme.font-xs; wrap: word-wrap; }
+        if AppearanceUi.notes != "": WarningBox { title: "Theme files"; detail: AppearanceUi.notes; }
+        Rectangle { height: Theme.space-s; }
+        HorizontalLayout {
+            spacing: Theme.space-s;
+            Text { text: "Greyscale"; color: Theme.text; font-size: Theme.font-m; font-weight: 600; vertical-alignment: center; }
+            Text { text: AppearanceUi.greyscale + "%"; color: Theme.accent; font-size: Theme.font-m; font-weight: 700; vertical-alignment: center; horizontal-stretch: 1; }
+        }
+        HorizontalLayout {
+            spacing: Theme.space-l;
+            Slider {
+                label: "Greyscale";
+                value: AppearanceUi.greyscale;
+                changed(v) => { AppearanceUi.greyscale = v; AppearanceUi.greyscale-changed(v); }
+            }
+            NumberBox {
+                label: "Greyscale percent";
+                suffix: "%";
+                value: AppearanceUi.greyscale;
+                changed(v) => { AppearanceUi.greyscale = v; AppearanceUi.greyscale-changed(v); }
+            }
+        }
+        Text {
+            text: "For every theme: 0 keeps full colour, 100 shows pure greys. Contrast ratios stay the same at every level.";
+            color: Theme.dim;
+            font-size: Theme.font-s;
+            wrap: word-wrap;
+        }
+    }
+}
