@@ -1,0 +1,30 @@
+{
+  "version": 1,
+  "id": "aurora",
+  "name": "Aurora",
+  "kind": "dark",
+  "colors": {
+    "bg": "#070d1c",
+    "bg_end": "#0a1a2c",
+    "surface": "#0d1629",
+    "raised": "#132036",
+    "hover": "#192a44",
+    "selection": "#133a4c",
+    "bubble": "#18234a",
+    "code": "#0b1324",
+    "accent_surface": "#0e2e3a",
+    "line": "#1c2a44",
+    "border": "#6283a3",
+    "text": "#e4f2fb",
+    "dim": "#a6c4d9",
+    "accent": "#3cebc8",
+    "accent2": "#c0aaff",
+    "on_accent": "#03121a",
+    "glow": "#38f0a0",
+    "shadow": "#02050c",
+    "error": "#ff96aa",
+    "warning": "#ffd47a",
+    "success": "#7df59a",
+    "info": "#7ccaff"
+  }
+}

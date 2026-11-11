@@ -1,0 +1,30 @@
+{
+  "version": 1,
+  "id": "citrus",
+  "name": "Citrus",
+  "kind": "light",
+  "colors": {
+    "bg": "#fffbee",
+    "bg_end": "#fff1d0",
+    "surface": "#fffdf6",
+    "raised": "#ffffff",
+    "hover": "#fbf0d2",
+    "selection": "#f6e5b0",
+    "bubble": "#edf5c6",
+    "code": "#faf3df",
+    "accent_surface": "#ffe6bc",
+    "line": "#efe2bc",
+    "border": "#8e7e59",
+    "text": "#262010",
+    "dim": "#645738",
+    "accent": "#c2410c",
+    "accent2": "#4b7a0f",
+    "on_accent": "#ffffff",
+    "glow": "#ffb020",
+    "shadow": "#4a3410",
+    "error": "#b42318",
+    "warning": "#8a5300",
+    "success": "#2f7a1f",
+    "info": "#1f5fa8"
+  }
+}

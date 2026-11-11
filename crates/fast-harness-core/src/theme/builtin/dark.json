@@ -1,0 +1,30 @@
+{
+  "version": 1,
+  "id": "dark",
+  "name": "Dark",
+  "kind": "dark",
+  "colors": {
+    "bg": "#0f1117",
+    "bg_end": "#151a2b",
+    "surface": "#161a24",
+    "raised": "#1d2230",
+    "hover": "#252b3c",
+    "selection": "#283256",
+    "bubble": "#222a48",
+    "code": "#131722",
+    "accent_surface": "#1e2747",
+    "line": "#2a3042",
+    "border": "#77809c",
+    "text": "#eceef6",
+    "dim": "#b8bed4",
+    "accent": "#98b6ff",
+    "accent2": "#c8a8ff",
+    "on_accent": "#0a0d18",
+    "glow": "#5b7cff",
+    "shadow": "#04050a",
+    "error": "#ff9a9a",
+    "warning": "#ffcb70",
+    "success": "#74e8a8",
+    "info": "#82d4ff"
+  }
+}

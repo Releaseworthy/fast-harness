@@ -5,7 +5,7 @@ use fast_harness_core::accounts::google::GoogleStatus;
 use fast_harness_core::accounts::pool::AccountStatus;
 use fast_harness_core::llm::anthropic::{builtin_models, ModelInfo};
 use fast_harness_core::session::SessionSummary;
-use fast_harness_core::theme::{self, Theme};
+use fast_harness_core::theme::{self, Palette, Theme, ThemeSet};
 use ratatui::crossterm::event::{
     KeyCode, KeyEvent, KeyEventKind, KeyModifiers, MouseEvent, MouseEventKind,
 };
@@ -63,6 +63,8 @@ pub enum Action {
     FetchModels,
     /// Switch to the next theme and save it.
     CycleTheme,
+    /// Step the greyscale level by this much (wrapping) and save it.
+    StepGreyscale(i16),
 }
 
 pub struct Ui {
@@ -97,7 +99,15 @@ pub struct Ui {
     pub model: String,
     pub effort: Option<String>,
     pub frame: usize,
-    pub theme: &'static Theme,
+    /// The picked theme; draw with [`Ui::palette`], which has the greyscale
+    /// level applied.
+    pub theme: Theme,
+    /// The themes F5 cycles through: built-in, then user themes.
+    pub themes: ThemeSet,
+    /// Greyscale level, 0 to 100.
+    pub greyscale: u8,
+    /// `theme` at `greyscale`: the colours every style uses.
+    pub palette: Palette,
     /// The mark set; plain until the controller reads the setting.
     pub icons: &'static Icons,
 }
@@ -128,9 +138,24 @@ impl Ui {
             model,
             effort,
             frame: 0,
-            theme: theme::by_id(theme::DEFAULT_THEME),
+            theme: theme::by_id(theme::DEFAULT_THEME).clone(),
+            themes: ThemeSet::builtin(),
+            greyscale: 0,
+            palette: theme::by_id(theme::DEFAULT_THEME).palette,
             icons: &icons::PLAIN,
         }
+    }
+
+    /// Shows `theme` at the current greyscale level.
+    pub fn set_theme(&mut self, theme: Theme) {
+        self.palette = theme.shown(self.greyscale);
+        self.theme = theme;
+    }
+
+    /// Shows the theme at greyscale `level` (clamped to 0..=100).
+    pub fn set_greyscale(&mut self, level: u8) {
+        self.greyscale = level.min(theme::GREYSCALE_MAX);
+        self.palette = self.theme.shown(self.greyscale);
     }
 
     fn max_top(&self) -> usize {
@@ -228,6 +253,10 @@ impl Ui {
         }
         if key.code == KeyCode::F(5) {
             return Some(Action::CycleTheme);
+        }
+        if key.code == KeyCode::F(6) {
+            let down = key.modifiers.contains(KeyModifiers::SHIFT);
+            return Some(Action::StepGreyscale(if down { -10 } else { 10 }));
         }
         let open = match key.code {
             KeyCode::F(2) => Screen::Accounts,

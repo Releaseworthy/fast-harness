@@ -61,7 +61,16 @@ pub fn load_transcript(conv: &Conversation) -> Transcript {
 impl Tui {
     pub fn new(rt: Runtime, cwd: PathBuf, conv: Conversation, tx: Sender<Msg>) -> Tui {
         let mut ui = Ui::new(rt.config.model.clone(), rt.config.effort.clone());
-        ui.theme = fast_harness_core::theme::by_id(&rt.config.theme);
+        ui.themes = fast_harness_core::theme::ThemeSet::load(&rt.home);
+        ui.set_greyscale(rt.config.greyscale);
+        ui.set_theme(ui.themes.get(&rt.config.theme).clone());
+        if let Some(note) = ui.themes.notes().first() {
+            let more = ui.themes.notes().len() - 1;
+            ui.status = match more {
+                0 => format!("themes: {note}"),
+                n => format!("themes: {note} (and {n} more)"),
+            };
+        }
         ui.catalog = rt.models().cached();
         ui.icons = super::icons::by_id(&rt.config.icons);
         let mut tui = Tui {
@@ -191,7 +200,11 @@ impl Tui {
             Action::FetchModels => self.fetch_models(),
             Action::CycleTheme => {
                 let theme = super::theme::cycle(&mut self.ui, &self.rt.home);
-                self.rt.config.theme = theme.id.to_string();
+                self.rt.config.theme = theme.id;
+            }
+            Action::StepGreyscale(delta) => {
+                let level = super::theme::step_greyscale(&mut self.ui, &self.rt.home, delta);
+                self.rt.config.greyscale = level;
             }
             other => self.account_action(other),
         }

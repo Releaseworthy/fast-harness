@@ -66,7 +66,11 @@ fn main() {
     let stop = Arc::new(AtomicBool::new(false));
     match Runtime::load() {
         Ok(rt) => {
-            theme::apply(&ui, fast_harness_core::theme::by_id(&rt.config.theme));
+            let notes = theme::load(&rt.home);
+            theme::apply_config(&ui, &rt.config);
+            if let Some(note) = notes.first() {
+                ui.set_error_text(format!("Themes: {note}").into());
+            }
             let (pool, google, http) = (rt.pool.clone(), rt.google.clone(), rt.transport.clone());
             app::install(app::App::new(&ui, rt, working_dir()));
             wire::connect(&ui);
@@ -77,6 +81,7 @@ fn main() {
             theme::apply(
                 &ui,
                 fast_harness_core::theme::by_id(fast_harness_core::theme::DEFAULT_THEME),
+                0,
             );
             ui.set_error_text(format!("Cannot load the settings: {err}").into());
             wire::connect_minimal(&ui);

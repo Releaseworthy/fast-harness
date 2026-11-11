@@ -2,13 +2,13 @@
 //!
 //! Every widget takes its colours from [`Styles`]; no other TUI module names
 //! a colour. Meaning never rests on colour alone (WCAG 2.2 SC 1.4.1): marks
-//! such as `✓`, `✗`, `↻` and `›` go with the status colours, so the
-//! greyscale themes read the same.
+//! such as `✓`, `✗`, `↻` and `›` go with the status colours, so every
+//! greyscale level reads the same.
 
 use std::path::Path;
 
 use fast_harness_core::config;
-use fast_harness_core::theme::{self, Palette, Rgb, Theme, DEFAULT_THEME};
+use fast_harness_core::theme::{self, Palette, Rgb, Theme, DEFAULT_THEME, GREYSCALE_MAX};
 use pulldown_cmark::HeadingLevel;
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::widgets::{Block, BorderType, Borders};
@@ -21,10 +21,10 @@ pub fn color(c: Rgb) -> Color {
     Color::Rgb(c.0, c.1, c.2)
 }
 
-/// The styles of one theme, by role.
+/// The styles of one palette (a theme at a greyscale level), by role.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Styles {
-    pub theme: &'static Theme,
+    pub palette: Palette,
     /// The marks that go with the colours.
     pub icons: &'static Icons,
 }
@@ -36,9 +36,9 @@ impl Default for Styles {
 }
 
 impl Styles {
-    pub fn new(theme: &'static Theme) -> Styles {
+    pub fn new(theme: &Theme) -> Styles {
         Styles {
-            theme,
+            palette: theme.palette,
             icons: &icons::PLAIN,
         }
     }
@@ -46,13 +46,13 @@ impl Styles {
     /// The theme and the icon set of the UI.
     pub fn of(ui: &Ui) -> Styles {
         Styles {
-            theme: ui.theme,
+            palette: ui.palette,
             icons: ui.icons,
         }
     }
 
-    pub fn palette(&self) -> &'static Palette {
-        &self.theme.palette
+    pub fn palette(&self) -> Palette {
+        self.palette
     }
 
     fn fg(&self, c: Rgb) -> Style {
@@ -177,16 +177,42 @@ impl Styles {
     }
 }
 
-/// Switches `ui` to the theme after its current one and saves it as
-/// `theme` in `<home>/config.json`; returns the new theme. A failed save
-/// keeps the theme for this run and reports the error in the status bar.
-pub fn cycle(ui: &mut Ui, home: &Path) -> &'static Theme {
-    let next = theme::next(ui.theme.id);
-    ui.theme = next;
-    let saved = config::save_setting(home, "theme", serde_json::Value::from(next.id));
+/// Switches `ui` to the theme after its current one (built-in, then user
+/// themes) and saves it as `theme` in `<home>/config.json`; returns the new
+/// theme. A failed save keeps the theme for this run and reports the error
+/// in the status bar.
+pub fn cycle(ui: &mut Ui, home: &Path) -> Theme {
+    let next = ui.themes.next(&ui.theme.id).clone();
+    ui.set_theme(next.clone());
+    let saved = config::save_setting(home, "theme", serde_json::Value::from(next.id.as_str()));
     ui.status = match saved {
         Ok(()) => format!("theme {} (saved)", next.name),
         Err(err) => format!("theme {} (not saved: {err})", next.name),
     };
     next
+}
+
+/// Steps the greyscale level of `ui` by `delta`, wrapping past 0 and 100,
+/// and saves it as `greyscale` in `<home>/config.json`; returns the level.
+pub fn step_greyscale(ui: &mut Ui, home: &Path, delta: i16) -> u8 {
+    let (max, now) = (i16::from(GREYSCALE_MAX), i16::from(ui.greyscale));
+    let level = match now + delta {
+        n if n > max => 0,
+        n if n < 0 => max,
+        n => n,
+    };
+    // 0..=100 by the match above.
+    ui.set_greyscale(u8::try_from(level).unwrap_or(0));
+    let level = ui.greyscale;
+    let words = match level {
+        0 => "greyscale off, full colour".to_string(),
+        GREYSCALE_MAX => "greyscale 100 of 100, pure greys".to_string(),
+        n => format!("greyscale {n} of 100"),
+    };
+    let saved = config::save_setting(home, "greyscale", serde_json::Value::from(level));
+    ui.status = match saved {
+        Ok(()) => format!("{words} (saved)"),
+        Err(err) => format!("{words} (not saved: {err})"),
+    };
+    level
 }
