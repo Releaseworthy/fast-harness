@@ -37,3 +37,5 @@ Rules for anyone (human or agent) changing this repo. Read `PLAN.md` first: it h
 - `WindowMoveArea` delays the press, so a TouchArea double click inside it never fires: the title bar double click and every window state change go through `src/window_state.rs` (the .slint `maximized` property drifted from the real state).
 - Real-window checks: the release exe with `NH_HOME` set to a fresh temp folder, PrintWindow and posted clicks after SetProcessDPIAware; posted clicks cannot drag or resize the window.
 - Opening the TUI creates a session file even if nothing is sent.
+- Slint's window `icon` sets only ICON_SMALL on the frameless winit window: the taskbar and Alt-Tab icon comes from `nh_core::platform::set_big_window_icon` (WM_SETICON ICON_BIG from the exe's icon group 1).
+- The main card clips its children to the rounded corner and draws its border in an overlay after them: a border on the clipping rectangle itself left a gap along the curve.
