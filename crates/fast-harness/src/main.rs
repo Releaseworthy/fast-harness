@@ -39,6 +39,7 @@ fn main() -> ExitCode {
             Ok(ExitCode::SUCCESS)
         }
         Command::Sessions { cwd } => info::sessions(cwd),
+        Command::Prompt { cwd } => info::prompt(cwd),
         Command::Trace {
             id,
             steps,

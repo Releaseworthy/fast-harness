@@ -9,6 +9,7 @@
 mod call;
 mod conversation;
 pub mod prompt;
+pub mod prompt_store;
 mod subagent;
 mod tool_run;
 mod turn;

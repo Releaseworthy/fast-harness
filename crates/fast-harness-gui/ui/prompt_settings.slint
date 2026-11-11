@@ -1,0 +1,132 @@
+// Settings > System prompt (PLAN.md D31): the global template or the
+// selected workspace's override, its editor, Save, Reset to default and a
+// preview of the rendered prompt. State lives in the PromptUi global, so the
+// Settings page only places the section.
+import { Theme } from "parts.slint";
+import { ActionButton, Dropdown, TextArea } from "widgets.slint";
+
+export global PromptUi {
+    // The selected workspace's folder name ("" when none).
+    in property <string> workspace;
+    // 0 global, 1 the workspace.
+    in-out property <int> scope;
+    // The workspace has its own prompt file.
+    in property <bool> override-on;
+    in-out property <string> text;
+    // The saved text, to mark unsaved edits.
+    in property <string> saved;
+    // Which file applies and what Save writes, in words.
+    in property <string> source;
+    // The last action's outcome or an error.
+    in property <string> status;
+    in property <string> placeholders;
+    in property <string> preview;
+    in-out property <bool> show-preview;
+    out property <bool> dirty: self.text != self.saved;
+    callback scope-picked(int);
+    callback override-toggled(bool);
+    callback edited();
+    callback save();
+    callback reset();
+    callback preview-toggled(bool);
+}
+
+export component PromptSettings {
+    property <bool> editable: PromptUi.scope == 0 || PromptUi.override-on;
+    VerticalLayout {
+        spacing: Theme.space-s + 2px;
+        Text { text: "System prompt"; color: Theme.text; font-size: Theme.font-m; font-weight: 600; }
+        Text {
+            text: "Sent with every request, followed by the AGENTS.md files. Applies from the next turn.";
+            color: Theme.dim;
+            font-size: Theme.font-s;
+            wrap: word-wrap;
+        }
+        HorizontalLayout {
+            spacing: Theme.space-s;
+            Dropdown {
+                label: "Prompt scope";
+                model: PromptUi.workspace == "" ? ["Global"] : ["Global", "Workspace " + PromptUi.workspace];
+                current-index <=> PromptUi.scope;
+                selected(i) => { PromptUi.scope-picked(i); }
+            }
+            if PromptUi.scope == 1: ActionButton {
+                text: PromptUi.override-on ? "Override global: on" : "Override global: off";
+                variant: PromptUi.override-on ? "primary" : "secondary";
+                clicked => { PromptUi.override-toggled(!PromptUi.override-on); }
+            }
+        }
+        Text { text: PromptUi.source; color: Theme.dim; font-size: Theme.font-s; wrap: word-wrap; }
+        if root.editable: Rectangle {
+            border-width: 1px;
+            border-color: Theme.border;
+            border-radius: Theme.radius-s;
+            background: Theme.surface;
+            TextArea {
+                x: Theme.space-s;
+                y: Theme.space-s;
+                width: parent.width - 2 * Theme.space-s;
+                height: parent.height - 2 * Theme.space-s;
+                text <=> PromptUi.text;
+                placeholder: "An empty prompt: only the AGENTS.md section is sent.";
+                min-lines-height: 180px;
+                grow-limit: 260px;
+                font-size: Theme.font-s;
+                edited => { PromptUi.edited(); }
+            }
+            preferred-height: 196px;
+        }
+        Text { text: PromptUi.placeholders; color: Theme.dim; font-size: Theme.font-s; wrap: word-wrap; }
+        HorizontalLayout {
+            spacing: Theme.space-s;
+            alignment: start;
+            if root.editable: ActionButton {
+                text: "Save";
+                variant: "primary";
+                enabled: PromptUi.dirty;
+                clicked => { PromptUi.save(); }
+            }
+            if root.editable: ActionButton {
+                text: PromptUi.scope == 0 ? "Reset to default" : "Reset to global";
+                clicked => { PromptUi.reset(); }
+            }
+            ActionButton {
+                text: PromptUi.show-preview ? "Hide preview" : "Show preview";
+                clicked => { PromptUi.preview-toggled(!PromptUi.show-preview); }
+            }
+            if PromptUi.dirty: Text {
+                text: "Unsaved changes";
+                color: Theme.text;
+                font-size: Theme.font-s;
+                font-weight: 600;
+                vertical-alignment: center;
+            }
+        }
+        if PromptUi.status != "": Text {
+            text: PromptUi.status;
+            color: Theme.text;
+            font-size: Theme.font-s;
+            wrap: word-wrap;
+        }
+        if PromptUi.show-preview: Rectangle {
+            border-width: 1px;
+            border-color: Theme.border;
+            border-radius: Theme.radius-s;
+            background: Theme.bg;
+            preferred-height: 240px;
+            preview-flick := Flickable {
+                x: Theme.space-s;
+                width: parent.width - 2 * Theme.space-s;
+                content-height: max(self.height, preview-text.preferred-height + 2 * Theme.space-s);
+                preview-text := Text {
+                    y: Theme.space-s;
+                    width: preview-flick.width;
+                    text: PromptUi.preview;
+                    color: Theme.text;
+                    font-size: Theme.font-s;
+                    wrap: word-wrap;
+                }
+            }
+        }
+    }
+}

@@ -1,34 +1,98 @@
-//! The system prompt: one identity line, one tool line and the AGENTS.md
-//! files of the session's project (from the repository root down to the
-//! working directory, never above it).
+//! The system prompt: a template (PLAN.md D31, built-in default D18) with its
+//! placeholders filled, then the AGENTS.md files of the session's project
+//! (from the repository root down to the working directory, never above it).
 
 use std::path::{Path, PathBuf};
 
+use super::prompt_store::{self, Source};
 use crate::session;
 use crate::trace;
 
 /// Largest AGENTS.md text put into the prompt, all files together.
 pub const MAX_AGENTS_BYTES: usize = 32 * 1024;
 
-const TOOL_LINE: &str = "Use the tools to read, search and change files and to run commands; \
-independent calls in one step run in parallel. Be brief.";
+/// The built-in prompt template (PLAN.md D18), used without a prompt file (D31).
+pub const DEFAULT_TEMPLATE: &str =
+    "You are a coding agent in Fast Harness, working in {cwd} on {os}. \
+Today is {date} (UTC).\nUse the tools to read, search and change files and to run commands; \
+independent calls in one step run in parallel. Be brief.\n";
 
-/// The full system prompt for an agent working in `cwd`.
-pub fn system_prompt(cwd: &Path) -> String {
-    let mut out = format!(
-        "You are a coding agent in Fast Harness, working in {} on {}. Today is {} (UTC).\n{TOOL_LINE}\n",
-        cwd.display(),
-        os_name(),
-        today()
-    );
+/// The placeholders a template may use; any other text stays as written.
+pub const PLACEHOLDERS: [&str; 4] = ["{cwd}", "{os}", "{date}", "{model}"];
+
+/// A rendered system prompt and where its template came from.
+#[derive(Clone, Debug)]
+pub struct Rendered {
+    pub text: String,
+    pub source: Source,
+    /// Why a prompt file was skipped (unreadable), for the front end.
+    pub notes: Vec<String>,
+}
+
+/// The system prompt for an agent working in `cwd` with `model`: the
+/// template of [`prompt_store::template`] filled, then the AGENTS.md section.
+pub fn render(home: &Path, cwd: &Path, model: &str) -> Rendered {
+    let template = prompt_store::template(home, cwd);
+    Rendered {
+        text: preview(&template.text, cwd, model),
+        source: template.source,
+        notes: template.notes,
+    }
+}
+
+/// `template` filled for `cwd` and `model`, with the AGENTS.md section after it.
+pub fn preview(template: &str, cwd: &Path, model: &str) -> String {
+    let mut out = fill(template, cwd, model);
     let agents = agents_section(cwd);
     if !agents.is_empty() {
+        if !out.ends_with('\n') {
+            out.push('\n');
+        }
         out.push_str("\n# Project instructions (AGENTS.md)\n\n");
         out.push_str(&agents);
     }
     out
 }
 
+/// The built-in prompt for `cwd` without a model name (no prompt file read).
+pub fn system_prompt(cwd: &Path) -> String {
+    preview(DEFAULT_TEMPLATE, cwd, "")
+}
+
+/// `template` with the [`PLACEHOLDERS`] replaced for `cwd` and `model`.
+pub fn fill(template: &str, cwd: &Path, model: &str) -> String {
+    let values = [
+        cwd.display().to_string(),
+        os_name().to_string(),
+        today(),
+        model.to_string(),
+    ];
+    fill_with(template, &values)
+}
+
+/// One pass over `template`: each placeholder becomes `values[i]` (same order
+/// as [`PLACEHOLDERS`]); text inside the values is never replaced again.
+pub fn fill_with(template: &str, values: &[String; 4]) -> String {
+    let mut out = String::with_capacity(template.len());
+    let mut rest = template;
+    while let Some(at) = rest.find('{') {
+        out.push_str(&rest[..at]);
+        let tail = &rest[at..];
+        let hit = PLACEHOLDERS.iter().position(|key| tail.starts_with(key));
+        match hit {
+            Some(index) => {
+                out.push_str(&values[index]);
+                rest = &tail[PLACEHOLDERS[index].len()..];
+            }
+            None => {
+                out.push('{');
+                rest = &tail[1..];
+            }
+        }
+    }
+    out.push_str(rest);
+    out
+}
 /// The directories whose AGENTS.md belongs to the session, outermost first:
 /// from the nearest ancestor of `cwd` (itself included) holding a `.git`
 /// entry (directory or file) down to `cwd`; only `cwd` without one.

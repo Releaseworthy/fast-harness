@@ -15,12 +15,17 @@ mod google_rows;
 mod mirror;
 mod model_refresh;
 mod pickers;
+mod prompt_settings;
+#[cfg(test)]
+mod prompt_settings_tests;
 mod rows;
 #[cfg(test)]
 mod scroll_tests;
 mod settings;
 #[cfg(test)]
 mod shots_png;
+#[cfg(test)]
+mod shots_prompt;
 #[cfg(test)]
 mod shots_tests;
 #[cfg(test)]

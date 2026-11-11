@@ -38,7 +38,10 @@ pub fn run(args: PrintArgs) -> Result<ExitCode, String> {
         }
     }
     let mut conv = rt.open_conversation(&cwd, args.resume.as_deref(), args.continue_latest)?;
-    let agent = rt.agent(&cwd, &conv)?;
+    let (agent, notes) = rt.agent(&cwd, &conv)?;
+    for note in notes {
+        eprintln!("[note] {note}");
+    }
     if let Err(err) = platform::on_interrupt(on_ctrl_c) {
         eprintln!("[note] Ctrl+C will not cancel cleanly: {err}");
     }

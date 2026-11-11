@@ -1,6 +1,7 @@
 import { AboutSlint } from "std-widgets.slint";
 import { Theme, Columns } from "parts.slint";
 import { ActionButton, Dropdown } from "widgets.slint";
+import { PromptSettings } from "prompt_settings.slint";
 
 // A labelled settings row: the name, a dropdown and a caption under it.
 component SettingRow {
@@ -58,8 +59,12 @@ export component SettingsPage inherits Rectangle {
     callback pickers-opened();
     in property <bool> refreshing;
     background: Theme.bg;
-    VerticalLayout {
+    // Scrolls: the System prompt section is taller than the window.
+    page-flick := Flickable { content-height: max(self.height, page-column.preferred-height);
+    page-column := VerticalLayout {
+        width: page-flick.width;
         padding-top: Theme.space-xl;
+        padding-bottom: Theme.space-xl;
         padding-left: Columns.side(root.width, 560px);
         padding-right: Columns.side(root.width, 560px);
         spacing: Theme.space-l + 4px;
@@ -93,6 +98,9 @@ export component SettingsPage inherits Rectangle {
             opened => { root.pickers-opened(); }
         }
         if root.note != "": Text { text: root.note; color: Theme.text; font-size: Theme.font-s; wrap: word-wrap; }
+        Rectangle { height: 1px; background: Theme.line; }
+        PromptSettings { }
+    }
     }
 }
 
