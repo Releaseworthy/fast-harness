@@ -13,6 +13,7 @@ use pulldown_cmark::HeadingLevel;
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::widgets::{Block, BorderType, Borders};
 
+use super::icons::{self, Icons};
 use super::ui::Ui;
 
 /// A theme colour as a ratatui true colour.
@@ -24,6 +25,8 @@ pub fn color(c: Rgb) -> Color {
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Styles {
     pub theme: &'static Theme,
+    /// The marks that go with the colours.
+    pub icons: &'static Icons,
 }
 
 impl Default for Styles {
@@ -34,7 +37,18 @@ impl Default for Styles {
 
 impl Styles {
     pub fn new(theme: &'static Theme) -> Styles {
-        Styles { theme }
+        Styles {
+            theme,
+            icons: &icons::PLAIN,
+        }
+    }
+
+    /// The theme and the icon set of the UI.
+    pub fn of(ui: &Ui) -> Styles {
+        Styles {
+            theme: ui.theme,
+            icons: ui.icons,
+        }
     }
 
     pub fn palette(&self) -> &'static Palette {

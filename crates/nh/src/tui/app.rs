@@ -62,6 +62,7 @@ impl Tui {
         let mut ui = Ui::new(rt.config.model.clone(), rt.config.effort.clone());
         ui.theme = nh_core::theme::by_id(&rt.config.theme);
         ui.catalog = rt.models().cached();
+        ui.icons = super::icons::by_id(&rt.config.icons);
         let mut tui = Tui {
             rt,
             cwd,

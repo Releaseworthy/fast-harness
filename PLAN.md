@@ -60,7 +60,7 @@ A barebone coding agent harness in native Rust, in the spirit of DeepSeek Harnes
 
 ## Files on disk
 
-- `~/.nh/config.json`: model, effort, cache TTL, limits, `theme` (colour theme id) and `wire` (raw wire capture, default `false`). `NH_MODEL`, `NH_EFFORT`, `NH_THEME` and `NH_WIRE` override it; `NH_HOME` moves `~/.nh`.
+- `~/.nh/config.json`: model, effort, cache TTL, limits, `theme` (colour theme id), `icons` (TUI icon set: `"nerd"` Nerd Font icons, the default, or `"plain"` Unicode marks) and `wire` (raw wire capture, default `false`). `NH_MODEL`, `NH_EFFORT`, `NH_THEME`, `NH_ICONS` and `NH_WIRE` override it; `NH_HOME` moves `~/.nh`.
 - `~/.nh/models.json`: the last model list from `/v1/models`, `{"version":1,"fetchedAt":<unix ms>,"models":[{id, displayName, contextWindow, maxOutput, reasoning, efforts, deprecated, live: {effort, adaptive, budget, canDisable} or null}]}`; written after each successful list (temp file, then rename), read at start; a corrupt file or another version is ignored.
 - `~/.nh/accounts.json` (version 2): own and API-key accounts; tokens and keys encrypted (DPAPI on Windows). Version 1 also held linked accounts: they are dropped on load (an `active` pointing at one falls back to the first remaining account) and the next save writes version 2. Readers accept versions 1 and 2 and reject any other.
 - `~/.nh/sessions/<cwd slug>/<session id>.jsonl`: one log per session (transcript and trace).

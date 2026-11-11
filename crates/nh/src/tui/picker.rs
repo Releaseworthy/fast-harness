@@ -224,12 +224,12 @@ fn rows(picker: &Picker, width: usize, height: usize, st: &Styles) -> Vec<Line<'
             let label = clip(label, label_width);
             let fill = " ".repeat(label_width.saturating_sub(text_width(&label)));
             let check = if Some(value) == picker.current.as_ref() {
-                "✓"
+                st.icons.ok
             } else {
                 " "
             };
             if index == picker.selected {
-                let text = format!("› {label}{fill} {check}");
+                let text = format!("{} {label}{fill} {check}", st.icons.pointer);
                 Line::from(Span::styled(text, st.selected()))
             } else {
                 let mark = Span::styled(format!(" {check}"), st.success());
@@ -241,7 +241,7 @@ fn rows(picker: &Picker, width: usize, height: usize, st: &Styles) -> Vec<Line<'
 
 /// Draws the open picker just above `input`, inside `body`.
 pub fn draw(frame: &mut Frame, ui: &mut Ui, input: Rect, body: Rect) {
-    let st = Styles::new(ui.theme);
+    let st = Styles::of(ui);
     let Some(picker) = ui.picker.as_mut() else {
         return;
     };

@@ -1,6 +1,6 @@
 //! `~/.nh/config.json`: model, effort, cache TTL, limits, theme, wire capture.
 //! Keys are camelCase; a missing file or key takes the default, unknown keys
-//! are ignored. `NH_MODEL`, `NH_EFFORT`, `NH_THEME` and `NH_WIRE` override
+//! are ignored. `NH_MODEL`, `NH_EFFORT`, `NH_THEME`, `NH_ICONS` and `NH_WIRE` override
 //! the file. [`save_setting`] writes one key back for the front ends.
 
 use std::io;
@@ -30,6 +30,9 @@ pub struct Config {
     pub retries: u32,
     /// Colour theme id (`theme::THEMES`); an unknown id shows the default theme.
     pub theme: String,
+    /// Icon set of the TUI: `nerd` (Nerd Font icons, the default) or
+    /// `plain` (Unicode marks); anything else reads as `nerd`.
+    pub icons: String,
     /// Raw wire capture of every model call (redacted request and raw
     /// response stream) under `<session>.wire/`. Off by default.
     pub wire: bool,
@@ -46,6 +49,7 @@ impl Default for Config {
             max_wait_ms: 3_600_000,
             retries: 8,
             theme: theme::DEFAULT_THEME.into(),
+            icons: "nerd".into(),
             wire: false,
         }
     }
@@ -75,7 +79,8 @@ impl Config {
     }
 
     /// `NH_MODEL` replaces the model; `NH_EFFORT` the effort (`default` means
-    /// the model's own default); `NH_THEME` the theme; `NH_WIRE` turns wire
+    /// the model's own default); `NH_THEME` the theme; `NH_ICONS` the icon
+    /// set; `NH_WIRE` turns wire
     /// capture on (`1`, `true`, `on`, `yes`) or off (`0`, `false`, `off`,
     /// `no`). Empty and unrecognised values are ignored.
     pub fn apply_env(&mut self, env: &dyn Fn(&str) -> Option<String>) {
@@ -92,6 +97,9 @@ impl Config {
         }
         if let Some(theme) = value("NH_THEME") {
             self.theme = theme;
+        }
+        if let Some(icons) = value("NH_ICONS") {
+            self.icons = icons;
         }
         if let Some(wire) = value("NH_WIRE").and_then(|v| switch(&v)) {
             self.wire = wire;

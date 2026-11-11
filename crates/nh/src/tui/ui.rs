@@ -9,6 +9,7 @@ use ratatui::crossterm::event::{
     KeyCode, KeyEvent, KeyEventKind, KeyModifiers, MouseEvent, MouseEventKind,
 };
 
+use super::icons::{self, Icons};
 use super::input::Input;
 use super::picker::{Picker, PickerKind};
 use super::timeline::TraceView;
@@ -92,6 +93,8 @@ pub struct Ui {
     pub effort: Option<String>,
     pub frame: usize,
     pub theme: &'static Theme,
+    /// The mark set; plain until the controller reads the setting.
+    pub icons: &'static Icons,
 }
 
 impl Ui {
@@ -120,6 +123,7 @@ impl Ui {
             effort,
             frame: 0,
             theme: theme::by_id(theme::DEFAULT_THEME),
+            icons: &icons::PLAIN,
         }
     }
 

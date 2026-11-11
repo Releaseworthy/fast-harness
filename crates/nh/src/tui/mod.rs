@@ -4,6 +4,7 @@
 
 mod app;
 mod draw;
+mod icons;
 mod input;
 mod markdown;
 mod panels;
