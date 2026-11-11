@@ -7,6 +7,7 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Paragraph, Wrap};
 use ratatui::Frame;
 
+use super::google::google_row;
 use super::theme::Styles;
 use super::ui::{Dialog, Screen, Ui};
 use super::wrap::clip;
@@ -60,6 +61,15 @@ pub fn account_row(status: &AccountStatus, now: i64, mark: &str) -> String {
     )
 }
 
+/// Who a sign-in URL belongs to.
+fn login_target(url: &str) -> &'static str {
+    if url.starts_with("https://accounts.google.com/") {
+        "Google Antigravity"
+    } else {
+        "Claude"
+    }
+}
+
 fn dialog_lines(dialog: &Dialog, st: &Styles) -> Option<Vec<Line<'static>>> {
     let yellow = st.warning();
     Some(match dialog {
@@ -82,7 +92,10 @@ fn dialog_lines(dialog: &Dialog, st: &Styles) -> Option<Vec<Line<'static>>> {
         }
         Dialog::Login(url) => vec![
             Line::styled(
-                "Sign in to Claude in the browser (Esc cancels). If it did not open, visit:",
+                format!(
+                    "Sign in to {} in the browser (Esc cancels). If it did not open, visit:",
+                    login_target(url)
+                ),
                 yellow,
             ),
             Line::raw(url.clone()),
@@ -98,13 +111,17 @@ fn draw_accounts(frame: &mut Frame, ui: &mut Ui, area: Rect, now_ms: u64) {
     let [top, bottom] =
         Layout::vertical([Constraint::Min(3), Constraint::Length(dialog_height)]).areas(area);
     let inner = st.block("Accounts").inner(top);
+    let mark = st.icons.account;
     let rows: Vec<String> = ui
         .accounts
         .iter()
-        .map(|s| account_row(s, now, st.icons.account))
+        .map(|s| account_row(s, now, mark))
+        .chain(ui.google.iter().map(|s| google_row(s, now_ms, mark)))
         .collect();
     let lines = if rows.is_empty() {
-        vec![Line::raw("No accounts: l signs in, k adds an API key.")]
+        vec![Line::raw(
+            "No accounts: l signs in to Claude, g to Google Antigravity, k adds an API key.",
+        )]
     } else {
         list(rows, ui.selected, inner, &st)
     };

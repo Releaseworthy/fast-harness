@@ -8,6 +8,7 @@ use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
 
+use fast_harness_core::accounts::google::GoogleAuth;
 use fast_harness_core::accounts::oauth;
 use fast_harness_core::accounts::pool::{AccountPool, USAGE_EVERY_MS};
 use fast_harness_core::agent::{Agent, Conversation};
@@ -15,6 +16,7 @@ use fast_harness_core::app::Runtime;
 use fast_harness_core::llm::anthropic::ModelInfo;
 use fast_harness_core::net::UreqTransport;
 use fast_harness_core::platform;
+use fast_harness_core::trace::now_ms;
 use ratatui::crossterm::event;
 
 use super::app::{Msg, Tui};
@@ -83,24 +85,38 @@ pub fn start_reader(tx: Sender<Msg>) -> io::Result<()> {
         .map(|_| ())
 }
 
-/// Reads every account's usage now and then every 10 minutes, until the
-/// returned sender is dropped.
+/// How often the poller offers the Google pool a quota read; the pool paces
+/// each account itself (at most every 10 minutes, 30 s after a turn).
+const GOOGLE_TICK_MS: u64 = 30_000;
+
+/// Reads every Claude account's usage now and then every 10 minutes, and
+/// offers the Google pool a read every 30 s, until the returned sender is
+/// dropped. Google rounds that read nothing stay silent.
 pub fn start_poller(
     pool: Arc<AccountPool>,
+    google: Arc<GoogleAuth>,
     http: Arc<UreqTransport>,
     tx: Sender<Msg>,
 ) -> io::Result<Sender<()>> {
     let (stop_tx, stop_rx) = mpsc::channel::<()>();
     thread::Builder::new()
         .name("fast-harness-usage".into())
-        .spawn(move || loop {
-            let count = pool.poll_usage(http.as_ref());
-            if tx.send(Msg::Polled(count)).is_err() {
-                return;
-            }
-            match stop_rx.recv_timeout(Duration::from_millis(USAGE_EVERY_MS)) {
-                Err(RecvTimeoutError::Timeout) => {}
-                _ => return,
+        .spawn(move || {
+            let mut waited = USAGE_EVERY_MS;
+            loop {
+                let mut count = google.poll(http.as_ref(), now_ms());
+                let claude = waited >= USAGE_EVERY_MS;
+                if claude {
+                    count += pool.poll_usage(http.as_ref());
+                    waited = 0;
+                }
+                if (claude || count > 0) && tx.send(Msg::Polled(count)).is_err() {
+                    return;
+                }
+                match stop_rx.recv_timeout(Duration::from_millis(GOOGLE_TICK_MS)) {
+                    Err(RecvTimeoutError::Timeout) => waited += GOOGLE_TICK_MS,
+                    _ => return,
+                }
             }
         })?;
     Ok(stop_tx)
@@ -109,8 +125,15 @@ pub fn start_poller(
 impl Tui {
     /// The account actions of the accounts screen.
     pub fn account_action(&mut self, action: Action) {
-        let pool = self.rt.pool.clone();
+        let (pool, google) = (self.rt.pool.clone(), self.rt.google.clone());
+        let is_google = |id: &str| self.ui.google.iter().any(|s| s.account.id == id);
         let result = match action {
+            Action::UseAccount(id) if is_google(&id) => {
+                google.use_account(&id).map(|_| format!("using {id}"))
+            }
+            Action::Remove(id) if is_google(&id) => {
+                google.remove(&id).map(|_| format!("removed {id}"))
+            }
             Action::UseAccount(id) => pool.set_active(&id).map(|_| format!("using {id}")),
             Action::Remove(id) => pool.remove(&id).map(|_| format!("removed {id}")),
             Action::AddKey(key) => pool
@@ -118,6 +141,10 @@ impl Tui {
                 .map(|account| format!("added {}", account.id)),
             Action::Login => {
                 self.login();
+                return;
+            }
+            Action::LoginGoogle => {
+                self.login_google();
                 return;
             }
             Action::CancelLogin => {

@@ -1,6 +1,7 @@
 //! The UI state and its key handling as a plain state machine: keys change
 //! the state and return an [`Action`] that the controller carries out.
 
+use fast_harness_core::accounts::google::GoogleStatus;
 use fast_harness_core::accounts::pool::AccountStatus;
 use fast_harness_core::llm::anthropic::{builtin_models, ModelInfo};
 use fast_harness_core::session::SessionSummary;
@@ -50,6 +51,8 @@ pub enum Action {
     Resume(String),
     UseAccount(String),
     Login,
+    /// Start the Google Antigravity browser sign-in.
+    LoginGoogle,
     CancelLogin,
     AddKey(String),
     Remove(String),
@@ -79,6 +82,8 @@ pub struct Ui {
     /// One-line message in the hint bar.
     pub status: String,
     pub accounts: Vec<AccountStatus>,
+    /// The Google accounts, listed after ccounts (one selection over both).
+    pub google: Vec<GoogleStatus>,
     pub sessions: Vec<SessionSummary>,
     pub models: Vec<ModelInfo>,
     /// The model list the pickers show: cached, then live.
@@ -113,6 +118,7 @@ impl Ui {
             dialog: Dialog::None,
             status: String::new(),
             accounts: Vec::new(),
+            google: Vec::new(),
             sessions: Vec::new(),
             models: Vec::new(),
             catalog: builtin_models(),

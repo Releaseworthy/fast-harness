@@ -1,6 +1,6 @@
 # Fast Harness Icons
 
-`FastHarnessIcons.ttf` is the GUI's icon font: 63 glyphs cut from `SymbolsNerdFont-Regular.ttf` of [Nerd Fonts v3.5.1](https://github.com/ryanoasis/nerd-fonts/releases/tag/v3.5.1) (`NerdFontsSymbolsOnly.zip`, released 2026-08-21) and renamed "Fast Harness Icons" so it never clashes with an installed Nerd Font. The UI names each code point in `ui/icons.slint`.
+`FastHarnessIcons.ttf` is the GUI's icon font: 64 glyphs cut from `SymbolsNerdFont-Regular.ttf` of [Nerd Fonts v3.5.1](https://github.com/ryanoasis/nerd-fonts/releases/tag/v3.5.1) (`NerdFontsSymbolsOnly.zip`, released 2026-08-21) and renamed "Fast Harness Icons" so it never clashes with an installed Nerd Font. The UI names each code point in `ui/icons.slint`.
 
 ## Rebuild or add a glyph
 

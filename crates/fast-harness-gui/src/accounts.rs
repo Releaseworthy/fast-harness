@@ -5,6 +5,8 @@ use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
 
+use fast_harness_core::accounts::google::GoogleAuth;
+use fast_harness_core::accounts::model::Provider;
 use fast_harness_core::accounts::oauth;
 use fast_harness_core::accounts::pool::{AccountPool, USAGE_EVERY_MS};
 use fast_harness_core::http::Transport;
@@ -17,22 +19,31 @@ use crate::rows::{account_label, account_row};
 use crate::MainWindow;
 
 /// How long a sign-in waits for the browser callback.
-const LOGIN_WAIT: Duration = Duration::from_secs(600);
+pub(crate) const LOGIN_WAIT: Duration = Duration::from_secs(600);
+
+/// How often the poller offers the Google pool a quota read; the pool paces
+/// each account itself (at most every 10 minutes, 30 s after a turn).
+const GOOGLE_TICK_SECS: u64 = 30;
 
 fn transport(app: &App) -> Arc<dyn Transport> {
     app.rt.transport.clone()
 }
 
-fn say(ui: &MainWindow, text: impl Into<slint::SharedString>) {
+pub(crate) fn say(ui: &MainWindow, text: impl Into<slint::SharedString>) {
     ui.set_accounts_message(text.into());
 }
 
-/// The account cards.
+/// The account cards: Claude ones, then the Google section.
 pub fn refresh(app: &App, ui: &MainWindow) {
     let now = now_ms() as i64;
     let statuses = app.rt.pool.status();
-    let rows: Vec<_> = statuses.iter().map(|s| account_row(s, now)).collect();
+    let rows: Vec<_> = statuses
+        .iter()
+        .filter(|s| s.account.provider != Provider::Google)
+        .map(|s| account_row(s, now))
+        .collect();
     ui.set_accounts(ModelRc::new(VecModel::from(rows)));
+    crate::google::refresh_rows(app, ui);
 }
 
 pub fn use_account(app: &App, ui: &MainWindow, id: &str) {
@@ -112,7 +123,7 @@ pub fn sign_in(app: &mut App, ui: &MainWindow) {
     });
 }
 
-fn login_done(
+pub(crate) fn login_done(
     app: &mut App,
     ui: &MainWindow,
     flag: &Arc<AtomicBool>,
@@ -143,25 +154,34 @@ pub fn cancel_sign_in(app: &mut App, ui: &MainWindow) {
     say(ui, "Sign-in cancelled.");
 }
 
-/// Reads the usage of every account now and then every `USAGE_EVERY_MS`
-/// until `stop` is set (when the window closes).
-pub fn start_poller(pool: Arc<AccountPool>, http: Arc<dyn Transport>, stop: Arc<AtomicBool>) {
+fn repaint() {
+    let _ = slint::invoke_from_event_loop(|| {
+        with_app(|app, ui| refresh(app, ui));
+    });
+}
+
+/// Reads the Claude usage now and then every `USAGE_EVERY_MS`, and offers
+/// the Google pool a quota read every `GOOGLE_TICK_SECS`, until `stop` is
+/// set (when the window closes). The page refreshes after any read.
+pub fn start_poller(
+    pool: Arc<AccountPool>,
+    google: Arc<GoogleAuth>,
+    http: Arc<dyn Transport>,
+    stop: Arc<AtomicBool>,
+) {
     let spawned = thread::Builder::new()
         .name("fast-harness-usage".into())
         .spawn(move || {
             let ticks = USAGE_EVERY_MS / 1000;
+            let mut tick = 0;
             while !stop.load(Ordering::SeqCst) {
-                if pool.poll_usage(&*http) > 0 {
-                    let _ = slint::invoke_from_event_loop(|| {
-                        with_app(|app, ui| refresh(app, ui));
-                    });
+                let claude = tick % ticks == 0 && pool.poll_usage(&*http) > 0;
+                let google = tick % GOOGLE_TICK_SECS == 0 && google.poll(&*http, now_ms()) > 0;
+                if claude || google {
+                    repaint();
                 }
-                for _ in 0..ticks {
-                    if stop.load(Ordering::SeqCst) {
-                        return;
-                    }
-                    thread::sleep(Duration::from_secs(1));
-                }
+                thread::sleep(Duration::from_secs(1));
+                tick += 1;
             }
         });
     drop(spawned);

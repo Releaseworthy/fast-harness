@@ -9,7 +9,7 @@ use super::ui::{Action, Dialog, Screen, Ui};
 impl Ui {
     fn list_len(&self) -> usize {
         match self.screen {
-            Screen::Accounts => self.accounts.len(),
+            Screen::Accounts => self.accounts.len() + self.google.len(),
             Screen::Models => self.models.len(),
             Screen::Sessions => self.sessions.len(),
             _ => 0,
@@ -76,17 +76,25 @@ impl Ui {
         }
     }
 
+    /// The id of the selected row: Claude accounts first, then Google ones.
+    fn selected_account(&self) -> Option<String> {
+        let claude = self.accounts.iter().map(|s| &s.account);
+        let google = self.google.iter().map(|s| &s.account);
+        claude
+            .chain(google)
+            .nth(self.selected)
+            .map(|a| a.id.clone())
+    }
+
     fn accounts_key(&mut self, key: &KeyEvent) -> Action {
-        let id = self
-            .accounts
-            .get(self.selected)
-            .map(|s| s.account.id.clone());
+        let id = self.selected_account();
         if key.modifiers.contains(KeyModifiers::CONTROL) {
             return Action::None;
         }
         match (key.code, id) {
             (KeyCode::Enter, Some(id)) => Action::UseAccount(id),
             (KeyCode::Char('l'), _) => Action::Login,
+            (KeyCode::Char('g'), _) => Action::LoginGoogle,
             (KeyCode::Char('k'), _) => {
                 self.dialog = Dialog::AddKey(Input::masked());
                 Action::None

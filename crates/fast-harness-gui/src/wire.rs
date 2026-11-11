@@ -5,8 +5,8 @@ use slint::ComponentHandle;
 
 use crate::app::{show_error, with_app};
 use crate::{
-    accounts, mirror, model_refresh, settings, theme, trace_rows, turn, window_state, workspaces,
-    MainWindow,
+    accounts, google, mirror, model_refresh, settings, theme, trace_rows, turn, window_state,
+    workspaces, MainWindow,
 };
 
 pub fn connect(ui: &MainWindow) {
@@ -54,6 +54,7 @@ pub fn connect(ui: &MainWindow) {
         with_app(|app, ui| theme::pick(app, ui, index));
     });
     connect_accounts(ui);
+    connect_google(ui);
     connect_open_url(ui);
     window_state::connect(ui);
 }
@@ -76,6 +77,18 @@ fn connect_accounts(ui: &MainWindow) {
     });
     ui.on_remove_account(|id| {
         with_app(|app, ui| accounts::remove(app, ui, &id));
+    });
+}
+
+fn connect_google(ui: &MainWindow) {
+    ui.on_google_sign_in(|| {
+        with_app(google::sign_in);
+    });
+    ui.on_google_use(|id| {
+        with_app(|app, ui| google::use_account(app, ui, &id));
+    });
+    ui.on_google_remove(|id| {
+        with_app(|app, ui| google::remove(app, ui, &id));
     });
 }
 

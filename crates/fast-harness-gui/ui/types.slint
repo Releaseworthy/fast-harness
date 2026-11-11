@@ -70,3 +70,26 @@ export struct AccountRow {
     hold: string,
     token-ok: bool,
 }
+
+// One quota group of a Google account: 5 h and weekly bars.
+export struct GoogleQuotaRow {
+    name: string,
+    five: float,
+    five-text: string,
+    week: float,
+    week-text: string,
+}
+
+export struct GoogleRow {
+    id: string,
+    name: string,
+    plan: string,
+    project: string,
+    active: bool,
+    quota: [GoogleQuotaRow],
+    hold: string,
+    // Set when Google asks for a verification: the Verify button opens it.
+    verify-url: string,
+    read: string,
+    error: string,
+}

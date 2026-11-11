@@ -6,6 +6,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::Sender;
 use std::sync::Arc;
 
+use fast_harness_core::accounts::model::Provider;
 use fast_harness_core::agent::{Agent, Conversation};
 use fast_harness_core::app::Runtime;
 use fast_harness_core::events::{AgentEvent, TurnOutcome};
@@ -99,8 +100,11 @@ impl Tui {
     }
 
     pub fn refresh_accounts(&mut self) {
-        self.ui.accounts = self.rt.pool.status();
-        let len = self.ui.accounts.len();
+        let mut all = self.rt.pool.status();
+        all.retain(|s| s.account.provider != Provider::Google);
+        self.ui.accounts = all;
+        self.ui.google = self.rt.google.status();
+        let len = self.ui.accounts.len() + self.ui.google.len();
         if self.ui.screen == Screen::Accounts && self.ui.selected >= len {
             self.ui.selected = len.saturating_sub(1);
         }
@@ -222,6 +226,8 @@ impl Tui {
     fn turn_done(&mut self, conv: Conversation, outcome: TurnOutcome) {
         self.ui.running = false;
         self.conv = Some(conv);
+        // Schedules the Google quota read of the account the turn used (D23).
+        self.rt.google.after_turn(trace::now_ms());
         self.refresh_accounts();
         if outcome == TurnOutcome::Cancelled {
             self.ui.status = "turn cancelled".into();
