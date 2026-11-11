@@ -17,6 +17,7 @@ Rules for anyone (human or agent) changing this repo. Read `PLAN.md` first: it h
 - No panics on input from the network, files or the model: return errors. `unwrap` and `expect` only in tests or on invariants with a comment.
 - Secrets: never in code, tests, fixtures, logs, traces or wire capture. Redact `authorization`, `x-api-key` and token fields. `Auth` prints as `<redacted>`.
 - Formats in `PLAN.md` (trace, accounts) change only with a version bump and a `PLAN.md` update in the same commit.
+- Colours come only from `nh_core::theme` roles (TUI `tui/theme.rs` Styles, GUI `Theme` global): no literal colours besides the neutral popup shadow. A palette change must keep `theme_tests.rs` green (WCAG 2.2 and APCA levels, greyscale themes pure grey), and every status colour comes with a mark or a word.
 
 ## Tests
 
@@ -28,6 +29,8 @@ Rules for anyone (human or agent) changing this repo. Read `PLAN.md` first: it h
 
 - Two branches that add crates both touch Cargo.lock: on conflict take one side, run cargo metadata, commit, then build with --locked.
 - The ring crate (rustls) needs the MSVC C compiler.
-- Always-on wire capture stores every request body, causing size growth with the square of the step count.
+- Wire capture (off by default, `"wire": true` or `NH_WIRE=1`) stores every request body: its size grows with the square of the step count.
 - Slint 1.18.1 StyledText is not selectable: the GUI copies through a hidden TextInput.
+- Slint 1.18.1 std-widgets colours are read only (only `Palette.color-scheme` can be set) and follow the OS accent: use the themed widgets in `ui/widgets.slint`, not Button, TextEdit, ComboBox or StandardTableView.
+- Segoe UI has no ✕ ↻ ▸ glyphs: GUI marks use the `Mark` element (Segoe UI Symbol). Check new glyphs in the shots test (`NH_SHOTS_DIR=<dir> cargo test -p nh-gui shots -- --ignored`).
 - Opening the TUI creates a session file even if nothing is sent.

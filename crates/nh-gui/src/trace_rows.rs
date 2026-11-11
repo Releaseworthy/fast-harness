@@ -60,18 +60,20 @@ pub fn preview(kind: EntryKind, body: &str) -> String {
 }
 
 pub fn entry_row(entry: &Entry) -> TraceRow {
-    let long = starts_collapsed(entry.kind, &entry.body);
-    let copy = if entry.body.is_empty() {
+    // Thinking often ends in blank lines: they would only stretch the block.
+    let body = entry.body.trim_end();
+    let long = starts_collapsed(entry.kind, body);
+    let copy = if body.is_empty() {
         entry.title.clone()
     } else {
-        format!("{}\n\n{}", entry.title, entry.body)
+        format!("{}\n\n{}", entry.title, body)
     };
     TraceRow {
         kind: kind_word(entry.kind).into(),
         title: entry.title.as_str().into(),
-        body: shorten(&entry.body, OUTPUT_CHARS).into(),
+        body: shorten(body, OUTPUT_CHARS).into(),
         preview: if long {
-            preview(entry.kind, &entry.body).into()
+            preview(entry.kind, body).into()
         } else {
             SharedString::default()
         },

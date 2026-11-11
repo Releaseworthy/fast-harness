@@ -18,6 +18,7 @@ A barebone coding agent harness in native Rust, in the spirit of DeepSeek Harnes
 | 3A | TUI (ratatui) | done |
 | 3B | GUI (Slint) | done |
 | 4 | Live checks, performance report (`docs/perf.md`) | done |
+| 5 | Model and effort pickers at the chat box (TUI, GUI), readable trace timeline (TUI, GUI, `nh trace`), themes with WCAG and APCA tests, wire capture off by default | done |
 
 ## Decisions
 
@@ -37,6 +38,8 @@ A barebone coding agent harness in native Rust, in the spirit of DeepSeek Harnes
 | D12 | v1 scope | Agent loop; tools read, write, edit, shell, grep, glob, subagent; sessions; AGENTS.md in the system prompt; trace and `nh trace`; Claude provider; accounts; CLI print mode; TUI; GUI. |
 | D13 | Default model | `claude-opus-5-5`, effort `high`; model list from `/v1/models`. |
 | D14 | Repo | Public, `Releaseworthy/native-harness`, licence MIT OR Apache-2.0; binaries `nh` and `nh-gui`. |
+| D15 | Themes | `nh_core::theme`: Dark (default), Light, Greyscale dark, Greyscale light, shared by the TUI and the GUI. Tests hold every theme to WCAG 2.2 (7:1 body text, 4.5:1 other text, 3:1 borders and focus) and APCA Bronze (Lc 75 body, 60 other text); greyscale themes are pure greys for text and background; status colours always come with a mark or a word. The pick is saved as `theme` in `config.json`. The GUI draws its own widgets (`ui/widgets.slint`) because the Slint std-widgets palette is read only. |
+| D16 | Model and effort at the chat box | GUI: two dropdowns in the composer; TUI: Ctrl+P and Ctrl+E pickers above the input. Effort choices per model (`llm::anthropic::efforts`); a model change refits the effort (`fit_effort`). Picks apply to the next turn and last for the window (not saved). |
 
 ## Architecture
 

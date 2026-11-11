@@ -26,6 +26,10 @@ nh trace latest --steps    # only the per-step table (--json: the raw events)
 nh-gui                     # the desktop window
 ```
 
+In the chat, the GUI composer has a Model and a Thinking effort dropdown; in the TUI, Ctrl+P picks the model and Ctrl+E the effort (shown on the input box border). A pick applies to the next turn. The Trace page (GUI) and F3 (TUI) show each turn as a timeline: what the user sent, every request (model, effort, account), the thinking, the response, tool calls and results, then the numbers; the GUI Steps switch and the TUI `s` key show the per-step table.
+
+Themes: Dark, Light, Greyscale dark and Greyscale light (text and background in pure greys), all tested against WCAG 2.2 contrast and APCA. Pick one in the GUI Settings page or with F5 in the TUI; the choice is saved in `config.json`.
+
 Accounts switch automatically when one hits its rate limit. Settings live in `~/.nh/config.json` (`NH_HOME` moves the folder): `model`, `effort`, `theme` (colour theme) and `wire`, among others; `NH_MODEL`, `NH_EFFORT`, `NH_THEME` and `NH_WIRE` override them. Sessions and their traces live under `~/.nh/sessions/`. Raw wire capture (the redacted request and raw response of every model call, in `<session>.wire/`) is off by default; turn it on with `"wire": true` or `NH_WIRE=1`.
 
 Using a Claude subscription (OAuth) outside Claude Code works only by sending Claude Code's identity, as other third-party clients do; Anthropic may restrict that. API keys carry no such risk.

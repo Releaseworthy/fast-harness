@@ -12,6 +12,15 @@ fn entry(kind: EntryKind, title: &str, body: &str, is_error: bool) -> Entry {
 }
 
 #[test]
+fn trailing_blank_lines_are_dropped() {
+    let row = entry_row(&entry(EntryKind::Thinking, "Thinking", "plan.\n\n", false));
+    assert_eq!(row.body.as_str(), "plan.");
+    assert_eq!(row.copy.as_str(), "Thinking\n\nplan.");
+    let blank = entry_row(&entry(EntryKind::Response, "Response", " \n", false));
+    assert_eq!((blank.body.as_str(), blank.copy.as_str()), ("", "Response"));
+}
+
+#[test]
 fn collapse_rule() {
     let eight = ["line"; 8].join("\n");
     let nine = ["line"; 9].join("\n");
