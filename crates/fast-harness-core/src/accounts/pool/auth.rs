@@ -5,7 +5,7 @@
 //! runs one refresh per token at a time for the same reason).
 
 use super::{now_ms, AccountPool, State};
-use crate::accounts::model::{now_unix_ms, AccountKind, Secret};
+use crate::accounts::model::{now_unix_ms, AccountKind, Provider, Secret};
 use crate::accounts::oauth::{self, OAuthError};
 use crate::accounts::order::{
     candidates, hold_for_limit, Candidate, BROKEN_HOLD_MS, RETRY_INTERVAL_MS,
@@ -40,7 +40,12 @@ impl State {
         http: &dyn Transport,
         force: bool,
     ) -> Option<Auth> {
-        match self.store.get(id)?.kind {
+        let account = self.store.get(id)?;
+        if account.provider != Provider::Anthropic {
+            // Google accounts have their own pool (PLAN.md D26).
+            return None;
+        }
+        match account.kind {
             AccountKind::Own => self.own_token(id, http, force),
             AccountKind::ApiKey => match self.store.secret(id) {
                 Ok(Some(Secret::ApiKey { key })) => Some(Auth::ApiKey(key)),
@@ -94,6 +99,7 @@ impl State {
         self.store
             .list()
             .into_iter()
+            .filter(|account| account.provider == Provider::Anthropic)
             .map(|account| Candidate {
                 id: account.id.clone(),
                 plan: account.plan.clone(),

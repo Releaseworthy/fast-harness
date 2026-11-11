@@ -3,7 +3,7 @@
 //! read. Endpoints, client id, scopes, headers and timeouts are claude-switch's
 //! (`plugins/dsh-claude-switch/host.js`).
 
-mod callback;
+pub(crate) mod callback;
 
 use crate::accounts::crypto::{pkce_pair, random_token};
 use crate::accounts::model::now_unix_ms;
@@ -200,7 +200,7 @@ impl LoginFlow {
     /// Waits for `GET /callback` and returns its code. Other paths (such as
     /// `/favicon.ico`) get a 404 and the wait goes on.
     pub fn wait(&self, timeout: Duration, cancel: &AtomicBool) -> Result<String, OAuthError> {
-        callback::wait_for_code(&self.listener, &self.state, timeout, cancel)
+        callback::wait_for_code(&self.listener, CALLBACK_PATH, &self.state, timeout, cancel)
     }
 }
 
@@ -379,7 +379,7 @@ fn reason_of(bytes: &[u8]) -> Option<String> {
 }
 
 /// `DEAD_REFRESH`: `/^(invalid_grant|invalid_client|unauthorized_client)\b/`.
-fn is_dead(reason: &str) -> bool {
+pub(crate) fn is_dead(reason: &str) -> bool {
     ["invalid_grant", "invalid_client", "unauthorized_client"]
         .iter()
         .any(|code| {

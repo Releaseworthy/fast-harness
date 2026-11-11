@@ -1,7 +1,8 @@
 //! The loopback side of the sign-in: one tiny HTTP/1.1 server that waits for
-//! `GET /callback?code=...&state=...`, as claude-switch's `handleCallback`.
+//! `GET <path>?code=...&state=...`, as claude-switch's `handleCallback`. The
+//! Claude sign-in waits on `/callback`, the Google one on `/oauth-callback`.
 
-use super::{OAuthError, CALLBACK_PATH};
+use super::OAuthError;
 use std::io::{self, Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -16,8 +17,9 @@ const IO_TIMEOUT: Duration = Duration::from_secs(5);
 const MAX_HEAD: usize = 16 * 1024;
 
 /// Accepts connections until the callback arrives, `timeout` passes or `cancel` is set.
-pub(super) fn wait_for_code(
+pub(crate) fn wait_for_code(
     listener: &TcpListener,
+    path: &str,
     state: &str,
     timeout: Duration,
     cancel: &AtomicBool,
@@ -33,7 +35,7 @@ pub(super) fn wait_for_code(
         }
         match listener.accept() {
             Ok((stream, _)) => {
-                if let Some(result) = serve(stream, state) {
+                if let Some(result) = serve(stream, path, state) {
                     return result;
                 }
             }
@@ -45,7 +47,7 @@ pub(super) fn wait_for_code(
 }
 
 /// Answers one connection; `Some` when it was the callback.
-fn serve(mut stream: TcpStream, state: &str) -> Option<Result<String, OAuthError>> {
+fn serve(mut stream: TcpStream, want: &str, state: &str) -> Option<Result<String, OAuthError>> {
     let _ = stream.set_nonblocking(false);
     let _ = stream.set_read_timeout(Some(IO_TIMEOUT));
     let _ = stream.set_write_timeout(Some(IO_TIMEOUT));
@@ -54,7 +56,7 @@ fn serve(mut stream: TcpStream, state: &str) -> Option<Result<String, OAuthError
         return None;
     };
     let (path, query) = target.split_once('?').unwrap_or((target.as_str(), ""));
-    if path != CALLBACK_PATH {
+    if path != want {
         respond(&mut stream, 404, "text/plain; charset=utf-8", "not found");
         return None;
     }
@@ -95,7 +97,7 @@ fn judge(
     }
     match (get("code"), get("state")) {
         (Some(code), Some(state)) if !code.is_empty() && state == expected_state => {
-            (200, "Claude account signed in.", Ok(code.to_string()))
+            (200, "Account signed in.", Ok(code.to_string()))
         }
         _ => (
             400,
@@ -146,7 +148,7 @@ cache-control: no-store\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}
 /// The page the browser shows after the redirect.
 fn page(message: &str) -> String {
     format!(
-        "<!doctype html><meta charset=\"utf-8\"><title>Claude account</title>\
+        "<!doctype html><meta charset=\"utf-8\"><title>Fast Harness sign-in</title>\
 <body style=\"font:14px/1.5 system-ui,sans-serif;max-width:34rem;margin:12vh auto;\
 padding:0 1.5rem;color:#1f2329\"><h1 style=\"font-size:18px\">{message}</h1>\
 <p style=\"color:#6b7280\">You can close this tab and return to fast-harness.</p></body>"
@@ -191,7 +193,7 @@ fn form_decode(text: &str) -> String {
 }
 
 /// Encodes like `URLSearchParams`: alphanumerics and `*-._` kept, space as `+`.
-pub(super) fn form_encode(text: &str) -> String {
+pub(crate) fn form_encode(text: &str) -> String {
     let mut out = String::with_capacity(text.len());
     for byte in text.bytes() {
         match byte {

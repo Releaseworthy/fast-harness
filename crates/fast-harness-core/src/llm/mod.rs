@@ -2,6 +2,7 @@
 //! The only provider for now is Claude (`anthropic`).
 
 pub mod anthropic;
+pub mod antigravity;
 
 use std::fmt;
 use std::sync::atomic::AtomicBool;

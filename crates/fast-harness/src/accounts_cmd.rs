@@ -5,7 +5,8 @@ use std::process::ExitCode;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
-use fast_harness_core::accounts::model::{now_unix_ms, AccountKind};
+use fast_harness_core::accounts::google::{self, GoogleApi};
+use fast_harness_core::accounts::model::{now_unix_ms, AccountKind, Provider};
 use fast_harness_core::accounts::oauth;
 use fast_harness_core::accounts::pool::{AccountPool, AccountStatus};
 use fast_harness_core::accounts::usage::Window;
@@ -32,6 +33,8 @@ pub fn run(action: AccountsAction) -> Result<ExitCode, String> {
     match action {
         AccountsAction::List => print_list(pool),
         AccountsAction::Login { browser } => login(pool, browser)?,
+        AccountsAction::LoginGoogle { browser } => login_google(pool, browser)?,
+        AccountsAction::GoogleClient { id } => google_client(&id)?,
         AccountsAction::Use(name) => {
             let id = resolve(pool, &name)?;
             pool.set_active(&id).map_err(|err| err.to_string())?;
@@ -74,6 +77,59 @@ fn login(pool: &AccountPool, browser: bool) -> Result<(), String> {
         account.id
     );
     print_list(pool);
+    Ok(())
+}
+
+fn app_home() -> Result<std::path::PathBuf, String> {
+    platform::app_home().ok_or_else(|| "no home directory".to_string())
+}
+
+fn login_google(pool: &AccountPool, browser: bool) -> Result<(), String> {
+    let client = google::load_client(&app_home()?).map_err(|err| err.to_string())?;
+    let api = GoogleApi::default();
+    let flow = google::begin_login(&api, &client).map_err(|err| err.to_string())?;
+    eprintln!(
+        "Sign in to Google Antigravity in the browser. If it does not open, visit:\n{}",
+        flow.url()
+    );
+    if browser {
+        if let Err(err) = platform::open_url(flow.url()) {
+            eprintln!("[note] could not open the browser: {err}");
+        }
+    }
+    let _ = platform::on_interrupt(on_ctrl_c);
+    let code = flow
+        .wait(LOGIN_TIMEOUT, &CANCEL)
+        .map_err(|err| err.to_string())?;
+    let http = UreqTransport::new();
+    let sign_in =
+        google::fetch_sign_in(&api, &http, &client, &flow, &code).map_err(|err| err.to_string())?;
+    let account = pool.add_google(sign_in).map_err(|err| err.to_string())?;
+    println!(
+        "signed in: {} ({})",
+        label(&account.email, &account.name),
+        account.id
+    );
+    print_list(pool);
+    Ok(())
+}
+
+/// Saves the Google OAuth client; the secret comes from stdin and is never printed.
+fn google_client(id: &str) -> Result<(), String> {
+    eprintln!("Paste the Google OAuth client secret and press Enter:");
+    let mut line = String::new();
+    std::io::stdin()
+        .lock()
+        .read_line(&mut line)
+        .map_err(|err| format!("stdin: {err}"))?;
+    let home = app_home()?;
+    let saved = google::save_client(&home, id, line.trim());
+    line.clear();
+    saved.map_err(|err| err.to_string())?;
+    println!(
+        "saved the Google OAuth client to {}",
+        google::client::client_path(&home).display()
+    );
     Ok(())
 }
 
@@ -123,18 +179,50 @@ pub(crate) fn label(email: &Option<String>, name: &Option<String>) -> String {
 }
 
 fn print_list(pool: &AccountPool) {
-    let list = pool.status();
-    if list.is_empty() {
-        println!("no accounts: `fast-harness accounts login` or `fast-harness accounts add-key`");
+    let (google, claude): (Vec<_>, Vec<_>) = pool
+        .status()
+        .into_iter()
+        .partition(|s| s.account.provider == Provider::Google);
+    if google.is_empty() && claude.is_empty() {
+        println!(
+            "no accounts: `fast-harness accounts login [--google]` or `fast-harness accounts add-key`"
+        );
         return;
     }
-    println!(
-        "  {:<14} {:<7} {:<30} {:<6} {:>5} {:>5}  {:<10} STATE",
-        "ID", "KIND", "ACCOUNT", "PLAN", "5H", "7D", "7D RESET"
-    );
     let now = i64::try_from(now_unix_ms()).unwrap_or(i64::MAX);
-    for status in &list {
-        println!("{}", row(status, now));
+    if !claude.is_empty() {
+        println!(
+            "  {:<14} {:<7} {:<30} {:<6} {:>5} {:>5}  {:<10} STATE",
+            "ID", "KIND", "ACCOUNT", "PLAN", "5H", "7D", "7D RESET"
+        );
+        for status in &claude {
+            println!("{}", row(status, now));
+        }
+    }
+    if !google.is_empty() {
+        print_google(pool, &google, now);
+    }
+}
+
+/// The Google accounts: provider, plan and project (quota comes with the Google pool).
+fn print_google(pool: &AccountPool, list: &[AccountStatus], now: i64) {
+    println!(
+        "  {:<14} {:<8} {:<30} {:<16} {:<24} STATE",
+        "ID", "PROVIDER", "ACCOUNT", "PLAN", "PROJECT"
+    );
+    for status in list {
+        let account = &status.account;
+        let project = pool.google_project(&account.id);
+        println!(
+            "{} {:<14} {:<8} {:<30} {:<16} {:<24} {}",
+            if status.active { "*" } else { " " },
+            clip(&account.id, 14),
+            "google",
+            clip(&label(&account.email, &account.name), 30),
+            clip(account.plan.as_deref().unwrap_or("-"), 16),
+            clip(project.as_deref().unwrap_or("-"), 24),
+            state(status, now)
+        );
     }
 }
 

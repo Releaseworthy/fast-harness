@@ -4,7 +4,7 @@
 //! to 60 minutes.
 
 use super::{AccountPool, State};
-use crate::accounts::model::{now_unix_ms, AccountKind};
+use crate::accounts::model::{now_unix_ms, AccountKind, Provider};
 use crate::accounts::remote::fetch_usage;
 use crate::http::Transport;
 use crate::llm::Auth;
@@ -28,12 +28,12 @@ pub(super) struct Backoff {
 }
 
 impl State {
-    /// Own accounts not read for `USAGE_EVERY_MS` and not paused.
+    /// Own Anthropic accounts not read for `USAGE_EVERY_MS` and not paused.
     fn due_for_poll(&self, now: u64) -> Vec<String> {
         self.store
             .list()
             .into_iter()
-            .filter(|a| a.kind == AccountKind::Own)
+            .filter(|a| a.kind == AccountKind::Own && a.provider == Provider::Anthropic)
             .filter(|a| {
                 self.snapshot
                     .read_at(&a.id)

@@ -161,7 +161,7 @@ fn is_decimal(value: &str) -> bool {
 
 /// `epochMs` for a header value: milliseconds, seconds (below 1e11) or a date
 /// string, as epoch milliseconds; `None` when absent, unparseable or not positive.
-fn epoch_ms(value: Option<&str>) -> Option<f64> {
+pub(crate) fn epoch_ms(value: Option<&str>) -> Option<f64> {
     let raw = value?;
     let trimmed = raw.trim_matches(is_js_space);
     if !trimmed.is_empty() && !is_decimal(trimmed) {
