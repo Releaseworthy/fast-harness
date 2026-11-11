@@ -93,7 +93,9 @@ fn check_two_step_trace(conv: &Conversation) {
         .iter()
         .filter(|e| e.kind == "request/context")
         .collect();
-    assert_eq!(contexts[1].data["wire"], "t1-s2-a1");
+    // Wire capture is off by default: no `wire` key and no `.wire` folder.
+    assert!(contexts[1].data.get("wire").is_none());
+    assert_eq!(contexts[1].data["step"], 2);
     assert_eq!(contexts[1].data["account"], "acct-1");
     let result = first(&events, "tool/result");
     assert_eq!(result.data["message"]["content"][0]["content"], "hi");
@@ -103,7 +105,24 @@ fn check_two_step_trace(conv: &Conversation) {
         (Some(2), Some("done"))
     );
     assert_eq!(end.data["usage"]["inputTokens"], 20);
-    assert!(conv.wire_dir.join("t1-s1-a1.request.json").is_file());
+    assert!(!conv.wire_dir.exists());
+}
+
+#[test]
+fn wire_capture_on_writes_the_wire_files() {
+    let (env, transport, mut conv) = setup("wire-on", vec![text_reply("ok")]);
+    let mut parts = parts(&transport, key_auth(), &env.cwd);
+    parts.config.wire = true;
+    let agent = Agent::new(parts, echo_registry());
+    let (outcome, _) = run(&agent, &mut conv, &AtomicBool::new(false));
+    assert_eq!(outcome, TurnOutcome::Done);
+    let events = events(&conv.log_path);
+    assert_eq!(first(&events, "request/context").data["wire"], "t1-s1-a1");
+    for suffix in ["request.json", "head.json", "response.txt"] {
+        let file = conv.wire_dir.join(format!("t1-s1-a1.{suffix}"));
+        assert!(file.is_file(), "{}", file.display());
+    }
+    drop(env);
 }
 
 #[test]
@@ -182,7 +201,8 @@ fn overloaded_is_retried_then_succeeds() {
         .iter()
         .filter(|e| e.kind == "request/context")
         .collect();
-    assert_eq!(contexts[1].data["wire"], "t1-s1-a2");
+    assert_eq!(contexts[1].data["attempt"], 2);
+    assert!(contexts[1].data.get("wire").is_none());
     assert!(seen.iter().any(|e| matches!(
         e,
         AgentEvent::Retry {

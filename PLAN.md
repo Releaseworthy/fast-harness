@@ -29,7 +29,7 @@ A barebone coding agent harness in native Rust, in the spirit of DeepSeek Harnes
 | D4 | JSON | serde_json with serde derive. |
 | D5 | GUI | Slint (royalty-free licence: the app shows a "made with Slint" credit). |
 | D6 | TUI | ratatui and crossterm. |
-| D7 | Trace | DSH event vocabulary with our own format version; raw wire capture always on. |
+| D7 | Trace | DSH event vocabulary with our own format version; raw wire capture off by default (owner, 2026-11-11), on with `"wire": true` in `config.json` or `NH_WIRE=1`. |
 | D8 | claude-switch import | Linked, read-only: nh uses the access token DSH holds and never refreshes it. |
 | D9 | Token storage | `accounts.json`, secrets encrypted with DPAPI on Windows. |
 | D10 | Auto switch | The claude-switch rules (below), usage of idle accounts polled only while the TUI or GUI is open. |
@@ -55,17 +55,17 @@ A barebone coding agent harness in native Rust, in the spirit of DeepSeek Harnes
 
 ## Files on disk
 
-- `~/.nh/config.json`: model, effort, cache TTL, limits, UI settings. `NH_HOME` moves `~/.nh`.
+- `~/.nh/config.json`: model, effort, cache TTL, limits, `theme` (colour theme id) and `wire` (raw wire capture, default `false`). `NH_MODEL`, `NH_EFFORT`, `NH_THEME` and `NH_WIRE` override it; `NH_HOME` moves `~/.nh`.
 - `~/.nh/accounts.json`: accounts and usage; tokens and keys encrypted (DPAPI on Windows).
 - `~/.nh/sessions/<cwd slug>/<session id>.jsonl`: one log per session (transcript and trace).
-- `~/.nh/sessions/<cwd slug>/<session id>.wire/`: per model call attempt, the request (headers with credentials redacted, body) and the raw response stream.
+- `~/.nh/sessions/<cwd slug>/<session id>.wire/`, only with wire capture on: per model call attempt, the request (headers with credentials redacted, body) and the raw response stream.
 
 ## Trace format
 
 One JSON object per line. A header line, then events `{type, seq, time, data}`; `time` is Unix milliseconds, `seq` counts from 0. Event names follow the DSH session log.
 
 ```
-{"type":"session","version":1,"id":"...","createdAt":1794400565123,"cwd":"F:\\work","harness":"nh 0.1.0","parent":null}
+{"type":"session","version":2,"id":"...","createdAt":1794400565123,"cwd":"F:\\work","harness":"nh 0.1.0","parent":null}
 {"type":"turn/start","seq":0,"time":...,"data":{"turn":1}}
 {"type":"user/message","seq":1,"time":...,"data":{"turn":1,"message":{...}}}
 {"type":"step/start","seq":2,"time":...,"data":{"turn":1,"step":1}}
@@ -80,10 +80,11 @@ One JSON object per line. A header line, then events `{type, seq, time, data}`; 
 {"type":"turn/end","seq":21,"time":...,"data":{"turn":1,"steps":3,"usage":{...},"durationMs":14200,"outcome":"done"}}
 ```
 
+- Version 2 (2026-11-11): `request/context` has the `wire` key (the attempt's capture name) only when wire capture is on; version 1 always had it. New logs are version 2; a resumed version 1 log keeps its header. Readers accept versions 1 and 2 and reject any other.
 - `request/header` is written only when the system prompt or the tool list changes.
 - A failed attempt writes `assistant/attempt` (`{turn, step, attempt, error, timing}`) before `llm/retry` or `account/switch`.
 - A subagent writes its own session log whose header has `parent` set to the parent session id; the parent's `tool/result` names the child session.
-- `nh trace [session]` prints one row per step: turn, step, account, model, TTFB, total time, input, output, cache read and cache write tokens, tools with their durations, retries.
+- `nh trace [ID|latest] [--steps] [--json] [--cwd DIR]` prints the timeline of the session (`trace::detail`): each turn, what the user sent, the request header (system prompt and tools), each request (model, effort, account, attempt), the model's thinking, response text and tool calls with their arguments, tool results, the answer metrics, retries, failed attempts, account switches and the turn totals; then one row per step: turn, step, account, model, TTFB, total time, input, output, cache read and cache write tokens, tools with their durations, retries. `--steps` prints only the step table, `--json` the raw header and events.
 
 ## Claude provider
 

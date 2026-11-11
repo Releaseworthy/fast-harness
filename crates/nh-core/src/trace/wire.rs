@@ -1,4 +1,4 @@
-//! Raw wire capture of model calls (PLAN.md D7: always on). Each call writes
+//! Raw wire capture of model calls (PLAN.md D7: off by default, on with `Config::wire`). Each call writes
 //! `<name>.request.json`, `<name>.head.json` and `<name>.response.txt` into
 //! the session's `.wire` folder. Credentials never reach the files.
 

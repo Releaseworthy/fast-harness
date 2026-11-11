@@ -1,8 +1,9 @@
 //! Harness time per step without a network: one turn of N tool steps against
-//! scripted Claude streams (real SSE parsing, trace and wire capture, the
-//! `read` tool on a small file), then a text answer.
+//! scripted Claude streams (real SSE parsing, the trace, the `read` tool on a
+//! small file), then a text answer. `--wire` turns raw wire capture on (it is
+//! off by default, as in the harness).
 //!
-//! `cargo run --release -p nh-core --example step_bench -- [steps]`
+//! `cargo run --release -p nh-core --example step_bench -- [steps] [--wire]`
 
 use std::path::{Path, PathBuf};
 use std::sync::atomic::AtomicBool;
@@ -89,11 +90,16 @@ fn temp_root() -> PathBuf {
     root
 }
 
+/// `(steps, --wire)` from the command line.
+fn options() -> (usize, bool) {
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    let wire = args.iter().any(|arg| arg == "--wire");
+    let steps = args.iter().find_map(|arg| arg.parse().ok()).unwrap_or(200);
+    (steps, wire)
+}
+
 fn main() {
-    let steps: usize = std::env::args()
-        .nth(1)
-        .and_then(|s| s.parse().ok())
-        .unwrap_or(200);
+    let (steps, wire) = options();
     let root = temp_root();
     let (home, cwd) = (root.join("home"), root.join("work"));
     std::fs::create_dir_all(&home).expect("home");
@@ -103,6 +109,7 @@ fn main() {
     responses.push(text_step());
     let config = Config {
         max_steps: steps as u32 + 10,
+        wire,
         ..Config::default()
     };
     let parts = AgentParts {

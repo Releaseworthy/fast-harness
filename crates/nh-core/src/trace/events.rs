@@ -37,8 +37,10 @@ pub struct RequestContext<'a> {
     /// Account id; never a credential.
     pub account: &'a str,
     pub effort: Option<&'a str>,
-    /// Wire capture name of this attempt, such as `t1-s1-a1`.
-    pub wire: &'a str,
+    /// Wire capture name of this attempt, such as `t1-s1-a1`; `None` (and no
+    /// key in the log) when wire capture is off.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub wire: Option<&'a str>,
 }
 
 #[derive(Serialize)]

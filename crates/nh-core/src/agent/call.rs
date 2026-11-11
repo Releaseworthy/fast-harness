@@ -6,6 +6,7 @@ use std::time::{Duration, Instant};
 use crate::agent::turn::{ms, traced, Res, Turn};
 use crate::auth::{Failover, Lease};
 use crate::events::{AgentEvent, TurnOutcome};
+use crate::http::Transport;
 use crate::llm::{ChatRequest, Completion, Delta, ErrorKind, LlmError, Timing};
 use crate::trace::wire::WireCapture;
 use crate::trace::RequestContext;
@@ -129,7 +130,7 @@ impl Turn<'_> {
             model: &parts.config.model,
             account: &lease.account,
             effort: parts.config.effort.as_deref(),
-            wire,
+            wire: parts.config.wire.then_some(wire),
         };
         traced(self.conv.trace.request_context(&context))?;
         (self.sink)(AgentEvent::Request {
@@ -143,7 +144,15 @@ impl Turn<'_> {
     fn stream_once(&mut self, lease: &Lease, wire_name: &str) -> Result<Completion, LlmError> {
         let agent = self.agent;
         let parts = &agent.parts;
-        let wire = WireCapture::new(&*parts.transport, &self.conv.wire_dir, wire_name);
+        // Raw wire capture only when the config asks for it (off by default).
+        let capture = parts
+            .config
+            .wire
+            .then(|| WireCapture::new(&*parts.transport, &self.conv.wire_dir, wire_name));
+        let http: &dyn Transport = match &capture {
+            Some(capture) => capture,
+            None => &*parts.transport,
+        };
         let req = ChatRequest {
             model: &parts.config.model,
             system: &parts.system,
@@ -159,7 +168,7 @@ impl Turn<'_> {
         let mut on_delta = |delta: Delta<'_>| forward(delta, &mut ids, sink);
         parts
             .provider
-            .stream(&wire, &lease.auth, &req, &mut on_delta)
+            .stream(http, &lease.auth, &req, &mut on_delta)
     }
 
     fn on_error(
