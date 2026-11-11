@@ -1,0 +1,43 @@
+// Rows the Rust side fills (src/rows.rs maps the core types to these).
+
+// One transcript entry. `kind`: user, assistant, tool, note or footer.
+export struct MsgRow {
+    kind: string,
+    // Plain text: what Copy puts on the clipboard.
+    text: string,
+    // Assistant text parsed from markdown.
+    body: styled-text,
+    thinking: string,
+    // Tool name and one-line summary of its arguments.
+    title: string,
+    summary: string,
+    // Tool output as shown (shortened when long).
+    output: string,
+    running: bool,
+    error: bool,
+    // Thinking or tool output opened by the user.
+    expanded: bool,
+    // Note kind: retry, switch, error or info.
+    tone: string,
+}
+
+export struct SessionRow {
+    id: string,
+    title: string,
+    time: string,
+    current: bool,
+}
+
+export struct AccountRow {
+    id: string,
+    name: string,
+    kind: string,
+    plan: string,
+    active: bool,
+    five: float,
+    five-text: string,
+    seven: float,
+    seven-text: string,
+    hold: string,
+    token-ok: bool,
+}

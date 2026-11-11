@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/nh-core", "crates/nh"]
+members = ["crates/nh-core", "crates/nh", "crates/nh-gui"]
 
 [workspace.package]
 version = "0.1.0"
@@ -19,7 +19,7 @@ ignore = "0.4.34"
 ratatui = "0.30.2"
 crossterm = "0.29.0"
 pulldown-cmark = { version = "0.13.6", default-features = false }
-slint = "1.18.1"
+slint = { version = "1.18.1", default-features = false, features = ["std", "compat-1-2", "accessibility", "backend-winit", "renderer-software", "renderer-femtovg"] }
 slint-build = "1.18.1"
 windows-sys = { version = "0.61.2", features = [
     "Win32_Foundation",

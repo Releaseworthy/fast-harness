@@ -1,0 +1,237 @@
+import { Button, TextEdit, Palette } from "std-widgets.slint";
+import { MsgRow, SessionRow, AccountRow } from "types.slint";
+import { Theme } from "parts.slint";
+import { TranscriptView } from "transcript.slint";
+import { Sidebar } from "sidebar.slint";
+import { AccountsPage } from "accounts.slint";
+import { TracePage, SettingsPage, AboutPage } from "pages.slint";
+
+export { MsgRow, SessionRow, AccountRow }
+
+component StatusBar inherits Rectangle {
+    in property <string> state;
+    in property <string> model;
+    in property <string> account;
+    in property <string> tokens;
+    in property <string> timing;
+    height: 24px;
+    background: Palette.alternate-background;
+    HorizontalLayout {
+        padding-left: 10px;
+        padding-right: 10px;
+        spacing: 16px;
+        Text { text: root.state; font-size: 11px; vertical-alignment: center; }
+        Text { text: root.model; font-size: 11px; color: Theme.dim; vertical-alignment: center; }
+        Text { text: root.account; font-size: 11px; color: Theme.dim; vertical-alignment: center; overflow: elide; }
+        Rectangle { horizontal-stretch: 1; }
+        Text { text: root.tokens; font-size: 11px; color: Theme.dim; vertical-alignment: center; }
+        Text { text: root.timing; font-size: 11px; color: Theme.dim; vertical-alignment: center; }
+    }
+}
+
+component ErrorBanner inherits Rectangle {
+    in property <string> text;
+    callback dismiss();
+    background: Theme.red.transparentize(75%);
+    border-color: Theme.red;
+    border-width: 1px;
+    HorizontalLayout {
+        padding: 8px;
+        spacing: 8px;
+        Text { text: root.text; wrap: word-wrap; horizontal-stretch: 1; }
+        Button { text: "Dismiss"; clicked => { root.dismiss(); } }
+    }
+}
+
+export component MainWindow inherits Window {
+    title: "native-harness";
+    preferred-width: 1100px;
+    preferred-height: 740px;
+    min-width: 640px;
+    min-height: 420px;
+    background: Palette.background;
+
+    in property <[MsgRow]> messages;
+    in property <[SessionRow]> sessions;
+    in property <[AccountRow]> accounts;
+    in property <[[StandardListViewItem]]> trace-rows;
+    in property <string> trace-message;
+    in property <[string]> models;
+    in property <[string]> efforts;
+    in-out property <int> model-index;
+    in-out property <int> effort-index;
+    in-out property <string> page: "chat";
+    in property <bool> busy;
+    in-out property <string> error-text;
+    in property <string> status-state: "Ready";
+    in property <string> status-model;
+    in property <string> status-account;
+    in property <string> status-tokens;
+    in property <string> status-timing;
+    in property <string> chip-name: "No account";
+    in property <float> chip-five;
+    in property <string> chip-five-text;
+    in property <float> chip-seven;
+    in property <string> chip-seven-text;
+    in property <string> login-url;
+    in property <string> accounts-message;
+    in property <bool> accounts-working;
+    in-out property <bool> adding-key;
+    in property <string> version;
+
+    // Returns true when the text was accepted (the input is then cleared).
+    callback send(string) -> bool;
+    callback stop();
+    callback new-session();
+    callback open-session(string);
+    callback open-page(string);
+    callback toggle(int);
+    callback open-url(string);
+    callback sign-in();
+    callback cancel-sign-in();
+    callback import-linked();
+    callback add-key(string, string);
+    callback refresh-usage();
+    callback use-account(string);
+    callback remove-account(string);
+    callback refresh-trace();
+    callback settings-changed(int, int);
+
+    // Copy: a hidden TextInput takes the text, selects it and copies it
+    // (StyledText has no selection in Slint 1.18).
+    public function copy-text(text: string) {
+        clip.text = text;
+        clip.select-all();
+        clip.copy();
+        clip.text = "";
+    }
+
+    public function to-bottom() {
+        transcript.to-bottom();
+    }
+
+    function submit() {
+        if (root.send(input.text)) {
+            input.text = "";
+            transcript.to-bottom();
+        }
+    }
+
+    clip := TextInput {
+        width: 0px;
+        height: 0px;
+        opacity: 0;
+    }
+
+    HorizontalLayout {
+        Sidebar {
+            sessions: root.sessions;
+            page: root.page;
+            chip-name: root.chip-name;
+            chip-five: root.chip-five;
+            chip-five-text: root.chip-five-text;
+            chip-seven: root.chip-seven;
+            chip-seven-text: root.chip-seven-text;
+            new-session => { root.new-session(); }
+            open-session(id) => { root.open-session(id); }
+            open-page(p) => { root.open-page(p); }
+        }
+        VerticalLayout {
+            horizontal-stretch: 1;
+            Rectangle {
+                vertical-stretch: 1;
+                VerticalLayout {
+                    if root.error-text != "": ErrorBanner {
+                        text: root.error-text;
+                        dismiss => { root.error-text = ""; }
+                    }
+                    transcript := TranscriptView {
+                        vertical-stretch: 1;
+                        rows: root.messages;
+                        toggle(i) => { root.toggle(i); }
+                        copy(t) => { root.copy-text(t); }
+                        link(u) => { root.open-url(u); }
+                    }
+                    HorizontalLayout {
+                        padding: 8px;
+                        spacing: 8px;
+                        height: 110px;
+                        input := TextEdit {
+                            horizontal-stretch: 1;
+                            placeholder-text: "Message (Enter sends, Shift+Enter adds a line)";
+                            key-pressed(event) => {
+                                if (event.text == Key.Return && !event.modifiers.shift) {
+                                    if (!root.busy) {
+                                        root.submit();
+                                    }
+                                    return accept;
+                                }
+                                return reject;
+                            }
+                        }
+                        VerticalLayout {
+                            alignment: end;
+                            Button {
+                                text: root.busy ? "Stop" : "Send";
+                                width: 80px;
+                                clicked => {
+                                    if (root.busy) {
+                                        root.stop();
+                                    } else {
+                                        root.submit();
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                if root.page == "accounts": AccountsPage {
+                    width: parent.width;
+                    height: parent.height;
+                    accounts: root.accounts;
+                    login-url: root.login-url;
+                    message: root.accounts-message;
+                    working: root.accounts-working;
+                    adding-key <=> root.adding-key;
+                    sign-in => { root.sign-in(); }
+                    cancel-sign-in => { root.cancel-sign-in(); }
+                    import-linked => { root.import-linked(); }
+                    add-key(k, l) => { root.add-key(k, l); }
+                    refresh => { root.refresh-usage(); }
+                    use(id) => { root.use-account(id); }
+                    remove(id) => { root.remove-account(id); }
+                    open-url(u) => { root.open-url(u); }
+                    copy(t) => { root.copy-text(t); }
+                }
+                if root.page == "trace": TracePage {
+                    width: parent.width;
+                    height: parent.height;
+                    rows: root.trace-rows;
+                    message: root.trace-message;
+                    refresh => { root.refresh-trace(); }
+                }
+                if root.page == "settings": SettingsPage {
+                    width: parent.width;
+                    height: parent.height;
+                    models: root.models;
+                    efforts: root.efforts;
+                    model-index <=> root.model-index;
+                    effort-index <=> root.effort-index;
+                    changed-settings(m, e) => { root.settings-changed(m, e); }
+                }
+                if root.page == "about": AboutPage {
+                    width: parent.width;
+                    height: parent.height;
+                    version: root.version;
+                }
+            }
+            StatusBar {
+                state: root.status-state;
+                model: root.status-model;
+                account: root.status-account;
+                tokens: root.status-tokens;
+                timing: root.status-timing;
+            }
+        }
+    }
+}
