@@ -9,10 +9,10 @@ use ratatui::buffer::Buffer;
 use ratatui::crossterm::event::{
     KeyCode, KeyEvent, KeyEventKind, KeyModifiers, MouseEvent, MouseEventKind,
 };
-use ratatui::style::Color;
 use ratatui::Terminal;
 
 use super::draw::{self, View};
+use super::theme::color;
 use super::transcript::Cache;
 use super::ui::{Action, Dialog, Screen, Ui};
 
@@ -112,16 +112,18 @@ fn renders_every_item_kind() {
     find(&screen, "✻ Thinking: pondering deeply");
     assert!(!screen.iter().any(|r| r.contains("second line")));
     find(&screen, "Answer");
-    find(&screen, "● read README.md");
+    find(&screen, "✓ read README.md");
+    find(&screen, "✗ read README.md");
     find(&screen, "⎿ line one");
     find(&screen, "line three");
     find(&screen, "… +1 lines");
+    let error = color(ui.theme.palette.error);
     let boom = find(&screen, "boom");
     let x = screen[boom].find("boom").unwrap_or(0);
     let col = screen[boom][..x].chars().count() as u16;
-    assert_eq!(buffer[(col, boom as u16)].fg, Color::Red);
-    let note = find(&screen, "it failed");
-    assert_eq!(buffer[(2, note as u16)].fg, Color::Red);
+    assert_eq!(buffer[(col, boom as u16)].fg, error);
+    let note = find(&screen, "✗ it failed");
+    assert_eq!(buffer[(2, note as u16)].fg, error);
     find(
         &screen,
         "turn 1 step 1 · claude-x · me@x.y · ttfb 1.5s · 4.2s",

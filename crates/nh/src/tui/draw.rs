@@ -2,12 +2,12 @@
 
 use nh_core::view::{State, Transcript};
 use ratatui::layout::{Constraint, Layout, Position, Rect};
-use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, Borders, Paragraph};
+use ratatui::widgets::{Block, Paragraph};
 use ratatui::Frame;
 
 use super::panels;
+use super::theme::Styles;
 use super::transcript::{Cache, Opts};
 use super::ui::{Screen, Ui};
 use super::wrap::clip;
@@ -80,8 +80,8 @@ fn hint_text(ui: &Ui) -> String {
         return ui.status.clone();
     }
     match ui.screen {
-        Screen::Chat if ui.running => "Esc/Ctrl+C cancel · PgUp/PgDn scroll · Ctrl+T thinking · F2 accounts · F3 trace".into(),
-        Screen::Chat => "Enter send · Alt+Enter newline · ↑↓ history · Ctrl+N new · Ctrl+O sessions · Ctrl+T thinking · F2 accounts · F3 trace · F4 model · Ctrl+D quit".into(),
+        Screen::Chat if ui.running => "Esc/Ctrl+C cancel · PgUp/PgDn scroll · Ctrl+T thinking · F2 accounts · F3 trace · F5 theme".into(),
+        Screen::Chat => "Enter send · Alt+Enter newline · ↑↓ history · Ctrl+N new · Ctrl+O sessions · Ctrl+T thinking · F2 accounts · F3 trace · F4 model · F5 theme · Ctrl+D quit".into(),
         Screen::Accounts => "Enter use · l sign in · i import · k add key · d remove · r read usage · Esc back".into(),
         Screen::Trace => "↑↓ PgUp PgDn Home End scroll · Esc back".into(),
         Screen::Models => "↑↓ choose · Enter use model · e/Tab cycle effort · Esc back".into(),
@@ -92,6 +92,8 @@ fn hint_text(ui: &Ui) -> String {
 /// Draws the whole frame.
 pub fn draw(frame: &mut Frame, ui: &mut Ui, view: &mut View<'_>, now_ms: u64) {
     let area = frame.area();
+    let st = Styles::new(ui.theme);
+    frame.render_widget(Block::default().style(st.base()), area);
     let width = usize::from(area.width);
     let (rows, cursor) = ui.input.layout(width.saturating_sub(2));
     let input_height = if ui.screen == Screen::Chat {
@@ -107,19 +109,18 @@ pub fn draw(frame: &mut Frame, ui: &mut Ui, view: &mut View<'_>, now_ms: u64) {
     ])
     .areas(area);
     let header = clip(&header_text(ui, view, now_ms), width);
-    let head_style = Style::default().bg(Color::Indexed(237)).fg(Color::White);
-    frame.render_widget(Paragraph::new(header).style(head_style), head);
+    frame.render_widget(Paragraph::new(header).style(st.bar()), head);
     match ui.screen {
         Screen::Chat => {
             draw_transcript(frame, ui, view, body);
-            draw_input(frame, &rows, cursor, input);
+            draw_input(frame, &rows, cursor, input, &st);
         }
         _ => panels::draw(frame, ui, body, now_ms),
     }
     let hint_style = if ui.status.is_empty() {
-        Style::default().fg(Color::DarkGray)
+        st.hint()
     } else {
-        Style::default().fg(Color::Yellow)
+        st.status()
     };
     let text = clip(&hint_text(ui), width);
     frame.render_widget(Paragraph::new(text).style(hint_style), hint);
@@ -131,6 +132,7 @@ fn draw_transcript(frame: &mut Frame, ui: &mut Ui, view: &mut View<'_>, area: Re
         show_thinking: ui.show_thinking,
         running: ui.running,
         frame: ui.frame,
+        styles: Styles::new(ui.theme),
     };
     let lines = view.cache.lines(&view.transcript.items, opts);
     let height = usize::from(area.height);
@@ -144,17 +146,14 @@ fn draw_transcript(frame: &mut Frame, ui: &mut Ui, view: &mut View<'_>, area: Re
     if visible.is_empty() {
         let hello = Line::styled(
             "nh: type a prompt and press Enter (F2 for accounts)",
-            Style::default().fg(Color::DarkGray),
+            opts.styles.dim(),
         );
         frame.render_widget(Paragraph::new(hello), area);
         return;
     }
     frame.render_widget(Paragraph::new(visible), area);
     if ui.top.is_some() {
-        let more = Span::styled(
-            " ↓ more (End) ",
-            Style::default().add_modifier(Modifier::REVERSED),
-        );
+        let more = Span::styled(" ↓ more (End) ", opts.styles.badge());
         let at = Rect::new(
             area.right().saturating_sub(15),
             area.bottom().saturating_sub(1),
@@ -165,7 +164,7 @@ fn draw_transcript(frame: &mut Frame, ui: &mut Ui, view: &mut View<'_>, area: Re
     }
 }
 
-fn draw_input(frame: &mut Frame, rows: &[String], cursor: (usize, usize), area: Rect) {
+fn draw_input(frame: &mut Frame, rows: &[String], cursor: (usize, usize), area: Rect, st: &Styles) {
     let inner_rows = usize::from(area.height.saturating_sub(2)).max(1);
     let skip = (cursor.0 + 1).saturating_sub(inner_rows);
     let text: Vec<Line<'static>> = rows
@@ -174,9 +173,8 @@ fn draw_input(frame: &mut Frame, rows: &[String], cursor: (usize, usize), area: 
         .take(inner_rows)
         .map(|r| Line::raw(r.clone()))
         .collect();
-    let block = Block::default()
-        .borders(Borders::ALL)
-        .border_style(Style::default().fg(Color::DarkGray));
+    // The chat input has the focus: its frame is drawn in the accent colour.
+    let block = st.focus_block();
     frame.render_widget(Paragraph::new(text).block(block), area);
     let x = area.x + 1 + cursor.1.min(u16::MAX as usize) as u16;
     let y = area.y + 1 + (cursor.0 - skip).min(u16::MAX as usize) as u16;

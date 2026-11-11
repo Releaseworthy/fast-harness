@@ -2,10 +2,11 @@
 //! redraw only re-renders the items that changed.
 
 use nh_core::view::{Item, NoteKind};
-use ratatui::style::{Color, Modifier, Style};
+use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 
 use super::markdown;
+use super::theme::Styles;
 use super::wrap::{clip, sanitize, wrap_line};
 
 /// Tool output lines shown under a tool call.
@@ -19,10 +20,8 @@ pub struct Opts {
     /// A turn runs, so tools without output are spinning.
     pub running: bool,
     pub frame: usize,
-}
-
-fn dim() -> Style {
-    Style::default().fg(Color::DarkGray)
+    /// The theme: a change re-renders every cached line.
+    pub styles: Styles,
 }
 
 fn text_lines(text: &str, style: Style, width: usize, indent: usize) -> Vec<Line<'static>> {
@@ -32,23 +31,18 @@ fn text_lines(text: &str, style: Style, width: usize, indent: usize) -> Vec<Line
         .collect()
 }
 
-fn user_lines(text: &str, width: usize) -> Vec<Line<'static>> {
-    let mut lines = text_lines(text, Style::default(), width.saturating_sub(2), 0);
+fn user_lines(text: &str, width: usize, st: &Styles) -> Vec<Line<'static>> {
+    let mut lines = text_lines(text, st.text(), width.saturating_sub(2), 0);
     for (index, line) in lines.iter_mut().enumerate() {
         let lead = if index == 0 { "› " } else { "  " };
-        let marker = Span::styled(
-            lead,
-            Style::default()
-                .fg(Color::Cyan)
-                .add_modifier(Modifier::BOLD),
-        );
+        let marker = Span::styled(lead, st.user_marker());
         line.spans.insert(0, marker);
     }
     lines
 }
 
 fn thinking_lines(thinking: &str, o: &Opts) -> Vec<Line<'static>> {
-    let style = dim().add_modifier(Modifier::ITALIC);
+    let style = o.styles.thinking();
     if !o.show_thinking {
         let first = thinking
             .lines()
@@ -72,25 +66,23 @@ fn tool_lines(item: &Item, o: &Opts) -> Vec<Line<'static>> {
     else {
         return Vec::new();
     };
-    let (mark, color) = match (output, is_error) {
-        (None, _) if o.running => (SPINNER[o.frame % SPINNER.len()], Color::Yellow),
-        (None, _) => ("●", Color::DarkGray),
-        (Some(_), true) => ("●", Color::Red),
-        (Some(_), false) => ("●", Color::Green),
+    let st = &o.styles;
+    // A mark per state, not only a colour: greyscale themes read the same.
+    let (mark, mark_style) = match (output, is_error) {
+        (None, _) if o.running => (SPINNER[o.frame % SPINNER.len()], st.accent()),
+        (None, _) => ("○", st.dim()),
+        (Some(_), true) => ("✗", st.error()),
+        (Some(_), false) => ("✓", st.success()),
     };
     let head = clip(summary, o.width.saturating_sub(2));
     let mut lines = vec![Line::from(vec![
-        Span::styled(format!("{mark} "), Style::default().fg(color)),
-        Span::raw(head),
+        Span::styled(format!("{mark} "), mark_style),
+        Span::styled(head, st.text()),
     ])];
     let Some(output) = output else {
         return lines;
     };
-    let style = if *is_error {
-        Style::default().fg(Color::Red)
-    } else {
-        dim()
-    };
+    let style = if *is_error { st.error() } else { st.dim() };
     let rows: Vec<&str> = output.lines().filter(|l| !l.trim().is_empty()).collect();
     for (index, row) in rows.iter().take(TOOL_LINES).enumerate() {
         let lead = if index == 0 { "  ⎿ " } else { "    " };
@@ -99,17 +91,20 @@ fn tool_lines(item: &Item, o: &Opts) -> Vec<Line<'static>> {
     }
     if rows.len() > TOOL_LINES {
         let more = format!("    … +{} lines", rows.len() - TOOL_LINES);
-        lines.push(Line::styled(more, dim()));
+        lines.push(Line::styled(more, st.dim()));
     }
     lines
 }
 
-fn note_lines(kind: NoteKind, text: &str, width: usize) -> Vec<Line<'static>> {
-    let color = match kind {
-        NoteKind::Error => Color::Red,
-        _ => Color::Yellow,
+/// A note with a mark for its kind, so greyscale themes still tell them apart.
+fn note_lines(kind: NoteKind, text: &str, width: usize, st: &Styles) -> Vec<Line<'static>> {
+    let (mark, style) = match kind {
+        NoteKind::Retry => ("↻ ", st.warning()),
+        NoteKind::AccountSwitch => ("⇄ ", st.warning()),
+        NoteKind::Error => ("✗ ", st.error()),
+        NoteKind::Info => ("", st.dim()),
     };
-    text_lines(text, Style::default().fg(color), width, 2)
+    text_lines(&format!("{mark}{text}"), style, width, 2)
 }
 
 /// Seconds with one decimal.
@@ -117,7 +112,7 @@ fn secs(ms: u64) -> String {
     format!("{:.1}s", ms as f64 / 1000.0)
 }
 
-fn footer_line(item: &Item, width: usize) -> Vec<Line<'static>> {
+fn footer_line(item: &Item, width: usize, st: &Styles) -> Vec<Line<'static>> {
     let Item::StepFooter {
         turn,
         step,
@@ -139,25 +134,26 @@ fn footer_line(item: &Item, width: usize) -> Vec<Line<'static>> {
         usage.cache_read,
         usage.cache_write
     );
-    text_lines(&text, dim(), width, 2)
+    text_lines(&text, st.dim(), width, 2)
 }
 
 /// The lines of one item.
 pub fn item_lines(item: &Item, o: &Opts) -> Vec<Line<'static>> {
     let width = o.width.max(1);
+    let st = &o.styles;
     match item {
-        Item::User { text } => user_lines(text, width),
+        Item::User { text } => user_lines(text, width, st),
         Item::Assistant { text, thinking, .. } => {
             let mut lines = Vec::new();
             if !thinking.trim().is_empty() {
                 lines.extend(thinking_lines(thinking, o));
             }
-            lines.extend(markdown::render(text, width));
+            lines.extend(markdown::render(text, width, st));
             lines
         }
         Item::Tool { .. } => tool_lines(item, o),
-        Item::Note { kind, text } => note_lines(*kind, text, width),
-        Item::StepFooter { .. } => footer_line(item, width),
+        Item::Note { kind, text } => note_lines(*kind, text, width, st),
+        Item::StepFooter { .. } => footer_line(item, width, st),
     }
 }
 

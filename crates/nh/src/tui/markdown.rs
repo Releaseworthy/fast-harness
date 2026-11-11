@@ -2,31 +2,12 @@
 //! italic, inline code, fenced code blocks on their own background, lists,
 //! quotes, tables and links (shown as their text).
 
-use pulldown_cmark::{Event, HeadingLevel, Options, Parser, Tag, TagEnd};
-use ratatui::style::{Color, Modifier, Style};
+use pulldown_cmark::{Event, Options, Parser, Tag, TagEnd};
+use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 
+use super::theme::Styles;
 use super::wrap::{fill, sanitize, text_width, wrap_line};
-
-/// Background of fenced code blocks.
-pub const CODE_BG: Color = Color::Indexed(236);
-
-fn code_block_style() -> Style {
-    Style::default().bg(CODE_BG)
-}
-
-fn inline_code_style() -> Style {
-    Style::default().fg(Color::Yellow)
-}
-
-fn heading_style(level: HeadingLevel) -> Style {
-    let bold = Style::default().add_modifier(Modifier::BOLD);
-    match level {
-        HeadingLevel::H1 => bold.fg(Color::Magenta).add_modifier(Modifier::UNDERLINED),
-        HeadingLevel::H2 => bold.fg(Color::Cyan),
-        _ => bold,
-    }
-}
 
 /// One unwrapped line: later rows of it are indented by `indent`; code
 /// lines are filled with their background.
@@ -48,6 +29,7 @@ struct Builder {
     quote: usize,
     code: Option<String>,
     gap: bool,
+    st: Styles,
 }
 
 impl Builder {
@@ -61,10 +43,10 @@ impl Builder {
         let mut spans = Vec::new();
         if self.quote > 0 {
             let bars = "│ ".repeat(self.quote);
-            spans.push(Span::styled(bars, Style::default().fg(Color::DarkGray)));
+            spans.push(Span::styled(bars, self.st.quote()));
         }
         match self.marker.take() {
-            Some(marker) => spans.push(Span::styled(marker, Style::default().fg(Color::Cyan))),
+            Some(marker) => spans.push(Span::styled(marker, self.st.marker())),
             None if self.indent > 0 => spans.push(Span::raw(" ".repeat(self.indent))),
             None => {}
         }
@@ -145,7 +127,7 @@ impl Builder {
             Tag::Paragraph => self.block_start(),
             Tag::Heading { level, .. } => {
                 self.block_start();
-                self.styles.push(heading_style(level));
+                self.styles.push(self.st.heading(level));
             }
             Tag::BlockQuote(_) => {
                 self.block_start();
@@ -169,8 +151,7 @@ impl Builder {
                 .styles
                 .push(Style::default().add_modifier(Modifier::BOLD)),
             Tag::TableCell if !self.spans.is_empty() => {
-                self.spans
-                    .push(Span::styled(" │ ", Style::default().fg(Color::DarkGray)));
+                self.spans.push(Span::styled(" │ ", self.st.quote()));
             }
             Tag::Emphasis => self
                 .styles
@@ -181,11 +162,7 @@ impl Builder {
             Tag::Strikethrough => self
                 .styles
                 .push(Style::default().add_modifier(Modifier::CROSSED_OUT)),
-            Tag::Link { .. } => self.styles.push(
-                Style::default()
-                    .fg(Color::Blue)
-                    .add_modifier(Modifier::UNDERLINED),
-            ),
+            Tag::Link { .. } => self.styles.push(self.st.link()),
             _ => {}
         }
     }
@@ -231,14 +208,14 @@ impl Builder {
             Event::End(tag) => self.end(tag),
             Event::Text(text) | Event::Html(text) | Event::InlineHtml(text) => self.text(&text),
             Event::Code(code) => {
-                let style = self.style().patch(inline_code_style());
+                let style = self.style().patch(self.st.code());
                 self.spans.push(Span::styled(sanitize(&code), style));
             }
             Event::SoftBreak => self.text(" "),
             Event::HardBreak => self.flush(),
             Event::Rule => {
                 self.block_start();
-                let rule = Span::styled("─".repeat(20), Style::default().fg(Color::DarkGray));
+                let rule = Span::styled("─".repeat(20), self.st.rule());
                 self.spans.push(rule);
                 self.flush();
                 self.gap = true;
@@ -250,10 +227,13 @@ impl Builder {
 }
 
 /// Markdown to unwrapped styled lines.
-pub fn parse(text: &str) -> Vec<MdLine> {
+pub fn parse(text: &str, st: &Styles) -> Vec<MdLine> {
     let options =
         Options::ENABLE_STRIKETHROUGH | Options::ENABLE_TABLES | Options::ENABLE_TASKLISTS;
-    let mut builder = Builder::default();
+    let mut builder = Builder {
+        st: *st,
+        ..Builder::default()
+    };
     for event in Parser::new_ext(text, options) {
         builder.event(event);
     }
@@ -263,12 +243,12 @@ pub fn parse(text: &str) -> Vec<MdLine> {
 }
 
 /// Markdown wrapped to `width` columns.
-pub fn render(text: &str, width: usize) -> Vec<Line<'static>> {
+pub fn render(text: &str, width: usize, st: &Styles) -> Vec<Line<'static>> {
     let mut out = Vec::new();
-    for md in parse(text) {
+    for md in parse(text, st) {
         let rows = wrap_line(&md.line, width, md.indent);
         if md.code {
-            out.extend(rows.into_iter().map(|r| fill(r, width, code_block_style())));
+            out.extend(rows.into_iter().map(|r| fill(r, width, st.code())));
         } else {
             out.extend(rows);
         }
@@ -278,7 +258,13 @@ pub fn render(text: &str, width: usize) -> Vec<Line<'static>> {
 
 #[cfg(test)]
 mod tests {
+    use super::super::theme::color;
     use super::*;
+
+    /// The default theme's render; a local item shadows the glob import.
+    fn render(text: &str, width: usize) -> Vec<Line<'static>> {
+        super::render(text, width, &Styles::default())
+    }
 
     fn texts(lines: &[Line<'_>]) -> Vec<String> {
         lines.iter().map(|l| l.to_string()).collect()
@@ -309,8 +295,18 @@ mod tests {
         assert!(style_of(&lines, "ital")
             .add_modifier
             .contains(Modifier::ITALIC));
-        assert_eq!(style_of(&lines, "code").fg, Some(Color::Yellow));
-        assert_eq!(style_of(&lines, "link").fg, Some(Color::Blue));
+        let p = Styles::default().palette();
+        let title = style_of(&lines, "Title");
+        assert_eq!(title.fg, Some(color(p.accent)));
+        assert!(title.add_modifier.contains(Modifier::UNDERLINED));
+        let code = style_of(&lines, "code");
+        assert_eq!(
+            (code.fg, code.bg),
+            (Some(color(p.text)), Some(color(p.code)))
+        );
+        let link = style_of(&lines, "link");
+        assert_eq!(link.fg, Some(color(p.accent)));
+        assert!(link.add_modifier.contains(Modifier::UNDERLINED));
     }
 
     #[test]
@@ -319,7 +315,8 @@ mod tests {
         assert_eq!(lines.len(), 5);
         assert_eq!(lines[2].to_string().trim_end(), " fn main() {}");
         assert_eq!(lines[2].width(), 20);
-        assert!(lines[2].spans.iter().all(|s| s.style.bg == Some(CODE_BG)));
+        let code_bg = Some(color(Styles::default().palette().code));
+        assert!(lines[2].spans.iter().all(|s| s.style.bg == code_bg));
         assert_eq!(lines[4].to_string(), "after");
     }
 
