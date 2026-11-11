@@ -164,7 +164,9 @@ fn prompt_agents_files_stop_at_the_repository_root() {
 fn subagent_writes_a_child_log_naming_the_parent() {
     let env = env("subagent");
     let call = r#"{"prompt":"look around","description":"look"}"#;
+    // The subagent tool must be found first (PLAN.md D30).
     let responses = vec![
+        tool_reply(&[("toolu_0", "find_tools", r#"{"names":["subagent"]}"#)]),
         tool_reply(&[("toolu_1", "subagent", call)]),
         text_reply("child done"),
         text_reply("parent done"),
@@ -181,7 +183,8 @@ fn subagent_writes_a_child_log_naming_the_parent() {
     let (header, _) = trace::read(&child_path).unwrap();
     assert_eq!(header.parent.as_deref(), Some(conv.id.as_str()));
     let events = events(&conv.log_path);
-    let content = first(&events, "tool/result").data["message"]["content"][0]["content"]
+    let results: Vec<_> = events.iter().filter(|e| e.kind == "tool/result").collect();
+    let content = results[1].data["message"]["content"][0]["content"]
         .as_str()
         .unwrap()
         .to_string();
@@ -189,7 +192,16 @@ fn subagent_writes_a_child_log_naming_the_parent() {
     assert!(content.contains(&child.id));
     let requests = transport.requests();
     assert!(requests[0].body.contains(r#""name":"subagent""#));
-    assert!(!requests[1].body.contains(r#""name":"subagent""#));
+    // The child starts with find_tools only and has no subagent tool.
+    let child_body: serde_json::Value = serde_json::from_str(&requests[2].body).unwrap();
+    let tools = child_body["tools"].as_array().unwrap();
+    let loaded: Vec<&str> = tools
+        .iter()
+        .filter(|t| t.get("defer_loading").is_none())
+        .map(|t| t["name"].as_str().unwrap())
+        .collect();
+    assert_eq!(loaded, ["find_tools"]);
+    assert!(!requests[2].body.contains(r#""name":"subagent""#));
     drop(env);
 }
 

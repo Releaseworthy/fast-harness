@@ -5,6 +5,7 @@
 pub mod anthropic;
 pub mod antigravity;
 pub mod catalog;
+pub mod find;
 
 pub use catalog::{efforts, fit_effort};
 
@@ -52,6 +53,8 @@ pub struct ChatRequest<'a> {
     pub model: &'a str,
     pub system: &'a str,
     pub messages: &'a [Message],
+    /// Every tool of the agent. With [`find::FIND_TOOLS`] among them the
+    /// others are deferred until a find result names them (PLAN.md D30).
     pub tools: &'a [ToolSpec],
     pub max_tokens: u32,
     /// Reasoning effort (`low`, `medium`, `high`, `max`), `off` to disable

@@ -5,15 +5,22 @@
 //! Prompt caching: <https://platform.claude.com/docs/en/build-with-claude/prompt-caching>
 //! (search excerpt 2026-11-11): `cache_control: {"type": "ephemeral"}` caches
 //! for 5 minutes, `{"type": "ephemeral", "ttl": "1h"}` for one hour. As in
-//! pi-ai, breakpoints go on every system block, the last tool and the last
-//! block of a trailing user message.
+//! pi-ai, breakpoints go on every system block, the last loaded tool and the
+//! last block of a trailing user message.
+//!
+//! Tool search (<https://platform.claude.com/docs/en/agents-and-tools/tool-use/tool-search-tool>,
+//! read 2026-11-12): deferred tools carry `defer_loading: true`, a custom
+//! search answers with `tool_reference` blocks naming tools of the array, and
+//! at least one tool must stay loaded (`find_tools`).
+
+use std::collections::HashSet;
 
 use serde_json::{json, Map, Value};
 
 use super::models::ModelSpec;
 use super::thinking;
 use super::wire;
-use crate::llm::{ChatRequest, ToolSpec};
+use crate::llm::{find, ChatRequest, ToolSpec};
 use crate::types::{Block, Message, Role};
 
 /// The identity block that must open the system prompt in OAuth mode.
@@ -89,7 +96,7 @@ pub(crate) fn build(
 ) -> (Value, Vec<&'static str>) {
     let cache = cache_control(req.cache_long);
     let plan = thinking::plan_model(req.model, spec, req.effort, req.max_tokens);
-    let mut messages = convert_messages(req.messages, oauth, &cache);
+    let mut messages = convert_messages(req.messages, req.tools, oauth, &cache);
     if let Some(effort) = &plan.trailing_effort {
         messages
             .push(json!({"role": "system", "content": [], "output_config": {"effort": effort}}));
@@ -140,8 +147,14 @@ fn system_blocks(system: &str, oauth: bool, cache: &Value) -> Vec<Value> {
     blocks
 }
 
+/// Every tool, in order. With `find_tools` among them (PLAN.md D30) every
+/// other tool carries `defer_loading: true`, so the array never changes in a
+/// session, and the cache breakpoint goes on the last loaded tool (deferred
+/// tools are not part of the cached prefix).
 fn convert_tools(tools: &[ToolSpec], oauth: bool, cache: &Value) -> Value {
-    let last = tools.len().saturating_sub(1);
+    let deferring = find::deferring(tools);
+    let deferred = |tool: &ToolSpec| deferring && tool.name != find::FIND_TOOLS;
+    let last = tools.iter().rposition(|tool| !deferred(tool)).unwrap_or(0);
     let list = tools.iter().enumerate().map(|(index, tool)| {
         let name = if oauth {
             to_claude_code_name(&tool.name)
@@ -160,6 +173,9 @@ fn convert_tools(tools: &[ToolSpec], oauth: bool, cache: &Value) -> Value {
                 "required": required.unwrap_or_else(|| json!([])),
             },
         });
+        if deferred(tool) {
+            out["defer_loading"] = json!(true);
+        }
         if index == last {
             out["cache_control"] = cache.clone();
         }
@@ -168,13 +184,61 @@ fn convert_tools(tools: &[ToolSpec], oauth: bool, cache: &Value) -> Value {
     Value::Array(list.collect())
 }
 
-fn convert_messages(messages: &[Message], oauth: bool, cache: &Value) -> Vec<Value> {
+/// What a `find_tools` result needs to become `tool_reference` blocks: the
+/// find call ids (empty unless the tools defer) and the request's tools.
+struct Finds<'a> {
+    calls: HashSet<&'a str>,
+    tools: &'a [ToolSpec],
+    oauth: bool,
+}
+
+impl Finds<'_> {
+    /// The content of a successful find result: one `tool_reference` per
+    /// loaded tool that the request sends (any other name is a 400), then
+    /// the text; `None` for every other result.
+    fn content(&self, call_id: &str, text: &str) -> Option<Value> {
+        if !self.calls.contains(call_id) {
+            return None;
+        }
+        let mut blocks: Vec<Value> = find::loaded_names(text)
+            .into_iter()
+            .filter_map(|name| self.tools.iter().find(|tool| tool.name == name))
+            .map(|tool| {
+                let name = if self.oauth {
+                    to_claude_code_name(&tool.name)
+                } else {
+                    &tool.name
+                };
+                json!({"type": "tool_reference", "tool_name": name})
+            })
+            .collect();
+        blocks.push(json!({"type": "text", "text": text}));
+        Some(Value::Array(blocks))
+    }
+}
+
+fn convert_messages(
+    messages: &[Message],
+    tools: &[ToolSpec],
+    oauth: bool,
+    cache: &Value,
+) -> Vec<Value> {
+    let calls = if find::deferring(tools) {
+        find::find_call_ids(messages)
+    } else {
+        HashSet::new()
+    };
+    let finds = Finds {
+        calls,
+        tools,
+        oauth,
+    };
     let mut out: Vec<Value> = Vec::new();
     let mut previous_was_tool = false;
     for message in messages {
         let (role, blocks) = match message.role {
-            Role::User => ("user", user_blocks(&message.content)),
-            Role::Tool => ("user", user_blocks(&message.content)),
+            Role::User => ("user", user_blocks(&message.content, &finds)),
+            Role::Tool => ("user", user_blocks(&message.content, &finds)),
             Role::Assistant => (
                 "assistant",
                 assistant_blocks(&message.content, message.model.as_deref(), oauth),
@@ -213,7 +277,7 @@ fn mark_last_message(messages: &mut [Value], cache: &Value) {
     }
 }
 
-fn user_blocks(content: &[Block]) -> Vec<Value> {
+fn user_blocks(content: &[Block], finds: &Finds<'_>) -> Vec<Value> {
     let mut out = Vec::new();
     for block in content {
         match block {
@@ -227,7 +291,10 @@ fn user_blocks(content: &[Block]) -> Vec<Value> {
             } => out.push(json!({
                 "type": "tool_result",
                 "tool_use_id": normalize_tool_id(call_id),
-                "content": content,
+                "content": match is_error {
+                    false => finds.content(call_id, content).unwrap_or_else(|| json!(content)),
+                    true => json!(content),
+                },
                 "is_error": is_error,
             })),
             _ => {}
