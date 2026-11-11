@@ -231,6 +231,7 @@ impl<'a> Assembler<'a> {
         Message {
             role: Role::Assistant,
             content,
+            model: None,
         }
     }
 }
@@ -261,6 +262,7 @@ fn finish(part: Part) -> Option<Block> {
                 id,
                 name,
                 arguments,
+                signature: None,
             }
         }
         Part::Skipped => return None,

@@ -191,6 +191,7 @@ impl State {
                     id,
                     name,
                     arguments,
+                    ..
                 } => {
                     self.shown.insert(id.clone());
                     self.names.insert(id, name.clone());

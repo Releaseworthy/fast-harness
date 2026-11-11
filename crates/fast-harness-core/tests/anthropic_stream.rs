@@ -191,11 +191,13 @@ fn expected_tool_blocks() -> Vec<Block> {
             id: "toolu_1".into(),
             name: "read".into(),
             arguments: "{\"path\": \"a.rs\"}".into(),
+            signature: None,
         },
         Block::ToolCall {
             id: "toolu_2".into(),
             name: "shell".into(),
             arguments: "{}".into(),
+            signature: None,
         },
     ]
 }

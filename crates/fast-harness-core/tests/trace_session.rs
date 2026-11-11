@@ -80,7 +80,9 @@ fn tool_turn(w: &mut TraceWriter) {
             id: "c1".into(),
             name: "read".into(),
             arguments: "{}".into(),
+            signature: None,
         }],
+        model: None,
     };
     let result = Message {
         role: Role::Tool,
@@ -89,6 +91,7 @@ fn tool_turn(w: &mut TraceWriter) {
             content: "ok".into(),
             is_error: false,
         }],
+        model: None,
     };
     let (usage, timing) = (Usage::default(), Timing::default());
     w.assistant_message(1, 1, &call, &usage, StopReason::ToolUse, &timing, "a")

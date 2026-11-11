@@ -87,7 +87,7 @@ Fast Harness (this repo; binaries `fast-harness` and `fast-harness-gui`) is a ba
 One JSON object per line. A header line, then events `{type, seq, time, data}`; `time` is Unix milliseconds, `seq` counts from 0. Event names follow the DSH session log.
 
 ```
-{"type":"session","version":2,"id":"...","createdAt":1794400565123,"cwd":"F:\\work","harness":"fast-harness 0.1.0","parent":null}
+{"type":"session","version":3,"id":"...","createdAt":1794400565123,"cwd":"F:\\work","harness":"fast-harness 0.1.0","parent":null}
 {"type":"turn/start","seq":0,"time":...,"data":{"turn":1}}
 {"type":"user/message","seq":1,"time":...,"data":{"turn":1,"message":{...}}}
 {"type":"step/start","seq":2,"time":...,"data":{"turn":1,"step":1}}
@@ -103,6 +103,7 @@ One JSON object per line. A header line, then events `{type, seq, time, data}`; 
 ```
 
 - Version 2 (2026-11-11): `request/context` has the `wire` key (the attempt's capture name) only when wire capture is on; version 1 always had it. New logs are version 2; a resumed version 1 log keeps its header. Readers accept versions 1 and 2 and reject any other.
+- Version 3 (2026-11-12): assistant messages carry `model` (the full model id); `tool_call` blocks may carry `signature` (a Gemini thought signature). New logs are version 3; readers accept versions 1 to 3.
 - `request/header` is written only when the system prompt or the tool list changes.
 - A failed attempt writes `assistant/attempt` (`{turn, step, attempt, error, timing}`) before `llm/retry` or `account/switch`.
 - A subagent writes its own session log whose header has `parent` set to the parent session id; the parent's `tool/result` names the child session.

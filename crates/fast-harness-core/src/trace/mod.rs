@@ -17,8 +17,11 @@ pub use writer::TraceWriter;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-/// Format version written in every new header line. Version 2: the`n/// `request/context` key `wire` is present only with wire capture on.
-pub const VERSION: u32 = 2;
+/// Format version written in every new header line. Version 2: the
+/// `request/context` key `wire` is present only with wire capture on.
+/// Version 3: assistant messages carry `model`; `tool_call` blocks may carry
+/// `signature`.
+pub const VERSION: u32 = 3;
 
 /// The oldest version the reader accepts; a resumed log keeps its own header.
 pub const MIN_VERSION: u32 = 1;

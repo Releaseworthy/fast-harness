@@ -19,8 +19,10 @@ fn assistant() -> Message {
                 id: "c1".into(),
                 name: "glob".into(),
                 arguments: r#"{"pattern":"*.rs"}"#.into(),
+                signature: None,
             },
         ],
+        model: None,
     }
 }
 
@@ -32,6 +34,7 @@ fn results() -> Message {
             content: "a.rs".into(),
             is_error: false,
         }],
+        model: None,
     }
 }
 
@@ -41,6 +44,7 @@ fn final_answer() -> Message {
         content: vec![Block::Text {
             text: "Done".into(),
         }],
+        model: None,
     }
 }
 

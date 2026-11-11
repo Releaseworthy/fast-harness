@@ -52,6 +52,7 @@ impl Turn<'_> {
             let message = Message {
                 role: Role::Tool,
                 content: vec![block.clone()],
+                model: None,
             };
             traced(
                 self.conv
@@ -63,6 +64,7 @@ impl Turn<'_> {
         self.conv.messages.push(Message {
             role: Role::Tool,
             content: blocks,
+            model: None,
         });
         Ok(())
     }

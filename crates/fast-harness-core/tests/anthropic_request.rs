@@ -48,11 +48,13 @@ fn history() -> Vec<Message> {
             id: "call.1".into(),
             name: "read".into(),
             arguments: "{\"path\":\"a\"}".into(),
+            signature: None,
         },
         Block::ToolCall {
             id: "c2".into(),
             name: "shell".into(),
             arguments: "not json".into(),
+            signature: None,
         },
     ];
     let result = |id: &str, content: &str, is_error| Message {
@@ -62,6 +64,7 @@ fn history() -> Vec<Message> {
             content: content.into(),
             is_error,
         }],
+        model: None,
     };
     vec![
         Message::user("hello"),
@@ -69,6 +72,7 @@ fn history() -> Vec<Message> {
         Message {
             role: Role::Assistant,
             content: assistant,
+            model: None,
         },
         result("call.1", "text of a", false),
         result("c2", "boom", true),
@@ -320,4 +324,73 @@ fn live_models_list() {
     let list = list_models(&transport, &Auth::ApiKey(key)).unwrap();
     assert!(!list.is_empty());
     assert!(list.iter().all(|m| m.id.starts_with("claude-")));
+}
+
+fn signed_turn(model: &str, call_id: &str) -> Vec<Message> {
+    let assistant = Message {
+        role: Role::Assistant,
+        content: vec![
+            Block::Thinking {
+                text: "plan".into(),
+                signature: Some(format!("sig-{call_id}")),
+            },
+            Block::ToolCall {
+                id: call_id.into(),
+                name: "read".into(),
+                arguments: "{\"path\":\"a\"}".into(),
+                signature: Some("gemini-sig".into()),
+            },
+        ],
+        model: Some(model.into()),
+    };
+    let result = Message {
+        role: Role::Tool,
+        content: vec![Block::ToolResult {
+            call_id: call_id.into(),
+            content: "ok".into(),
+            is_error: false,
+        }],
+        model: None,
+    };
+    vec![assistant, result]
+}
+
+#[test]
+fn thinking_goes_back_only_to_anthropic_models() {
+    let mut messages = vec![Message::user("hello")];
+    messages.extend(signed_turn("antigravity/gemini-x", "g1"));
+    messages.push(Message::user("next"));
+    messages.extend(signed_turn("claude-opus-5-5", "c1"));
+    messages.push(Message::user("again"));
+    let transport = ScriptedTransport::new(vec![ScriptedResponse::new(200, DONE, 5)]);
+    let cancel = AtomicBool::new(false);
+    let req = ChatRequest {
+        model: "claude-opus-5-5",
+        system: "Be brief.",
+        messages: &messages,
+        tools: &tools(),
+        max_tokens: 4096,
+        effort: None,
+        cache_long: false,
+        cancel: &cancel,
+    };
+    let auth = Auth::ApiKey("k".into());
+    let provider = Anthropic::new("https://example.test/");
+    provider
+        .stream(&transport, &auth, &req, &mut |_| {})
+        .unwrap();
+    let recorded = transport.requests().remove(0);
+    assert!(!recorded.body.contains("gemini-sig"));
+    assert!(!recorded.body.contains("sig-g1"));
+    let body: Value = serde_json::from_str(&recorded.body).unwrap();
+    let gemini = &body["messages"][1]["content"];
+    assert_eq!(gemini.as_array().unwrap().len(), 1);
+    assert_eq!(gemini[0]["type"], "tool_use");
+    assert!(gemini[0].get("signature").is_none());
+    let claude = &body["messages"][4]["content"];
+    assert_eq!(
+        claude[0],
+        json!({"type": "thinking", "thinking": "plan", "signature": "sig-c1"})
+    );
+    assert_eq!(claude[1]["type"], "tool_use");
 }

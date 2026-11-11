@@ -33,6 +33,7 @@ fn result(call_id: &str) -> Message {
             content: "ok".into(),
             is_error: false,
         }],
+        model: None,
     }
 }
 

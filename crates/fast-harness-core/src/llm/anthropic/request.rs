@@ -175,7 +175,10 @@ fn convert_messages(messages: &[Message], oauth: bool, cache: &Value) -> Vec<Val
         let (role, blocks) = match message.role {
             Role::User => ("user", user_blocks(&message.content)),
             Role::Tool => ("user", user_blocks(&message.content)),
-            Role::Assistant => ("assistant", assistant_blocks(&message.content, oauth)),
+            Role::Assistant => (
+                "assistant",
+                assistant_blocks(&message.content, message.model.as_deref(), oauth),
+            ),
         };
         let is_tool = message.role == Role::Tool;
         if blocks.is_empty() {
@@ -233,14 +236,15 @@ fn user_blocks(content: &[Block]) -> Vec<Value> {
     out
 }
 
-fn assistant_blocks(content: &[Block], oauth: bool) -> Vec<Value> {
+fn assistant_blocks(content: &[Block], model: Option<&str>, oauth: bool) -> Vec<Value> {
+    let send_thinking = !model.is_some_and(|m| m.starts_with("antigravity/"));
     let mut out = Vec::new();
     for block in content {
         match block {
             Block::Text { text } if !text.trim().is_empty() => {
                 out.push(json!({"type": "text", "text": text}));
             }
-            Block::Thinking { text, signature } => {
+            Block::Thinking { text, signature } if send_thinking => {
                 let signature = signature.as_deref().filter(|s| !s.trim().is_empty());
                 match signature {
                     Some(signature) => out.push(
@@ -253,13 +257,14 @@ fn assistant_blocks(content: &[Block], oauth: bool) -> Vec<Value> {
                     None => {}
                 }
             }
-            Block::RedactedThinking { data } => {
+            Block::RedactedThinking { data } if send_thinking => {
                 out.push(json!({"type": "redacted_thinking", "data": data}));
             }
             Block::ToolCall {
                 id,
                 name,
                 arguments,
+                ..
             } => out.push(tool_use(id, name, arguments, oauth)),
             _ => {}
         }

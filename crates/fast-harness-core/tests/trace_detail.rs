@@ -98,8 +98,10 @@ fn thinking_answer() -> Message {
                 id: "c1".into(),
                 name: "read".into(),
                 arguments: r#"{"path":"a.txt"}"#.into(),
+                signature: None,
             },
         ],
+        model: None,
     }
 }
 
@@ -118,6 +120,7 @@ fn tool_results() -> Message {
                 is_error: true,
             },
         ],
+        model: None,
     }
 }
 
@@ -170,6 +173,7 @@ fn write_turn(path: &Path) -> Vec<TraceEvent> {
         content: vec![Block::Text {
             text: "It says line one.".into(),
         }],
+        model: None,
     };
     w.assistant_message(
         1,
