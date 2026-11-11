@@ -282,6 +282,41 @@ impl AccountPool {
         save_sign_in(&mut state.store, sign_in)
     }
 
+    /// The Google accounts, in store order (the Google pool's view).
+    pub fn google_accounts(&self) -> Vec<Account> {
+        let state = self.lock();
+        let list = state.store.list();
+        list.into_iter()
+            .filter(|a| a.provider == Provider::Google)
+            .cloned()
+            .collect()
+    }
+
+    /// The active Google account id.
+    pub fn active_google(&self) -> Option<String> {
+        let state = self.lock();
+        let active = state.store.active_for(Provider::Google);
+        active.map(|a| a.id.clone())
+    }
+
+    /// The decrypted `Secret::Google` of a Google account.
+    pub(crate) fn google_secret(&self, id: &str) -> Option<Secret> {
+        match self.lock().store.secret(id) {
+            Ok(Some(secret @ Secret::Google { .. })) => Some(secret),
+            _ => None,
+        }
+    }
+
+    /// Replaces the secret of Google account `id` (encrypted) and saves the store.
+    pub(crate) fn set_google_secret(&self, id: &str, secret: Secret) -> Result<(), StoreError> {
+        let mut state = self.lock();
+        if state.store.get(id).map(|a| a.provider) != Some(Provider::Google) {
+            return Err(StoreError::UnknownAccount(id.to_string()));
+        }
+        state.store.set_secret(id, secret)?;
+        state.store.save()
+    }
+
     /// Sets the pause between two usage-endpoint reads of [`AccountPool::poll_usage`].
     pub fn set_read_gap(&self, gap: Duration) {
         let ms = u64::try_from(gap.as_millis()).unwrap_or(u64::MAX);

@@ -4,6 +4,7 @@
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+use crate::accounts::google::GoogleAuth;
 use crate::accounts::pool::AccountPool;
 use crate::agent::{prompt, Agent, AgentParts, Conversation};
 use crate::auth::{AuthSource, StaticAuth};
@@ -20,6 +21,8 @@ pub struct Runtime {
     pub home: PathBuf,
     pub config: Config,
     pub pool: Arc<AccountPool>,
+    /// The Google accounts of the same pool (PLAN.md D23); not routed yet.
+    pub google: Arc<GoogleAuth>,
     pub transport: Arc<UreqTransport>,
     pub provider: Arc<Anthropic>,
 }
@@ -49,10 +52,12 @@ impl Runtime {
         let config = Config::load(&home)?;
         models::load_cache(&home);
         let pool = Arc::new(open_pool(&home)?);
+        let google = Arc::new(GoogleAuth::new(Arc::clone(&pool), &home));
         Ok(Runtime {
             home,
             config,
             pool,
+            google,
             transport: Arc::new(UreqTransport::new()),
             provider: Arc::new(Anthropic::default()),
         })
