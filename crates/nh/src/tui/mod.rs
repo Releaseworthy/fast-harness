@@ -9,6 +9,8 @@ mod markdown;
 mod panels;
 mod picker;
 #[cfg(test)]
+mod picker_fetch_tests;
+#[cfg(test)]
 mod picker_tests;
 mod screens;
 #[cfg(test)]

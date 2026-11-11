@@ -90,7 +90,7 @@ fn texts(lines: &[ratatui::text::Line<'_>]) -> Vec<String> {
 #[test]
 fn ctrl_p_picks_a_model_and_fits_the_effort() {
     let mut ui = Ui::new("claude-opus-5-5".into(), Some("max".into()));
-    assert_eq!(ctrl(&mut ui, 'p'), Action::None);
+    assert_eq!(ctrl(&mut ui, 'p'), Action::FetchModels);
     let picker = ui.picker.as_ref().unwrap();
     assert_eq!(picker.kind, PickerKind::Model);
     assert_eq!(picker.items[picker.selected].0, "claude-opus-5-5");

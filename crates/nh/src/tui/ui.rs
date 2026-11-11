@@ -2,7 +2,7 @@
 //! the state and return an [`Action`] that the controller carries out.
 
 use nh_core::accounts::pool::AccountStatus;
-use nh_core::llm::anthropic::ModelInfo;
+use nh_core::llm::anthropic::{builtin_models, ModelInfo};
 use nh_core::session::SessionSummary;
 use nh_core::theme::{self, Theme};
 use ratatui::crossterm::event::{
@@ -55,6 +55,8 @@ pub enum Action {
     PollUsage,
     SetModel(String),
     SetEffort(String),
+    /// Fetch the live model list unless a fetch is running.
+    FetchModels,
     /// Switch to the next theme and save it.
     CycleTheme,
 }
@@ -78,6 +80,10 @@ pub struct Ui {
     pub accounts: Vec<AccountStatus>,
     pub sessions: Vec<SessionSummary>,
     pub models: Vec<ModelInfo>,
+    /// The model list the pickers show: cached, then live.
+    pub catalog: Vec<ModelInfo>,
+    /// A live model list fetch is running.
+    pub fetching: bool,
     /// The trace screen: timeline entries, steps table and drawn lines.
     pub trace: TraceView,
     /// The open model or effort picker of the chat box.
@@ -106,6 +112,8 @@ impl Ui {
             accounts: Vec::new(),
             sessions: Vec::new(),
             models: Vec::new(),
+            catalog: builtin_models(),
+            fetching: false,
             trace: TraceView::default(),
             picker: None,
             model,
@@ -260,8 +268,14 @@ impl Ui {
             }
             KeyCode::Char('t') if ctrl && !alt => self.show_thinking = !self.show_thinking,
             KeyCode::Char('n') if ctrl && !alt => return self.new_session(),
-            KeyCode::Char('p') if ctrl && !alt => self.open_picker(PickerKind::Model),
-            KeyCode::Char('e') if ctrl && !alt => self.open_picker(PickerKind::Effort),
+            KeyCode::Char('p') if ctrl && !alt => {
+                self.open_picker(PickerKind::Model);
+                return Action::FetchModels;
+            }
+            KeyCode::Char('e') if ctrl && !alt => {
+                self.open_picker(PickerKind::Effort);
+                return Action::FetchModels;
+            }
             KeyCode::PageUp => self.scroll_up(self.page()),
             KeyCode::PageDown => self.scroll_down(self.page()),
             KeyCode::Home if ctrl || self.input.is_empty() => self.top = Some(0),
