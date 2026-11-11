@@ -1,7 +1,8 @@
 //! The tool boundary. A tool is a function of its JSON arguments and the
 //! context; it never panics and reports failure through `ToolOutput::is_error`.
-//! Built-in tools: read, write, edit, shell, grep, glob (`builtin`). The
-//! subagent tool lives in `agent` because it runs a nested agent loop.
+//! Built-in tools: read, write, edit, shell, grep, glob (`builtin`), behind
+//! `find_tools` (`find`, PLAN.md D30). The subagent tool lives in `agent`
+//! because it runs a nested agent loop.
 
 use std::path::Path;
 use std::sync::atomic::AtomicBool;
@@ -12,6 +13,7 @@ use crate::llm::ToolSpec;
 
 mod args;
 mod edit;
+pub mod find;
 mod glob;
 mod grep;
 mod read;
@@ -85,20 +87,42 @@ pub fn clip(content: String, max_bytes: usize) -> String {
 #[derive(Default)]
 pub struct Registry {
     tools: Vec<Box<dyn Tool>>,
+    /// With `find`, `specs[0]` is `find_tools` and `specs[i + 1]` is `tools[i]`.
     specs: Vec<ToolSpec>,
+    find: bool,
 }
 
 impl Registry {
+    /// A registry whose tools are all loaded from the start (tests, tools).
     pub fn new() -> Registry {
         Registry::default()
+    }
+
+    /// A registry that starts with `find_tools` first and defers the other
+    /// tools until a find loads them (PLAN.md D30).
+    pub fn with_find() -> Registry {
+        Registry {
+            tools: Vec::new(),
+            specs: vec![find::spec(&[])],
+            find: true,
+        }
     }
 
     pub fn add(&mut self, tool: Box<dyn Tool>) {
         self.specs.push(tool.spec());
         self.tools.push(tool);
+        if self.find {
+            self.specs[0] = find::spec(&self.specs[1..]);
+        }
     }
 
-    /// Specs in registration order (the order sent to the model).
+    /// True when the other tools must be found before they are called.
+    pub fn finds(&self) -> bool {
+        self.find
+    }
+
+    /// Specs in registration order (the order sent to the model), with
+    /// `find_tools` first when the registry finds.
     pub fn specs(&self) -> &[ToolSpec] {
         &self.specs
     }
@@ -121,15 +145,20 @@ impl Registry {
                 return ToolOutput::err(format!("tool arguments are not valid JSON: {err}"))
             }
         };
-        let mut output = self.tools[index].run(&args, ctx);
+        let mut output = match (self.find, index) {
+            (true, 0) => find::run(&args, &self.specs[1..]),
+            (true, index) => self.tools[index - 1].run(&args, ctx),
+            (false, index) => self.tools[index].run(&args, ctx),
+        };
         output.content = clip(output.content, MAX_OUTPUT_BYTES);
         output
     }
 }
 
-/// Registry with the built-in tools: read, write, edit, shell, grep, glob.
+/// Registry with `find_tools` and the built-in tools: read, write, edit,
+/// shell, grep, glob.
 pub fn builtin() -> Registry {
-    let mut registry = Registry::new();
+    let mut registry = Registry::with_find();
     registry.add(Box::new(read::ReadTool));
     registry.add(Box::new(write::WriteTool));
     registry.add(Box::new(edit::EditTool));

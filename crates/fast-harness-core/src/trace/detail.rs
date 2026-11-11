@@ -3,7 +3,16 @@
 //! the tool results, retries, account switches and turn totals.
 //! The TUI, the GUI and `fast-harness trace` all show these entries.
 
+use crate::llm::find;
 use crate::trace::{kind, TraceEvent};
+
+/// "Tool call read", or for a find "Tool call find_tools: read, edit".
+fn call_title(name: &str, arguments: &str) -> String {
+    match find::call_label(arguments) {
+        Some(label) if name == find::FIND_TOOLS => format!("Tool call {name}: {label}"),
+        _ => format!("Tool call {name}"),
+    }
+}
 use crate::types::{Block, Message, Usage};
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
@@ -195,11 +204,8 @@ impl State {
                 } => {
                     self.shown.insert(id.clone());
                     self.names.insert(id, name.clone());
-                    self.push(
-                        EntryKind::ToolCall,
-                        format!("Tool call {name}"),
-                        pretty(&arguments),
-                    );
+                    let title = call_title(&name, &arguments);
+                    self.push(EntryKind::ToolCall, title, pretty(&arguments));
                 }
                 _ => {}
             }
@@ -221,8 +227,9 @@ impl State {
         let (id, name) = (text(data, "callId"), text(data, "name"));
         self.names.insert(id.to_string(), name.to_string());
         if !self.shown.contains(id) {
-            let body = pretty(text(data, "arguments"));
-            self.push(EntryKind::ToolCall, format!("Tool call {name}"), body);
+            let arguments = text(data, "arguments");
+            let title = call_title(name, arguments);
+            self.push(EntryKind::ToolCall, title, pretty(arguments));
         }
     }
 

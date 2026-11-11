@@ -2,6 +2,8 @@
 
 use serde_json::Value;
 
+use crate::llm::find::{self, FIND_TOOLS};
+
 /// Longest summary, in characters.
 const MAX_CHARS: usize = 80;
 
@@ -42,6 +44,8 @@ fn known_summary(name: &str, args: &Value) -> Option<String> {
             None => pattern.to_string(),
         }),
         "glob" => field("pattern").map(str::to_string),
+        // `find_tools`: the names it asks for, else its quoted query.
+        FIND_TOOLS => find::call_label(&args.to_string()),
         "subagent" => field("description")
             .or_else(|| field("prompt"))
             .map(one_line),

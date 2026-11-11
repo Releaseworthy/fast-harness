@@ -8,6 +8,7 @@ use std::time::Instant;
 use crate::agent::turn::{ms, traced, Res, Turn};
 use crate::agent::Agent;
 use crate::events::AgentEvent;
+use crate::llm::find::{self, FIND_TOOLS};
 use crate::tools::{ToolCtx, ToolOutput};
 use crate::types::{Block, Message, Role};
 
@@ -41,7 +42,10 @@ impl Turn<'_> {
             let trace = &mut self.conv.trace;
             traced(trace.tool_call(self.turn, step, &call.id, &call.name, &call.arguments))?;
         }
-        let results = execute(self.agent, &calls, self.cancel, &mut *self.sink);
+        // Tools found by earlier steps; a find in this step loads for the next.
+        let found = find::found(&self.conv.messages);
+        let loaded = self.agent.tools.finds().then_some(found.as_slice());
+        let results = execute(self.agent, &calls, loaded, self.cancel, &mut *self.sink);
         let mut blocks = Vec::with_capacity(calls.len());
         for (call, (output, duration_ms)) in calls.iter().zip(results) {
             let block = Block::ToolResult {
@@ -75,6 +79,7 @@ impl Turn<'_> {
 fn execute(
     agent: &Agent,
     calls: &[Call],
+    loaded: Option<&[String]>,
     cancel: &AtomicBool,
     sink: &mut dyn FnMut(AgentEvent),
 ) -> Vec<(ToolOutput, u64)> {
@@ -92,7 +97,10 @@ fn execute(
             let tx = tx.clone();
             scope.spawn(move || {
                 let started = Instant::now();
-                let output = run_one(agent, call, cancel);
+                let output = match not_loaded(agent, &call.name, loaded) {
+                    Some(error) => error,
+                    None => run_one(agent, call, cancel),
+                };
                 let _ = tx.send((index, output, ms(started)));
             });
         }
@@ -111,6 +119,20 @@ fn execute(
         .into_iter()
         .map(|result| result.unwrap_or_else(|| (ToolOutput::err("the tool gave no result"), 0)))
         .collect()
+}
+
+/// The error for a known tool that no find has loaded yet (`loaded` is
+/// `None` when the registry loads every tool from the start).
+fn not_loaded(agent: &Agent, name: &str, loaded: Option<&[String]>) -> Option<ToolOutput> {
+    let loaded = loaded?;
+    let known = agent.tools.specs().iter().any(|spec| spec.name == name);
+    if name == FIND_TOOLS || !known || loaded.iter().any(|found| found == name) {
+        return None;
+    }
+    Some(ToolOutput::err(format!(
+        "tool `{name}` is not loaded yet: call {FIND_TOOLS} with names [\"{name}\"] first, \
+        then call it in a later step"
+    )))
 }
 
 /// A panicking tool becomes an error result instead of ending the turn.

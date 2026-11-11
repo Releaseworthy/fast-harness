@@ -19,7 +19,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use serde_json::{json, Map, Value};
 
 use super::ToolNames;
-use crate::llm::{ChatRequest, ErrorKind, LlmError, ToolSpec};
+use crate::llm::{find, ChatRequest, ErrorKind, LlmError, ToolSpec};
+use crate::types::Message;
 use names::NameTable;
 
 /// The identity text Antigravity's own client puts first in `systemInstruction`.
@@ -52,7 +53,8 @@ pub fn build(
 ) -> Result<Envelope, LlmError> {
     let mut table = NameTable::default();
     // Declarations first, so history calls reuse their sent names.
-    let tools = declarations(req.tools, &mut table);
+    let loaded = loaded_tools(req.tools, req.messages);
+    let tools = declarations(&loaded, &mut table);
     let target = contents::Target {
         full_model: req.model,
         bare_model: model,
@@ -100,6 +102,21 @@ pub fn system_instruction(system: &str) -> Value {
         format!("{IDENTITY}\n\n{system}")
     };
     json!({"role": "user", "parts": [{"text": text}]})
+}
+
+/// The tools to declare: all of them, or with `find_tools` among them (PLAN.md
+/// D30) `find_tools` and then the tools found so far in first-found order, so
+/// the list only grows during a session.
+pub fn loaded_tools(tools: &[ToolSpec], messages: &[Message]) -> Vec<ToolSpec> {
+    if !find::deferring(tools) {
+        return tools.to_vec();
+    }
+    let finder = tools.iter().filter(|tool| tool.name == find::FIND_TOOLS);
+    let found = find::found(messages);
+    let found = found
+        .iter()
+        .filter_map(|name| tools.iter().find(|tool| tool.name == *name));
+    finder.chain(found).cloned().collect()
 }
 
 /// One `{functionDeclarations}` entry with sanitised names and cleaned
