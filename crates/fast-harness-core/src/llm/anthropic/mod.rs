@@ -178,6 +178,7 @@ impl Provider for Anthropic {
         if req.cancel.load(Ordering::Relaxed) {
             return Err(LlmError::new(ErrorKind::Aborted, "cancelled"));
         }
+        wire::reject_foreign(auth)?;
         let oauth = matches!(auth, Auth::OAuth(_));
         let (body, betas) = request::build(req, models::find(req.model), oauth);
         let body = body.to_string();

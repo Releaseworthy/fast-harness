@@ -21,6 +21,8 @@ pub enum Auth {
     ApiKey(String),
     /// Claude subscription access token, sent as `Authorization: Bearer`.
     OAuth(String),
+    /// Google Antigravity access token and Cloud Code project (PLAN.md D23).
+    Google { access: String, project: String },
 }
 
 impl fmt::Debug for Auth {
@@ -29,6 +31,7 @@ impl fmt::Debug for Auth {
         match self {
             Auth::ApiKey(_) => f.write_str("ApiKey(<redacted>)"),
             Auth::OAuth(_) => f.write_str("OAuth(<redacted>)"),
+            Auth::Google { .. } => f.write_str("Google(<redacted>)"),
         }
     }
 }
@@ -217,6 +220,11 @@ mod tests {
             format!("{:?}", Auth::OAuth("sk-secret".into())),
             "OAuth(<redacted>)"
         );
+        let google = Auth::Google {
+            access: "fake-access".into(),
+            project: "fake-project".into(),
+        };
+        assert_eq!(format!("{google:?}"), "Google(<redacted>)");
         let timing = Timing {
             ttfb_ms: 1,
             first_token_ms: 2,

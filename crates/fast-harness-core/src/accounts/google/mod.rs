@@ -6,14 +6,22 @@
 //! - `project`: the Cloud Code project and plan (`loadCodeAssist`, `onboardUser`).
 //! - `quota`: `retrieveUserQuotaSummary` groups with their 5 h and weekly windows.
 //! - `signin`: the whole sign-in, stored as a `provider: google` account.
+//! - `pool`, `pool_failover`, `pool_order`, `poll`: [`GoogleAuth`], the
+//!   `AuthSource` over the Google accounts (leases, holds, failover, quota reads).
+//! - `usage_file`: `google-usage.json`, the last quota read of each account.
 //!
 //! Control calls go through [`crate::llm::antigravity::hub`].
 
 pub mod client;
 pub mod oauth;
+mod poll;
+mod pool;
+mod pool_failover;
+pub mod pool_order;
 pub mod project;
 pub mod quota;
 pub mod signin;
+pub mod usage_file;
 
 use crate::accounts::oauth::OAuthError;
 use crate::accounts::store::StoreError;
@@ -26,9 +34,16 @@ use std::time::Duration;
 
 pub use client::{client_from, load_client, save_client, GoogleClient};
 pub use oauth::{begin_login, GoogleLoginFlow, GoogleUser};
+pub use poll::{GOOGLE_POLL_EVERY_MS, QUOTA_BACKOFF_MAX_MS, QUOTA_BACKOFF_MS, TURN_READ_GAP_MS};
+pub use pool::{
+    GoogleAuth, GoogleHold, GoogleStatus, HoldReason, GOOGLE_BROKEN_HOLD_MS,
+    GOOGLE_REFRESH_MARGIN_MS,
+};
+pub use pool_failover::{is_validation, validation_url};
 pub use project::{ProjectInfo, FALLBACK_PROJECT_ID};
 pub use quota::{parse_quota_summary, GoogleQuota, QuotaGroup, QuotaWindow};
 pub use signin::{complete_sign_in, fetch_sign_in, save_sign_in, SignIn};
+pub use usage_file::{load_usage, save_usage, usage_path, QuotaRead, USAGE_FILE, USAGE_VERSION};
 
 /// The Google endpoints and the Hub. `Default` is the real service; tests
 /// point every URL at a scripted transport.

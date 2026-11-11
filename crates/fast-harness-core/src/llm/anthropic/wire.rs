@@ -7,7 +7,7 @@
 
 use super::error;
 use crate::http::{Flow, HttpHead, HttpRequest, Transport};
-use crate::llm::{Auth, LlmError};
+use crate::llm::{Auth, ErrorKind, LlmError};
 
 /// The `anthropic-version` pi-ai's SDK sends (PLAN.md fixes it too).
 pub(crate) const API_VERSION: &str = "2023-06-01";
@@ -47,6 +47,8 @@ pub(crate) fn headers(auth: &Auth, betas: &[&str]) -> Vec<(String, String)> {
             out.push(("x-app".into(), "cli".into()));
             out.push(("authorization".into(), format!("Bearer {token}")));
         }
+        // Never sent: eject_foreign stops it before any request.
+        Auth::Google { .. } => {}
     }
     out.push(("anthropic-version".into(), API_VERSION.into()));
     if !betas.is_empty() {
@@ -59,7 +61,18 @@ pub(crate) fn headers(auth: &Auth, betas: &[&str]) -> Vec<(String, String)> {
 pub(crate) fn auth_betas(auth: &Auth) -> Vec<&'static str> {
     match auth {
         Auth::OAuth(_) => vec![BETA_CLAUDE_CODE, BETA_OAUTH],
-        Auth::ApiKey(_) => Vec::new(),
+        Auth::ApiKey(_) | Auth::Google { .. } => Vec::new(),
+    }
+}
+
+/// A credential of another provider: an Auth error instead of a request.
+pub(crate) fn reject_foreign(auth: &Auth) -> Result<(), LlmError> {
+    match auth {
+        Auth::Google { .. } => Err(LlmError::new(
+            ErrorKind::Auth,
+            "a Google credential cannot call Anthropic",
+        )),
+        Auth::ApiKey(_) | Auth::OAuth(_) => Ok(()),
     }
 }
 
@@ -69,6 +82,7 @@ pub(crate) fn get(
     url: &str,
     auth: &Auth,
 ) -> Result<(HttpHead, Vec<u8>), LlmError> {
+    reject_foreign(auth)?;
     let owned = headers(auth, &auth_betas(auth));
     let refs: Vec<(&str, &str)> = owned
         .iter()
