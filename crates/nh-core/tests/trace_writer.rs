@@ -1,0 +1,246 @@
+use nh_core::llm::{Timing, ToolSpec};
+use nh_core::trace::{self, RequestContext, SessionHeader, TraceWriter};
+use nh_core::types::{Block, Message, Role, StopReason, Usage};
+use serde_json::json;
+use std::path::{Path, PathBuf};
+
+struct TempDir(PathBuf);
+
+impl TempDir {
+    fn new(name: &str) -> TempDir {
+        let nanos = trace::now_ms();
+        let path =
+            std::env::temp_dir().join(format!("nh-test-{name}-{}-{nanos}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&path);
+        TempDir(path)
+    }
+}
+
+impl Drop for TempDir {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
+
+fn header(id: &str) -> SessionHeader {
+    SessionHeader {
+        version: 1,
+        id: id.into(),
+        created_at: 1_794_400_565_123,
+        cwd: "F:\\work".into(),
+        harness: "nh 0.1.0".into(),
+        parent: None,
+    }
+}
+
+fn keys(value: &serde_json::Value) -> Vec<String> {
+    let mut keys: Vec<String> = value.as_object().unwrap().keys().cloned().collect();
+    keys.sort();
+    keys
+}
+
+fn sorted(list: &[&str]) -> Vec<String> {
+    let mut keys: Vec<String> = list.iter().map(|s| s.to_string()).collect();
+    keys.sort();
+    keys
+}
+
+#[test]
+fn writer_is_send() {
+    fn assert_send<T: Send>() {}
+    assert_send::<TraceWriter>();
+}
+
+#[test]
+fn header_line_is_exactly_the_plan_format() {
+    let tmp = TempDir::new("header");
+    let path = tmp.0.join("a").join("b").join("s.jsonl");
+    TraceWriter::create(&path, &header("x")).unwrap();
+    let text = std::fs::read_to_string(&path).unwrap();
+    assert_eq!(
+        text,
+        "{\"type\":\"session\",\"version\":1,\"id\":\"x\",\"createdAt\":1794400565123,\
+         \"cwd\":\"F:\\\\work\",\"harness\":\"nh 0.1.0\",\"parent\":null}\n"
+    );
+    assert!(
+        TraceWriter::create(&path, &header("x")).is_err(),
+        "never overwrites"
+    );
+    let made = SessionHeader::new("y", "C:\\", Some("x".into()));
+    assert_eq!(made.harness, format!("nh {}", env!("CARGO_PKG_VERSION")));
+    assert_eq!((made.version, made.parent.as_deref()), (1, Some("x")));
+}
+
+#[test]
+fn emit_round_trips_and_lines_have_key_order() {
+    let tmp = TempDir::new("roundtrip");
+    let path = tmp.0.join("s.jsonl");
+    let mut writer = TraceWriter::create(&path, &header("r")).unwrap();
+    assert_eq!(writer.emit("x/one", json!({"a": 1})).unwrap(), 0);
+    assert_eq!(writer.emit("x/two", json!([2])).unwrap(), 1);
+    let text = std::fs::read_to_string(&path).unwrap();
+    let second = text.lines().nth(1).unwrap();
+    assert!(second.starts_with("{\"type\":\"x/one\",\"seq\":0,\"time\":"));
+    assert!(second.ends_with(",\"data\":{\"a\":1}}"));
+    let (head, events) = trace::read(&path).unwrap();
+    assert_eq!(head, header("r"));
+    assert_eq!(events.len(), 2);
+    assert_eq!((events[1].kind.as_str(), events[1].seq), ("x/two", 1));
+    assert_eq!(events[1].data, json!([2]));
+    assert!(events[0].time >= 1_700_000_000_000);
+}
+
+fn fixtures() -> (Usage, Timing, ToolSpec, Message) {
+    let usage = Usage {
+        input: 4,
+        output: 363,
+        cache_read: 0,
+        cache_write: 24114,
+    };
+    let timing = Timing {
+        ttfb_ms: 812,
+        first_token_ms: 1190,
+        total_ms: 5100,
+        chunks: 96,
+        bytes: 18233,
+    };
+    let tool = ToolSpec {
+        name: "read".into(),
+        description: "Read a file".into(),
+        schema: json!({"type": "object"}),
+    };
+    let result = Message {
+        role: Role::Tool,
+        content: vec![Block::ToolResult {
+            call_id: "c1".into(),
+            content: "ok".into(),
+            is_error: false,
+        }],
+    };
+    (usage, timing, tool, result)
+}
+
+fn write_every_event(path: &Path) {
+    let mut w = TraceWriter::create(path, &header("k")).unwrap();
+    let (usage, timing, tool, result) = fixtures();
+    let context = RequestContext {
+        turn: 1,
+        step: 1,
+        attempt: 1,
+        provider: "anthropic",
+        model: "claude-opus-5-5",
+        account: "u-1f3c",
+        effort: Some("high"),
+        wire: "t1-s1-a1",
+    };
+    let (answer, stop) = (Message::user("x"), StopReason::ToolUse);
+    w.turn_start(1).unwrap();
+    w.user_message(1, &Message::user("hi")).unwrap();
+    w.step_start(1, 1).unwrap();
+    w.request_header("sys", &[tool]).unwrap();
+    w.request_context(&context).unwrap();
+    w.assistant_attempt(1, 1, 1, "Overloaded", &timing).unwrap();
+    w.llm_retry(1, 1, 1, 2000, "Overloaded").unwrap();
+    w.account_switch("u-1f3c", "u-77ab", "RateLimit", Some(9))
+        .unwrap();
+    w.assistant_message(1, 1, &answer, &usage, stop, &timing, "u-1f3c")
+        .unwrap();
+    w.tool_call(1, 1, "c1", "read", "{}").unwrap();
+    w.tool_result(1, 1, &result, 3).unwrap();
+    w.step_end(1, 1, 5120).unwrap();
+    w.turn_end(1, 1, &usage, 14200, "done").unwrap();
+}
+
+/// Event type and its data keys, as PLAN.md shows them.
+const EXPECTED: [(&str, &str); 13] = [
+    ("turn/start", "turn"),
+    ("user/message", "turn message"),
+    ("step/start", "turn step"),
+    ("request/header", "system tools"),
+    (
+        "request/context",
+        "turn step attempt provider model account effort wire",
+    ),
+    ("assistant/attempt", "turn step attempt error timing"),
+    ("llm/retry", "turn step attempt delayMs error"),
+    ("account/switch", "from to reason holdUntil"),
+    (
+        "assistant/message",
+        "turn step message usage stop timing account",
+    ),
+    ("tool/call", "turn step callId name arguments"),
+    ("tool/result", "turn step message durationMs"),
+    ("step/end", "turn step durationMs"),
+    ("turn/end", "turn steps usage durationMs outcome"),
+];
+
+#[test]
+fn every_typed_event_has_the_plan_keys() {
+    let tmp = TempDir::new("keys");
+    let path = tmp.0.join("s.jsonl");
+    write_every_event(&path);
+    let (_, events) = trace::read(&path).unwrap();
+    assert_eq!(events.len(), EXPECTED.len());
+    for (seq, (event, (kind, expected))) in events.iter().zip(EXPECTED).enumerate() {
+        assert_eq!((event.kind.as_str(), event.seq), (kind, seq as u64));
+        let expected: Vec<&str> = expected.split_whitespace().collect();
+        assert_eq!(keys(&event.data), sorted(&expected), "{kind}");
+    }
+    let answer = &events[8].data;
+    assert_eq!(answer["stop"], json!("tool_use"));
+    assert_eq!(answer["usage"]["cacheWriteTokens"], json!(24114));
+    assert_eq!(answer["timing"]["ttfbMs"], json!(812));
+    assert_eq!(events[3].data["tools"][0]["name"], json!("read"));
+    assert_eq!(events[4].data["effort"], json!("high"));
+    assert_eq!(events[7].data["holdUntil"], json!(9));
+    let content = &events[10].data["message"]["content"][0];
+    assert_eq!(content["callId"], json!("c1"));
+}
+
+#[test]
+fn torn_last_line_is_skipped_and_other_bad_lines_fail() {
+    let tmp = TempDir::new("torn");
+    let path = tmp.0.join("s.jsonl");
+    let mut writer = TraceWriter::create(&path, &header("t")).unwrap();
+    writer.turn_start(1).unwrap();
+    writer.step_start(1, 1).unwrap();
+    drop(writer);
+    let good = std::fs::read_to_string(&path).unwrap();
+    std::fs::write(&path, format!("{good}{{\"type\":\"step/e")).unwrap();
+    let (_, events) = trace::read(&path).unwrap();
+    assert_eq!(events.len(), 2);
+    let mut lines: Vec<&str> = good.lines().collect();
+    lines.insert(2, "not json");
+    std::fs::write(&path, lines.join("\n") + "\n").unwrap();
+    let err = trace::read(&path).unwrap_err();
+    assert_eq!(err.kind(), std::io::ErrorKind::InvalidData);
+    assert!(err.to_string().contains("line 3"), "{err}");
+    std::fs::write(&path, "{\"type\":\"turn/start\"}\n").unwrap();
+    assert!(trace::read(&path)
+        .unwrap_err()
+        .to_string()
+        .contains("line 1"));
+}
+
+#[test]
+fn open_append_continues_seq_and_cuts_a_torn_line() {
+    let tmp = TempDir::new("append");
+    let path = tmp.0.join("s.jsonl");
+    let mut writer = TraceWriter::create(&path, &header("a")).unwrap();
+    writer.turn_start(1).unwrap();
+    writer.step_start(1, 1).unwrap();
+    drop(writer);
+    let good = std::fs::read_to_string(&path).unwrap();
+    std::fs::write(&path, format!("{good}{{\"type\":\"st")).unwrap();
+    let mut writer = TraceWriter::open_append(&path).unwrap();
+    assert_eq!(writer.next_seq(), 2);
+    assert_eq!(writer.step_end(1, 1, 7).unwrap(), 2);
+    drop(writer);
+    let (_, events) = trace::read(&path).unwrap();
+    let seqs: Vec<u64> = events.iter().map(|e| e.seq).collect();
+    assert_eq!(seqs, vec![0, 1, 2]);
+    assert_eq!(events[2].kind, "step/end");
+    let fresh = tmp.0.join("empty.jsonl");
+    TraceWriter::create(&fresh, &header("e")).unwrap();
+    assert_eq!(TraceWriter::open_append(&fresh).unwrap().next_seq(), 0);
+}
