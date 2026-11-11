@@ -10,6 +10,15 @@ use serde_json::Value;
 
 use crate::llm::ToolSpec;
 
+mod args;
+mod edit;
+mod glob;
+mod grep;
+mod read;
+mod shell;
+mod walk;
+mod write;
+
 pub struct ToolCtx<'a> {
     /// Relative paths in tool arguments resolve against this directory.
     pub cwd: &'a Path,
@@ -120,7 +129,14 @@ impl Registry {
 
 /// Registry with the built-in tools: read, write, edit, shell, grep, glob.
 pub fn builtin() -> Registry {
-    Registry::new()
+    let mut registry = Registry::new();
+    registry.add(Box::new(read::ReadTool));
+    registry.add(Box::new(write::WriteTool));
+    registry.add(Box::new(edit::EditTool));
+    registry.add(Box::new(shell::ShellTool));
+    registry.add(Box::new(grep::GrepTool));
+    registry.add(Box::new(glob::GlobTool));
+    registry
 }
 
 #[cfg(test)]
