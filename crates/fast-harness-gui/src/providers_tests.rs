@@ -20,7 +20,7 @@ fn cards_carry_count_status_and_hint() {
         .collect();
     assert_eq!(cards[0].id, "claude");
     assert_eq!(cards[0].count, "No accounts");
-    assert_eq!(cards[0].status, "No accounts");
+    assert_eq!(cards[0].status, "Not set up");
     assert_eq!(cards[0].tone, "empty");
     assert_eq!(cards[0].left_text, "Sign in or add an API key");
     assert!(!cards[0].has_left);
@@ -75,6 +75,6 @@ fn needs_setup_stops_after_a_save() {
     let after = google::client_from(None, None, &home).map(|c| c.id);
     assert_eq!(after.ok().as_deref(), Some("client-id"));
     let summary = &summaries(&[], &[], &ClientState::Ready("client-id".into()), NOW)[1];
-    assert_eq!(summary.status, "No accounts");
+    assert_eq!(summary.status, "Not set up");
     std::fs::remove_dir_all(&home).expect("cleanup");
 }

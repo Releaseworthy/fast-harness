@@ -78,15 +78,31 @@ pub fn footer_text(item: &Item) -> String {
     else {
         return String::new();
     };
-    format!(
-        "turn {turn} | step {step} | {model} | {account} | TTFB {} | total {} | in {} out {} | cache read {} write {}",
-        duration(timing.ttfb_ms),
-        duration(timing.total_ms),
-        tokens(usage.input),
-        tokens(usage.output),
-        tokens(usage.cache_read),
-        tokens(usage.cache_write),
-    )
+    let parts = [
+        format!("turn {turn}"),
+        format!("step {step}"),
+        model.clone(),
+        account.clone(),
+        format!("TTFB {}", duration(timing.ttfb_ms)),
+        format!("total {}", duration(timing.total_ms)),
+        format!("in {} out {}", tokens(usage.input), tokens(usage.output)),
+        format!(
+            "cache read {} write {}",
+            tokens(usage.cache_read),
+            tokens(usage.cache_write)
+        ),
+    ];
+    join_parts(&parts)
+}
+
+/// The parts with text, joined by ` | `: never an empty part or a doubled separator.
+pub fn join_parts(parts: &[String]) -> String {
+    let kept: Vec<&str> = parts
+        .iter()
+        .map(|p| p.trim())
+        .filter(|p| !p.is_empty())
+        .collect();
+    kept.join(" | ")
 }
 
 /// Email, else name, else id.

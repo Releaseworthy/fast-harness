@@ -74,7 +74,7 @@ pub struct ProviderSummary {
     pub count: usize,
     /// `No accounts`, `1 account`, `3 accounts`.
     pub count_text: String,
-    /// `Needs setup`, `No accounts`, `No account in use`, `Active: <label>`.
+    /// `Needs setup`, `Not set up`, `No account in use`, `Active: <label>`.
     pub status: String,
     pub tone: Tone,
     /// The lowest quota left of the active account, percent, when known.
@@ -129,7 +129,8 @@ fn summary(
     left: Option<f64>,
 ) -> ProviderSummary {
     let (status, tone) = match (count, active) {
-        (0, _) => ("No accounts".to_string(), Tone::Empty),
+        // The count line already says `No accounts`: the status says what to do.
+        (0, _) => ("Not set up".to_string(), Tone::Empty),
         (_, None) => ("No account in use".to_string(), Tone::Empty),
         (_, Some(account)) if left.is_some_and(|l| l < LOW_LEFT) => {
             (format!("Active: {}", label(account)), Tone::Attention)
