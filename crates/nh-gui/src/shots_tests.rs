@@ -235,7 +235,45 @@ fn shots() {
         let png = shots_png::encode(WIDTH, HEIGHT, &render(&window));
         std::fs::write(dir.join(format!("{}-nosidebar.png", core.id)), png).expect("write png");
         ui.set_sidebar_open(true);
+        outside_click_closes(&ui, &window);
     }
+}
+
+/// A neutral spot in the transcript, outside every control.
+const OUTSIDE: (f32, f32) = (800.0, 300.0);
+
+/// The effort dropdown's chevron, inside the control (clear of the focus
+/// ring and of the popup's shadow), as RGB bytes.
+fn chevron(rgb: &[u8]) -> Vec<u8> {
+    let (x0, x1, y0, y1) = (578, 602, 682, 699);
+    (y0..y1)
+        .flat_map(|y| {
+            let row = (y * WIDTH as usize + x0) * 3;
+            rgb[row..row + (x1 - x0) * 3].to_vec()
+        })
+        .collect()
+}
+
+/// A dropdown closed by a click outside its list shows the closed chevron
+/// again, and `opened()` fires once per open.
+fn outside_click_closes(ui: &MainWindow, window: &MinimalSoftwareWindow) {
+    let opens = Rc::new(std::cell::Cell::new(0));
+    let counter = opens.clone();
+    ui.on_pickers_opened(move || counter.set(counter.get() + 1));
+    click(window, OUTSIDE.0, OUTSIDE.1);
+    let closed = chevron(&render(window));
+    click(window, EFFORT_X, EFFORT_Y);
+    let open = chevron(&render(window));
+    click(window, OUTSIDE.0, OUTSIDE.1);
+    let after = chevron(&render(window));
+    assert!(closed != open, "the chevron shows the open list");
+    assert!(
+        closed == after,
+        "a click outside closes the list and the chevron"
+    );
+    click(window, EFFORT_X, EFFORT_Y);
+    click(window, OUTSIDE.0, OUTSIDE.1);
+    assert_eq!(opens.get(), 2, "opened() fires once per open");
 }
 
 fn click(window: &MinimalSoftwareWindow, x: f32, y: f32) {

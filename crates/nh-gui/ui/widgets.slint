@@ -26,7 +26,8 @@ export component ActionButton inherits Rectangle {
     min-height: Theme.control-height;
     min-width: Theme.control-height;
     border-radius: Theme.radius-s;
-    border-width: root.ghost || root.primary ? 0px : 1px;
+    // Ghost buttons keep the 1px outline too: without it they read as text.
+    border-width: root.primary ? 0px : 1px;
     border-color: root.enabled ? Theme.border : Theme.line;
     background: !root.enabled ? (root.ghost ? transparent : Theme.surface)
         : root.primary ? (ta.pressed ? Theme.accent.darker(0.15) : ta.has-hover ? Theme.accent.brighter(0.06) : Theme.accent)
@@ -234,6 +235,13 @@ export component Dropdown inherits Rectangle {
         close-policy: close-on-click-outside;
         forward-focus: list-fs;
         list-fs := FocusScope {
+            // The list holds the focus while the popup is open; it loses it
+            // however the popup closes (a pick, Esc or a click outside).
+            focus-changed-event => {
+                if !self.has-focus {
+                    root.open = false;
+                }
+            }
             key-pressed(event) => { return root.list-keys(event); }
         }
         Rectangle {
