@@ -85,6 +85,8 @@ export component MainWindow inherits Window {
     callback model-picked(int);
     callback effort-picked(int);
     callback theme-changed(int);
+    // A click on the empty title bar (two within 500 ms maximize or restore).
+    callback title-bar-clicked();
 
     // Copy: a hidden TextInput takes the text, selects it and copies it
     // (StyledText has no selection in Slint 1.18).
@@ -132,6 +134,7 @@ export component MainWindow inherits Window {
             open-page(p) => { root.open-page(p); }
             minimize => { root.minimized = true; }
             toggle-maximize => { root.maximized = !root.maximized; }
+            bar-clicked => { root.title-bar-clicked(); }
             close => { root.close(); }
         }
         HorizontalLayout {

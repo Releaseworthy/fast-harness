@@ -135,6 +135,7 @@ export component TitleBar inherits Rectangle {
     callback open-page(string);
     callback minimize();
     callback toggle-maximize();
+    callback bar-clicked();
     callback close();
     height: 40px;
     background: Theme.surface;
@@ -158,9 +159,12 @@ export component TitleBar inherits Rectangle {
                 alignment: center;
                 MenuButton { text: "About"; selected: root.page == "about"; clicked => { root.open-page("about"); } }
             }
+            // Clicks on the empty bar: the app maximizes or restores on a
+            // double click (the move area delays the press, so the
+            // TouchArea double-clicked callback does not fire).
             TouchArea {
                 horizontal-stretch: 1;
-                double-clicked => { root.toggle-maximize(); }
+                clicked => { root.bar-clicked(); }
             }
             VerticalLayout {
                 alignment: center;
