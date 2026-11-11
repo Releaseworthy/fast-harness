@@ -7,7 +7,8 @@ mod auth;
 mod poll;
 mod snapshot;
 
-use crate::accounts::model::{now_unix_ms, Account, AccountKind, Secret};
+use crate::accounts::google::{save_sign_in, GoogleError, SignIn};
+use crate::accounts::model::{now_unix_ms, Account, AccountKind, Provider, Secret};
 use crate::accounts::oauth::{self, LoginFlow, OAuthError};
 use crate::accounts::order::{Hold, Holds};
 use crate::accounts::store::{AccountStore, StoreError};
@@ -140,14 +141,17 @@ impl AccountPool {
     pub fn status(&self) -> Vec<AccountStatus> {
         let state = self.lock();
         let now = now_ms();
-        let active = state.store.active().map(|a| a.id.clone());
+        let active: Vec<String> = [Provider::Anthropic, Provider::Google]
+            .into_iter()
+            .filter_map(|p| state.store.active_for(p).map(|a| a.id.clone()))
+            .collect();
         let list = state.store.list().into_iter().cloned().collect::<Vec<_>>();
         list.into_iter()
             .map(|account| {
                 let hold = state.holds.get(&account.id).filter(|h| h.until > now);
                 let token_ok = state.token_on_hand(&account);
                 AccountStatus {
-                    active: active.as_deref() == Some(account.id.as_str()),
+                    active: active.contains(&account.id),
                     usage: state
                         .snapshot
                         .usage(&account.id)
@@ -196,6 +200,7 @@ impl AccountPool {
             added_at: state.store.get(&id).map_or(now_unix_ms(), |a| a.added_at),
             id,
             kind: AccountKind::ApiKey,
+            provider: Provider::Anthropic,
             email: None,
             name: (!label.is_empty()).then(|| label.to_string()),
             plan: None,
@@ -243,6 +248,7 @@ impl AccountPool {
             added_at: state.store.get(&id).map_or(now_unix_ms(), |a| a.added_at),
             id,
             kind: AccountKind::Own,
+            provider: Provider::Anthropic,
             email: profile.email,
             name: profile.name,
             plan: profile.plan,
@@ -259,6 +265,21 @@ impl AccountPool {
         state.forced.remove(&account.id);
         state.dead.remove(&account.id);
         Ok(account)
+    }
+
+    /// The Cloud Code project stored with a Google account.
+    pub fn google_project(&self, id: &str) -> Option<String> {
+        match self.lock().store.secret(id) {
+            Ok(Some(Secret::Google { project_id, .. })) => project_id,
+            _ => None,
+        }
+    }
+
+    /// Stores a Google sign-in (see `google::save_sign_in`). This pool never
+    /// leases Google accounts; it only keeps one store for both providers.
+    pub fn add_google(&self, sign_in: SignIn) -> Result<Account, GoogleError> {
+        let mut state = self.lock();
+        save_sign_in(&mut state.store, sign_in)
     }
 
     /// Sets the pause between two usage-endpoint reads of [`AccountPool::poll_usage`].
@@ -300,16 +321,25 @@ impl State {
 
     /// Whether a credential is on hand, without any network call.
     fn token_on_hand(&self, account: &Account) -> bool {
-        match account.kind {
-            AccountKind::Own => {
-                matches!(self.store.secret(&account.id), Ok(Some(Secret::Own { .. })))
-            }
-            AccountKind::ApiKey => {
-                matches!(
-                    self.store.secret(&account.id),
-                    Ok(Some(Secret::ApiKey { .. }))
-                )
-            }
-        }
+        matches!(
+            (
+                account.provider,
+                account.kind,
+                self.store.secret(&account.id)
+            ),
+            (
+                Provider::Anthropic,
+                AccountKind::Own,
+                Ok(Some(Secret::Own { .. }))
+            ) | (
+                Provider::Anthropic,
+                AccountKind::ApiKey,
+                Ok(Some(Secret::ApiKey { .. }))
+            ) | (
+                Provider::Google,
+                AccountKind::Own,
+                Ok(Some(Secret::Google { .. }))
+            )
+        )
     }
 }

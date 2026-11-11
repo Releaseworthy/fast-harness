@@ -96,10 +96,11 @@ pub fn account_label(account: &Account) -> String {
         .to_string()
 }
 
-fn kind_word(kind: AccountKind) -> &'static str {
-    match kind {
-        AccountKind::Own => "own",
-        AccountKind::ApiKey => "key",
+fn kind_word(account: &Account) -> &'static str {
+    match (account.provider, account.kind) {
+        (fast_harness_core::accounts::model::Provider::Google, _) => "google",
+        (_, AccountKind::Own) => "own",
+        (_, AccountKind::ApiKey) => "key",
     }
 }
 
@@ -131,7 +132,7 @@ pub fn account_row(status: &AccountStatus, now_ms: i64) -> AccountRow {
     AccountRow {
         id: status.account.id.as_str().into(),
         name: account_label(&status.account).into(),
-        kind: kind_word(status.account.kind).into(),
+        kind: kind_word(&status.account).into(),
         plan: status.account.plan.clone().unwrap_or_default().into(),
         active: status.active,
         five: five.0,

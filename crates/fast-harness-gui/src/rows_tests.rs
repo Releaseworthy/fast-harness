@@ -90,6 +90,7 @@ fn status(kind: AccountKind, usage: Option<AccountUsage>) -> AccountStatus {
         account: Account {
             id: "id-1".into(),
             kind,
+            provider: Default::default(),
             email: None,
             name: Some("Work".into()),
             plan: Some("max".into()),

@@ -37,6 +37,7 @@ impl Fixture {
         let account = Account {
             id: Account::oauth_id(uuid),
             kind: AccountKind::Own,
+            provider: Default::default(),
             email: None,
             name: None,
             plan: Some("Max 20x".into()),

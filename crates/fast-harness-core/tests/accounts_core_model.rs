@@ -6,6 +6,7 @@ fn own_account() -> Account {
     Account {
         id: Account::oauth_id("0000aaaa-1111-2222-3333-444455556666"),
         kind: AccountKind::Own,
+        provider: Default::default(),
         email: Some("one@example.test".into()),
         name: Some("Test One".into()),
         plan: Some("max".into()),
@@ -21,6 +22,7 @@ fn account_serializes_camel_case() {
         json!({
             "id": "u-0000aaaa-1111-2222-3333-444455556666",
             "kind": "own",
+            "provider": "anthropic",
             "email": "one@example.test",
             "name": "Test One",
             "plan": "max",
@@ -29,6 +31,12 @@ fn account_serializes_camel_case() {
     );
     let back: Account = serde_json::from_value(value).unwrap();
     assert_eq!(back, own_account());
+    // Version 2 records have no provider: they are Anthropic accounts.
+    let mut old = serde_json::to_value(own_account()).unwrap();
+    old.as_object_mut().unwrap().remove("provider");
+    let back: Account = serde_json::from_value(old).unwrap();
+    assert_eq!(back, own_account());
+    assert_eq!(Account::google_id("1098765"), "g-1098765");
 }
 
 #[test]
@@ -36,6 +44,7 @@ fn optional_fields_are_omitted() {
     let account = Account {
         id: Account::api_key_id("test-key-1"),
         kind: AccountKind::ApiKey,
+        provider: Default::default(),
         email: None,
         name: None,
         plan: None,
@@ -44,7 +53,7 @@ fn optional_fields_are_omitted() {
     let value = serde_json::to_value(&account).unwrap();
     assert_eq!(
         value,
-        json!({"id": account.id, "kind": "apiKey", "addedAt": 5})
+        json!({"id": account.id, "kind": "apiKey", "provider": "anthropic", "addedAt": 5})
     );
     assert_eq!(
         serde_json::to_value(AccountKind::Own).unwrap(),

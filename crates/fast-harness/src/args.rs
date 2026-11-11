@@ -20,8 +20,13 @@ Usage:
   fast-harness models [--json]
       The Claude models with their effort levels, read live from the API (else the last
       known list); --json prints the full entries.
-  fast-harness accounts [list]               Accounts with their 5-hour and 7-day usage (* = active).
+  fast-harness accounts [list]               Accounts with their 5-hour and 7-day usage (* = active);
+      Google accounts with their plan and project.
   fast-harness accounts login [--no-browser] Sign in with a Claude account in the browser.
+  fast-harness accounts login --google [--no-browser]
+      Sign in with a Google Antigravity account in the browser.
+  fast-harness accounts google-client --id ID
+      Save the Google OAuth client (the secret is read from stdin, stored encrypted).
   fast-harness accounts use ID|EMAIL         Make an account the active one.
   fast-harness accounts remove ID|EMAIL      Remove an account from fast-harness.
   fast-harness accounts add-key [LABEL]      Add an Anthropic API key (read from stdin).
@@ -39,6 +44,8 @@ override it. Raw wire capture (<session>.wire/) is off unless wire is true.";
 pub enum AccountsAction {
     List,
     Login { browser: bool },
+    LoginGoogle { browser: bool },
+    GoogleClient { id: String },
     Use(String),
     Remove(String),
     AddKey { label: Option<String> },
@@ -46,17 +53,25 @@ pub enum AccountsAction {
 }
 
 const ACCOUNTS_USAGE: &str =
-    "usage: fast-harness accounts [list | login [--no-browser] | use ID | remove ID | add-key [LABEL] | usage]";
+    "usage: fast-harness accounts [list | login [--google] [--no-browser] | google-client --id ID \
+| use ID | remove ID | add-key [LABEL] | usage]";
 
-fn accounts_action(rest: &[String], no_browser: bool) -> Result<AccountsAction, String> {
-    if rest.len() > 2 {
+fn accounts_action(rest: &[String], opts: &Opts) -> Result<AccountsAction, String> {
+    let first = rest.first().map(String::as_str);
+    if rest.len() > 2 || (opts.google && first != Some("login")) {
         return Err(ACCOUNTS_USAGE.into());
     }
+    if opts.id.is_some() != (first == Some("google-client")) {
+        return Err(ACCOUNTS_USAGE.into());
+    }
+    let browser = !opts.no_browser;
     let arg = rest.get(1).cloned();
-    Ok(match (rest.first().map(String::as_str), arg) {
+    Ok(match (first, arg) {
         (None | Some("list"), None) => AccountsAction::List,
-        (Some("login"), None) => AccountsAction::Login {
-            browser: !no_browser,
+        (Some("login"), None) if opts.google => AccountsAction::LoginGoogle { browser },
+        (Some("login"), None) => AccountsAction::Login { browser },
+        (Some("google-client"), None) => AccountsAction::GoogleClient {
+            id: opts.id.clone().unwrap_or_default(),
         },
         (Some("use"), Some(id)) => AccountsAction::Use(id),
         (Some("remove"), Some(id)) => AccountsAction::Remove(id),
@@ -111,6 +126,8 @@ struct Opts {
     json: bool,
     steps: bool,
     no_browser: bool,
+    google: bool,
+    id: Option<String>,
     help: bool,
     version: bool,
     positional: Vec<String>,
@@ -134,6 +151,8 @@ fn read_opts(args: Vec<String>) -> Result<Opts, String> {
             "--json" => opts.json = true,
             "--steps" => opts.steps = true,
             "--no-browser" => opts.no_browser = true,
+            "--google" => opts.google = true,
+            "--id" => opts.id = Some(value(&mut args, &arg)?),
             "-h" | "--help" => opts.help = true,
             "-V" | "--version" => opts.version = true,
             flag if flag.starts_with('-') && flag.len() > 1 => {
@@ -174,7 +193,7 @@ pub fn parse(args: Vec<String>) -> Result<Command, String> {
         Some("sessions") if opts.positional.len() == 1 => return Ok(Command::Sessions { cwd }),
         Some("tui") if opts.positional.len() == 1 => return tui_args(opts),
         Some("accounts") => {
-            let action = accounts_action(&opts.positional[1..], opts.no_browser)?;
+            let action = accounts_action(&opts.positional[1..], &opts)?;
             return Ok(Command::Accounts(action));
         }
         Some("trace") if opts.positional.len() <= 2 => {
@@ -298,6 +317,16 @@ mod tests {
             }
         );
         assert_eq!(accounts("accounts usage").unwrap(), AccountsAction::Usage);
+        let google = accounts("accounts login --google --no-browser").unwrap();
+        assert_eq!(google, AccountsAction::LoginGoogle { browser: false });
+        let google = accounts("accounts login --google").unwrap();
+        assert_eq!(google, AccountsAction::LoginGoogle { browser: true });
+        let client = accounts("accounts google-client --id test-client.apps.example").unwrap();
+        let id = "test-client.apps.example".to_string();
+        assert_eq!(client, AccountsAction::GoogleClient { id });
+        assert!(accounts("accounts google-client").is_err());
+        assert!(accounts("accounts use u-1 --google").is_err());
+        assert!(accounts("accounts list --id x").is_err());
         assert!(accounts("accounts use").is_err());
         assert!(accounts("accounts frob").is_err());
         assert!(accounts("accounts use a b").is_err());
