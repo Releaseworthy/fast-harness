@@ -55,7 +55,8 @@ pub fn load_transcript(conv: &Conversation) -> Transcript {
 
 impl Tui {
     pub fn new(rt: Runtime, cwd: PathBuf, conv: Conversation, tx: Sender<Msg>) -> Tui {
-        let ui = Ui::new(rt.config.model.clone(), rt.config.effort.clone());
+        let mut ui = Ui::new(rt.config.model.clone(), rt.config.effort.clone());
+        ui.theme = nh_core::theme::by_id(&rt.config.theme);
         let mut tui = Tui {
             rt,
             cwd,
@@ -169,6 +170,10 @@ impl Tui {
                 self.rt.config.set_effort(&effort);
                 self.ui.effort = self.rt.config.effort.clone();
                 self.ui.status = format!("effort {effort} applies to the next turn");
+            }
+            Action::CycleTheme => {
+                let theme = super::theme::cycle(&mut self.ui, &self.rt.home);
+                self.rt.config.theme = theme.id.to_string();
             }
             other => self.account_action(other),
         }

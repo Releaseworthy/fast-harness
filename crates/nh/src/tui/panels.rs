@@ -3,42 +3,35 @@
 use nh_core::accounts::model::AccountKind;
 use nh_core::accounts::pool::AccountStatus;
 use ratatui::layout::{Constraint, Layout, Rect};
-use ratatui::style::{Color, Modifier, Style};
-use ratatui::text::Line;
-use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
+use ratatui::text::{Line, Span};
+use ratatui::widgets::{Paragraph, Wrap};
 use ratatui::Frame;
 
+use super::theme::Styles;
 use super::ui::{Dialog, Screen, Ui};
 use super::wrap::clip;
 use crate::accounts_cmd::{label, percent, relative, state};
 
-fn selected_style() -> Style {
-    Style::default().add_modifier(Modifier::REVERSED)
-}
-
-/// Rows of a list with the selection kept in view.
-fn list(rows: Vec<String>, selected: usize, height: usize, width: usize) -> Vec<Line<'static>> {
+/// Rows of a list with the selection kept in view: the selected row has a
+/// `›` marker and the selection background, never reverse video.
+fn list(rows: Vec<String>, selected: usize, size: Rect, st: &Styles) -> Vec<Line<'static>> {
+    let (height, width) = (usize::from(size.height), usize::from(size.width));
     let skip = (selected + 1).saturating_sub(height.max(1));
     rows.into_iter()
         .enumerate()
         .skip(skip)
         .take(height)
         .map(|(index, row)| {
-            let row = clip(&row, width);
+            let row = clip(&row, width.saturating_sub(2));
             if index == selected {
-                Line::styled(row, selected_style())
+                let fill = " ".repeat(width.saturating_sub(2 + super::wrap::text_width(&row)));
+                Line::from(vec![Span::raw("› "), Span::raw(row), Span::raw(fill)])
+                    .style(st.selected())
             } else {
-                Line::raw(row)
+                Line::from(format!("  {row}"))
             }
         })
         .collect()
-}
-
-fn framed(title: &str) -> Block<'static> {
-    Block::default()
-        .borders(Borders::ALL)
-        .border_style(Style::default().fg(Color::DarkGray))
-        .title(format!(" {title} "))
 }
 
 /// One accounts row: active marker, kind, name, plan, 5h and 7d, reset, state.
@@ -68,8 +61,8 @@ pub fn account_row(status: &AccountStatus, now: i64) -> String {
     )
 }
 
-fn dialog_lines(dialog: &Dialog) -> Option<Vec<Line<'static>>> {
-    let yellow = Style::default().fg(Color::Yellow);
+fn dialog_lines(dialog: &Dialog, st: &Styles) -> Option<Vec<Line<'static>>> {
+    let yellow = st.warning();
     Some(match dialog {
         Dialog::None => return None,
         Dialog::AddKey(input) => {
@@ -100,31 +93,31 @@ fn dialog_lines(dialog: &Dialog) -> Option<Vec<Line<'static>>> {
 
 fn draw_accounts(frame: &mut Frame, ui: &mut Ui, area: Rect, now_ms: u64) {
     let now = i64::try_from(now_ms).unwrap_or(i64::MAX);
-    let dialog = dialog_lines(&ui.dialog);
+    let st = Styles::new(ui.theme);
+    let dialog = dialog_lines(&ui.dialog, &st);
     let dialog_height = if dialog.is_some() { 6 } else { 0 };
     let [top, bottom] =
         Layout::vertical([Constraint::Min(3), Constraint::Length(dialog_height)]).areas(area);
-    let inner = framed("Accounts").inner(top);
-    let height = usize::from(inner.height);
+    let inner = st.block("Accounts").inner(top);
     let rows: Vec<String> = ui.accounts.iter().map(|s| account_row(s, now)).collect();
     let lines = if rows.is_empty() {
         vec![Line::raw(
             "No accounts: l signs in, i imports from claude-switch, k adds an API key.",
         )]
     } else {
-        list(rows, ui.selected, height, usize::from(inner.width))
+        list(rows, ui.selected, inner, &st)
     };
-    frame.render_widget(Paragraph::new(lines).block(framed("Accounts")), top);
+    frame.render_widget(Paragraph::new(lines).block(st.block("Accounts")), top);
     if let Some(lines) = dialog {
         let widget = Paragraph::new(lines)
             .wrap(Wrap { trim: false })
-            .block(framed("Account"));
+            .block(st.block("Account"));
         frame.render_widget(widget, bottom);
     }
 }
 
 fn draw_trace(frame: &mut Frame, ui: &mut Ui, area: Rect) {
-    let block = framed("Trace: one row per step");
+    let block = Styles::new(ui.theme).block("Trace: one row per step");
     let inner = block.inner(area);
     ui.view_height = usize::from(inner.height).max(1);
     let lines: Vec<Line<'static>> = if ui.trace.is_empty() {
@@ -146,7 +139,8 @@ fn draw_models(frame: &mut Frame, ui: &mut Ui, area: Rect) {
         ui.model,
         ui.effort.as_deref().unwrap_or("default")
     );
-    let block = framed(&title);
+    let st = Styles::new(ui.theme);
+    let block = st.block(&title);
     let inner = block.inner(area);
     let rows = ui
         .models
@@ -157,17 +151,13 @@ fn draw_models(frame: &mut Frame, ui: &mut Ui, area: Rect) {
             format!("{mark} {:<28} {:<24} {ctx}k context", m.id, m.display_name)
         })
         .collect();
-    let lines = list(
-        rows,
-        ui.selected,
-        usize::from(inner.height),
-        usize::from(inner.width),
-    );
+    let lines = list(rows, ui.selected, inner, &st);
     frame.render_widget(Paragraph::new(lines).block(block), area);
 }
 
 fn draw_sessions(frame: &mut Frame, ui: &mut Ui, area: Rect) {
-    let block = framed("Sessions of this directory, newest first");
+    let st = Styles::new(ui.theme);
+    let block = st.block("Sessions of this directory, newest first");
     let inner = block.inner(area);
     let rows: Vec<String> = ui
         .sessions
@@ -177,12 +167,7 @@ fn draw_sessions(frame: &mut Frame, ui: &mut Ui, area: Rect) {
     let lines = if rows.is_empty() {
         vec![Line::raw("No sessions yet.")]
     } else {
-        list(
-            rows,
-            ui.selected,
-            usize::from(inner.height),
-            usize::from(inner.width),
-        )
+        list(rows, ui.selected, inner, &st)
     };
     frame.render_widget(Paragraph::new(lines).block(block), area);
 }

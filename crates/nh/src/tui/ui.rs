@@ -4,6 +4,7 @@
 use nh_core::accounts::pool::AccountStatus;
 use nh_core::llm::anthropic::ModelInfo;
 use nh_core::session::SessionSummary;
+use nh_core::theme::{self, Theme};
 use ratatui::crossterm::event::{
     KeyCode, KeyEvent, KeyEventKind, KeyModifiers, MouseEvent, MouseEventKind,
 };
@@ -54,6 +55,8 @@ pub enum Action {
     PollUsage,
     SetModel(String),
     SetEffort(String),
+    /// Switch to the next theme and save it.
+    CycleTheme,
 }
 
 pub struct Ui {
@@ -79,6 +82,7 @@ pub struct Ui {
     pub model: String,
     pub effort: Option<String>,
     pub frame: usize,
+    pub theme: &'static Theme,
 }
 
 impl Ui {
@@ -103,6 +107,7 @@ impl Ui {
             model,
             effort,
             frame: 0,
+            theme: theme::by_id(theme::DEFAULT_THEME),
         }
     }
 
@@ -195,6 +200,9 @@ impl Ui {
     fn global_key(&mut self, key: &KeyEvent) -> Option<Action> {
         if is_ctrl(key, 'c') {
             return Some(self.ctrl_c());
+        }
+        if key.code == KeyCode::F(5) {
+            return Some(Action::CycleTheme);
         }
         let open = match key.code {
             KeyCode::F(2) => Screen::Accounts,

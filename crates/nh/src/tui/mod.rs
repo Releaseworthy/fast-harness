@@ -10,6 +10,9 @@ mod panels;
 mod screens;
 #[cfg(test)]
 mod tests;
+mod theme;
+#[cfg(test)]
+mod theme_tests;
 mod transcript;
 mod ui;
 mod worker;
