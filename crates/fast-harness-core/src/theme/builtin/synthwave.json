@@ -1,0 +1,30 @@
+{
+  "version": 1,
+  "id": "synthwave",
+  "name": "Synthwave",
+  "kind": "dark",
+  "colors": {
+    "bg": "#13072a",
+    "bg_end": "#220a38",
+    "surface": "#1a0d33",
+    "raised": "#231342",
+    "hover": "#2c1a4f",
+    "selection": "#3b1a5c",
+    "bubble": "#30164f",
+    "code": "#170b2e",
+    "accent_surface": "#36154a",
+    "line": "#2e1c4a",
+    "border": "#9273b9",
+    "text": "#f8ecff",
+    "dim": "#d2bae9",
+    "accent": "#ff91dc",
+    "accent2": "#3cecff",
+    "on_accent": "#12041c",
+    "glow": "#ff3ec0",
+    "shadow": "#06010d",
+    "error": "#ff9aa8",
+    "warning": "#ffd46e",
+    "success": "#6ff7c4",
+    "info": "#74e6ff"
+  }
+}

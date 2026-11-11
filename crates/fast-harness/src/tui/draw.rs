@@ -88,8 +88,8 @@ fn hint_text(ui: &Ui) -> String {
     }
     match ui.screen {
         Screen::Chat if ui.picker.is_some() => "↑↓ PgUp PgDn choose · Enter pick · Esc close".into(),
-        Screen::Chat if ui.running => "Esc cancel · Ctrl+P model · Ctrl+E effort · PgUp/PgDn scroll · Ctrl+T thinking · F3 trace · F5 theme".into(),
-        Screen::Chat => "Enter send · Alt+Enter newline · Ctrl+P model · Ctrl+E effort · Ctrl+T thinking · Ctrl+N new · Ctrl+O sessions · F2 accounts · F3 trace · F5 theme".into(),
+        Screen::Chat if ui.running => "Esc cancel · Ctrl+P model · Ctrl+E effort · PgUp/PgDn scroll · Ctrl+T thinking · F3 trace · F5 theme · F6 grey".into(),
+        Screen::Chat => "Enter send · Alt+Enter newline · Ctrl+P model · Ctrl+E effort · Ctrl+T thinking · Ctrl+N new · Ctrl+O sessions · F2 accounts · F3 trace · F5 theme · F6 grey".into(),
         Screen::Accounts if ui.account_provider.is_none() => "↑↓ choose · Enter open provider · r read usage · Esc back".into(),
         Screen::Accounts => "Enter use · l Claude sign-in · g Google sign-in · k add key · d remove · r read usage · Esc providers".into(),
         Screen::Trace if ui.trace.show_steps => "s timeline · ↑↓ PgUp PgDn Home End scroll · Esc back".into(),

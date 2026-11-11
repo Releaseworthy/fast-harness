@@ -3,30 +3,45 @@
 // defaults are the dark theme so a preview without Rust looks the same.
 export global Theme {
     in-out property <bool> dark: true;
-    // Text and backgrounds are pure greys: the logo uses its grey copy.
+    // The greyscale setting is at 50 or more: the logo uses its grey copy.
     in-out property <bool> greyscale;
-    // Window, transcript and page background.
-    in-out property <color> bg: #1b1d22;
+    // The greyscale setting, 0 (full colour) to 100 (pure greys); already
+    // applied to every colour below.
+    in-out property <int> greyscale-level;
+    // Window, transcript and page background; the start of the background gradient.
+    in-out property <color> bg: #0f1117;
+    // The end of the background gradient (bg top left, bg-end bottom right).
+    in-out property <color> bg-end: #151a2b;
     // Sidebar, status bar, cards and the composer.
-    in-out property <color> surface: #23262c;
+    in-out property <color> surface: #161a24;
     // Inputs, dropdowns and buttons at rest.
-    in-out property <color> raised: #2b2f36;
-    in-out property <color> hover: #323741;
-    in-out property <color> selection: #2e3a50;
-    in-out property <color> bubble: #283244;
-    in-out property <color> code: #262a31;
+    in-out property <color> raised: #1d2230;
+    in-out property <color> hover: #252b3c;
+    in-out property <color> selection: #283256;
+    in-out property <color> bubble: #222a48;
+    in-out property <color> code: #131722;
+    // A surface tinted with the accent: active navigation item, highlighted card.
+    in-out property <color> accent-surface: #1e2747;
     // Decorative separators only (no contrast requirement).
-    in-out property <color> line: #343944;
+    in-out property <color> line: #2a3042;
     // Borders of inputs, dropdowns and buttons (3:1 against the backgrounds).
-    in-out property <color> border: #7b8390;
-    in-out property <color> text: #dde1e7;
-    in-out property <color> dim: #bcc3cd;
+    in-out property <color> border: #77809c;
+    in-out property <color> text: #eceef6;
+    in-out property <color> dim: #b8bed4;
     // Links, the focus ring, active markers and the primary button.
-    in-out property <color> accent: #93bdf8;
-    in-out property <color> on-accent: #0f1420;
-    in-out property <color> error: #f5ada5;
-    in-out property <color> warning: #ebc985;
-    in-out property <color> success: #9ad7a9;
+    in-out property <color> accent: #98b6ff;
+    // The second accent: the end of accent gradients and secondary highlights.
+    in-out property <color> accent2: #c8a8ff;
+    // Text and icons on accent, accent2 and a gradient between them.
+    in-out property <color> on-accent: #0a0d18;
+    // Coloured glow around the focused or primary element (use with transparency).
+    in-out property <color> glow: #5b7cff;
+    // Drop shadows of cards, popups and menus (use with transparency).
+    in-out property <color> shadow: #04050a;
+    in-out property <color> error: #ff9a9a;
+    in-out property <color> warning: #ffcb70;
+    in-out property <color> success: #74e8a8;
+    in-out property <color> info: #82d4ff;
 
     // Radius, spacing and type scale.
     out property <length> radius-s: 6px;

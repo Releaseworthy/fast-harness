@@ -2,6 +2,7 @@
 //! user sent, every model call, what the model thought and returned, the
 //! tool calls and results. `f` shows full bodies, `s` the steps table.
 
+use fast_harness_core::theme::Palette;
 use fast_harness_core::trace::detail::{Entry, EntryKind};
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
@@ -25,7 +26,7 @@ pub struct TraceView {
     pub show_steps: bool,
     pub lines: Vec<Line<'static>>,
     /// Width, theme, full and steps flags of `lines`; `None` after a change.
-    key: Option<(usize, &'static str, bool, bool)>,
+    key: Option<(usize, Palette, bool, bool)>,
 }
 
 impl TraceView {
@@ -38,7 +39,7 @@ impl TraceView {
 
     /// Re-renders `lines` when the width, the theme or a toggle changed.
     pub fn render(&mut self, width: usize, st: &Styles) {
-        let key = (width, st.theme.id, self.full, self.show_steps);
+        let key = (width, st.palette, self.full, self.show_steps);
         if self.key == Some(key) {
             return;
         }

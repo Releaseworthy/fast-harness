@@ -1,12 +1,12 @@
-//! `~/.fast-harness/config.json`: model, effort, cache TTL, limits, theme, wire capture.
+//! `~/.fast-harness/config.json`: model, effort, cache TTL, limits, theme, greyscale, wire capture.
 //! Keys are camelCase; a missing file or key takes the default, unknown keys
-//! are ignored. `FAST_HARNESS_MODEL`, `FAST_HARNESS_EFFORT`, `FAST_HARNESS_THEME`, `FAST_HARNESS_ICONS` and `FAST_HARNESS_WIRE` override
+//! are ignored. `FAST_HARNESS_MODEL`, `FAST_HARNESS_EFFORT`, `FAST_HARNESS_THEME`, `FAST_HARNESS_GREYSCALE`, `FAST_HARNESS_ICONS` and `FAST_HARNESS_WIRE` override
 //! the file. [`save_setting`] writes one key back for the front ends.
 
 use std::io;
 use std::path::Path;
 
-use serde::Deserialize;
+use serde::{Deserialize, Deserializer};
 use serde_json::{Map, Value};
 
 use crate::theme;
@@ -28,8 +28,14 @@ pub struct Config {
     pub max_wait_ms: u64,
     /// Retries of one step after retryable errors (overloaded, server, network).
     pub retries: u32,
-    /// Colour theme id (`theme::THEMES`); an unknown id shows the default theme.
+    /// Colour theme id (built-in or a user theme file); an unknown id shows
+    /// the default theme. The removed `greyscale-dark` and `greyscale-light`
+    /// load as `dark` and `light` with greyscale 100.
     pub theme: String,
+    /// Greyscale level of every theme, 0 (full colour) to 100 (pure greys).
+    /// A number is rounded and clamped; anything else reads as 0.
+    #[serde(deserialize_with = "greyscale_level")]
+    pub greyscale: u8,
     /// Icon set of the TUI: `nerd` (Nerd Font icons, the default) or
     /// `plain` (Unicode marks); anything else reads as `nerd`.
     pub icons: String,
@@ -49,6 +55,7 @@ impl Default for Config {
             max_wait_ms: 3_600_000,
             retries: 8,
             theme: theme::DEFAULT_THEME.into(),
+            greyscale: 0,
             icons: "nerd".into(),
             wire: false,
         }
@@ -75,11 +82,16 @@ impl Config {
             Err(err) => return Err(format!("{}: {err}", path.display())),
         };
         config.apply_env(env);
+        if let Some(base) = theme::legacy_greyscale(&config.theme) {
+            config.theme = base.into();
+            config.greyscale = theme::GREYSCALE_MAX;
+        }
         Ok(config)
     }
 
     /// `FAST_HARNESS_MODEL` replaces the model; `FAST_HARNESS_EFFORT` the effort (`default` means
-    /// the model's own default); `FAST_HARNESS_THEME` the theme; `FAST_HARNESS_ICONS` the icon
+    /// the model's own default); `FAST_HARNESS_THEME` the theme; `FAST_HARNESS_GREYSCALE` the
+    /// greyscale level (a number, clamped to 0..=100); `FAST_HARNESS_ICONS` the icon
     /// set; `FAST_HARNESS_WIRE` turns wire
     /// capture on (`1`, `true`, `on`, `yes`) or off (`0`, `false`, `off`,
     /// `no`). Empty and unrecognised values are ignored.
@@ -98,6 +110,9 @@ impl Config {
         if let Some(theme) = value("FAST_HARNESS_THEME") {
             self.theme = theme;
         }
+        if let Some(level) = value("FAST_HARNESS_GREYSCALE").and_then(|v| theme::parse_level(&v)) {
+            self.greyscale = level;
+        }
         if let Some(icons) = value("FAST_HARNESS_ICONS") {
             self.icons = icons;
         }
@@ -111,6 +126,13 @@ impl Config {
         let effort = effort.trim();
         self.effort = (effort != "default").then(|| effort.to_string());
     }
+}
+
+/// The `greyscale` key: a JSON number rounded and clamped to 0..=100;
+/// any other value reads as 0 instead of failing the whole file.
+fn greyscale_level<'de, D: Deserializer<'de>>(de: D) -> Result<u8, D::Error> {
+    let value = Value::deserialize(de)?;
+    Ok(value.as_f64().and_then(theme::level_of).unwrap_or(0))
 }
 
 /// `true` or `false` from a switch word, `None` for anything else.

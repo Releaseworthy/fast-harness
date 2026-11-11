@@ -6,7 +6,7 @@
 use std::path::PathBuf;
 use std::rc::Rc;
 
-use fast_harness_core::theme::THEMES;
+use fast_harness_core::theme::builtins;
 use slint::platform::software_renderer::{MinimalSoftwareWindow, RepaintBufferType};
 use slint::platform::{Platform, WindowAdapter};
 use slint::{ComponentHandle, ModelRc, PhysicalSize, Rgb8Pixel, SharedString, VecModel};
@@ -263,9 +263,9 @@ fn shots() {
     fill(&ui);
     let dir = out_dir();
     std::fs::create_dir_all(&dir).expect("shots directory");
-    for core in THEMES.iter() {
-        theme::apply(&ui, core);
-        theme::fill(&ui, core.id);
+    for core in builtins() {
+        theme::apply(&ui, core, 0);
+        theme::fill(&ui, &core.id);
         for shot in [
             "chat", "accounts", "claude", "google", "settings", "about", "trace", "steps",
         ] {

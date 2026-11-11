@@ -248,36 +248,51 @@ fn config_theme_wire_and_save_setting() {
     let none = |_: &str| None;
     let config = Config::load_with(&dir.0, &none).unwrap();
     assert_eq!((config.theme.as_str(), config.wire), ("dark", false));
-    assert_eq!(config.icons, "nerd");
+    assert_eq!((config.icons.as_str(), config.greyscale), ("nerd", 0));
     let env = |key: &str| match key {
         "FAST_HARNESS_THEME" => Some(" light ".to_string()),
         "FAST_HARNESS_WIRE" => Some("ON".to_string()),
         "FAST_HARNESS_ICONS" => Some(" plain".to_string()),
+        "FAST_HARNESS_GREYSCALE" => Some(" 35 ".to_string()),
         _ => None,
     };
     let config = Config::load_with(&dir.0, &env).unwrap();
     assert_eq!((config.theme.as_str(), config.wire), ("light", true));
-    assert_eq!(config.icons, "plain");
-    std::fs::write(dir.0.join("config.json"), r#"{"icons":"plain"}"#).unwrap();
-    assert_eq!(Config::load_with(&dir.0, &none).unwrap().icons, "plain");
+    assert_eq!((config.icons.as_str(), config.greyscale), ("plain", 35));
+    std::fs::write(
+        dir.0.join("config.json"),
+        r#"{"icons":"plain","greyscale":140}"#,
+    )
+    .unwrap();
+    let config = Config::load_with(&dir.0, &none).unwrap();
+    assert_eq!((config.icons.as_str(), config.greyscale), ("plain", 100));
+    std::fs::write(dir.0.join("config.json"), r#"{"greyscale":"lots"}"#).unwrap();
+    assert_eq!(Config::load_with(&dir.0, &none).unwrap().greyscale, 0);
+    std::fs::write(dir.0.join("config.json"), r#"{"greyscale":42.4}"#).unwrap();
+    let odd = |key: &str| (key == "FAST_HARNESS_GREYSCALE").then(|| "half".to_string());
+    assert_eq!(Config::load_with(&dir.0, &odd).unwrap().greyscale, 42);
     std::fs::remove_file(dir.0.join("config.json")).unwrap();
     let odd = |key: &str| (key == "FAST_HARNESS_WIRE").then(|| "maybe".to_string());
     assert!(!Config::load_with(&dir.0, &odd).unwrap().wire);
     // The first save creates the folder and the file; later saves keep the other keys.
+    // A saved greyscale theme id loads as its base theme with greyscale 100.
     let home = dir.0.join("home");
     save_setting(&home, "theme", serde_json::json!("greyscale-dark")).unwrap();
-    assert_eq!(
-        Config::load_with(&home, &none).unwrap().theme,
-        "greyscale-dark"
-    );
+    let config = Config::load_with(&home, &none).unwrap();
+    assert_eq!((config.theme.as_str(), config.greyscale), ("dark", 100));
     let file = home.join("config.json");
     std::fs::write(&file, r#"{"model":"m1","wire":true,"other":[1]}"#).unwrap();
     save_setting(&home, "theme", serde_json::json!("greyscale-light")).unwrap();
     let config = Config::load_with(&home, &none).unwrap();
     assert_eq!(
         (config.model.as_str(), config.theme.as_str(), config.wire),
-        ("m1", "greyscale-light", true)
+        ("m1", "light", true)
     );
+    assert_eq!(config.greyscale, 100);
+    save_setting(&home, "greyscale", serde_json::json!(30)).unwrap();
+    save_setting(&home, "theme", serde_json::json!("sakura")).unwrap();
+    let config = Config::load_with(&home, &none).unwrap();
+    assert_eq!((config.theme.as_str(), config.greyscale), ("sakura", 30));
     let raw: serde_json::Value = serde_json::from_slice(&std::fs::read(&file).unwrap()).unwrap();
     assert_eq!(raw["other"], serde_json::json!([1]));
     assert!(!home.join("config.json.tmp").exists());

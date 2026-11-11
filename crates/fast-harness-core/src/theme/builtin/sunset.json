@@ -1,0 +1,30 @@
+{
+  "version": 1,
+  "id": "sunset",
+  "name": "Sunset",
+  "kind": "dark",
+  "colors": {
+    "bg": "#1c0d24",
+    "bg_end": "#2c1220",
+    "surface": "#24112b",
+    "raised": "#2e1736",
+    "hover": "#391e41",
+    "selection": "#4a2238",
+    "bubble": "#3d1b34",
+    "code": "#200f28",
+    "accent_surface": "#43202c",
+    "line": "#3a2442",
+    "border": "#9e7396",
+    "text": "#fff2ea",
+    "dim": "#ecc8c4",
+    "accent": "#ff9e70",
+    "accent2": "#ffca5c",
+    "on_accent": "#1c0912",
+    "glow": "#ff6b6b",
+    "shadow": "#0a0408",
+    "error": "#ff9cb0",
+    "warning": "#ffe08a",
+    "success": "#92eaa6",
+    "info": "#94cdff"
+  }
+}

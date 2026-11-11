@@ -1,10 +1,11 @@
-//! Every theme on full frames: the greyscale themes paint only greys, every
-//! glyph meets WCAG 2.2 contrast, F5 cycles the theme and saves it.
+//! Every theme on full frames: greyscale 100 paints only greys, every glyph
+//! meets WCAG 2.2 contrast at every level, F5 cycles the built-in and user
+//! themes, F6 steps the greyscale level, both saved.
 
 use std::fs;
 
 use fast_harness_core::llm::anthropic::builtin_models;
-use fast_harness_core::theme::{contrast_ratio, Rgb, Theme, THEMES};
+use fast_harness_core::theme::{builtins, contrast_ratio, Rgb, Theme, ThemeSet};
 use fast_harness_core::view::{Item, NoteKind, State, Transcript};
 use ratatui::backend::TestBackend;
 use ratatui::buffer::Buffer;
@@ -64,9 +65,10 @@ fn transcript() -> Transcript {
     t
 }
 
-fn frame(theme: &'static Theme, setup: impl FnOnce(&mut Ui)) -> Buffer {
+fn frame(theme: &Theme, level: u8, setup: impl FnOnce(&mut Ui)) -> Buffer {
     let mut ui = Ui::new("claude-x".into(), Some("high".into()));
-    ui.theme = theme;
+    ui.set_greyscale(level);
+    ui.set_theme(theme.clone());
     setup(&mut ui);
     let transcript = transcript();
     let mut terminal = Terminal::new(TestBackend::new(WIDTH, 40)).unwrap();
@@ -85,25 +87,27 @@ fn frame(theme: &'static Theme, setup: impl FnOnce(&mut Ui)) -> Buffer {
 /// The frames every check runs on: chat idle, chat running with a status
 /// message, the model list with a selected row, the trace timeline and
 /// the open model picker.
-fn frames(theme: &'static Theme) -> Vec<Buffer> {
+fn frames(theme: &Theme, level: u8) -> Vec<Buffer> {
     vec![
-        frame(theme, |_| {}),
-        frame(theme, |ui| {
+        frame(theme, level, |_| {}),
+        frame(theme, level, |ui| {
             ui.running = true;
             ui.status = "theme Dark (saved)".into();
         }),
-        frame(theme, |ui| {
+        frame(theme, level, |ui| {
             ui.screen = Screen::Models;
             ui.models = builtin_models();
             ui.selected = 1;
         }),
-        frame(theme, |ui| {
+        frame(theme, level, |ui| {
             ui.screen = Screen::Trace;
             let steps = vec!["turn step model".into()];
             ui.trace
                 .set(super::picker_tests::sample_entries(), steps, None);
         }),
-        frame(theme, |ui| ui.open_picker(super::picker::PickerKind::Model)),
+        frame(theme, level, |ui| {
+            ui.open_picker(super::picker::PickerKind::Model)
+        }),
     ]
 }
 
@@ -119,14 +123,9 @@ fn text(buffer: &Buffer) -> String {
 }
 
 #[test]
-fn greyscale_themes_paint_only_greys() {
-    let greys: Vec<&'static Theme> = THEMES
-        .iter()
-        .filter(|t| t.id.starts_with("greyscale"))
-        .collect();
-    assert_eq!(greys.len(), 2);
-    for theme in greys {
-        for buffer in frames(theme) {
+fn greyscale_100_paints_only_greys() {
+    for theme in builtins() {
+        for buffer in frames(theme, 100) {
             for (i, cell) in buffer.content().iter().enumerate() {
                 let (fg, bg) = (rgb(cell.fg), rgb(cell.bg));
                 assert!(
@@ -144,43 +143,49 @@ fn greyscale_themes_paint_only_greys() {
 /// 3:1 (SC 1.4.11).
 #[test]
 fn every_glyph_meets_wcag_contrast_in_every_theme() {
-    for theme in &THEMES {
-        for buffer in frames(theme) {
-            for (i, cell) in buffer.content().iter().enumerate() {
-                let symbol = cell.symbol();
-                let Some(first) = symbol.chars().next().filter(|c| !c.is_whitespace()) else {
-                    continue;
-                };
-                let border = ('\u{2500}'..='\u{257F}').contains(&first);
-                let need = if border { 3.0 } else { 4.5 };
-                let ratio = contrast_ratio(rgb(cell.fg), rgb(cell.bg));
-                let (x, y) = (i % usize::from(WIDTH), i / usize::from(WIDTH));
-                assert!(
-                    ratio >= need,
-                    "{} ({x},{y}) `{symbol}`: {ratio:.2} < {need}",
-                    theme.id
-                );
+    for theme in builtins() {
+        for level in [0, 50, 100] {
+            for buffer in frames(theme, level) {
+                assert_contrast(&theme.id, level, &buffer);
             }
         }
     }
 }
 
+fn assert_contrast(id: &str, level: u8, buffer: &Buffer) {
+    for (i, cell) in buffer.content().iter().enumerate() {
+        let symbol = cell.symbol();
+        let Some(first) = symbol.chars().next().filter(|c| !c.is_whitespace()) else {
+            continue;
+        };
+        let border = ('\u{2500}'..='\u{257F}').contains(&first);
+        let need = if border { 3.0 } else { 4.5 };
+        let ratio = contrast_ratio(rgb(cell.fg), rgb(cell.bg));
+        let (x, y) = (i % usize::from(WIDTH), i / usize::from(WIDTH));
+        assert!(
+            ratio >= need,
+            "{id} grey {level} ({x},{y}) `{symbol}`: {ratio:.2} < {need}"
+        );
+    }
+}
+
 #[test]
 fn states_carry_marks_not_only_colour() {
-    let idle = text(&frame(&THEMES[2], |_| {}));
+    let dark = &builtins()[0];
+    let idle = text(&frame(dark, 100, |_| {}));
     for mark in ["○ cargo build", "✓ cargo test", "✗ cargo fmt", "↻ retrying"] {
         assert!(idle.contains(mark), "{mark} missing");
     }
     assert!(idle.contains("⇄ switched") && idle.contains("✗ the turn failed"));
-    assert!(idle.contains("F5 theme"));
-    let running = text(&frame(&THEMES[2], |ui| ui.running = true));
+    assert!(idle.contains("F5 theme · F6 grey"));
+    let running = text(&frame(dark, 100, |ui| ui.running = true));
     assert!(running.contains("⠋ cargo build"));
-    let models = frame(&THEMES[0], |ui| {
+    let models = frame(dark, 0, |ui| {
         ui.screen = Screen::Models;
         ui.models = builtin_models();
         ui.selected = 0;
     });
-    let selected = Styles::new(&THEMES[0]).palette().selection;
+    let selected = Styles::new(dark).palette().selection;
     let row = (0..models.area.height)
         .find(|&y| models[(1, y)].symbol() == "›")
         .expect("a › marker on the selected row");
@@ -192,7 +197,7 @@ fn states_carry_marks_not_only_colour() {
 #[test]
 fn a_theme_change_re_renders_cached_lines() {
     let items = transcript().items;
-    let opts = |theme: &'static Theme| Opts {
+    let opts = |theme: &Theme| Opts {
         width: 60,
         show_thinking: false,
         running: false,
@@ -200,41 +205,94 @@ fn a_theme_change_re_renders_cached_lines() {
         styles: Styles::new(theme),
     };
     let mut cache = Cache::default();
-    let dark = cache.lines(&items, opts(&THEMES[0]))[0].spans[0].style.fg;
-    let light = cache.lines(&items, opts(&THEMES[1]))[0].spans[0].style.fg;
-    assert_eq!(dark, Some(color(THEMES[0].palette.accent)));
-    assert_eq!(light, Some(color(THEMES[1].palette.accent)));
+    let (dark, light) = (&builtins()[0], &builtins()[1]);
+    let fg = |cache: &mut Cache, theme| cache.lines(&items, opts(theme))[0].spans[0].style.fg;
+    assert_eq!(fg(&mut cache, dark), Some(color(dark.palette.accent)));
+    assert_eq!(fg(&mut cache, light), Some(color(light.palette.accent)));
+}
+
+struct Home(std::path::PathBuf);
+
+impl Home {
+    fn new(name: &str) -> Home {
+        let home =
+            std::env::temp_dir().join(format!("fast-harness-tui-{name}-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&home);
+        fs::create_dir_all(home.join("themes")).unwrap();
+        fs::write(home.join("config.json"), r#"{"model":"m"}"#).unwrap();
+        Home(home)
+    }
+
+    fn saved(&self) -> serde_json::Value {
+        serde_json::from_slice(&fs::read(self.0.join("config.json")).unwrap()).unwrap()
+    }
+}
+
+impl Drop for Home {
+    fn drop(&mut self) {
+        let _ = fs::remove_dir_all(&self.0);
+    }
 }
 
 #[test]
-fn f5_cycles_the_theme_and_saves_it() {
-    let home = std::env::temp_dir().join(format!("fast-harness-tui-theme-{}", std::process::id()));
-    let _ = fs::remove_dir_all(&home);
-    fs::create_dir_all(&home).unwrap();
-    fs::write(home.join("config.json"), r#"{"model":"m"}"#).unwrap();
+fn f5_cycles_built_in_and_user_themes_and_saves_them() {
+    let home = Home::new("theme");
+    let mine =
+        r#"{"version":1,"id":"mine","name":"Mine","kind":"dark","extends":"aurora","colors":{}}"#;
+    fs::write(home.0.join("themes").join("mine.json"), mine).unwrap();
     let mut ui = Ui::new("m".into(), None);
+    ui.themes = ThemeSet::load(&home.0);
     assert_eq!(ui.theme.id, "dark");
     let f5 = ui.key(KeyEvent::new(KeyCode::F(5), KeyModifiers::NONE));
     assert_eq!(f5, Action::CycleTheme);
-    let saved = |home: &std::path::Path| -> serde_json::Value {
-        serde_json::from_slice(&fs::read(home.join("config.json")).unwrap()).unwrap()
-    };
-    assert_eq!(theme::cycle(&mut ui, &home).id, "light");
+    assert_eq!(theme::cycle(&mut ui, &home.0).id, "light");
     assert_eq!(ui.status, "theme Light (saved)");
-    assert_eq!(theme::cycle(&mut ui, &home).id, "greyscale-dark");
-    assert_eq!(ui.status, "theme Greyscale dark (saved)");
-    let config = saved(&home);
-    assert_eq!(config["theme"], "greyscale-dark");
-    assert_eq!(config["model"], "m");
-    theme::cycle(&mut ui, &home);
-    assert_eq!(theme::cycle(&mut ui, &home).id, "dark");
+    assert_eq!(theme::cycle(&mut ui, &home.0).id, "aurora");
+    assert_eq!(ui.status, "theme Aurora (saved)");
+    assert_eq!(ui.palette, builtins()[2].palette);
+    let config = home.saved();
+    assert_eq!(
+        (config["theme"].as_str(), config["model"].as_str()),
+        (Some("aurora"), Some("m"))
+    );
+    let ids: Vec<String> = (0..6).map(|_| theme::cycle(&mut ui, &home.0).id).collect();
+    assert_eq!(
+        ids,
+        ["synthwave", "sunset", "emerald", "sakura", "citrus", "mine"]
+    );
+    assert_eq!(ui.status, "theme Mine (saved)");
+    assert_eq!(theme::cycle(&mut ui, &home.0).id, "dark");
     // A home that cannot hold config.json: the theme still applies.
-    let blocked = home.join("config.json");
+    let blocked = home.0.join("config.json");
     assert_eq!(theme::cycle(&mut ui, &blocked).id, "light");
     assert!(
         ui.status.starts_with("theme Light (not saved"),
         "{}",
         ui.status
     );
-    fs::remove_dir_all(&home).unwrap();
+}
+
+#[test]
+fn f6_steps_the_greyscale_level_and_saves_it() {
+    let home = Home::new("grey");
+    let mut ui = Ui::new("m".into(), None);
+    let f6 = ui.key(KeyEvent::new(KeyCode::F(6), KeyModifiers::NONE));
+    assert_eq!(f6, Action::StepGreyscale(10));
+    let back = ui.key(KeyEvent::new(KeyCode::F(6), KeyModifiers::SHIFT));
+    assert_eq!(back, Action::StepGreyscale(-10));
+    assert_eq!(theme::step_greyscale(&mut ui, &home.0, 10), 10);
+    assert_eq!(ui.status, "greyscale 10 of 100 (saved)");
+    assert_eq!(home.saved()["greyscale"], 10);
+    assert_eq!(ui.palette, ui.theme.shown(10));
+    assert_eq!(theme::step_greyscale(&mut ui, &home.0, -10), 0);
+    assert_eq!(ui.status, "greyscale off, full colour (saved)");
+    assert_eq!(theme::step_greyscale(&mut ui, &home.0, -10), 100);
+    assert_eq!(ui.status, "greyscale 100 of 100, pure greys (saved)");
+    assert!(ui.palette.accent.is_grey());
+    assert_eq!(theme::step_greyscale(&mut ui, &home.0, 10), 0);
+    // The level survives a theme change.
+    ui.set_greyscale(40);
+    theme::cycle(&mut ui, &home.0);
+    assert_eq!((ui.theme.id.as_str(), ui.greyscale), ("light", 40));
+    assert_eq!(ui.palette, builtins()[1].shown(40));
 }

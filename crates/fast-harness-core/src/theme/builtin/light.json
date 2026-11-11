@@ -1,0 +1,30 @@
+{
+  "version": 1,
+  "id": "light",
+  "name": "Light",
+  "kind": "light",
+  "colors": {
+    "bg": "#f7f8fc",
+    "bg_end": "#eceffb",
+    "surface": "#ffffff",
+    "raised": "#ffffff",
+    "hover": "#eceef7",
+    "selection": "#dde4ff",
+    "bubble": "#e6ebff",
+    "code": "#f0f2f9",
+    "accent_surface": "#e4e9ff",
+    "line": "#dde1ec",
+    "border": "#767d98",
+    "text": "#141829",
+    "dim": "#4b5270",
+    "accent": "#3653d8",
+    "accent2": "#8034d0",
+    "on_accent": "#ffffff",
+    "glow": "#7b93ff",
+    "shadow": "#1a2040",
+    "error": "#c0262d",
+    "warning": "#8f5300",
+    "success": "#1c7a44",
+    "info": "#1d62b8"
+  }
+}
