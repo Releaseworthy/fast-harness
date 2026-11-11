@@ -3,7 +3,7 @@
 //! current model; Enter picks, Esc closes, other keys are ignored.
 
 use fast_harness_core::llm::anthropic::ModelInfo;
-use fast_harness_core::llm::catalog::{display_name, group_title, provider_of, PROVIDERS};
+use fast_harness_core::llm::catalog::{display_name, group_title, label, provider_of, PROVIDERS};
 use fast_harness_core::llm::{efforts, fit_effort};
 use ratatui::crossterm::event::{KeyCode, KeyEvent};
 use ratatui::layout::Rect;
@@ -36,9 +36,12 @@ pub struct Picker {
     pub note: Option<String>,
 }
 
-/// The display name of `model`, else its id.
+/// The display name of `model` (with " · Antigravity" for Claude and GPT
+/// through Google, `catalog::label`), else its id.
 pub fn model_name(model: &str) -> String {
-    display_name(model).unwrap_or_else(|| model.to_string())
+    display_name(model)
+        .map(|name| label(model, &name))
+        .unwrap_or_else(|| model.to_string())
 }
 
 /// The effort after `current` among the efforts of `model`; `None` when

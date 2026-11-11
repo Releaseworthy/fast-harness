@@ -29,6 +29,21 @@ pub fn group_title(provider: &str) -> &'static str {
     }
 }
 
+/// The label of `model` named `name` where the provider is not otherwise
+/// shown (a closed picker, a status line): Antigravity models whose name does
+/// not say Gemini get " · Antigravity", so Claude through Google never reads
+/// like Claude through Anthropic.
+pub fn label(model: &str, name: &str) -> String {
+    let lower = name.to_ascii_lowercase();
+    // A name that is the id itself already says antigravity.
+    let plain = lower.starts_with("gemini") || lower.contains("antigravity");
+    if antigravity::is_antigravity(model) && !plain {
+        format!("{name} · Antigravity")
+    } else {
+        name.to_string()
+    }
+}
+
 /// `models` split by provider, in [`PROVIDERS`] order, keeping the order
 /// inside each group; empty groups are left out.
 pub fn grouped(models: &[ModelInfo]) -> Vec<(&'static str, Vec<&ModelInfo>)> {
@@ -84,6 +99,22 @@ pub fn display_name(model: &str) -> Option<String> {
 mod tests {
     use super::*;
     use crate::llm::antigravity::models::{remember, CatalogEntry};
+
+    #[test]
+    fn labels_tell_antigravity_claude_apart() {
+        assert_eq!(
+            label("antigravity/claude-sonnet-4-6", "Claude Sonnet 4.6"),
+            "Claude Sonnet 4.6 · Antigravity"
+        );
+        assert_eq!(
+            label("antigravity/gemini-3.8-flash-high", "Gemini 3.8 Flash"),
+            "Gemini 3.8 Flash"
+        );
+        assert_eq!(
+            label("claude-sonnet-5-5", "Claude Sonnet 5.5"),
+            "Claude Sonnet 5.5"
+        );
+    }
 
     #[test]
     fn dispatch_by_prefix() {

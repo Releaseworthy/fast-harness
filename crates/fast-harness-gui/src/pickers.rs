@@ -2,7 +2,9 @@
 //! page: one list in Rust, both views bind the same window properties.
 
 use fast_harness_core::llm::anthropic::ModelInfo;
-use fast_harness_core::llm::catalog::{group_title, provider_of, PROVIDERS};
+use fast_harness_core::llm::catalog::{
+    group_title, label as provider_label, provider_of, PROVIDERS,
+};
 use fast_harness_core::llm::{efforts, fit_effort};
 
 /// Model ids and labels of `models` (the cached or fetched list) grouped by
@@ -28,6 +30,7 @@ pub fn model_list(models: &[ModelInfo], configured: &str) -> Vec<(String, String
             continue;
         }
         for (id, label) in &mut rows {
+            *label = provider_label(id, label);
             if models.iter().any(|m| &m.id == id && m.deprecated) {
                 label.push_str(" (deprecated)");
             }
@@ -188,7 +191,7 @@ mod tests {
                 "Google Antigravity",
                 "antigravity/gemini-new",
                 "Gemini G",
-                "Claude C"
+                "Claude C · Antigravity"
             ]
         );
         assert!(is_header(&list[0]) && is_header(&list[2]));
