@@ -32,5 +32,8 @@ Rules for anyone (human or agent) changing this repo. Read `PLAN.md` first: it h
 - Wire capture (off by default, `"wire": true` or `NH_WIRE=1`) stores every request body: its size grows with the square of the step count.
 - Slint 1.18.1 StyledText is not selectable: the GUI copies through a hidden TextInput.
 - Slint 1.18.1 std-widgets colours are read only (only `Palette.color-scheme` can be set) and follow the OS accent: use the themed widgets in `ui/widgets.slint`, not Button, TextEdit, ComboBox or StandardTableView.
-- Segoe UI has no ✕ ↻ ▸ glyphs: GUI marks use the `Mark` element (Segoe UI Symbol). Check new glyphs in the shots test (`NH_SHOTS_DIR=<dir> cargo test -p nh-gui shots -- --ignored`).
+- GUI icons come only from the embedded "Fast Harness Icons" font (a Nerd Font subset, `crates/nh-gui/fonts/`), named in `ui/icons.slint`: a new glyph needs the subset rebuilt with its code point (`fonts/NOTES.md`). Check glyphs in the shots test (`NH_SHOTS_DIR=<dir> cargo test -p nh-gui shots -- --ignored`).
+- TUI Nerd Font glyphs must be one cell wide (the width test in `tui/icons.rs`): U+26A1 is double width.
+- `WindowMoveArea` delays the press, so a TouchArea double click inside it never fires: the title bar double click and every window state change go through `src/window_state.rs` (the .slint `maximized` property drifted from the real state).
+- Real-window checks: the release exe with `NH_HOME` set to a fresh temp folder, PrintWindow and posted clicks after SetProcessDPIAware; posted clicks cannot drag or resize the window.
 - Opening the TUI creates a session file even if nothing is sent.

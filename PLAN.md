@@ -1,6 +1,6 @@
 # native-harness plan
 
-A barebone coding agent harness in native Rust, in the spirit of DeepSeek Harness (DSH) but written from scratch (no pi-ai): fast, small, with a trace of every turn and every step. Windows first; the core is portable to Linux, macOS, Android and iOS.
+Fast Harness (this repo; binaries `nh` and `nh-gui`) is a barebone coding agent harness in native Rust, in the spirit of DeepSeek Harness (DSH) but written from scratch (no pi-ai): fast, small, with a trace of every turn and every step. Windows first; the core is portable to Linux, macOS, Android and iOS.
 
 ## Status
 
@@ -19,6 +19,7 @@ A barebone coding agent harness in native Rust, in the spirit of DeepSeek Harnes
 | 3B | GUI (Slint) | done |
 | 4 | Live checks, performance report (`docs/perf.md`) | done |
 | 5 | Model and effort pickers at the chat box (TUI, GUI), readable trace timeline (TUI, GUI, `nh trace`), themes with WCAG and APCA tests, wire capture off by default | done |
+| 6 | Fast Harness: live model and effort catalog (pickers refetch on open, `nh models`), short system prompt, claude-switch import removed, frameless GUI with a DSH-style title bar, Chat and Trace tabs, Nerd Font icons (GUI and TUI), lightning-bolt app icon | done |
 
 ## Decisions
 
@@ -42,13 +43,16 @@ A barebone coding agent harness in native Rust, in the spirit of DeepSeek Harnes
 | D16 | Model and effort at the chat box | GUI: two dropdowns in the composer; TUI: Ctrl+P and Ctrl+E pickers above the input. Effort choices per model (`llm::anthropic::efforts`); a model change refits the effort (`fit_effort`). Picks apply to the next turn and last for the window (not saved). |
 | D17 | Live model catalog | Owner, 2026-11-11: fetch Claude's newest models and effort levels each time the user opens the model or effort picker. `GET /v1/models` (all pages, retired models left out) gives per model `capabilities.effort` levels and `capabilities.thinking.types`; a process-wide registry (`llm::anthropic::remember_models`) holds them, filled by every successful list and by `models.json` at start. `efforts` and `fit_effort` read it before the table; the request builder reads it only for models missing from the table (adaptive, budget or no thinking as the API says). Front ends call `Runtime::models()` then `ModelSource::fetch` off the UI thread; `cached()` gives the last known list or the table. A failed list never holds or switches the account. CLI: `nh models [--json]`. |
 | D18 | System prompt | Short (owner, 2026-11-11): "You are a coding agent in Fast Harness, working in {cwd} on {os}. Today is {date} (UTC)." plus one line on tools, then the project's AGENTS.md files (D12, 32 KB cap). Nothing from the workspace around the repository. The OAuth identity block "You are Claude Code, Anthropic's official CLI for Claude." stays first for subscription OAuth (Anthropic requires it). The app's display name is Fast Harness; binaries stay `nh` and `nh-gui`. |
+| D19 | GUI frame | Owner, 2026-11-11: a custom title bar like DSH's. Frameless window (`no-frame`, 6 px resize border, winit) with a 40 px title bar: sidebar toggle, Settings, About, the active account's 5h and 7d usage pill, minimize, maximize or restore, close. Slint's `WindowMoveArea` drags the window; a double click on the empty bar maximizes; every window state change goes through `window_state.rs`. The sidebar holds the logo, New session, the sessions and, at the bottom, only an Accounts entry with a person icon. Chat and Trace are tabs of the session; Settings, About and Accounts open as a third, closable tab. |
+| D20 | Icons | Nerd Fonts v3.5.1 (owner: "sử dụng nerdfont"). GUI: an embedded 60-glyph subset of Symbols Nerd Font renamed "Fast Harness Icons" (`crates/nh-gui/fonts/`, with the Nerd Fonts licence and notes on the glyph sets: Codicons, Material Design Icons, Octicons); code points live in `ui/icons.slint`. TUI: glyphs from the terminal's Nerd Font, `"icons": "plain"` or `NH_ICONS=plain` for a terminal without one; every glyph is one cell wide (never U+26A1). |
+| D21 | Name and app icon | The app is Fast Harness (owner, 2026-11-11); the repo, crates, binaries, `~/.nh` and the `NH_*` keys keep their names. The icon is a lightning bolt rendered with Krea 2 (1 MP, cut to a rounded tile, `crates/nh-gui/assets/`): the window icon, and linked into `nh-gui.exe` with version info ("Fast Harness") by `build.rs`, which writes a `.res` file in pure Rust (MSVC only). |
 
 ## Architecture
 
 | crate | output | content |
 |---|---|---|
 | `nh-core` | library | types, Claude provider, agent loop, tools, trace and sessions, accounts, config, platform layer |
-| `nh` | `nh.exe` | CLI print mode, TUI, `nh accounts`, `nh sessions`, `nh trace` |
+| `nh` | `nh.exe` | CLI print mode, TUI, `nh accounts`, `nh models`, `nh sessions`, `nh trace` |
 | `nh-gui` | `nh-gui.exe` | Slint GUI (added in phase 3B) |
 
 `nh-core` modules, lower never imports higher: `types` > `http`, `sse`, `platform` > `llm`, `tools`, `auth` > `trace`, `session` > `accounts` > `agent`. `events` holds what front ends receive.
