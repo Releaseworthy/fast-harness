@@ -23,3 +23,11 @@ Rules for anyone (human or agent) changing this repo. Read `PLAN.md` first: it h
 - Model calls are tested with `http::ScriptedTransport`, including bodies split into tiny chunks.
 - Filesystem tests use a fresh temporary directory under `std::env::temp_dir()` and remove it.
 - Every bug fix comes with a test that failed before it.
+
+## Pitfalls
+
+- Two branches that add crates both touch Cargo.lock: on conflict take one side, run cargo metadata, commit, then build with --locked.
+- The ring crate (rustls) needs the MSVC C compiler.
+- Always-on wire capture stores every request body, causing size growth with the square of the step count.
+- Slint 1.18.1 StyledText is not selectable: the GUI copies through a hidden TextInput.
+- Opening the TUI creates a session file even if nothing is sent.
