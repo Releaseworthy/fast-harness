@@ -2,21 +2,41 @@
 //! this window only). The composer and the Settings page bind the same
 //! window properties, so a pick in one shows in the other.
 
-use slint::{ModelRc, SharedString, VecModel};
+use slint::{Model, ModelRc, SharedString, VecModel};
 
 use crate::app::App;
 use crate::pickers::{effort_index, effort_list, model_index, model_list, refit};
 use crate::MainWindow;
 
-fn strings<'a>(items: impl Iterator<Item = &'a str>) -> ModelRc<SharedString> {
+/// `items` into `current` in place when it is a `VecModel` (an open list
+/// then updates without closing), else a new model.
+fn strings<'a>(
+    current: ModelRc<SharedString>,
+    items: impl Iterator<Item = &'a str>,
+) -> Option<ModelRc<SharedString>> {
     let items: Vec<SharedString> = items.map(SharedString::from).collect();
-    ModelRc::new(VecModel::from(items))
+    match current.as_any().downcast_ref::<VecModel<SharedString>>() {
+        Some(model) => {
+            model.set_vec(items);
+            None
+        }
+        None => Some(ModelRc::new(VecModel::from(items))),
+    }
 }
 
+/// Fills the pickers from the cached list (the last fetch, else the table).
 pub fn fill(app: &mut App, ui: &MainWindow) {
     crate::theme::fill(ui, &app.rt.config.theme);
-    let list = model_list(&app.rt.config.model);
-    ui.set_models(strings(list.iter().map(|(_, label)| label.as_str())));
+    let list = model_list(&app.rt.models().cached(), &app.rt.config.model);
+    show_models(app, ui, list);
+}
+
+/// Shows `(id, label)` rows with the current model selected, then its efforts.
+pub fn show_models(app: &mut App, ui: &MainWindow, list: Vec<(String, String)>) {
+    let labels = list.iter().map(|(_, label)| label.as_str());
+    if let Some(model) = strings(ui.get_models(), labels) {
+        ui.set_models(model);
+    }
     ui.set_model_index(model_index(&list, &app.rt.config.model));
     app.models = list.into_iter().map(|(id, _)| id).collect();
     fill_efforts(app, ui);
@@ -25,7 +45,9 @@ pub fn fill(app: &mut App, ui: &MainWindow) {
 /// The effort list of the current model and the current effort in it.
 fn fill_efforts(app: &App, ui: &MainWindow) {
     let list = effort_list(&app.rt.config.model);
-    ui.set_efforts(strings(list.iter().copied()));
+    if let Some(model) = strings(ui.get_efforts(), list.iter().copied()) {
+        ui.set_efforts(model);
+    }
     ui.set_effort_index(effort_index(&list, app.rt.config.effort.as_deref()));
 }
 

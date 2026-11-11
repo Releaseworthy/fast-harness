@@ -9,7 +9,9 @@ component SettingRow {
     in property <string> placeholder;
     in property <[string]> model;
     in-out property <int> current-index;
+    in property <bool> refreshing;
     callback selected(int);
+    callback opened();
     VerticalLayout {
         spacing: Theme.space-xs + 2px;
         Text {
@@ -23,7 +25,9 @@ component SettingRow {
             placeholder: root.placeholder;
             model: root.model;
             current-index <=> root.current-index;
+            refreshing: root.refreshing;
             selected(i) => { root.selected(i); }
+            opened => { root.opened(); }
         }
         if root.caption != "": Text {
             text: root.caption;
@@ -46,6 +50,9 @@ export component SettingsPage inherits Rectangle {
     in property <string> note;
     callback model-picked(int);
     callback effort-picked(int);
+    // The model or effort list opened (the app refetches the models).
+    callback pickers-opened();
+    in property <bool> refreshing;
     background: Theme.bg;
     VerticalLayout {
         padding-top: Theme.space-xl;
@@ -66,7 +73,9 @@ export component SettingsPage inherits Rectangle {
             label: "Model";
             model: root.models;
             current-index <=> root.model-index;
+            refreshing: root.refreshing;
             selected(i) => { root.model-picked(i); }
+            opened => { root.pickers-opened(); }
         }
         SettingRow {
             label: "Thinking effort";
@@ -74,7 +83,9 @@ export component SettingsPage inherits Rectangle {
             placeholder: "default";
             model: root.efforts;
             current-index <=> root.effort-index;
+            refreshing: root.refreshing;
             selected(i) => { root.effort-picked(i); }
+            opened => { root.pickers-opened(); }
         }
         if root.note != "": Text { text: root.note; color: Theme.text; font-size: Theme.font-s; wrap: word-wrap; }
     }

@@ -112,7 +112,9 @@ component DropdownItem inherits Rectangle {
 
 // A dropdown: the current label and a chevron; a list in a popup.
 // Keyboard: Enter, Space or Down open it; Up and Down move; Enter picks;
-// Esc closes. `selected(index)` fires after a pick changed `current-index`.
+// Esc closes. `selected(index)` fires after a pick changed `current-index`;
+// `opened()` fires each time the list opens (mouse, keyboard or a screen
+// reader). While `refreshing`, a mark shows the list is being refetched.
 export component Dropdown inherits Rectangle {
     in property <[string]> model;
     in-out property <int> current-index: 0;
@@ -126,6 +128,8 @@ export component Dropdown inherits Rectangle {
     out property <string> current-value: root.current-index >= 0 && root.current-index < root.model.length ? root.model[root.current-index] : "";
     out property <bool> has-focus: fs.has-focus;
     callback selected(int);
+    callback opened();
+    in property <bool> refreshing;
     in-out property <int> highlight: -1;
     property <length> list-height: min(8, max(1, root.model.length)) * Theme.control-height + 8px;
     property <bool> open;
@@ -134,6 +138,7 @@ export component Dropdown inherits Rectangle {
         root.highlight = root.current-index;
         root.open = true;
         popup.show();
+        root.opened();
     }
     function pick(index: int) {
         popup.close();
@@ -170,7 +175,7 @@ export component Dropdown inherits Rectangle {
     opacity: root.enabled ? 1 : 0.6;
     forward-focus: fs;
     accessible-role: combobox;
-    accessible-label: root.label;
+    accessible-label: root.refreshing ? root.label + ", Refreshing" : root.label;
     accessible-value: root.current-value != "" ? root.current-value : root.placeholder;
     accessible-enabled: root.enabled;
     accessible-expanded: root.open;
@@ -189,17 +194,18 @@ export component Dropdown inherits Rectangle {
             horizontal-stretch: 1;
             accessible-role: none;
         }
+        if root.refreshing: Mark {
+            text: Icons.refresh;
+            color: Theme.dim;
+            font-size: Theme.font-m;
+        }
         Mark {
             text: root.open ? Icons.chevron-up : Icons.chevron-down;
             color: Theme.dim;
             font-size: Theme.font-m;
         }
     }
-    ta := TouchArea {
-        enabled: root.enabled;
-        mouse-cursor: pointer;
-        clicked => { root.show-list(); }
-    }
+
     fs := FocusScope {
         enabled: root.enabled;
         key-pressed(event) => {
@@ -208,6 +214,15 @@ export component Dropdown inherits Rectangle {
                 return accept;
             }
             return reject;
+        }
+    }
+    // Above the focus scope, which would otherwise take the press.
+    ta := TouchArea {
+        enabled: root.enabled;
+        mouse-cursor: pointer;
+        clicked => {
+            fs.focus();
+            root.show-list();
         }
     }
     if fs.has-focus: FocusRing { radius: Theme.radius-s; x: -3px; y: -3px; width: parent.width + 6px; height: parent.height + 6px; }

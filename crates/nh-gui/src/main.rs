@@ -9,6 +9,7 @@ mod accounts;
 mod app;
 mod format;
 mod mirror;
+mod model_refresh;
 mod pickers;
 mod rows;
 mod settings;
@@ -21,6 +22,7 @@ mod shots_trace;
 mod theme;
 mod trace_rows;
 mod turn;
+mod window_state;
 mod wire;
 
 use std::path::PathBuf;

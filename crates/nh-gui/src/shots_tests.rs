@@ -137,7 +137,10 @@ fn fill(ui: &MainWindow) {
         ),
         account("spare@example.com", false, 0.05, 0.02, ""),
     ]));
-    let models = crate::pickers::model_list("claude-opus-5-5");
+    let models = crate::pickers::model_list(
+        &nh_core::llm::anthropic::builtin_models(),
+        "claude-opus-5-5",
+    );
     ui.set_models(model(models.iter().map(|(_, l)| l.into()).collect()));
     let efforts = crate::pickers::effort_list("claude-opus-5-5");
     ui.set_efforts(model(

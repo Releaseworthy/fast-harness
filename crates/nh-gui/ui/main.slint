@@ -47,6 +47,10 @@ export component MainWindow inherits Window {
     in-out property <int> effort-index;
     // Shown under the pickers until the next send.
     in property <string> picker-note;
+    // A model list fetch runs (started when a model or effort list opens).
+    in property <bool> models-refreshing;
+    // The real maximized state, set by the app (window_state.rs).
+    in property <bool> win-maximized;
     in-out property <string> page: "chat";
     in property <bool> busy;
     in-out property <string> error-text;
@@ -84,6 +88,11 @@ export component MainWindow inherits Window {
     callback trace-toggle(int);
     callback model-picked(int);
     callback effort-picked(int);
+    // A model or effort list opened: the app refetches the model list.
+    callback pickers-opened();
+    // Window controls: the app reads and changes the real window state.
+    callback window-minimize();
+    callback window-toggle-maximize();
     callback theme-changed(int);
     // A click on the empty title bar (two within 500 ms maximize or restore).
     callback title-bar-clicked();
@@ -124,7 +133,7 @@ export component MainWindow inherits Window {
         TitleBar {
             page: root.page;
             sidebar-open: root.sidebar-open;
-            maximized: root.maximized;
+            maximized: root.win-maximized;
             chip-name: root.chip-name;
             chip-five: root.chip-five;
             chip-five-text: root.chip-five-text;
@@ -132,8 +141,8 @@ export component MainWindow inherits Window {
             chip-seven-text: root.chip-seven-text;
             toggle-sidebar => { root.sidebar-open = !root.sidebar-open; }
             open-page(p) => { root.open-page(p); }
-            minimize => { root.minimized = true; }
-            toggle-maximize => { root.maximized = !root.maximized; }
+            minimize => { root.window-minimize(); }
+            toggle-maximize => { root.window-toggle-maximize(); }
             bar-clicked => { root.title-bar-clicked(); }
             close => { root.close(); }
         }
@@ -202,7 +211,9 @@ export component MainWindow inherits Window {
                                         list-width: 320px;
                                         model: root.models;
                                         current-index <=> root.model-index;
+                                        refreshing: root.models-refreshing;
                                         selected(i) => { root.model-picked(i); }
+                                        opened => { root.pickers-opened(); }
                                     }
                                     Dropdown {
                                         label: "Thinking effort";
@@ -212,7 +223,9 @@ export component MainWindow inherits Window {
                                         drop-up: true;
                                         model: root.efforts;
                                         current-index <=> root.effort-index;
+                                        refreshing: root.models-refreshing;
                                         selected(i) => { root.effort-picked(i); }
+                                        opened => { root.pickers-opened(); }
                                     }
                                 }
                             }
@@ -259,6 +272,8 @@ export component MainWindow inherits Window {
                             note: root.picker-note;
                             model-picked(i) => { root.model-picked(i); }
                             effort-picked(i) => { root.effort-picked(i); }
+                            pickers-opened => { root.pickers-opened(); }
+                            refreshing: root.models-refreshing;
                         }
                         if root.page == "about": AboutPage {
                             width: parent.width;
@@ -278,7 +293,7 @@ export component MainWindow inherits Window {
         }
     }
     // The window edge (no shadow on a frameless window).
-    if !root.maximized: Rectangle {
+    if !root.win-maximized: Rectangle {
         border-width: 1px;
         border-color: Theme.line;
     }
