@@ -1,8 +1,8 @@
 import { ListView } from "std-widgets.slint";
-import { SessionRow } from "types.slint";
+import { SideRow } from "types.slint";
 import { Theme, Mark } from "parts.slint";
 import { Icons } from "icons.slint";
-import { ActionButton } from "widgets.slint";
+import { ActionButton, IconButton } from "widgets.slint";
 // A selected row: the selection colour, an accent bar on the left and a
 // heavier weight, so the state shows without colour alone.
 component RowMark inherits Rectangle {
@@ -97,11 +97,97 @@ component Logo inherits HorizontalLayout {
     }
 }
 
+// A workspace folder: a folder icon (open for the current one), the folder name,
+// the full path below it for the current one; a remove button on hover.
+component WorkspaceEntry inherits Rectangle {
+    in property <SideRow> entry;
+    callback clicked();
+    callback remove();
+    height: 36px;
+    accessible-role: list-item;
+    accessible-label: root.entry.detail + (root.entry.expanded ? " (expanded)" : " (collapsed)");
+    accessible-item-selected: root.entry.current;
+    accessible-action-default => { root.clicked(); }
+    wta := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+        RowMark { selected: root.entry.current; hovered: wta.has-hover; }
+        HorizontalLayout {
+            padding-left: Theme.space-s + 2px;
+            padding-right: Theme.space-xs;
+            spacing: Theme.space-s;
+            Mark {
+                text: root.entry.expanded ? Icons.chevron-down : Icons.chevron-right;
+                color: Theme.dim;
+                font-size: Theme.font-s;
+            }
+            Mark {
+                text: root.entry.current ? Icons.folder-opened : Icons.folder;
+                color: Theme.text;
+                font-size: Theme.font-l - 2px;
+            }
+            Text {
+                text: root.entry.title;
+                horizontal-stretch: 1;
+                overflow: elide;
+                color: Theme.text;
+                font-size: Theme.font-m;
+                font-weight: root.entry.current ? 600 : 500;
+                vertical-alignment: center;
+            }
+            if wta.has-hover: VerticalLayout {
+                alignment: center;
+                IconButton {
+                    width: 24px;
+                    height: 24px;
+                    icon: Icons.close;
+                    icon-size: Theme.font-s;
+                    label: "Remove from list";
+                    clicked => { root.remove(); }
+                }
+            }
+        }
+    }
+}
+
+// A session under its workspace, indented past the folder icon.
+component SessionEntry inherits Rectangle {
+    in property <SideRow> entry;
+    callback clicked();
+    height: 44px;
+    accessible-role: list-item;
+    accessible-label: root.entry.title;
+    accessible-item-selected: root.entry.current;
+    accessible-action-default => { root.clicked(); }
+    RowMark { selected: root.entry.current; hovered: sta.has-hover; }
+    VerticalLayout {
+        padding-left: Theme.space-m + 30px;
+        padding-right: Theme.space-s;
+        alignment: center;
+        spacing: 2px;
+        Text {
+            text: root.entry.title;
+            overflow: elide;
+            color: Theme.text;
+            font-size: Theme.font-m;
+            font-weight: root.entry.current ? 600 : 400;
+        }
+        Text { text: root.entry.detail; font-size: Theme.font-xs; color: Theme.dim; }
+    }
+    sta := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
 export component Sidebar inherits Rectangle {
-    in property <[SessionRow]> sessions;
+    in property <[SideRow]> rows;
     in property <string> page;
     callback new-session();
-    callback open-session(string);
+    callback add-workspace();
+    callback select-workspace(string);
+    callback remove-workspace(string);
+    callback open-session(string, string);
     callback open-page(string);
     width: 260px;
     background: Theme.surface;
@@ -116,41 +202,40 @@ export component Sidebar inherits Rectangle {
             text: "New session";
             clicked => { root.new-session(); }
         }
-        Text {
-            text: "SESSIONS";
-            font-size: Theme.font-xs;
-            font-weight: 600;
-            letter-spacing: 0.6px;
-            color: Theme.dim;
+        HorizontalLayout {
             height: 32px;
-            vertical-alignment: bottom;
+            Text {
+                text: "WORKSPACES";
+                horizontal-stretch: 1;
+                font-size: Theme.font-xs;
+                font-weight: 600;
+                letter-spacing: 0.6px;
+                color: Theme.dim;
+                vertical-alignment: bottom;
+            }
+            VerticalLayout {
+                alignment: end;
+                IconButton {
+                    width: 26px;
+                    height: 26px;
+                    icon: Icons.new-folder;
+                    icon-size: Theme.font-m;
+                    label: "Add workspace";
+                    clicked => { root.add-workspace(); }
+                }
+            }
         }
         ListView {
             vertical-stretch: 1;
-            for s in root.sessions: Rectangle {
-                height: 48px;
-                accessible-role: list-item;
-                accessible-label: s.title;
-                accessible-item-selected: s.current;
-                accessible-action-default => { root.open-session(s.id); }
-                RowMark { selected: s.current; hovered: sta.has-hover; }
-                VerticalLayout {
-                    padding-left: Theme.space-m;
-                    padding-right: Theme.space-s;
-                    alignment: center;
-                    spacing: 2px;
-                    Text {
-                        text: s.title;
-                        overflow: elide;
-                        color: Theme.text;
-                        font-size: Theme.font-m;
-                        font-weight: s.current ? 600 : 400;
-                    }
-                    Text { text: s.time; font-size: Theme.font-xs; color: Theme.dim; }
+            for r in root.rows: VerticalLayout {
+                if r.kind == "workspace": WorkspaceEntry {
+                    entry: r;
+                    clicked => { root.select-workspace(r.id); }
+                    remove => { root.remove-workspace(r.id); }
                 }
-                sta := TouchArea {
-                    mouse-cursor: pointer;
-                    clicked => { root.open-session(s.id); }
+                if r.kind == "session": SessionEntry {
+                    entry: r;
+                    clicked => { root.open-session(r.workspace, r.id); }
                 }
             }
         }

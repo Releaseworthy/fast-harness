@@ -41,79 +41,6 @@ component MenuButton inherits Rectangle {
     }
 }
 
-// A compact usage meter: the window name, a short bar and the percent.
-component Meter {
-    in property <string> label;
-    in property <float> value;
-    in property <string> caption;
-    HorizontalLayout {
-        spacing: Theme.space-xs + 1px;
-        Text { text: root.label; font-size: Theme.font-xs; color: Theme.dim; vertical-alignment: center; }
-        Rectangle {
-            width: 34px;
-            Rectangle {
-                y: (parent.height - self.height) / 2;
-                height: 5px;
-                border-radius: 2.5px;
-                background: Theme.line;
-                Rectangle {
-                    x: 0;
-                    width: parent.width * max(0, min(1, root.value));
-                    border-radius: 2.5px;
-                    background: root.value >= 0.9 ? Theme.error : root.value >= 0.7 ? Theme.warning : Theme.success;
-                }
-            }
-        }
-        Text {
-            text: root.caption == "no data" ? "n/a" : Math.round(root.value * 100) + "%";
-            font-size: Theme.font-xs;
-            color: Theme.text;
-            vertical-alignment: center;
-        }
-    }
-}
-
-// The active account and its 5h and 7d usage. Opens the Accounts page.
-component AccountPill inherits Rectangle {
-    in property <string> name;
-    in property <float> five;
-    in property <string> five-text;
-    in property <float> seven;
-    in property <string> seven-text;
-    in property <bool> selected;
-    callback clicked();
-    height: 28px;
-    width: pill.preferred-width;
-    border-radius: 14px;
-    border-width: root.selected ? 2px : 1px;
-    border-color: root.selected ? Theme.accent : Theme.border;
-    background: ta.has-hover ? Theme.hover : Theme.raised;
-    accessible-role: button;
-    accessible-label: "Account " + root.name + ". 5h usage " + root.five-text + ". 7d usage " + root.seven-text + ". Open Accounts";
-    accessible-action-default => { root.clicked(); }
-    pill := HorizontalLayout {
-        padding-left: Theme.space-s + 2px;
-        padding-right: Theme.space-m;
-        spacing: Theme.space-s;
-        Mark { text: Icons.account; color: Theme.text; font-size: Theme.font-m; }
-        Text {
-            text: root.name;
-            max-width: 200px;
-            overflow: elide;
-            font-size: Theme.font-s;
-            font-weight: 600;
-            color: Theme.text;
-            vertical-alignment: center;
-        }
-        Meter { label: "5h"; value: root.five; caption: root.five-text; }
-        Meter { label: "7d"; value: root.seven; caption: root.seven-text; }
-    }
-    ta := TouchArea {
-        mouse-cursor: pointer;
-        clicked => { root.clicked(); }
-    }
-}
-
 // Minimize, maximize or restore, close: 46 by 40 like the native ones.
 component WindowButton inherits IconButton {
     width: 46px;
@@ -126,11 +53,6 @@ export component TitleBar inherits Rectangle {
     in property <string> page;
     in property <bool> sidebar-open;
     in property <bool> maximized;
-    in property <string> chip-name;
-    in property <float> chip-five;
-    in property <string> chip-five-text;
-    in property <float> chip-seven;
-    in property <string> chip-seven-text;
     callback toggle-sidebar();
     callback open-page(string);
     callback minimize();
@@ -165,19 +87,6 @@ export component TitleBar inherits Rectangle {
             TouchArea {
                 horizontal-stretch: 1;
                 clicked => { root.bar-clicked(); }
-            }
-            VerticalLayout {
-                alignment: center;
-                horizontal-stretch: 0;
-                AccountPill {
-                    name: root.chip-name;
-                    five: root.chip-five;
-                    five-text: root.chip-five-text;
-                    seven: root.chip-seven;
-                    seven-text: root.chip-seven-text;
-                    selected: root.page == "accounts";
-                    clicked => { root.open-page("accounts"); }
-                }
             }
             Rectangle { width: Theme.space-s; }
             WindowButton { icon: Icons.chrome-minimize; label: "Minimize"; clicked => { root.minimize(); } }

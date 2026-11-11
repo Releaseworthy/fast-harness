@@ -24,6 +24,7 @@ mod trace_rows;
 mod turn;
 mod window_state;
 mod wire;
+mod workspaces;
 
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -44,11 +45,10 @@ fn select_backend() {
         .select();
 }
 
-fn working_dir() -> PathBuf {
+/// The folder given on the command line, if it exists.
+fn working_dir() -> Option<PathBuf> {
     let arg = std::env::args_os().nth(1).map(PathBuf::from);
     arg.filter(|p| p.is_dir())
-        .or_else(|| std::env::current_dir().ok())
-        .unwrap_or_else(|| PathBuf::from("."))
 }
 
 fn main() {

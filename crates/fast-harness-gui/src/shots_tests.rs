@@ -12,7 +12,7 @@ use slint::platform::{Platform, WindowAdapter};
 use slint::{ComponentHandle, ModelRc, PhysicalSize, Rgb8Pixel, SharedString, VecModel};
 
 use crate::rows::markdown;
-use crate::{shots_png, shots_trace, theme, AccountRow, MainWindow, MsgRow, SessionRow, TraceRow};
+use crate::{shots_png, shots_trace, theme, AccountRow, MainWindow, MsgRow, SideRow, TraceRow};
 
 /// The sample timeline with the failed tool output opened by the user.
 fn trace_entries() -> Vec<TraceRow> {
@@ -89,20 +89,28 @@ fn messages() -> Vec<MsgRow> {
     ]
 }
 
-fn sessions() -> Vec<SessionRow> {
-    let row = |id: &str, title: &str, time: &str, current: bool| SessionRow {
+fn side_rows() -> Vec<SideRow> {
+    use crate::workspaces::workspace_row;
+    use std::path::Path;
+    let ws = "F:\\work\\fast-harness";
+    let session = |id: &str, title: &str, time: &str, current: bool| SideRow {
+        kind: "session".into(),
         id: id.into(),
+        workspace: ws.into(),
         title: title.into(),
-        time: time.into(),
+        detail: time.into(),
         current,
+        expanded: false,
     };
     vec![
-        row("1", "Theme picker for the GUI", "2 min ago", true),
-        row("2", "Fix the retry backoff", "1 h ago", false),
-        row("3", "Trace page columns", "yesterday", false),
+        workspace_row(Path::new("F:\\work\\auto-warband"), false, false),
+        workspace_row(Path::new(ws), true, true),
+        session("1", "Theme picker for the GUI", "2 min ago", true),
+        session("2", "Fix the retry backoff", "1 h ago", false),
+        session("3", "Trace page columns", "yesterday", false),
+        workspace_row(Path::new("F:\\work\\releaseworthy-site"), false, false),
     ]
 }
-
 fn account(name: &str, active: bool, five: f32, seven: f32, hold: &str) -> AccountRow {
     AccountRow {
         id: name.into(),
@@ -125,7 +133,7 @@ fn model<T: Clone + 'static>(items: Vec<T>) -> ModelRc<T> {
 
 fn fill(ui: &MainWindow) {
     ui.set_messages(model(messages()));
-    ui.set_sessions(model(sessions()));
+    ui.set_side_rows(model(side_rows()));
     ui.set_accounts(model(vec![
         account("work@example.com", true, 0.42, 0.18, ""),
         account(
@@ -150,11 +158,6 @@ fn fill(ui: &MainWindow) {
     ui.set_trace_entries(model(trace_entries()));
     ui.set_trace_steps(model(shots_trace::steps()));
     ui.set_trace_session("2026-11-11T22-51-40-3f9c".into());
-    ui.set_chip_name("work@example.com".into());
-    ui.set_chip_five(0.42);
-    ui.set_chip_five_text("42%".into());
-    ui.set_chip_seven(0.81);
-    ui.set_chip_seven_text("81%".into());
     ui.set_status_model("claude-opus-5-5".into());
     ui.set_status_account("work@example.com".into());
     ui.set_status_tokens("session: in 12.4k out 2.1k cache 80.2k / 4.0k".into());

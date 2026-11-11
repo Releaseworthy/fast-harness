@@ -87,6 +87,14 @@ impl Workspaces {
         Ok(list)
     }
 
+    /// An empty list for `<app_home>/workspaces.json` (used when the file cannot be read).
+    pub fn empty(app_home: &Path) -> Workspaces {
+        Workspaces {
+            path: app_home.join(FILE_NAME),
+            entries: Vec::new(),
+        }
+    }
+
     fn seed(app_home: &Path, path: PathBuf) -> io::Result<Workspaces> {
         let mut list = Workspaces {
             path,

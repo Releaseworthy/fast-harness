@@ -8,14 +8,12 @@ use std::sync::Arc;
 
 use fast_harness_core::agent::Conversation;
 use fast_harness_core::app::Runtime;
-use fast_harness_core::trace::now_ms;
+use fast_harness_core::trace::{self, now_ms};
 use fast_harness_core::view::{Item, State, Transcript};
-use fast_harness_core::{session, trace};
 use slint::{ComponentHandle, ModelRc, SharedString, VecModel, Weak};
 
 use crate::format::{duration, tokens};
 use crate::mirror::Mirror;
-use crate::rows::session_row;
 use crate::{MainWindow, MsgRow};
 
 pub struct App {
@@ -39,6 +37,8 @@ pub struct App {
     pub models: Vec<String>,
     /// A model list fetch runs (model_refresh).
     pub models_fetching: bool,
+    /// The sidebar's workspaces.
+    pub side: crate::workspaces::Side,
 }
 
 thread_local! {
@@ -69,9 +69,14 @@ pub fn show_error(ui: &MainWindow, text: impl Into<SharedString>) {
 }
 
 impl App {
-    pub fn new(ui: &MainWindow, rt: Runtime, cwd: PathBuf) -> App {
+    /// `arg`: the folder from the command line, if any (see `workspaces::start`).
+    pub fn new(ui: &MainWindow, rt: Runtime, arg: Option<PathBuf>) -> App {
         let rows = Rc::new(VecModel::default());
         ui.set_messages(ModelRc::from(rows.clone()));
+        let (side, cwd, error) = crate::workspaces::start(&rt.home, arg);
+        if let Some(error) = error {
+            show_error(ui, error);
+        }
         App {
             ui: ui.as_weak(),
             rt,
@@ -88,6 +93,7 @@ impl App {
             login_cancel: None,
             models: Vec::new(),
             models_fetching: false,
+            side,
         }
     }
 
@@ -119,18 +125,7 @@ impl App {
     }
 
     pub fn refresh_sessions(&self, ui: &MainWindow) {
-        let now = now_ms();
-        let rows = match session::list(&self.rt.home, &self.cwd) {
-            Ok(list) => list
-                .iter()
-                .map(|s| session_row(s, self.conv_id.as_deref(), now))
-                .collect(),
-            Err(err) => {
-                show_error(ui, format!("Cannot list the sessions: {err}"));
-                Vec::new()
-            }
-        };
-        ui.set_sessions(ModelRc::new(VecModel::from(rows)));
+        crate::workspaces::refresh(self, ui);
     }
 
     pub fn refresh_trace(&self, ui: &MainWindow) {
