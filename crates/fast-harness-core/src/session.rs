@@ -186,3 +186,71 @@ pub fn replay(path: &Path) -> io::Result<Vec<Message>> {
     }
     Ok(messages)
 }
+
+/// A working directory that has session logs under `<app_home>/sessions/`.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct KnownCwd {
+    /// The `cwd` in the header of the folder's newest log.
+    pub cwd: PathBuf,
+    /// `created_at` of the oldest and the newest log (unix ms).
+    pub first: u64,
+    pub last: u64,
+}
+
+/// Every session folder with at least one readable log, one entry per folder.
+/// Only the header line of each log is read; a log without a valid header is
+/// left out. A missing `sessions` folder is an empty list.
+pub fn known_cwds(app_home: &Path) -> io::Result<Vec<KnownCwd>> {
+    let entries = match std::fs::read_dir(app_home.join("sessions")) {
+        Ok(entries) => entries,
+        Err(err) if err.kind() == io::ErrorKind::NotFound => return Ok(Vec::new()),
+        Err(err) => return Err(err),
+    };
+    let mut known = Vec::new();
+    for entry in entries {
+        let path = entry?.path();
+        if path.is_dir() {
+            known.extend(folder_cwd(&path)?);
+        }
+    }
+    Ok(known)
+}
+
+fn folder_cwd(folder: &Path) -> io::Result<Option<KnownCwd>> {
+    let mut found: Option<KnownCwd> = None;
+    for entry in std::fs::read_dir(folder)? {
+        let path = entry?.path();
+        if path.extension().and_then(|e| e.to_str()) != Some("jsonl") {
+            continue;
+        }
+        let Some(header) = read_header(&path) else {
+            continue;
+        };
+        let at = header.created_at;
+        match &mut found {
+            Some(k) => {
+                k.first = k.first.min(at);
+                if at >= k.last {
+                    k.last = at;
+                    k.cwd = PathBuf::from(header.cwd);
+                }
+            }
+            None => {
+                found = Some(KnownCwd {
+                    cwd: header.cwd.into(),
+                    first: at,
+                    last: at,
+                })
+            }
+        }
+    }
+    Ok(found.filter(|k| !k.cwd.as_os_str().is_empty()))
+}
+
+fn read_header(path: &Path) -> Option<trace::SessionHeader> {
+    use std::io::BufRead;
+    let file = std::fs::File::open(path).ok()?;
+    let mut line = String::new();
+    io::BufReader::new(file).read_line(&mut line).ok()?;
+    serde_json::from_str(line.trim()).ok()
+}

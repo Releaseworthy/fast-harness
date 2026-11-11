@@ -4,3 +4,8 @@ use crate::platform::PlatformError;
 pub fn set_big_window_icon() -> Result<usize, PlatformError> {
     Ok(0)
 }
+
+/// No native window handle outside Windows.
+pub fn thread_window() -> Option<isize> {
+    None
+}

@@ -7,7 +7,10 @@
 //! - `open`: `open_url(&str) -> Result<()>` (the default browser).
 //! - `process`: `ProcessGroup` (a process and every process it starts, killed together).
 //! - `window`: `set_big_window_icon() -> Result<usize>` (the taskbar icon from the exe's icon
-//!   group 1 on the calling thread's visible windows; a no-op returning 0 elsewhere).
+//!   group 1 on the calling thread's visible windows; a no-op returning 0 elsewhere) and
+//!   `thread_window() -> Option<isize>` (the calling thread's visible unowned window).
+//! - `folder`: `pick_folder(owner, title) -> Result<Option<PathBuf>>` (the modal "Select folder"
+//!   dialog owned by window `owner`; `Ok(None)` when cancelled; IFileOpenDialog on Windows).
 //!
 //! An OS without a backend uses `unsupported`, whose items return
 //! `PlatformError::Unsupported`, so the core still builds there.

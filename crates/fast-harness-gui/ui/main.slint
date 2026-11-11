@@ -1,5 +1,5 @@
 import { Palette } from "std-widgets.slint";
-import { MsgRow, SessionRow, AccountRow, TraceRow } from "types.slint";
+import { MsgRow, SessionRow, SideRow, AccountRow, TraceRow } from "types.slint";
 import { Theme } from "parts.slint";
 import { Dropdown } from "widgets.slint";
 import { Composer } from "composer.slint";
@@ -13,7 +13,7 @@ import { TabStrip, StatusBar, ErrorBanner } from "panel.slint";
 // The icon font (Symbols Nerd Font subset); `Theme.symbols` names it.
 import "../fonts/FastHarnessIcons.ttf";
 
-export { MsgRow, SessionRow, AccountRow, TraceRow, Theme }
+export { MsgRow, SessionRow, SideRow, AccountRow, TraceRow, Theme }
 
 // No native frame: the title bar (titlebar.slint) draws the window
 // controls; a 1px line edges the window while it is not maximized.
@@ -34,7 +34,7 @@ export component MainWindow inherits Window {
     in property <[string]> themes;
     in-out property <int> theme-index;
     in property <[MsgRow]> messages;
-    in property <[SessionRow]> sessions;
+    in property <[SideRow]> side-rows;
     in property <[AccountRow]> accounts;
     in property <[TraceRow]> trace-entries;
     in property <[[string]]> trace-steps;
@@ -59,11 +59,6 @@ export component MainWindow inherits Window {
     in property <string> status-account;
     in property <string> status-tokens;
     in property <string> status-timing;
-    in property <string> chip-name: "No account";
-    in property <float> chip-five;
-    in property <string> chip-five-text;
-    in property <float> chip-seven;
-    in property <string> chip-seven-text;
     in property <string> login-url;
     in property <string> accounts-message;
     in property <bool> accounts-working;
@@ -74,7 +69,10 @@ export component MainWindow inherits Window {
     callback send(string) -> bool;
     callback stop();
     callback new-session();
-    callback open-session(string);
+    callback open-session(string, string);
+    callback add-workspace();
+    callback select-workspace(string);
+    callback remove-workspace(string);
     callback open-page(string);
     callback toggle(int);
     callback open-url(string);
@@ -134,11 +132,6 @@ export component MainWindow inherits Window {
             page: root.page;
             sidebar-open: root.sidebar-open;
             maximized: root.win-maximized;
-            chip-name: root.chip-name;
-            chip-five: root.chip-five;
-            chip-five-text: root.chip-five-text;
-            chip-seven: root.chip-seven;
-            chip-seven-text: root.chip-seven-text;
             toggle-sidebar => { root.sidebar-open = !root.sidebar-open; }
             open-page(p) => { root.open-page(p); }
             minimize => { root.window-minimize(); }
@@ -151,10 +144,13 @@ export component MainWindow inherits Window {
             // corner does not sit on the window edge.
             padding-left: root.sidebar-open ? 0px : Theme.space-s;
             if root.sidebar-open: Sidebar {
-                sessions: root.sessions;
+                rows: root.side-rows;
                 page: root.page;
                 new-session => { root.new-session(); }
-                open-session(id) => { root.open-session(id); }
+                add-workspace => { root.add-workspace(); }
+                select-workspace(path) => { root.select-workspace(path); }
+                remove-workspace(path) => { root.remove-workspace(path); }
+                open-session(ws, id) => { root.open-session(ws, id); }
                 open-page(p) => { root.open-page(p); }
             }
             // The main card: rounded top-left corner, flush right and bottom.

@@ -5,7 +5,8 @@ use slint::ComponentHandle;
 
 use crate::app::{show_error, with_app};
 use crate::{
-    accounts, mirror, model_refresh, settings, theme, trace_rows, turn, window_state, MainWindow,
+    accounts, mirror, model_refresh, settings, theme, trace_rows, turn, window_state, workspaces,
+    MainWindow,
 };
 
 pub fn connect(ui: &MainWindow) {
@@ -16,8 +17,17 @@ pub fn connect(ui: &MainWindow) {
     ui.on_new_session(|| {
         with_app(|app, ui| app.new_session(ui));
     });
-    ui.on_open_session(|id| {
-        with_app(|app, ui| app.open_session(ui, &id));
+    ui.on_open_session(|ws, id| {
+        with_app(|app, ui| workspaces::open_session(app, ui, &ws, &id));
+    });
+    ui.on_select_workspace(|path| {
+        with_app(|app, ui| workspaces::select(app, ui, &path));
+    });
+    ui.on_remove_workspace(|path| {
+        with_app(|app, ui| workspaces::remove(app, ui, &path));
+    });
+    ui.on_add_workspace(|| {
+        with_app(workspaces::add);
     });
     ui.on_open_page(|page| {
         with_app(|app, ui| open_page(app, ui, &page));

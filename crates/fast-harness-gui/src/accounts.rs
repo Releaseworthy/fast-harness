@@ -13,7 +13,7 @@ use fast_harness_core::trace::now_ms;
 use slint::{ModelRc, VecModel};
 
 use crate::app::{with_app, App};
-use crate::rows::{account_label, account_row, window_cell};
+use crate::rows::{account_label, account_row};
 use crate::MainWindow;
 
 /// How long a sign-in waits for the browser callback.
@@ -27,24 +27,11 @@ fn say(ui: &MainWindow, text: impl Into<slint::SharedString>) {
     ui.set_accounts_message(text.into());
 }
 
-/// Account cards, the sidebar chip and the status bar account.
+/// The account cards.
 pub fn refresh(app: &App, ui: &MainWindow) {
     let now = now_ms() as i64;
     let statuses = app.rt.pool.status();
     let rows: Vec<_> = statuses.iter().map(|s| account_row(s, now)).collect();
-    let active = statuses.iter().find(|s| s.active);
-    let usage = active.and_then(|s| s.usage.as_ref());
-    let five = window_cell(usage.and_then(|u| u.five_hour.as_ref()), now);
-    let seven = window_cell(usage.and_then(|u| u.seven_day.as_ref()), now);
-    let name = active.map_or_else(
-        || "No account: open Accounts".to_string(),
-        |s| account_label(&s.account),
-    );
-    ui.set_chip_name(name.into());
-    ui.set_chip_five(five.0);
-    ui.set_chip_five_text(five.1);
-    ui.set_chip_seven(seven.0);
-    ui.set_chip_seven_text(seven.1);
     ui.set_accounts(ModelRc::new(VecModel::from(rows)));
 }
 

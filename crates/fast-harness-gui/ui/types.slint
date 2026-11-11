@@ -38,6 +38,18 @@ export struct TraceRow {
     copy: string,
 }
 
+// A sidebar row: kind "workspace" (id and detail: the folder path; title: its name)
+// or "session" (id: the session id; workspace: its folder; detail: the time).
+export struct SideRow {
+    kind: string,
+    id: string,
+    workspace: string,
+    title: string,
+    detail: string,
+    current: bool,
+    expanded: bool,
+}
+
 export struct SessionRow {
     id: string,
     title: string,
