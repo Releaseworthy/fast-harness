@@ -5,19 +5,34 @@
 //! max output, reasoning and the thinking flags (`forceAdaptiveThinking`,
 //! `supportsMidConvoEffort`, `thinkingLevelMap`, `allowedFallbackModels`).
 
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+use super::live::{self, LiveCaps};
 use super::{error, wire};
 use crate::http::Transport;
 use crate::llm::{Auth, ErrorKind, LlmError};
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+/// One model as the pickers and `nh models` show it; also the entry format
+/// of the `models.json` cache.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ModelInfo {
     pub id: String,
     pub display_name: String,
     pub context_window: u64,
     pub max_output: u64,
     pub reasoning: bool,
+    /// Effort levels the model takes, lowest first, then `off` when
+    /// thinking can be switched off.
+    #[serde(default)]
+    pub efforts: Vec<String>,
+    /// `lifecycle: deprecated` in the API list.
+    #[serde(default)]
+    pub deprecated: bool,
+    /// Capabilities from the API; `None` for entries known only from the table.
+    #[serde(default)]
+    pub live: Option<LiveCaps>,
 }
 
 /// How a model is asked to think.
@@ -111,6 +126,12 @@ impl ModelSpec {
             context_window: self.context,
             max_output: self.max_output,
             reasoning: true,
+            efforts: table_efforts(self.id)
+                .into_iter()
+                .map(str::to_string)
+                .collect(),
+            deprecated: false,
+            live: None,
         }
     }
 }
@@ -122,8 +143,16 @@ pub fn builtin_models() -> Vec<ModelInfo> {
 
 /// The effort levels `model` takes, lowest first: `low`, `medium`, `high`,
 /// then the model's own extra levels (`xhigh`, `max`), then `off` where
-/// thinking can be switched off. A model outside the table gets them all.
+/// thinking can be switched off. The live capabilities of the last model
+/// list (or the cache) win; else the table; a model in neither gets them all.
 pub fn efforts(model: &str) -> Vec<&'static str> {
+    match live::lookup(model) {
+        Some(info) => live::static_levels(&info.efforts),
+        None => table_efforts(model),
+    }
+}
+
+fn table_efforts(model: &str) -> Vec<&'static str> {
     let mut out = vec!["low", "medium", "high"];
     match find(model) {
         Some(spec) => {
@@ -138,13 +167,14 @@ pub fn efforts(model: &str) -> Vec<&'static str> {
 }
 
 /// `effort` when `model` takes it, `None` (the model default) as it is,
-/// else `high`, which every model takes.
+/// else `high`, or `None` when the model takes no effort at all.
 pub fn fit_effort(model: &str, effort: Option<&str>) -> Option<String> {
     let level = effort?;
-    if efforts(model).contains(&level) {
+    let levels = efforts(model);
+    if levels.contains(&level) {
         Some(level.to_string())
     } else {
-        Some("high".to_string())
+        levels.contains(&"high").then(|| "high".to_string())
     }
 }
 
@@ -185,6 +215,7 @@ pub(crate) fn list(
         let page = fetch_page(http, base_url, auth, after.as_deref())?;
         let list = page["data"].as_array().map(Vec::as_slice).unwrap_or(&[]);
         out.extend(list.iter().filter_map(merge));
+        live::remember(&out);
         let more = page["has_more"].as_bool().unwrap_or(false);
         after = page["last_id"].as_str().map(str::to_string);
         if !more || after.is_none() {
@@ -194,9 +225,21 @@ pub(crate) fn list(
     Ok(out)
 }
 
-/// One API entry merged with the table: positive API numbers win.
+/// One API entry merged with the table: positive API numbers and the API
+/// capabilities win. Retired models are left out.
 fn merge(entry: &Value) -> Option<ModelInfo> {
     let id = entry["id"].as_str()?;
+    let lifecycle = entry["lifecycle"].as_str();
+    if lifecycle == Some("retired") {
+        return None;
+    }
+    let (live, efforts) = match live::parse(entry) {
+        Some((caps, levels)) => (Some(caps), levels),
+        None => (
+            None,
+            table_efforts(id).into_iter().map(str::to_string).collect(),
+        ),
+    };
     let known = find(id).map(ModelSpec::info);
     let number = |key: &str| entry[key].as_u64().filter(|n| *n > 0);
     let display_name = entry["display_name"]
@@ -215,6 +258,9 @@ fn merge(entry: &Value) -> Option<ModelInfo> {
             .or(known.as_ref().map(|k| k.max_output))
             .unwrap_or(0),
         reasoning: thinking.or(known.map(|k| k.reasoning)).unwrap_or(false),
+        efforts,
+        deprecated: lifecycle == Some("deprecated"),
+        live,
     })
 }
 
@@ -267,5 +313,32 @@ mod tests {
             Some("high")
         );
         assert_eq!(fit_effort("claude-haiku-4-5", None), None);
+    }
+
+    #[test]
+    fn live_capabilities_win_over_the_table_defaults() {
+        let entry = json!({"id": "claude-live-test-1", "lifecycle": "deprecated", "capabilities": {
+            "effort": {"supported": true, "low": {"supported": true}, "high": {"supported": true}},
+            "thinking": {"types": {"adaptive": {"supported": true}, "disabled": {"supported": true}}}}});
+        let info = merge(&entry).unwrap();
+        assert!(info.deprecated && info.live.is_some());
+        assert_eq!(info.efforts, ["low", "high", "off"]);
+        assert_eq!(
+            efforts("claude-live-test-1"),
+            ["low", "medium", "high", "xhigh", "max", "off"]
+        );
+        live::remember(std::slice::from_ref(&info));
+        assert_eq!(efforts("claude-live-test-1"), ["low", "high", "off"]);
+        let fit = fit_effort("claude-live-test-1", Some("max"));
+        assert_eq!(fit.as_deref(), Some("high"));
+        let bare =
+            json!({"id": "claude-live-test-2", "capabilities": {"thinking": {"supported": false}}});
+        live::remember(&[merge(&bare).unwrap()]);
+        assert!(efforts("claude-live-test-2").is_empty());
+        assert_eq!(fit_effort("claude-live-test-2", Some("high")), None);
+        assert!(merge(&json!({"id": "claude-old", "lifecycle": "retired"})).is_none());
+        let table = merge(&json!({"id": "claude-haiku-4-5"})).unwrap();
+        assert_eq!(table.efforts, ["low", "medium", "high", "off"]);
+        assert!(table.live.is_none());
     }
 }

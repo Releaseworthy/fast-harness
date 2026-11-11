@@ -17,6 +17,9 @@ Usage:
       A session (default latest): what the user sent, each request, the model's thinking,
       answers and tool calls, then one row per step. --steps prints only the step table,
       --json the raw events.
+  nh models [--json]
+      The Claude models with their effort levels, read live from the API (else the last
+      known list); --json prints the full entries.
   nh accounts [list]               Accounts with their 5-hour and 7-day usage (* = active).
   nh accounts login [--no-browser] Sign in with a Claude account in the browser.
   nh accounts import               Add the claude-switch accounts of DSH (read-only, linked).
@@ -96,6 +99,9 @@ pub enum Command {
         cwd: Option<PathBuf>,
     },
     Accounts(AccountsAction),
+    Models {
+        json: bool,
+    },
     Version,
     Help,
 }
@@ -182,6 +188,9 @@ pub fn parse(args: Vec<String>) -> Result<Command, String> {
                 json,
                 cwd,
             });
+        }
+        Some("models") if opts.positional.len() == 1 => {
+            return Ok(Command::Models { json: opts.json })
         }
         Some(other) => return Err(format!("unexpected argument `{other}` (see `nh help`)")),
         None => {}
@@ -291,5 +300,16 @@ mod tests {
         assert!(accounts("accounts use").is_err());
         assert!(accounts("accounts frob").is_err());
         assert!(accounts("accounts use a b").is_err());
+    }
+
+    #[test]
+    fn parses_models() {
+        assert_eq!(
+            parse_str("models").unwrap(),
+            Command::Models { json: false }
+        );
+        let json = parse_str("models --json").unwrap();
+        assert_eq!(json, Command::Models { json: true });
+        assert!(parse_str("models extra").is_err());
     }
 }

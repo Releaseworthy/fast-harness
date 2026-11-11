@@ -40,6 +40,7 @@ A barebone coding agent harness in native Rust, in the spirit of DeepSeek Harnes
 | D14 | Repo | Public, `Releaseworthy/native-harness`, licence MIT OR Apache-2.0; binaries `nh` and `nh-gui`. |
 | D15 | Themes | `nh_core::theme`: Dark (default), Light, Greyscale dark, Greyscale light, shared by the TUI and the GUI. Tests hold every theme to WCAG 2.2 (7:1 body text, 4.5:1 other text, 3:1 borders and focus) and APCA Bronze (Lc 75 body, 60 other text); greyscale themes are pure greys for text and background; status colours always come with a mark or a word. The pick is saved as `theme` in `config.json`. The GUI draws its own widgets (`ui/widgets.slint`) because the Slint std-widgets palette is read only. |
 | D16 | Model and effort at the chat box | GUI: two dropdowns in the composer; TUI: Ctrl+P and Ctrl+E pickers above the input. Effort choices per model (`llm::anthropic::efforts`); a model change refits the effort (`fit_effort`). Picks apply to the next turn and last for the window (not saved). |
+| D17 | Live model catalog | Owner, 2026-11-11: fetch Claude's newest models and effort levels each time the user opens the model or effort picker. `GET /v1/models` (all pages, retired models left out) gives per model `capabilities.effort` levels and `capabilities.thinking.types`; a process-wide registry (`llm::anthropic::remember_models`) holds them, filled by every successful list and by `models.json` at start. `efforts` and `fit_effort` read it before the table; the request builder reads it only for models missing from the table (adaptive, budget or no thinking as the API says). Front ends call `Runtime::models()` then `ModelSource::fetch` off the UI thread; `cached()` gives the last known list or the table. A failed list never holds or switches the account. CLI: `nh models [--json]`. |
 
 ## Architecture
 
@@ -59,6 +60,7 @@ A barebone coding agent harness in native Rust, in the spirit of DeepSeek Harnes
 ## Files on disk
 
 - `~/.nh/config.json`: model, effort, cache TTL, limits, `theme` (colour theme id) and `wire` (raw wire capture, default `false`). `NH_MODEL`, `NH_EFFORT`, `NH_THEME` and `NH_WIRE` override it; `NH_HOME` moves `~/.nh`.
+- `~/.nh/models.json`: the last model list from `/v1/models`, `{"version":1,"fetchedAt":<unix ms>,"models":[{id, displayName, contextWindow, maxOutput, reasoning, efforts, deprecated, live: {effort, adaptive, budget, canDisable} or null}]}`; written after each successful list (temp file, then rename), read at start; a corrupt file or another version is ignored.
 - `~/.nh/accounts.json`: accounts and usage; tokens and keys encrypted (DPAPI on Windows).
 - `~/.nh/sessions/<cwd slug>/<session id>.jsonl`: one log per session (transcript and trace).
 - `~/.nh/sessions/<cwd slug>/<session id>.wire/`, only with wire capture on: per model call attempt, the request (headers with credentials redacted, body) and the raw response stream.

@@ -4,6 +4,7 @@ mod accounts_cmd;
 mod args;
 mod auth_choice;
 mod info;
+mod models_cmd;
 mod print;
 mod tui;
 
@@ -45,6 +46,7 @@ fn main() -> ExitCode {
             cwd,
         } => info::trace(id, steps, json, cwd),
         Command::Accounts(action) => accounts_cmd::run(action),
+        Command::Models { json } => models_cmd::run(json),
         Command::Print(print_args) => print::run(print_args),
         Command::Tui(tui_args) => tui::run(tui_args),
     };

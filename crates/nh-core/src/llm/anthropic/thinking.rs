@@ -18,6 +18,7 @@
 
 use serde_json::{json, Value};
 
+use super::live::{self, LiveCaps};
 use super::models::{ModelSpec, Thinking};
 use super::wire;
 
@@ -85,6 +86,74 @@ pub(crate) fn plan(spec: Option<&ModelSpec>, effort: Option<&str>, max_tokens: u
         (_, None) => {}
     }
     plan
+}
+
+/// The plan for `model`: a table model as [`plan`] decides; a model missing
+/// from the table, when the last model list (or the cache) gave its
+/// capabilities, as the API says ([`plan_live`]); else [`plan`]'s default.
+pub(crate) fn plan_model(
+    model: &str,
+    spec: Option<&ModelSpec>,
+    effort: Option<&str>,
+    max_tokens: u32,
+) -> Plan {
+    if spec.is_none() {
+        if let Some(info) = live::lookup(model) {
+            if let Some(caps) = info.live {
+                let model_max = u32::try_from(info.max_output).unwrap_or(u32::MAX);
+                let model_max = if model_max == 0 {
+                    DEFAULT_MAX_TOKENS
+                } else {
+                    model_max
+                };
+                return plan_live(&caps, &info.efforts, model_max, effort, max_tokens);
+            }
+        }
+    }
+    plan(spec, effort, max_tokens)
+}
+
+/// Adaptive thinking (with `output_config.effort` when the model takes
+/// effort) when the API lists adaptive, budget thinking when it lists only
+/// `enabled`, no `thinking` field when the model cannot think.
+fn plan_live(
+    caps: &LiveCaps,
+    levels: &[String],
+    model_max: u32,
+    effort: Option<&str>,
+    max_tokens: u32,
+) -> Plan {
+    let base = if max_tokens == 0 {
+        model_max.min(DEFAULT_MAX_TOKENS)
+    } else {
+        max_tokens
+    };
+    let mut plan = Plan {
+        max_tokens: base,
+        ..Plan::default()
+    };
+    let effort_config = |level: &str| json!({"effort": live_effort(levels, level)});
+    match effort {
+        Some("off") if caps.can_disable => plan.thinking = Some(json!({"type": "disabled"})),
+        Some("off") => {}
+        None if caps.adaptive => {
+            plan.thinking = Some(json!({"type": "adaptive", "display": "summarized"}))
+        }
+        Some(level) if caps.adaptive => {
+            plan.thinking = Some(json!({"type": "adaptive", "display": "summarized"}));
+            plan.output_config = caps.effort.then(|| effort_config(level));
+        }
+        Some(level) if caps.budget => budget(&mut plan, model_max, level),
+        Some(level) if caps.effort => plan.output_config = Some(effort_config(level)),
+        _ => {}
+    }
+    plan
+}
+
+/// `level` when the model lists it, else `high`.
+fn live_effort(levels: &[String], level: &str) -> String {
+    let listed = levels.iter().any(|known| known == level);
+    if listed { level } else { "high" }.to_string()
 }
 
 /// pi-ai `supportsMidConvoEffort`: always adaptive with prefix-mismatch
@@ -155,5 +224,71 @@ mod tests {
             plan(None, Some("max"), 5).output_config,
             Some(json!({"effort": "max"}))
         );
+    }
+
+    fn live_info(id: &str, caps: LiveCaps, levels: &[&str]) -> super::super::models::ModelInfo {
+        super::super::models::ModelInfo {
+            id: id.into(),
+            display_name: id.into(),
+            context_window: 0,
+            max_output: 64_000,
+            reasoning: true,
+            efforts: levels.iter().map(|level| level.to_string()).collect(),
+            deprecated: false,
+            live: Some(caps),
+        }
+    }
+
+    #[test]
+    fn live_capabilities_plan_models_missing_from_the_table() {
+        let adaptive = LiveCaps {
+            effort: true,
+            adaptive: true,
+            budget: false,
+            can_disable: true,
+        };
+        let budget_caps = LiveCaps {
+            budget: true,
+            ..LiveCaps::default()
+        };
+        let table_id = "claude-sonnet-4-5-20250929";
+        live::remember(&[
+            live_info("claude-plan-adaptive", adaptive, &["low", "high", "off"]),
+            live_info(
+                "claude-plan-budget",
+                budget_caps,
+                &["low", "medium", "high"],
+            ),
+            live_info("claude-plan-none", LiveCaps::default(), &[]),
+            live_info(table_id, LiveCaps::default(), &[]),
+        ]);
+        let p = plan_model("claude-plan-adaptive", None, Some("medium"), 0);
+        assert_eq!(p.thinking.unwrap()["type"], "adaptive");
+        assert_eq!(p.output_config, Some(json!({"effort": "high"})));
+        assert_eq!(p.max_tokens, 32_000);
+        let low = plan_model("claude-plan-adaptive", None, Some("low"), 0);
+        assert_eq!(low.output_config, Some(json!({"effort": "low"})));
+        let off = plan_model("claude-plan-adaptive", None, Some("off"), 0);
+        assert_eq!(off.thinking, Some(json!({"type": "disabled"})));
+        let none = plan_model("claude-plan-adaptive", None, None, 0);
+        assert_eq!((none.thinking.is_some(), none.output_config), (true, None));
+        let b = plan_model("claude-plan-budget", None, Some("high"), 1000);
+        assert_eq!(b.thinking.unwrap()["type"], "enabled");
+        assert_eq!(b.betas, [wire::BETA_INTERLEAVED_THINKING]);
+        assert_eq!(
+            plan_model("claude-plan-budget", None, None, 0).thinking,
+            None
+        );
+        assert_eq!(
+            plan_model("claude-plan-none", None, Some("high"), 0),
+            Plan {
+                max_tokens: 32_000,
+                ..Plan::default()
+            }
+        );
+        let table = plan_model(table_id, find(table_id), Some("high"), 1000);
+        assert_eq!(table.thinking.unwrap()["type"], "enabled");
+        let unknown = plan_model("claude-plan-unknown", None, Some("max"), 5);
+        assert_eq!(unknown.output_config, Some(json!({"effort": "max"})));
     }
 }
