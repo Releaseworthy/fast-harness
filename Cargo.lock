@@ -246,6 +246,7 @@ name = "nh"
 version = "0.1.0"
 dependencies = [
  "nh-core",
+ "serde_json",
 ]
 
 [[package]]
