@@ -63,17 +63,6 @@ pub fn remove(app: &App, ui: &MainWindow, id: &str) {
     refresh(app, ui);
 }
 
-pub fn import(app: &App, ui: &MainWindow) {
-    match app.rt.pool.import_linked() {
-        Ok(count) => say(
-            ui,
-            format!("Imported or updated {count} claude-switch account(s)."),
-        ),
-        Err(err) => say(ui, format!("Import failed: {err}")),
-    }
-    refresh(app, ui);
-}
-
 /// The key is never shown or logged: only the label comes back.
 pub fn add_key(app: &App, ui: &MainWindow, key: &str, label: &str) {
     match app.rt.pool.add_api_key(key.trim(), label.trim()) {

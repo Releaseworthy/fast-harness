@@ -17,7 +17,6 @@ Binaries: `target/release/nh.exe` (command line and TUI) and `target/release/nh-
 
 ```
 nh accounts login          # sign in with a Claude account in the browser
-nh accounts import         # or reuse the claude-switch accounts of DeepSeek Harness (read-only)
 nh accounts add-key        # or add an Anthropic API key
 nh                         # the TUI in the current folder
 nh -p "explain this repo"  # one turn, answer on stdout

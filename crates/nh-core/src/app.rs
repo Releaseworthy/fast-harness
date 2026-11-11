@@ -4,7 +4,6 @@
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use crate::accounts::dsh_import;
 use crate::accounts::pool::AccountPool;
 use crate::agent::{prompt, Agent, AgentParts, Conversation};
 use crate::auth::{AuthSource, StaticAuth};
@@ -25,15 +24,10 @@ pub struct Runtime {
     pub provider: Arc<Anthropic>,
 }
 
-/// The account pool of `home`: `accounts.json`, DSH's credential file (read
-/// only) and `usage.json`.
+/// The account pool of `home`: `accounts.json` and `usage.json`.
 pub fn open_pool(home: &Path) -> Result<AccountPool, String> {
-    AccountPool::open(
-        home.join("accounts.json"),
-        dsh_import::credentials_path(),
-        home.join("usage.json"),
-    )
-    .map_err(|err| format!("accounts: {err}"))
+    AccountPool::open(home.join("accounts.json"), home.join("usage.json"))
+        .map_err(|err| format!("accounts: {err}"))
 }
 
 fn env_value(key: &str) -> Option<String> {
@@ -76,8 +70,7 @@ impl Runtime {
         }
         if self.pool.status().is_empty() {
             return Err(
-                "no account: sign in, import the claude-switch accounts or add an \
-                        API key (`nh accounts`), or set ANTHROPIC_API_KEY"
+                "no account: sign in or add an API key (`nh accounts`), or set ANTHROPIC_API_KEY"
                     .into(),
             );
         }

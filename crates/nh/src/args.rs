@@ -22,7 +22,6 @@ Usage:
       known list); --json prints the full entries.
   nh accounts [list]               Accounts with their 5-hour and 7-day usage (* = active).
   nh accounts login [--no-browser] Sign in with a Claude account in the browser.
-  nh accounts import               Add the claude-switch accounts of DSH (read-only, linked).
   nh accounts use ID|EMAIL         Make an account the active one.
   nh accounts remove ID|EMAIL      Remove an account from nh.
   nh accounts add-key [LABEL]      Add an Anthropic API key (read from stdin).
@@ -39,7 +38,6 @@ NH_THEME and NH_WIRE override it. Raw wire capture (<session>.wire/) is off unle
 pub enum AccountsAction {
     List,
     Login { browser: bool },
-    Import,
     Use(String),
     Remove(String),
     AddKey { label: Option<String> },
@@ -47,7 +45,7 @@ pub enum AccountsAction {
 }
 
 const ACCOUNTS_USAGE: &str =
-    "usage: nh accounts [list | login [--no-browser] | import | use ID | remove ID | add-key [LABEL] | usage]";
+    "usage: nh accounts [list | login [--no-browser] | use ID | remove ID | add-key [LABEL] | usage]";
 
 fn accounts_action(rest: &[String], no_browser: bool) -> Result<AccountsAction, String> {
     if rest.len() > 2 {
@@ -59,7 +57,6 @@ fn accounts_action(rest: &[String], no_browser: bool) -> Result<AccountsAction, 
         (Some("login"), None) => AccountsAction::Login {
             browser: !no_browser,
         },
-        (Some("import"), None) => AccountsAction::Import,
         (Some("use"), Some(id)) => AccountsAction::Use(id),
         (Some("remove"), Some(id)) => AccountsAction::Remove(id),
         (Some("add-key"), label) => AccountsAction::AddKey { label },
@@ -282,7 +279,6 @@ mod tests {
         assert_eq!(accounts("accounts list").unwrap(), AccountsAction::List);
         let login = accounts("accounts login --no-browser").unwrap();
         assert_eq!(login, AccountsAction::Login { browser: false });
-        assert_eq!(accounts("accounts import").unwrap(), AccountsAction::Import);
         assert_eq!(
             accounts("accounts use u-1").unwrap(),
             AccountsAction::Use("u-1".into())

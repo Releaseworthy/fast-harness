@@ -115,10 +115,10 @@ fn account_rows() {
         seven_day: Some(window(80.0, None)),
         ..AccountUsage::default()
     };
-    let row = account_row(&status(AccountKind::Linked, Some(usage)), 0);
+    let row = account_row(&status(AccountKind::Own, Some(usage)), 0);
     assert_eq!(
         (row.name.as_str(), row.kind.as_str(), row.plan.as_str()),
-        ("Work", "linked", "max")
+        ("Work", "own", "max")
     );
     assert!(row.active && row.token_ok);
     assert_eq!(row.five, 0.42);

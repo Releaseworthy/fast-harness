@@ -39,7 +39,6 @@ pub fn account_row(status: &AccountStatus, now: i64) -> String {
     let account = &status.account;
     let kind = match account.kind {
         AccountKind::Own => "own",
-        AccountKind::Linked => "linked",
         AccountKind::ApiKey => "key",
     };
     let usage = status.usage.as_ref();
@@ -101,9 +100,7 @@ fn draw_accounts(frame: &mut Frame, ui: &mut Ui, area: Rect, now_ms: u64) {
     let inner = st.block("Accounts").inner(top);
     let rows: Vec<String> = ui.accounts.iter().map(|s| account_row(s, now)).collect();
     let lines = if rows.is_empty() {
-        vec![Line::raw(
-            "No accounts: l signs in, i imports from claude-switch, k adds an API key.",
-        )]
+        vec![Line::raw("No accounts: l signs in, k adds an API key.")]
     } else {
         list(rows, ui.selected, inner, &st)
     };

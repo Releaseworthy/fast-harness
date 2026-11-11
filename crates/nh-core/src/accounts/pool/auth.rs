@@ -5,7 +5,6 @@
 //! runs one refresh per token at a time for the same reason).
 
 use super::{now_ms, AccountPool, State};
-use crate::accounts::dsh_import::read_linked;
 use crate::accounts::model::{now_unix_ms, AccountKind, Secret};
 use crate::accounts::oauth::{self, OAuthError};
 use crate::accounts::order::{
@@ -15,21 +14,10 @@ use crate::accounts::usage::{current_usage, usage_from_headers, Usage};
 use crate::auth::{AuthError, AuthSource, Failover, Lease};
 use crate::http::{HttpHead, Transport};
 use crate::llm::{Auth, ErrorKind, LlmError};
-use std::path::Path;
 
 /// An own access token expiring sooner than this is refreshed before use
 /// (claude-switch `REFRESH_MARGIN_MS`).
 pub const REFRESH_MARGIN_MS: u64 = 60_000;
-
-/// The unexpired access token DSH holds for linked account `id`, read fresh.
-fn linked_token(dsh: Option<&Path>, id: &str) -> Option<String> {
-    let token = read_linked(dsh?)
-        .ok()?
-        .into_iter()
-        .find(|account| account.id == id)?
-        .token;
-    (!token.is_expired(now_unix_ms())).then_some(token.access)
-}
 
 /// Live usage from headers; model windows only the endpoint reports are kept
 /// from the previous read.
@@ -48,14 +36,12 @@ impl State {
     /// a refused refresh holds the account for `BROKEN_HOLD_MS`.
     pub(super) fn token_for(
         &mut self,
-        dsh: Option<&Path>,
         id: &str,
         http: &dyn Transport,
         force: bool,
     ) -> Option<Auth> {
         match self.store.get(id)?.kind {
             AccountKind::Own => self.own_token(id, http, force),
-            AccountKind::Linked => linked_token(dsh, id).map(Auth::OAuth),
             AccountKind::ApiKey => match self.store.secret(id) {
                 Ok(Some(Secret::ApiKey { key })) => Some(Auth::ApiKey(key)),
                 _ => None,
@@ -138,17 +124,11 @@ impl State {
 
     /// Installs the first candidate with a usable credential (`Retry`); with
     /// none, waits for the soonest hold, at most `RETRY_INTERVAL_MS`.
-    fn fail_over(
-        &mut self,
-        dsh: Option<&Path>,
-        current: &str,
-        model: &str,
-        http: &dyn Transport,
-    ) -> Failover {
+    fn fail_over(&mut self, current: &str, model: &str, http: &dyn Transport) -> Failover {
         let now = now_ms();
         let order = candidates(&self.candidate_list(), current, &self.holds(), model, now);
         for id in order {
-            if self.token_for(dsh, &id, http, false).is_some() {
+            if self.token_for(&id, http, false).is_some() {
                 self.make_active(&id);
                 return Failover::Retry;
             }
@@ -186,34 +166,26 @@ impl AccountPool {
         let until = hold_for_limit(state.snapshot.usage(&lease.account), model, now_ms());
         state.hold(&lease.account, until, "rate limit");
         let _ = state.snapshot.save(now_unix_ms(), true);
-        state.fail_over(self.dsh_path(), &lease.account, model, http)
+        state.fail_over(&lease.account, model, http)
     }
 
     fn on_auth(&self, lease: &Lease, model: &str, http: &dyn Transport) -> Failover {
         let mut state = self.lock();
         let id = lease.account.as_str();
-        let dsh = self.dsh_path();
         let kind = state.store.get(id).map(|a| a.kind);
         match kind {
             Some(AccountKind::ApiKey) => return Failover::Fail,
             // One forced refresh per failure streak; a second refusal holds the account.
             Some(AccountKind::Own)
                 if state.forced.insert(id.to_string())
-                    && state.token_for(dsh, id, http, true).is_some() =>
-            {
-                return Failover::Retry;
-            }
-            // Retry only when DSH has written another token since the lease.
-            Some(AccountKind::Linked)
-                if linked_token(dsh, id)
-                    .is_some_and(|access| Auth::OAuth(access) != lease.auth) =>
+                    && state.token_for(id, http, true).is_some() =>
             {
                 return Failover::Retry;
             }
             _ => {}
         }
         state.hold(id, now_ms() + BROKEN_HOLD_MS, "credentials refused");
-        state.fail_over(dsh, id, model, http)
+        state.fail_over(id, model, http)
     }
 }
 
@@ -236,13 +208,13 @@ impl AuthSource for AccountPool {
         ));
         order.extend(active.iter().filter(|_| held).cloned());
         for id in order {
-            if let Some(auth) = state.token_for(self.dsh_path(), &id, http, false) {
+            if let Some(auth) = state.token_for(&id, http, false) {
                 state.make_active(&id);
                 return Ok(state.lease_of(&id, auth));
             }
         }
         Err(AuthError {
-            message: "no Claude account is usable: sign in, import or add a key".into(),
+            message: "no Claude account is usable: sign in or add a key".into(),
         })
     }
 

@@ -1,5 +1,5 @@
-//! AccountPool leases, linked accounts, observe and usage polling, against
-//! `ScriptedTransport`, a temporary NH folder and a synthetic DSH file.
+//! AccountPool leases, API keys, observe and usage polling, against
+//! `ScriptedTransport` and a temporary NH folder.
 
 use nh_core::accounts::model::{now_unix_ms, Account, AccountKind, Secret};
 use nh_core::accounts::oauth::TOKEN_URL;
@@ -16,36 +16,14 @@ const HOUR: u64 = 3_600_000;
 
 struct Fixture {
     dir: PathBuf,
-    dsh: PathBuf,
-    dsh_bytes: Vec<u8>,
 }
 
 impl Fixture {
     fn new(name: &str) -> Fixture {
         let dir = std::env::temp_dir().join(format!("nh-pool-lease-{name}-{}", std::process::id()));
         let _ = fs::remove_dir_all(&dir);
-        fs::create_dir_all(dir.join("dsh")).unwrap();
-        let mut fixture = Fixture {
-            dsh: dir.join("dsh").join(".credentials.yaml"),
-            dir,
-            dsh_bytes: Vec::new(),
-        };
-        fixture.write_dsh(&[]);
-        fixture
-    }
-
-    /// Writes the synthetic DSH file: `(uuid, access token, expiry ms)`.
-    fn write_dsh(&mut self, records: &[(&str, &str, u64)]) {
-        let mut text = String::from("# test fixture\nversion: 1\nrecords:\n");
-        for (uuid, access, expires) in records {
-            text.push_str(&format!(
-                "  claude-switch/u-{uuid}:\n    kind: grant\n    payload:\n      type: oauth\n      \
-refresh: test-refresh-{uuid}\n      access: {access}\n      expires: {expires}\n      account:\n        \
-uuid: {uuid}\n        email: '{uuid}@example.test'\n        plan: Max 20x\n"
-            ));
-        }
-        fs::write(&self.dsh, &text).unwrap();
-        self.dsh_bytes = text.into_bytes();
+        fs::create_dir_all(&dir).unwrap();
+        Fixture { dir }
     }
 
     fn store_path(&self) -> PathBuf {
@@ -75,7 +53,7 @@ uuid: {uuid}\n        email: '{uuid}@example.test'\n        plan: Max 20x\n"
 
     fn pool(&self) -> AccountPool {
         let usage = self.dir.join("usage.json");
-        AccountPool::open(self.store_path(), Some(self.dsh.clone()), usage).unwrap()
+        AccountPool::open(self.store_path(), usage).unwrap()
     }
 
     fn own_access(&self, id: &str) -> String {
@@ -87,11 +65,6 @@ uuid: {uuid}\n        email: '{uuid}@example.test'\n        plan: Max 20x\n"
             Some(Secret::Own { access, .. }) => access,
             other => panic!("unexpected secret {other:?}"),
         }
-    }
-
-    /// The pool never changes DSH's file.
-    fn check_dsh(&self) {
-        assert_eq!(fs::read(&self.dsh).unwrap(), self.dsh_bytes);
     }
 }
 
@@ -140,7 +113,6 @@ fn lease_refreshes_an_expiring_own_account_and_saves_the_pair() {
     assert_eq!(again.auth, Auth::OAuth("test-access-new".into()));
     assert_eq!(http.requests().len(), 1);
     assert!(pool.status()[0].active);
-    fx.check_dsh();
 }
 
 #[test]
@@ -164,45 +136,6 @@ fn a_dead_refresh_holds_the_account_and_moves_on() {
     pool.set_active(&a).unwrap();
     assert_eq!(pool.lease(&http).unwrap().account, b);
     assert_eq!(http.requests().len(), 1);
-    fx.check_dsh();
-}
-
-#[test]
-fn linked_tokens_are_read_fresh_and_expired_ones_skipped() {
-    let mut fx = Fixture::new("linked");
-    let now = now_unix_ms();
-    fx.write_dsh(&[
-        ("1111", "test-access-1", now - 1_000),
-        ("2222", "test-access-2", now + HOUR),
-    ]);
-    let pool = fx.pool();
-    assert_eq!(pool.import_linked().unwrap(), 2);
-    assert_eq!(pool.import_linked().unwrap(), 0);
-    let saved = fs::read_to_string(fx.store_path()).unwrap();
-    assert!(!saved.contains("test-access") && !saved.contains("test-refresh"));
-    pool.set_active("u-1111").unwrap();
-    let http = ScriptedTransport::new(Vec::new());
-    let lease = pool.lease(&http).unwrap();
-    assert_eq!(lease.account, "u-2222");
-    assert_eq!(lease.auth, Auth::OAuth("test-access-2".into()));
-    let ok: Vec<bool> = pool.status().iter().map(|s| s.token_ok).collect();
-    assert_eq!(ok, [false, true]);
-    fx.check_dsh();
-    fx.write_dsh(&[
-        ("1111", "test-access-1b", now + HOUR),
-        ("2222", "test-access-2b", now + HOUR),
-    ]);
-    assert_eq!(
-        pool.lease(&http).unwrap().auth,
-        Auth::OAuth("test-access-2b".into())
-    );
-    pool.set_active("u-1111").unwrap();
-    assert_eq!(
-        pool.lease(&http).unwrap().auth,
-        Auth::OAuth("test-access-1b".into())
-    );
-    assert!(http.requests().is_empty());
-    fx.check_dsh();
 }
 
 #[test]
@@ -224,7 +157,6 @@ fn api_keys_lease_the_key_and_fail_on_auth() {
     assert!(!saved.contains("test-key-1"));
     pool.remove(&account.id).unwrap();
     assert!(pool.lease(&http).is_err());
-    fx.check_dsh();
 }
 
 #[test]
@@ -245,17 +177,15 @@ fn observe_records_header_usage_and_saves_the_snapshot() {
     let reopened = fx.pool();
     let usage = reopened.status()[0].usage.clone().unwrap();
     assert_eq!(usage.seven_day.unwrap().utilization, 60.0);
-    fx.check_dsh();
 }
 
 #[test]
 fn poll_reads_idle_accounts_and_backs_off_after_429() {
-    let mut fx = Fixture::new("poll");
+    let fx = Fixture::new("poll");
     let now = now_unix_ms();
-    fx.write_dsh(&[("2222", "test-access-2", now + HOUR)]);
     fx.add_own("aaaa", "test-access-a", now + 8 * HOUR);
+    fx.add_own("bbbb", "test-access-b", now + 8 * HOUR);
     let pool = fx.pool();
-    pool.import_linked().unwrap();
     pool.set_read_gap(std::time::Duration::ZERO);
     let body = r#"{"five_hour":{"utilization":5,"resets_at":"2030-01-01T00:00:00Z"},"seven_day":{"utilization":9}}"#;
     let limited = ScriptedResponse::new(429, "{}", 4).with_header("retry-after", "0");
@@ -264,7 +194,7 @@ fn poll_reads_idle_accounts_and_backs_off_after_429() {
     let urls: Vec<String> = http.requests().into_iter().map(|r| r.url).collect();
     assert_eq!(urls, [USAGE_URL, USAGE_URL]);
     let auth = &http.requests()[1].headers[0].1;
-    assert_eq!(auth, "Bearer test-access-2");
+    assert_eq!(auth, "Bearer test-access-b");
     assert_eq!(pool.poll_usage(&http), 0);
     assert_eq!(http.requests().len(), 2);
     let status = pool.status();
@@ -280,5 +210,4 @@ fn poll_reads_idle_accounts_and_backs_off_after_429() {
         9.0
     );
     assert!(status[1].usage.is_none());
-    fx.check_dsh();
 }
