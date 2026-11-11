@@ -132,6 +132,18 @@ fn renders_every_item_kind() {
 }
 
 #[test]
+fn footer_skips_an_empty_account() {
+    let mut transcript = sample();
+    if let Some(Item::StepFooter { account, .. }) = transcript.items.last_mut() {
+        account.clear();
+    }
+    let mut ui = Ui::new("claude-x".into(), None);
+    let screen = rows(&render(&mut ui, &transcript, 70, 30));
+    find(&screen, "turn 1 step 1 · claude-x · ttfb 1.5s · 4.2s");
+    assert!(!screen.iter().any(|r| r.contains("·  ·")));
+}
+
+#[test]
 fn thinking_expands_and_spinner_runs() {
     let mut ui = Ui::new("m".into(), None);
     ui.show_thinking = true;

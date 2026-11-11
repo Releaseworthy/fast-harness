@@ -21,7 +21,7 @@ Fast Harness (this repo; binaries `fast-harness` and `fast-harness-gui`) is a ba
 | 5 | Model and effort pickers at the chat box (TUI, GUI), readable trace timeline (TUI, GUI, `fast-harness trace`), themes with WCAG and APCA tests, wire capture off by default | done |
 | 6 | Fast Harness: live model and effort catalog (pickers refetch on open, `fast-harness models`), short system prompt, claude-switch import removed, frameless GUI with a DSH-style title bar, Chat and Trace tabs, Nerd Font icons (GUI and TUI), lightning-bolt app icon | done |
 | 7 | Rename to fast-harness (D22), Google Antigravity accounts and provider (D23 to D26), title bar without the account pill (D27), workspaces in the sidebar (D28), robot-and-bolt app icon (D29); live check 2026-11-12 on a real account: Gemini 3.8 Flash and Claude Sonnet 4.6 through Antigravity, text and a tool round trip | done |
-| 8 | Chat scroll and long trace text fixes, find tool (D30), system prompt editing (D31), Accounts provider cards (D32), extensible themes with a greyscale setting and a vibrant redesign (D33) | in progress |
+| 8 | Chat scroll and long trace text fixes, find tool (D30), system prompt editing (D31), Accounts provider cards (D32), extensible themes with a greyscale setting and a vibrant redesign (D33); live check 2026-11-12: Gemini 3.8 Flash through Antigravity declared only `find_tools`, found grep, then called it; real-window checks with `scripts/window.ps1` | done |
 
 ## Decisions
 

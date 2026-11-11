@@ -132,16 +132,24 @@ fn footer_line(item: &Item, width: usize, st: &Styles) -> Vec<Line<'static>> {
     else {
         return Vec::new();
     };
-    let text = format!(
-        "turn {turn} step {step} · {model} · {account} · ttfb {} · {} · in {} out {} cache r {} w {}",
-        secs(timing.ttfb_ms),
+    let parts = [
+        format!("turn {turn} step {step}"),
+        model.clone(),
+        account.clone(),
+        format!("ttfb {}", secs(timing.ttfb_ms)),
         secs(timing.total_ms),
-        usage.input,
-        usage.output,
-        usage.cache_read,
-        usage.cache_write
-    );
-    text_lines(&text, st.dim(), width, 2)
+        format!(
+            "in {} out {} cache r {} w {}",
+            usage.input, usage.output, usage.cache_read, usage.cache_write
+        ),
+    ];
+    // An empty part (a step without an account) never leaves a doubled separator.
+    let kept: Vec<&str> = parts
+        .iter()
+        .map(|p| p.trim())
+        .filter(|p| !p.is_empty())
+        .collect();
+    text_lines(&kept.join(" · "), st.dim(), width, 2)
 }
 
 /// The lines of one item.
