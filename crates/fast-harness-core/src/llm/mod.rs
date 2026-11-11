@@ -1,8 +1,12 @@
 //! The model boundary: one streaming call in, one assembled message out.
-//! The only provider for now is Claude (`anthropic`).
+//! Providers: Claude (`anthropic`) and Google Antigravity (`antigravity`,
+//! models named `antigravity/<id>`); `catalog` picks one by model id.
 
 pub mod anthropic;
 pub mod antigravity;
+pub mod catalog;
+
+pub use catalog::{efforts, fit_effort};
 
 use std::fmt;
 use std::sync::atomic::AtomicBool;

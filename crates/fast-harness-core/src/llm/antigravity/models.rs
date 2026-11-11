@@ -13,6 +13,7 @@ mod family;
 use std::collections::HashMap;
 use std::sync::{Mutex, OnceLock, PoisonError};
 
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
 pub use family::{
@@ -33,8 +34,9 @@ pub const OTHER_CONTEXT: u64 = 200_000;
 /// Max output of a model the catalog gives none for.
 pub const DEFAULT_MAX_OUTPUT: u64 = 65_536;
 
-/// The catalog fields of one model.
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+/// The catalog fields of one model (also the entries of ntigravity-models.json).
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
 pub struct CatalogEntry {
     /// Bare id (no `antigravity/`).
     pub id: String,

@@ -4,10 +4,11 @@ use std::path::PathBuf;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
-use fast_harness_core::app::{read_cache, ModelSource, CACHE_FILE};
+use fast_harness_core::app::{read_ag_cache, read_cache, ModelSource, AG_CACHE_FILE, CACHE_FILE};
 use fast_harness_core::auth::{AuthError, AuthSource, Failover, Lease};
 use fast_harness_core::http::{HttpHead, ScriptedResponse, ScriptedTransport, Transport};
 use fast_harness_core::llm::anthropic::{builtin_models, efforts, Anthropic};
+use fast_harness_core::llm::antigravity::hub::Hub;
 use fast_harness_core::llm::{Auth, LlmError};
 use serde_json::{json, Value};
 
@@ -33,6 +34,7 @@ impl Drop for TempDir {
 #[derive(Default)]
 struct Counting {
     failures: AtomicUsize,
+    google: bool,
 }
 
 impl AuthSource for Counting {
@@ -40,7 +42,14 @@ impl AuthSource for Counting {
         Ok(Lease {
             account: "a".into(),
             label: "a".into(),
-            auth: Auth::OAuth("t".into()),
+            auth: if self.google {
+                Auth::Google {
+                    access: "fake-access".into(),
+                    project: "proj-x".into(),
+                }
+            } else {
+                Auth::OAuth("t".into())
+            },
         })
     }
 
@@ -140,4 +149,92 @@ fn corrupt_or_other_version_cache_is_ignored() {
     std::fs::write(&path, v1.to_string()).unwrap();
     let list = read_cache(&home.0).unwrap();
     assert_eq!((list[0].id.as_str(), list[0].live), ("x", None));
+}
+
+fn google() -> Arc<Counting> {
+    Arc::new(Counting {
+        google: true,
+        ..Counting::default()
+    })
+}
+
+fn ag_page() -> String {
+    json!({"models": {
+        "gemini-merge-flash": {"displayName": "Gemini Merge Flash"},
+        "claude-merge-sonnet": {"displayName": "Claude Merge Sonnet"}
+    }})
+    .to_string()
+}
+
+fn both(home: &TempDir, google: &Arc<Counting>, replies: Vec<ScriptedResponse>) -> ModelSource {
+    let auth: Arc<dyn AuthSource> = google.clone();
+    let hub = Hub::new("https://manifest.example/m.yml", &["https://daily.example"]);
+    source(home, Arc::new(Counting::default()), replies).with_google(auth, Arc::new(hub))
+}
+
+#[test]
+fn fetch_merges_both_providers_in_picker_order() {
+    let home = TempDir::new("merge");
+    let replies = vec![
+        ScriptedResponse::new(200, &page(), 5),
+        ScriptedResponse::new(200, "version: 2.30.0\n", 4),
+        ScriptedResponse::new(200, &ag_page(), 6),
+    ];
+    let models = both(&home, &google(), replies);
+    let list = models.fetch().unwrap();
+    let ids: Vec<&str> = list.iter().map(|m| m.id.as_str()).collect();
+    assert_eq!(
+        ids,
+        [
+            "claude-source-1",
+            "antigravity/claude-merge-sonnet",
+            "antigravity/gemini-merge-flash"
+        ]
+    );
+    let cached = read_ag_cache(&home.0).unwrap();
+    assert_eq!(cached[0].display_name, "Claude Merge Sonnet");
+    let text = std::fs::read_to_string(home.0.join(AG_CACHE_FILE)).unwrap();
+    assert_eq!(serde_json::from_str::<Value>(&text).unwrap()["version"], 1);
+    assert_eq!(models.cached(), list);
+}
+
+#[test]
+fn one_failing_provider_keeps_its_cached_part() {
+    let home = TempDir::new("one-fails");
+    let denied = r#"{"error":{"message":"denied"}}"#;
+    let google = google();
+    let replies = vec![
+        ScriptedResponse::new(200, &page(), 5),
+        ScriptedResponse::new(200, "version: 2.30.0\n", 4),
+        ScriptedResponse::new(403, denied, 4),
+    ];
+    let list = both(&home, &google, replies).fetch().unwrap();
+    assert_eq!(list.len(), 1, "no Antigravity cache yet");
+    assert_eq!(google.failures.load(Ordering::SeqCst), 0);
+    assert!(!home.0.join(AG_CACHE_FILE).exists());
+    let anthropic_denied =
+        r#"{"type":"error","error":{"type":"authentication_error","message":"no"}}"#;
+    let replies = vec![
+        ScriptedResponse::new(401, anthropic_denied, 5),
+        ScriptedResponse::new(500, "{}", 4),
+        ScriptedResponse::new(403, denied, 4),
+    ];
+    let err = both(&home, &google, replies).fetch().unwrap_err();
+    assert!(
+        err.starts_with("Claude: model list:") && err.contains("; Google Antigravity: model list:"),
+        "{err}"
+    );
+    assert_eq!(google.failures.load(Ordering::SeqCst), 0);
+}
+
+#[test]
+fn without_a_google_account_only_claude_is_listed() {
+    let home = TempDir::new("no-google");
+    let auth = Arc::new(Counting::default());
+    let models = source(&home, auth, vec![ScriptedResponse::new(200, &page(), 5)]);
+    let list = models.fetch().unwrap();
+    assert!(list.iter().all(|m| !m.id.starts_with("antigravity/")));
+    std::fs::write(home.0.join(AG_CACHE_FILE), "{corrupt").unwrap();
+    assert_eq!(read_ag_cache(&home.0), None);
+    assert_eq!(models.cached(), list);
 }

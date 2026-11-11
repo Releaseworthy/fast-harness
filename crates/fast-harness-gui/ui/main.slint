@@ -43,6 +43,8 @@ export component MainWindow inherits Window {
     in property <string> trace-message;
     in-out property <string> trace-mode: "timeline";
     in property <[string]> models;
+    // True for the provider title rows of `models` (Claude, Google Antigravity).
+    in property <[bool]> model-headers;
     in property <[string]> efforts;
     in-out property <int> model-index;
     in-out property <int> effort-index;
@@ -211,6 +213,7 @@ export component MainWindow inherits Window {
                                         drop-up: true;
                                         list-width: 320px;
                                         model: root.models;
+                                        headers: root.model-headers;
                                         current-index <=> root.model-index;
                                         refreshing: root.models-refreshing;
                                         selected(i) => { root.model-picked(i); }
@@ -271,6 +274,7 @@ export component MainWindow inherits Window {
                             theme-index <=> root.theme-index;
                             changed-theme(i) => { root.theme-changed(i); }
                             models: root.models;
+                            model-headers: root.model-headers;
                             efforts: root.efforts;
                             model-index <=> root.model-index;
                             effort-index <=> root.effort-index;

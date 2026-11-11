@@ -8,6 +8,7 @@ component SettingRow {
     in property <string> caption;
     in property <string> placeholder;
     in property <[string]> model;
+    in property <[bool]> headers;
     in-out property <int> current-index;
     in property <bool> refreshing;
     callback selected(int);
@@ -24,6 +25,7 @@ component SettingRow {
             label: root.label;
             placeholder: root.placeholder;
             model: root.model;
+            headers: root.headers;
             current-index <=> root.current-index;
             refreshing: root.refreshing;
             selected(i) => { root.selected(i); }
@@ -42,6 +44,8 @@ export component SettingsPage inherits Rectangle {
     in property <[string]> themes;
     in-out property <int> theme-index;
     in property <[string]> models;
+    // True for the provider title rows of `models`.
+    in property <[bool]> model-headers;
     in property <[string]> efforts;
     in-out property <int> model-index;
     in-out property <int> effort-index;
@@ -72,6 +76,7 @@ export component SettingsPage inherits Rectangle {
         SettingRow {
             label: "Model";
             model: root.models;
+            headers: root.model-headers;
             current-index <=> root.model-index;
             refreshing: root.refreshing;
             selected(i) => { root.model-picked(i); }

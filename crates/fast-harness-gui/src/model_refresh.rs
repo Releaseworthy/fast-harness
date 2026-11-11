@@ -1,5 +1,5 @@
 //! The live model list: each time a model or effort picker opens, one
-//! thread fetches Claude's model list (and its effort levels) and posts the
+//! thread fetches every provider's model list (and its effort levels) and posts the
 //! result back to the window, which updates the open list in place.
 
 use std::thread::{self, JoinHandle};
@@ -116,11 +116,23 @@ mod tests {
         let models = fake(&[("new-a", false), ("old-b", true)]);
         let merged = merge(Ok(models), "old-b", None);
         let list = merged.list.unwrap();
-        assert_eq!(list[1], ("old-b".into(), "OLD-B (deprecated)".into()));
-        assert_eq!(crate::pickers::model_index(&list, "old-b"), 1);
+        assert_eq!(list[0], (String::new(), "Claude".into()));
+        assert_eq!(list[2], ("old-b".into(), "OLD-B (deprecated)".into()));
+        assert_eq!(crate::pickers::model_index(&list, "old-b"), 2);
         assert_eq!(merged.note, "");
         let gone = merge(Ok(fake(&[("new-a", false)])), "mine", None);
-        assert_eq!(gone.list.unwrap()[0], ("mine".into(), "mine".into()));
+        assert_eq!(gone.list.unwrap()[1], ("mine".into(), "mine".into()));
+        let ag = merge(Ok(fake(&[("antigravity/gemini-r", false)])), "new-a", None);
+        let labels: Vec<String> = ag.list.unwrap().into_iter().map(|(_, l)| l).collect();
+        assert_eq!(
+            labels,
+            [
+                "Claude",
+                "new-a",
+                "Google Antigravity",
+                "ANTIGRAVITY/GEMINI-R"
+            ]
+        );
     }
 
     #[test]
@@ -145,6 +157,10 @@ mod tests {
         let handle = spawn_fetch(fetch, move |got| tx.send(got).unwrap()).unwrap();
         handle.join().unwrap();
         let merged = merge(rx.recv().unwrap(), "live-1", None);
-        assert_eq!(merged.list.unwrap(), [("live-1".into(), "LIVE-1".into())]);
+        let header = (String::new(), "Claude".to_string());
+        assert_eq!(
+            merged.list.unwrap(),
+            [header, ("live-1".into(), "LIVE-1".into())]
+        );
     }
 }

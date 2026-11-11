@@ -25,8 +25,9 @@ pub fn send(app: &mut App, ui: &MainWindow, text: &str) -> bool {
     if app.busy || text.trim().is_empty() {
         return false;
     }
-    // Checked first so a refused send leaves no empty session behind.
-    if let Err(err) = app.rt.auth() {
+    // Checked first so a refused send leaves no empty session behind; the
+    // model picks Claude's credential or the Google accounts.
+    if let Err(err) = app.rt.route(&app.rt.config.model) {
         show_error(ui, err);
         return false;
     }

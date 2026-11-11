@@ -2,7 +2,9 @@
 //! above the input. Ctrl+P opens the models, Ctrl+E the efforts of the
 //! current model; Enter picks, Esc closes, other keys are ignored.
 
-use fast_harness_core::llm::anthropic::{builtin_models, efforts, fit_effort, ModelInfo};
+use fast_harness_core::llm::anthropic::ModelInfo;
+use fast_harness_core::llm::catalog::{display_name, group_title, provider_of, PROVIDERS};
+use fast_harness_core::llm::{efforts, fit_effort};
 use ratatui::crossterm::event::{KeyCode, KeyEvent};
 use ratatui::layout::Rect;
 use ratatui::style::Modifier;
@@ -36,33 +38,62 @@ pub struct Picker {
 
 /// The display name of `model`, else its id.
 pub fn model_name(model: &str) -> String {
-    builtin_models()
-        .into_iter()
-        .find(|m| m.id == model)
-        .map_or_else(|| model.to_string(), |m| m.display_name)
+    display_name(model).unwrap_or_else(|| model.to_string())
 }
 
-/// The effort after `current` among the efforts of `model`.
-pub fn next_effort(model: &str, current: Option<&str>) -> &'static str {
+/// The effort after `current` among the efforts of `model`; `None` when
+/// the model takes no effort.
+pub fn next_effort(model: &str, current: Option<&str>) -> Option<String> {
     let list = efforts(model);
-    let index = list.iter().position(|e| Some(*e) == current);
-    list[index.map_or(0, |i| (i + 1) % list.len())]
+    let index = list.iter().position(|e| Some(e.as_str()) == current);
+    let next = index.map_or(0, |i| (i + 1) % list.len().max(1));
+    list.get(next).cloned()
 }
 
-/// The model rows of `catalog`, with `model` first when it is not listed.
+/// True for a provider title row (empty value): never highlighted or picked.
+pub fn is_header(item: &(String, String)) -> bool {
+    item.0.is_empty()
+}
+
+/// The model rows of `catalog` grouped by provider (PLAN.md D24): a title row
+/// ("Claude", "Google Antigravity") before each non-empty group, and `model`
+/// first in its group when it is not listed.
 fn model_items(catalog: &[ModelInfo], model: &str) -> Vec<(String, String)> {
-    let mut items: Vec<(String, String)> = catalog
-        .iter()
-        .map(|m| {
-            let tag = if m.deprecated { "  deprecated" } else { "" };
-            let label = format!("{:<18} {}{tag}", m.display_name, m.id);
-            (m.id.clone(), label)
-        })
-        .collect();
-    if !items.iter().any(|(id, _)| id == model) {
-        items.insert(0, (model.to_string(), model.to_string()));
+    let mut items = Vec::new();
+    for provider in PROVIDERS {
+        let mut group: Vec<(String, String)> = catalog
+            .iter()
+            .filter(|m| provider_of(&m.id) == provider)
+            .map(|m| {
+                let tag = if m.deprecated { "  deprecated" } else { "" };
+                let label = format!("{:<18} {}{tag}", m.display_name, m.id);
+                (m.id.clone(), label)
+            })
+            .collect();
+        let listed = catalog.iter().any(|m| m.id == model);
+        if !listed && !model.is_empty() && provider_of(model) == provider {
+            group.insert(0, (model.to_string(), model.to_string()));
+        }
+        if !group.is_empty() {
+            items.push((String::new(), group_title(provider).to_string()));
+            items.extend(group);
+        }
     }
     items
+}
+
+/// The nearest pickable row from `index`, looking `forward` first, then back.
+fn settle(items: &[(String, String)], index: usize, forward: bool) -> usize {
+    let index = index.min(items.len().saturating_sub(1));
+    let ahead = |i: &usize| !is_header(&items[*i]);
+    let after = (index..items.len()).find(ahead);
+    let before = (0..=index).rev().find(ahead);
+    let found = if forward {
+        after.or(before)
+    } else {
+        before.or(after)
+    };
+    found.unwrap_or(index)
 }
 
 /// The efforts `catalog` lists for `model`, else the known ones.
@@ -72,7 +103,7 @@ fn effort_items(catalog: &[ModelInfo], model: &str) -> Vec<(String, String)> {
         .find(|m| m.id == model)
         .map(|m| m.efforts.clone())
         .filter(|list| !list.is_empty());
-    let list = listed.unwrap_or_else(|| efforts(model).into_iter().map(String::from).collect());
+    let list = listed.unwrap_or_else(|| efforts(model));
     list.into_iter().map(|e| (e.clone(), e)).collect()
 }
 
@@ -87,10 +118,10 @@ impl Picker {
             PickerKind::Model => (model_items(catalog, model), Some(model.to_string())),
             PickerKind::Effort => (effort_items(catalog, model), effort.map(String::from)),
         };
-        let selected = items
+        let found = items
             .iter()
-            .position(|(value, _)| Some(value) == current.as_ref())
-            .unwrap_or(0);
+            .position(|(value, _)| Some(value) == current.as_ref());
+        let selected = settle(&items, found.unwrap_or(0), true);
         Picker {
             kind,
             items,
@@ -151,7 +182,8 @@ impl Ui {
         };
         let mut picker = Picker::new(old.kind, &self.catalog, &self.model, self.effort.as_deref());
         let keep = old.items.get(old.selected).map(|item| &item.0);
-        if let Some(index) = picker.items.iter().position(|i| Some(&i.0) == keep) {
+        let kept = picker.items.iter().position(|i| Some(&i.0) == keep);
+        if let Some(index) = kept.filter(|i| !is_header(&picker.items[*i])) {
             picker.selected = index;
         }
         picker.rows = old.rows;
@@ -164,17 +196,22 @@ impl Ui {
         };
         let last = picker.items.len().saturating_sub(1);
         let page = picker.rows.saturating_sub(1).max(1);
-        match key.code {
-            KeyCode::Up => picker.selected = picker.selected.saturating_sub(1),
-            KeyCode::Down => picker.selected = (picker.selected + 1).min(last),
-            KeyCode::PageUp => picker.selected = picker.selected.saturating_sub(page),
-            KeyCode::PageDown => picker.selected = (picker.selected + page).min(last),
-            KeyCode::Home => picker.selected = 0,
-            KeyCode::End => picker.selected = last,
-            KeyCode::Esc => self.picker = None,
+        let at = picker.selected;
+        let moved = match key.code {
+            KeyCode::Up => Some((at.saturating_sub(1), false)),
+            KeyCode::Down => Some(((at + 1).min(last), true)),
+            KeyCode::PageUp => Some((at.saturating_sub(page), false)),
+            KeyCode::PageDown => Some(((at + page).min(last), true)),
+            KeyCode::Home => Some((0, true)),
+            KeyCode::End => Some((last, false)),
             KeyCode::Enter => return self.pick(),
-            _ if super::ui::is_ctrl(key, 'c') => self.picker = None,
-            _ => {}
+            KeyCode::Esc => None,
+            _ if super::ui::is_ctrl(key, 'c') => None,
+            _ => return Action::None,
+        };
+        match moved {
+            Some((index, forward)) => picker.selected = settle(&picker.items, index, forward),
+            None => self.picker = None,
         }
         Action::None
     }
@@ -183,7 +220,8 @@ impl Ui {
         let Some(picker) = self.picker.take() else {
             return Action::None;
         };
-        match (picker.kind, picker.items.get(picker.selected)) {
+        let item = picker.items.get(picker.selected).filter(|i| !is_header(i));
+        match (picker.kind, item) {
             (PickerKind::Model, Some((id, _))) => Action::SetModel(id.clone()),
             (PickerKind::Effort, Some((effort, _))) => Action::SetEffort(effort.clone()),
             _ => Action::None,
@@ -221,6 +259,10 @@ fn rows(picker: &Picker, width: usize, height: usize, st: &Styles) -> Vec<Line<'
         .skip(skip)
         .take(height)
         .map(|(index, (value, label))| {
+            if value.is_empty() {
+                let title = clip(label, width.saturating_sub(1));
+                return Line::from(Span::styled(format!(" {title}"), st.dim()));
+            }
             let label = clip(label, label_width);
             let fill = " ".repeat(label_width.saturating_sub(text_width(&label)));
             let check = if Some(value) == picker.current.as_ref() {
