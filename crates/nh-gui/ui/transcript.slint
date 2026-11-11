@@ -1,0 +1,182 @@
+import { ListView, Spinner, Palette } from "std-widgets.slint";
+import { MsgRow } from "types.slint";
+import { Theme, LinkText } from "parts.slint";
+
+component UserBubble {
+    in property <MsgRow> msg;
+    callback copy(string);
+    HorizontalLayout {
+        padding-left: 80px;
+        Rectangle {
+            border-radius: 8px;
+            background: Theme.accent;
+            VerticalLayout {
+                padding: 10px;
+                spacing: 4px;
+                Text {
+                    text: msg.text;
+                    wrap: word-wrap;
+                    color: Palette.accent-foreground;
+                }
+                LinkText {
+                    text: "Copy";
+                    horizontal-alignment: right;
+                    color: Palette.accent-foreground;
+                    clicked => { root.copy(msg.text); }
+                }
+            }
+        }
+    }
+}
+
+component AssistantBlock {
+    in property <MsgRow> msg;
+    callback copy(string);
+    callback toggle();
+    callback link(string);
+    VerticalLayout {
+        spacing: 4px;
+        if msg.thinking != "": LinkText {
+            text: msg.expanded ? "Hide thinking" : "Show thinking";
+            clicked => { root.toggle(); }
+        }
+        if msg.thinking != "" && msg.expanded: Text {
+            text: msg.thinking;
+            wrap: word-wrap;
+            color: Theme.dim;
+            font-italic: true;
+        }
+        if msg.text != "": StyledText {
+            text: msg.body;
+            default-color: Palette.foreground;
+            link-color: Theme.accent;
+            link-clicked(url) => { root.link(url); }
+        }
+        if msg.text != "": LinkText {
+            text: "Copy";
+            clicked => { root.copy(msg.text); }
+        }
+    }
+}
+
+component ToolCard inherits Rectangle {
+    in property <MsgRow> msg;
+    callback copy(string);
+    callback toggle();
+    border-radius: 6px;
+    border-width: 1px;
+    border-color: msg.error ? Theme.red : Theme.line;
+    background: Theme.card;
+    VerticalLayout {
+        padding: 8px;
+        spacing: 4px;
+        HorizontalLayout {
+            spacing: 8px;
+            if msg.running: Spinner {
+                indeterminate: true;
+                width: 14px;
+                height: 14px;
+            }
+            Text {
+                text: msg.title;
+                font-weight: 700;
+                color: msg.error ? Theme.red : Palette.foreground;
+            }
+            Text {
+                text: msg.summary;
+                color: Theme.dim;
+                overflow: elide;
+                horizontal-stretch: 1;
+            }
+            if !msg.running: LinkText {
+                text: msg.expanded ? "Hide output" : "Show output";
+                clicked => { root.toggle(); }
+            }
+            if !msg.running: LinkText {
+                text: "Copy";
+                clicked => { root.copy(msg.text); }
+            }
+        }
+        if msg.expanded && !msg.running: Text {
+            text: msg.output;
+            wrap: word-wrap;
+            font-family: "Consolas";
+            font-size: 12px;
+            color: msg.error ? Theme.red : Palette.foreground;
+        }
+    }
+}
+
+component MessageView {
+    in property <MsgRow> msg;
+    callback copy(string);
+    callback toggle();
+    callback link(string);
+    VerticalLayout {
+        padding-left: 16px;
+        padding-right: 16px;
+        padding-top: msg.kind == "footer" ? 0px : 6px;
+        padding-bottom: msg.kind == "footer" ? 6px : 2px;
+        if msg.kind == "user": UserBubble {
+            msg: msg;
+            copy(t) => { root.copy(t); }
+        }
+        if msg.kind == "assistant": AssistantBlock {
+            msg: msg;
+            copy(t) => { root.copy(t); }
+            toggle => { root.toggle(); }
+            link(u) => { root.link(u); }
+        }
+        if msg.kind == "tool": ToolCard {
+            msg: msg;
+            copy(t) => { root.copy(t); }
+            toggle => { root.toggle(); }
+        }
+        if msg.kind == "note": Text {
+            text: msg.text;
+            wrap: word-wrap;
+            font-size: 12px;
+            color: msg.tone == "error" ? Theme.red : msg.tone == "info" ? Theme.dim : Theme.amber;
+        }
+        if msg.kind == "footer": Text {
+            text: msg.text;
+            font-size: 10px;
+            color: Theme.dim;
+            overflow: elide;
+        }
+    }
+}
+
+// The transcript list. It follows the bottom while `follow` is true; a
+// scroll away from the bottom clears it, a scroll back sets it again.
+export component TranscriptView {
+    in property <[MsgRow]> rows;
+    in-out property <bool> follow: true;
+    callback toggle(int);
+    callback copy(string);
+    callback link(string);
+
+    public function to-bottom() {
+        root.follow = true;
+        list.content-y = min(0px, list.visible-height - list.content-height);
+    }
+
+    list := ListView {
+        width: 100%;
+        height: 100%;
+        for item[i] in root.rows: MessageView {
+            msg: item;
+            copy(t) => { root.copy(t); }
+            toggle => { root.toggle(i); }
+            link(u) => { root.link(u); }
+        }
+        scrolled => {
+            root.follow = self.content-y <= self.visible-height - self.content-height + 32px;
+        }
+        changed content-height => {
+            if (root.follow) {
+                self.content-y = min(0px, self.visible-height - self.content-height);
+            }
+        }
+    }
+}

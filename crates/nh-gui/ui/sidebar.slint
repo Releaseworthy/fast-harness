@@ -1,0 +1,125 @@
+import { Button, ListView, Palette } from "std-widgets.slint";
+import { SessionRow } from "types.slint";
+import { Theme, UsageBar } from "parts.slint";
+
+component NavEntry inherits Rectangle {
+    in property <string> text;
+    in property <bool> selected;
+    callback clicked();
+    height: 28px;
+    border-radius: 4px;
+    background: root.selected ? Theme.line : ta.has-hover ? Theme.card : transparent;
+    Text {
+        x: 8px;
+        text: root.text;
+        vertical-alignment: center;
+        height: parent.height;
+    }
+    ta := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
+// The active account: name and the 5h and 7d bars. Opens the Accounts page.
+component AccountChip inherits Rectangle {
+    in property <string> name;
+    in property <float> five;
+    in property <string> five-text;
+    in property <float> seven;
+    in property <string> seven-text;
+    callback clicked();
+    border-radius: 6px;
+    border-width: 1px;
+    border-color: Theme.line;
+    background: ta.has-hover ? Theme.card : transparent;
+    VerticalLayout {
+        padding: 8px;
+        spacing: 4px;
+        Text {
+            text: root.name;
+            overflow: elide;
+            font-weight: 600;
+        }
+        UsageBar { label: "5h"; value: root.five; caption: root.five-text; }
+        UsageBar { label: "7d"; value: root.seven; caption: root.seven-text; }
+    }
+    ta := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
+export component Sidebar inherits Rectangle {
+    in property <[SessionRow]> sessions;
+    in property <string> page;
+    in property <string> chip-name;
+    in property <float> chip-five;
+    in property <string> chip-five-text;
+    in property <float> chip-seven;
+    in property <string> chip-seven-text;
+    callback new-session();
+    callback open-session(string);
+    callback open-page(string);
+    width: 250px;
+    background: Palette.alternate-background;
+    VerticalLayout {
+        padding: 8px;
+        spacing: 6px;
+        Button {
+            text: "New session";
+            clicked => { root.new-session(); }
+        }
+        Text {
+            text: "Sessions";
+            font-size: 11px;
+            color: Theme.dim;
+        }
+        ListView {
+            vertical-stretch: 1;
+            for s in root.sessions: Rectangle {
+                height: 46px;
+                border-radius: 4px;
+                background: s.current ? Theme.line : sta.has-hover ? Theme.card : transparent;
+                VerticalLayout {
+                    padding: 4px;
+                    padding-left: 8px;
+                    Text { text: s.title; overflow: elide; }
+                    Text { text: s.time; font-size: 11px; color: Theme.dim; }
+                }
+                sta := TouchArea {
+                    mouse-cursor: pointer;
+                    clicked => { root.open-session(s.id); }
+                }
+            }
+        }
+        NavEntry {
+            text: "Chat";
+            selected: root.page == "chat";
+            clicked => { root.open-page("chat"); }
+        }
+        NavEntry {
+            text: "Trace";
+            selected: root.page == "trace";
+            clicked => { root.open-page("trace"); }
+        }
+        NavEntry {
+            text: "Settings";
+            selected: root.page == "settings";
+            clicked => { root.open-page("settings"); }
+        }
+        NavEntry {
+            text: "About";
+            selected: root.page == "about";
+            clicked => { root.open-page("about"); }
+        }
+        AccountChip {
+            name: root.chip-name;
+            five: root.chip-five;
+            five-text: root.chip-five-text;
+            seven: root.chip-seven;
+            seven-text: root.chip-seven-text;
+            clicked => { root.open-page("accounts"); }
+        }
+    }
+}

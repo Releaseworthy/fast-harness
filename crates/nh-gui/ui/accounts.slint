@@ -1,0 +1,159 @@
+import { Button, LineEdit, ListView, Palette } from "std-widgets.slint";
+import { AccountRow } from "types.slint";
+import { Theme, UsageBar, Badge } from "parts.slint";
+
+component AccountCard inherits Rectangle {
+    in property <AccountRow> info;
+    callback use(string);
+    callback remove(string);
+    border-radius: 6px;
+    border-width: 1px;
+    border-color: info.active ? Theme.accent : Theme.line;
+    background: Theme.card;
+    VerticalLayout {
+        padding: 10px;
+        spacing: 6px;
+        HorizontalLayout {
+            spacing: 8px;
+            Text {
+                text: info.name;
+                font-weight: 600;
+                overflow: elide;
+                vertical-alignment: center;
+            }
+            Badge { text: info.kind; }
+            if info.plan != "": Badge { text: info.plan; }
+            if info.active: Badge { text: "active"; tint: Theme.accent; }
+            Rectangle { horizontal-stretch: 1; }
+            Button {
+                text: "Use";
+                enabled: !info.active;
+                clicked => { root.use(info.id); }
+            }
+            Button {
+                text: "Remove";
+                clicked => { root.remove(info.id); }
+            }
+        }
+        UsageBar { label: "5h"; value: info.five; caption: info.five-text; }
+        UsageBar { label: "7d"; value: info.seven; caption: info.seven-text; }
+        if info.hold != "": Text { text: info.hold; color: Theme.amber; wrap: word-wrap; }
+        if !info.token-ok: Text { text: "Token rejected: sign in again."; color: Theme.red; }
+    }
+}
+
+// Shown while a sign-in waits for the browser callback.
+component LoginWait inherits Rectangle {
+    in property <string> url;
+    callback open-url(string);
+    callback copy(string);
+    callback cancel();
+    border-radius: 6px;
+    border-width: 1px;
+    border-color: Theme.amber;
+    VerticalLayout {
+        padding: 10px;
+        spacing: 6px;
+        Text { text: "Waiting for the sign-in in the browser. If no page opened, visit:"; wrap: word-wrap; }
+        LineEdit { text: root.url; read-only: true; }
+        HorizontalLayout {
+            spacing: 8px;
+            alignment: start;
+            Button { text: "Open again"; clicked => { root.open-url(root.url); } }
+            Button { text: "Copy URL"; clicked => { root.copy(root.url); } }
+            Button { text: "Cancel"; clicked => { root.cancel(); } }
+        }
+    }
+}
+
+export component AccountsPage inherits Rectangle {
+    in property <[AccountRow]> accounts;
+    in property <string> login-url;
+    in property <string> message;
+    in property <bool> working;
+    in-out property <bool> adding-key;
+    callback sign-in();
+    callback cancel-sign-in();
+    callback import-linked();
+    callback add-key(string, string);
+    callback refresh();
+    callback use(string);
+    callback remove(string);
+    callback open-url(string);
+    callback copy(string);
+    background: Palette.background;
+    VerticalLayout {
+        padding: 16px;
+        spacing: 10px;
+        HorizontalLayout {
+            spacing: 8px;
+            Text { text: "Accounts"; font-size: 18px; vertical-alignment: center; }
+            Rectangle { horizontal-stretch: 1; }
+            Button { text: "Sign in"; enabled: root.login-url == ""; clicked => { root.sign-in(); } }
+            Button { text: "Import from claude-switch"; clicked => { root.import-linked(); } }
+            Button { text: "Add API key"; clicked => { root.adding-key = true; } }
+            Button { text: "Refresh usage"; enabled: !root.working; clicked => { root.refresh(); } }
+        }
+        if root.message != "": Text { text: root.message; wrap: word-wrap; color: Theme.dim; }
+        if root.login-url != "": LoginWait {
+            url: root.login-url;
+            open-url(u) => { root.open-url(u); }
+            copy(u) => { root.copy(u); }
+            cancel => { root.cancel-sign-in(); }
+        }
+        if root.adding-key: HorizontalLayout {
+            spacing: 8px;
+            label-edit := LineEdit { placeholder-text: "Label (optional)"; width: 180px; }
+            // A plain TextInput: the LineEdit password mode has a reveal button.
+            Rectangle {
+                horizontal-stretch: 1;
+                min-height: 32px;
+                border-radius: 4px;
+                border-width: 1px;
+                border-color: key-edit.has-focus ? Theme.accent : Theme.line;
+                background: Palette.control-background;
+                key-edit := TextInput {
+                    x: 8px;
+                    width: parent.width - 16px;
+                    height: parent.height;
+                    vertical-alignment: center;
+                    input-type: password;
+                    single-line: true;
+                    color: Palette.control-foreground;
+                    accessible-label: "API key";
+                }
+                if key-edit.text == "": Text {
+                    x: 8px;
+                    height: parent.height;
+                    vertical-alignment: center;
+                    text: "API key";
+                    color: Theme.dim;
+                }
+            }
+            Button {
+                text: "Save";
+                clicked => {
+                    root.add-key(key-edit.text, label-edit.text);
+                    key-edit.text = "";
+                }
+            }
+            Button { text: "Cancel"; clicked => { key-edit.text = ""; root.adding-key = false; } }
+        }
+        if root.accounts.length == 0: Text {
+            text: "No account yet: sign in, import the claude-switch accounts or add an API key.";
+            color: Theme.dim;
+            wrap: word-wrap;
+        }
+        ListView {
+            vertical-stretch: 1;
+            for a in root.accounts: VerticalLayout {
+                padding-bottom: 8px;
+                AccountCard {
+                    info: a;
+                    use(id) => { root.use(id); }
+                    remove(id) => { root.remove(id); }
+                }
+            }
+        }
+    }
+}

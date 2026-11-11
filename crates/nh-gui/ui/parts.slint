@@ -1,0 +1,79 @@
+import { Palette } from "std-widgets.slint";
+
+export global Theme {
+    out property <brush> dim: Palette.foreground.transparentize(45%);
+    out property <brush> card: Palette.alternate-background;
+    out property <brush> line: Palette.border;
+    out property <color> red: #d9534f;
+    out property <color> amber: #e0a030;
+    out property <color> green: #4caf50;
+    out property <color> accent: Palette.accent-background;
+}
+
+// A small clickable text.
+export component LinkText inherits Text {
+    callback clicked();
+    color: Theme.dim;
+    font-size: 11px;
+    ta := TouchArea {
+        mouse-cursor: pointer;
+        clicked => {
+            root.clicked();
+        }
+    }
+}
+
+// A label, a bar filled to `value` (0 to 1) and a caption.
+export component UsageBar {
+    in property <string> label;
+    in property <float> value;
+    in property <string> caption;
+    in property <length> label-width: 22px;
+    min-height: 14px;
+    HorizontalLayout {
+        spacing: 6px;
+        Text {
+            text: root.label;
+            width: root.label-width;
+            font-size: 11px;
+            color: Theme.dim;
+            vertical-alignment: center;
+        }
+        track := Rectangle {
+            horizontal-stretch: 1;
+            height: 6px;
+            y: (parent.height - self.height) / 2;
+            border-radius: 3px;
+            background: Theme.line;
+            Rectangle {
+                x: 0;
+                width: parent.width * max(0, min(1, root.value));
+                height: parent.height;
+                border-radius: 3px;
+                background: root.value >= 0.9 ? Theme.red : root.value >= 0.7 ? Theme.amber : Theme.green;
+            }
+        }
+        Text {
+            text: root.caption;
+            font-size: 11px;
+            color: Theme.dim;
+            vertical-alignment: center;
+        }
+    }
+}
+
+export component Badge inherits Rectangle {
+    in property <string> text;
+    in property <brush> tint: Theme.line;
+    border-radius: 4px;
+    background: self.tint;
+    HorizontalLayout {
+        padding-left: 6px;
+        padding-right: 6px;
+        Text {
+            text: root.text;
+            font-size: 11px;
+            vertical-alignment: center;
+        }
+    }
+}

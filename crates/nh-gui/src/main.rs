@@ -1,0 +1,65 @@
+//! nh-gui: the native-harness desktop window (Slint, software renderer).
+//!
+//! `nh-gui [working directory]`: sessions and tools use that directory, the
+//! current one when it is not given.
+
+#![windows_subsystem = "windows"]
+
+mod accounts;
+mod app;
+mod format;
+mod mirror;
+mod rows;
+mod settings;
+mod turn;
+mod wire;
+
+use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
+
+use nh_core::app::Runtime;
+
+slint::include_modules!();
+
+/// The software renderer on winit unless `SLINT_BACKEND` picks another one.
+fn select_backend() {
+    if std::env::var_os("SLINT_BACKEND").is_some() {
+        return;
+    }
+    let _ = slint::BackendSelector::new()
+        .backend_name("winit".into())
+        .renderer_name("software".into())
+        .select();
+}
+
+fn working_dir() -> PathBuf {
+    let arg = std::env::args_os().nth(1).map(PathBuf::from);
+    arg.filter(|p| p.is_dir())
+        .or_else(|| std::env::current_dir().ok())
+        .unwrap_or_else(|| PathBuf::from("."))
+}
+
+fn main() {
+    select_backend();
+    let Ok(ui) = MainWindow::new() else {
+        return;
+    };
+    ui.set_version(env!("CARGO_PKG_VERSION").into());
+    let stop = Arc::new(AtomicBool::new(false));
+    match Runtime::load() {
+        Ok(rt) => {
+            let (pool, http) = (rt.pool.clone(), rt.transport.clone());
+            app::install(app::App::new(&ui, rt, working_dir()));
+            wire::connect(&ui);
+            wire::first_paint();
+            accounts::start_poller(pool, http, stop.clone());
+        }
+        Err(err) => {
+            ui.set_error_text(format!("Cannot load the settings: {err}").into());
+            wire::connect_minimal(&ui);
+        }
+    }
+    let _ = ui.run();
+    stop.store(true, Ordering::SeqCst);
+}
