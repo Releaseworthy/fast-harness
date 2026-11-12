@@ -286,6 +286,7 @@ impl Runtime {
 
 // Live model catalog: the caches and each provider's list (`app/models.rs`,
 // one module).
+mod ext_list;
 mod host;
 mod models;
 mod plugins;
@@ -294,6 +295,7 @@ mod settings;
 mod slash;
 pub mod words;
 
+pub use ext_list::{ext_lines, ext_list};
 pub use settings::{doctor, load_settings, mcp_lines, provider_for, Settings};
 pub use slash::{expand_body, help, reflect_args, slash, Slash};
 

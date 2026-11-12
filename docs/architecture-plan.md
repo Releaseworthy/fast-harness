@@ -212,6 +212,7 @@ Phases 22 and 23 touch no format and no contract and can start as soon as G5 and
 | 25 | done 2026-11-13 | b6d3aae (service guard, queue, TUI), 3e1ec2f (GUI, pickers and state words in app) | docs/decisions/D59.md |
 | 26 | done 2026-11-13 | 50e1c80 (index, one-pass resume, damaged line), ae31d39 (lists and trace off the UI threads) | docs/decisions/D60.md |
 | 28 | done 2026-11-13 (a and b; c not taken). Inside `trace/`, `detail.rs` and `report.rs` still read `data` by key, which the rule allows | 3df3752 (parity table), c0055ba and a73a7b6 (`Record`, writer, byte proof, first readers), d433f9e to f4622af (the other readers), and the guard-rail commit after them | docs/decisions/D61.md |
+| 29 | part A done 2026-11-13 (G12, one loader, version, enabled, ext list) | e4320c3 (D62) and the `Extension surface (phase 29)` commit after it | docs/decisions/D62.md |
 
 Checked for both: `fmt`, `clippy`, 590 tests passed, 0 failed, 9 ignored on Windows; CI green on Windows and Linux at da69164 (run 43269200480); `tests/parallel_edits.rs` passes un-ignored; `fast-harness accounts` with the new binary reads the real store and rewrites nothing.
 

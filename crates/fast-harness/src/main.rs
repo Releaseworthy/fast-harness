@@ -39,10 +39,7 @@ fn main() -> ExitCode {
         }
     };
     let result = match command {
-        Command::Version => {
-            println!("Fast Harness {}", env!("CARGO_PKG_VERSION"));
-            Ok(ExitCode::SUCCESS)
-        }
+        Command::Version => say(format!("Fast Harness {}", env!("CARGO_PKG_VERSION"))),
         Command::Help => {
             println!("{}", args::USAGE);
             Ok(ExitCode::SUCCESS)
@@ -62,6 +59,7 @@ fn main() -> ExitCode {
         Command::Config { action, cwd } => config_cmd::config(action, cwd),
         Command::Trust { path } => config_cmd::trust(path),
         Command::Doctor { cwd } => config_cmd::doctor(cwd),
+        Command::Ext { json, cwd } => config_cmd::ext_list(json, cwd),
         Command::Mcp {
             refresh,
             server,
@@ -77,6 +75,12 @@ fn main() -> ExitCode {
         eprintln!("fast-harness: {message}");
         ExitCode::FAILURE
     })
+}
+
+/// Prints `text` and succeeds.
+fn say(text: String) -> Result<ExitCode, String> {
+    println!("{text}");
+    Ok(ExitCode::SUCCESS)
 }
 
 /// `~/.fast-harness` or `FAST_HARNESS_HOME`.

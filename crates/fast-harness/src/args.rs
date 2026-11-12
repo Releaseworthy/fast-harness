@@ -58,6 +58,10 @@ Usage:
   fast-harness mcp list|refresh [SERVER] [--cwd DIR]
       The MCP servers of mcp.json with their cached tool lists; refresh starts each enabled
       server (or SERVER), saves its tool list in mcp-cache/ and stops it.
+  fast-harness ext list [--json] [--cwd DIR]
+      Every extension file a session in the directory would see: kind, name, source (home,
+      project), state (loaded, disabled, skipped and why, shadowed by which file), version.
+      Starts no MCP server and runs no hook.
   fast-harness send <ID|latest> <text> [--steer|--queue] [--wait] [--cwd DIR]
       Text for a session: a running turn (any front end, any process) reads it at its next
       step (--steer, the default) or after it ends (--queue); --wait waits for the turn end
@@ -180,6 +184,11 @@ pub enum Command {
         server: Option<String>,
         cwd: Option<PathBuf>,
     },
+    /// `ext list [--json]` (phase 29).
+    Ext {
+        json: bool,
+        cwd: Option<PathBuf>,
+    },
     /// `serve --stdio` (PLAN.md D48).
     Serve {
         model: Option<String>,
@@ -292,6 +301,19 @@ fn tui_args(opts: Opts) -> Result<Command, String> {
     }))
 }
 
+/// `mcp ...` (PLAN.md D47) or `ext list [--json]` (phase 29).
+fn ext_command(verb: &str, opts: &Opts, cwd: Option<PathBuf>) -> Result<Command, String> {
+    let rest = &opts.positional[1..];
+    match verb {
+        "ext" if rest.len() == 1 && rest[0] == "list" => Ok(Command::Ext {
+            json: opts.json,
+            cwd,
+        }),
+        "ext" => Err("usage: fast-harness ext list [--json]".into()),
+        _ => mcp_command(rest, cwd),
+    }
+}
+
 /// `mcp list` or `mcp refresh [SERVER]` (PLAN.md D47).
 fn mcp_command(args: &[String], cwd: Option<PathBuf>) -> Result<Command, String> {
     let (refresh, server) = match args {
@@ -345,7 +367,7 @@ pub fn parse(args: Vec<String>) -> Result<Command, String> {
             return Ok(Command::Trust { path });
         }
         Some("doctor") if opts.positional.len() == 1 => return Ok(Command::Doctor { cwd }),
-        Some("mcp") => return mcp_command(&opts.positional[1..], cwd),
+        Some(verb @ ("mcp" | "ext")) => return ext_command(verb, &opts, cwd),
         Some(verb) if args_sessions::is_verb(verb) => return session_command(opts),
         Some("serve") if opts.positional.len() == 1 => {
             if !opts.stdio {

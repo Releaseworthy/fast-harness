@@ -169,9 +169,11 @@ fn parse(bytes: &[u8], dir: &Path) -> Result<Vec<(HookEvent, HookEntry)>, String
     let Value::Object(map) = value else {
         return Err("a hooks file is a JSON object keyed by event name".into());
     };
+    let header = crate::config::ext_file::json_header(&Value::Object(map.clone()))?;
+    crate::config::ext_file::on(header)?;
     let mut out = Vec::new();
     for (name, list) in map {
-        if name == "version" || name.starts_with('$') {
+        if name == "version" || name == "enabled" || name.starts_with('$') {
             continue;
         }
         let event =

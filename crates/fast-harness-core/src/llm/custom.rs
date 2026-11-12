@@ -14,6 +14,7 @@ use std::sync::{OnceLock, RwLock};
 use serde::Deserialize;
 
 use crate::config::compaction::CompactionPatch;
+use crate::config::ext_file;
 use crate::config::layers::{LayerFile, Skipped};
 use crate::types::Usage;
 
@@ -156,7 +157,10 @@ pub fn read(files: &[LayerFile]) -> (Vec<ProviderFile>, Vec<LayerFile>, Vec<Skip
         let parsed = std::fs::read(&file.path)
             .map_err(|err| err.to_string())
             .and_then(|bytes| {
-                serde_json::from_slice::<ProviderFile>(&bytes).map_err(|err| err.to_string())
+                let value: serde_json::Value =
+                    serde_json::from_slice(&bytes).map_err(|err| err.to_string())?;
+                ext_file::on(ext_file::json_header(&value)?)?;
+                serde_json::from_value::<ProviderFile>(value).map_err(|err| err.to_string())
             })
             .and_then(|provider| match problem(&provider) {
                 Some(reason) => Err(reason),

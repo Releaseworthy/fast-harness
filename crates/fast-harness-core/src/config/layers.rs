@@ -291,6 +291,10 @@ pub fn load(layers: Layers, env: &dyn Fn(&str) -> Option<String>) -> Result<Laye
             Err(reason) => report.skipped.push(Skipped { path, reason }),
         }
     }
+    if let Some(reason) = trust::problem(&layers.home) {
+        let path = layers.home.join(trust::FILE_NAME);
+        report.skipped.push(Skipped { path, reason });
+    }
     if let Some(root) = layers.project.as_ref().filter(|_| !layers.trusted) {
         let path = root.join(PROJECT_DIR);
         let reason = "project not trusted (`fast-harness trust`)".into();
@@ -323,10 +327,12 @@ fn read_layer(path: &Path) -> Result<Option<Value>, String> {
         Err(err) if err.kind() == io::ErrorKind::NotFound => return Ok(None),
         Err(err) => return Err(err.to_string()),
     };
-    let value: Value = serde_json::from_slice(&bytes).map_err(|err| err.to_string())?;
-    if !value.is_object() {
+    let mut value: Value = serde_json::from_slice(&bytes).map_err(|err| err.to_string())?;
+    let Some(object) = value.as_object_mut() else {
         return Err("not a JSON object".into());
-    }
+    };
+    // `version` (phase 29): absent reads as 1, a newer one is refused.
+    super::ext_file::check_version(object.remove("version").as_ref())?;
     serde_json::from_value::<Config>(value.clone()).map_err(|err| err.to_string())?;
     Ok(Some(value))
 }

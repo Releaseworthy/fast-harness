@@ -43,6 +43,16 @@ Untrusted, the front ends say so once: a note in the TUI and the GUI with the fi
 
 An untrusted project supplies nothing (D62), and that includes its `AGENTS.md` files: the ones from the repository root down to the working folder stay out of the system prompt and nested ones are never attached. The note lists their paths. For `AGENTS.md` the project of a folder is its `.fast-harness` project, else its repository root (the nearest folder with `.git`), else the folder itself; `/trust` trusts that folder. A file above a trusted `.fast-harness` project (between it and the repository root) loads only when the repository root is trusted too. After `/trust` a new session has the files in its system prompt; a running session gets them once as a `[context update]` note at its next message. Your own home files (`system-prompt.md`, `prompts/`) are not project files and always load.
 
+## `version`, `enabled` and `ext list`
+
+Every extension file shares three rules (`config/ext_file.rs`):
+
+- `version`: `"version": 1` at the top of `config.json`, `hooks.json`, `keys.json`, `mcp.json` and every `tools/`, `providers/` and `panels/` file; `version: 1` in the front matter of `agents/*.md`, `commands/*.md` and `SKILL.md`. Absent reads as 1. A higher number is a file from a newer Fast Harness: it is skipped and `doctor` and `ext list` give the reason. `trusted.json` checks its version too: a newer one trusts nothing and is never rewritten.
+- `enabled`: `"enabled": false` (front matter `enabled: false`) turns one file off without deleting it. A tool file's older `"disabled": true` still works; when both are set, off wins. A disabled tool file with the name of a built-in tool still turns that tool off.
+- Names: tools, agents, commands, skills, panels and MCP servers use one rule, 1 to 64 letters, digits, `_` or `-`.
+
+`fast-harness ext list [--json] [--cwd DIR]` lists every extension file a session in the folder would see, with the same trust answer: `kind`, `name`, `source` (`home` or `project`), `path`, `state` (`loaded`, `disabled`, `skipped` with `reason`, `shadowed` with `by`, the later file of the same name), and `version`. It reads files only: no MCP server starts and no hook runs. Untrusted `AGENTS.md` files show as kind `agents-md`, skipped. Themes are listed by the Settings page, not here.
+
 ## Providers and models: `providers/*.json`
 
 The DeepSeek, OpenRouter and local server examples on this page are unverified live: the adapter is tested only against scripted responses, and model ids, windows and prices must be checked in each service's documentation.

@@ -4,6 +4,7 @@
 //! the file. [`save_setting`] writes one key back for the front ends.
 
 pub mod compaction;
+pub mod ext_file;
 pub mod index;
 pub mod layers;
 pub mod trust;

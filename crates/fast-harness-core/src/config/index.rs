@@ -12,6 +12,7 @@ use std::time::UNIX_EPOCH;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+use super::ext_file;
 use super::layers::{kind_files, skill_files, LayerFile, Layers, Skipped, Source};
 
 /// The cache file in the user folder.
@@ -71,6 +72,8 @@ pub struct ExtIndex {
     /// Skills; `path` is the `SKILL.md` file.
     pub skills: Vec<Item>,
     pub skipped: Vec<Skipped>,
+    /// `(kind, item, path of the later file of the same name that replaced it)`.
+    pub shadowed: Vec<(String, Item, PathBuf)>,
     /// Files read to fill the index (cache misses).
     pub reads: usize,
     /// Files taken from `index.json` without reading them.
@@ -157,7 +160,11 @@ impl ExtIndex {
             SKILLS => &mut self.skills,
             _ => &mut self.commands,
         };
-        list.retain(|item| item.entry.name != entry.name);
+        if let Some(at) = list.iter().position(|item| item.entry.name == entry.name) {
+            let old = list.remove(at);
+            self.shadowed
+                .push((kind.to_string(), old, file.path.clone()));
+        }
         let (path, source) = (file.path.clone(), file.source);
         list.push(Item {
             entry,
@@ -200,6 +207,7 @@ fn parse(kind: &str, path: &Path) -> Result<Entry, String> {
         SKILLS => parse_skill(&text, path),
         _ => {
             let (meta, _) = front_matter(&text);
+            ext_file::on(ext_file::md_header(&meta)?)?;
             let name = meta.get("name").map_or(&*stem, String::as_str);
             check_name(name)?;
             Ok(Entry {
@@ -213,6 +221,7 @@ fn parse(kind: &str, path: &Path) -> Result<Entry, String> {
 
 fn parse_tool(text: &str, stem: &str) -> Result<Entry, String> {
     let value: Value = serde_json::from_str(text).map_err(|err| err.to_string())?;
+    let header = ext_file::json_header(&value)?;
     let object = value.as_object().ok_or("not a JSON object")?;
     let text_of = |key: &str| object.get(key).and_then(Value::as_str).map(str::trim);
     let name = text_of("name").unwrap_or(stem);
@@ -233,7 +242,8 @@ fn parse_tool(text: &str, stem: &str) -> Result<Entry, String> {
         description: description.to_string(),
         command,
         output_bytes: output_bytes.map(|bytes| bytes as usize),
-        disabled: object.get("disabled").and_then(Value::as_bool) == Some(true),
+        // `"enabled": false` or the older `"disabled": true` (off wins).
+        disabled: !header.enabled,
         effect,
     })
 }
@@ -244,6 +254,7 @@ fn parse_skill(text: &str, path: &Path) -> Result<Entry, String> {
     let folder = path.parent().and_then(Path::file_name).unwrap_or_default();
     let folder = folder.to_string_lossy();
     let (meta, _) = front_matter(text);
+    ext_file::on(ext_file::md_header(&meta)?)?;
     let name = meta
         .get("name")
         .map(String::as_str)
@@ -261,19 +272,7 @@ fn parse_skill(text: &str, path: &Path) -> Result<Entry, String> {
     })
 }
 
-/// A tool, agent or command name: 1 to 64 letters, digits, `_` or `-`.
-pub fn check_name(name: &str) -> Result<(), String> {
-    let ok = (1..=64).contains(&name.len())
-        && name
-            .chars()
-            .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-');
-    match ok {
-        true => Ok(()),
-        false => Err(format!(
-            "bad name `{name}`: use 1 to 64 letters, digits, `_` or `-`"
-        )),
-    }
-}
+pub use super::ext_file::check_name;
 
 /// `key: value` lines between a first line `---` and the next `---`, and
 /// the body after them. Without that block: no keys, the whole text.

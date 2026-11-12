@@ -10,6 +10,7 @@ use std::path::{Path, PathBuf};
 
 use serde::Deserialize;
 
+use crate::config::ext_file;
 use crate::config::layers::{LayerFile, Layers, Skipped, Source};
 
 pub const MCP_FILE: &str = "mcp.json";
@@ -135,13 +136,10 @@ pub fn load(layers: &Layers) -> (Vec<ServerSpec>, Vec<LayerFile>, Vec<Skipped>) 
         let Ok(bytes) = std::fs::read(&path) else {
             continue;
         };
-        let raw: RawFile = match serde_json::from_slice(&bytes) {
+        let raw: RawFile = match read_file(&bytes) {
             Ok(raw) => raw,
-            Err(err) => {
-                skipped.push(Skipped {
-                    path,
-                    reason: err.to_string(),
-                });
+            Err(reason) => {
+                skipped.push(Skipped { path, reason });
                 continue;
             }
         };
@@ -159,9 +157,15 @@ pub fn load(layers: &Layers) -> (Vec<ServerSpec>, Vec<LayerFile>, Vec<Skipped>) 
     (servers.into_values().collect(), files, skipped)
 }
 
+/// One `mcp.json` with the shared `version` and `enabled` rules.
+fn read_file(bytes: &[u8]) -> Result<RawFile, String> {
+    let value: serde_json::Value = serde_json::from_slice(bytes).map_err(|e| e.to_string())?;
+    ext_file::on(ext_file::json_header(&value)?)?;
+    serde_json::from_value(value).map_err(|e| e.to_string())
+}
+
 fn spec(name: &str, raw: RawServer, dir: &Path, source: Source) -> Result<ServerSpec, String> {
-    let valid = |c: char| c.is_ascii_alphanumeric() || c == '_' || c == '-';
-    if name.is_empty() || !name.chars().all(valid) {
+    if ext_file::check_name(name).is_err() {
         return Err("a name uses only letters, digits, `_` and `-`".into());
     }
     let endpoint = match (raw.command, raw.url) {

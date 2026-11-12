@@ -126,7 +126,7 @@ pub fn load(layers: &Layers) -> (Keys, Vec<Skipped>) {
             let map = match field.as_str() {
                 "tui" => &mut keys.tui,
                 "gui" => &mut keys.gui,
-                "version" | "$schema" => continue,
+                "version" | "enabled" | "$schema" => continue,
                 other => {
                     keys.problems
                         .push(format!("{place}: unknown section `{other}`"));
@@ -163,8 +163,6 @@ fn read(path: &std::path::Path) -> Result<Option<Value>, String> {
     if !value.is_object() {
         return Err("not a JSON object".into());
     }
-    match value.get("version").and_then(Value::as_u64) {
-        None | Some(1) => Ok(Some(value)),
-        Some(other) => Err(format!("unknown version {other} (this build reads 1)")),
-    }
+    crate::config::ext_file::on(crate::config::ext_file::json_header(&value)?)?;
+    Ok(Some(value))
 }

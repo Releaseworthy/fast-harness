@@ -38,12 +38,26 @@ fn key(path: &Path) -> String {
     }
 }
 
-/// The trusted list of `home`; a missing or unreadable file is empty.
+/// The trusted list of `home`; a missing, unreadable or newer file is
+/// empty (nothing trusted).
 pub fn read(home: &Path) -> Trusted {
     crate::store::read(home.join(FILE_NAME))
         .ok()
-        .and_then(|bytes| serde_json::from_slice(&bytes).ok())
+        .and_then(|bytes| parse(&bytes).ok())
         .unwrap_or_default()
+}
+
+/// One `trusted.json`; a `version` newer than [`VERSION`] is an error.
+pub fn parse(bytes: &[u8]) -> Result<Trusted, String> {
+    let value: serde_json::Value = serde_json::from_slice(bytes).map_err(|e| e.to_string())?;
+    super::ext_file::check_version(value.get("version"))?;
+    serde_json::from_value(value).map_err(|e| e.to_string())
+}
+
+/// Why `trusted.json` of `home` cannot be read; `None` when it can (or is missing).
+pub fn problem(home: &Path) -> Option<String> {
+    let bytes = crate::store::read(home.join(FILE_NAME)).ok()?;
+    parse(&bytes).err()
 }
 
 /// True when `root` (a project folder) is in the trusted list.
@@ -67,9 +81,14 @@ pub fn trust(home: &Path, root: &Path) -> Result<PathBuf, String> {
     let file = home.join(FILE_NAME);
     let wanted = key(&path);
     let changed = crate::store::update(&file, crate::store::WAIT, |current| {
-        let mut list: Trusted = (current.as_deref())
-            .and_then(|bytes| serde_json::from_slice(bytes).ok())
-            .unwrap_or_default();
+        let mut list: Trusted = match current.as_deref().map(parse) {
+            // A newer file is never rewritten in an older format.
+            Some(Err(reason)) if reason.contains("newer") => {
+                return Err(io::Error::other(reason));
+            }
+            Some(Ok(list)) => list,
+            _ => Trusted::default(),
+        };
         list.version = VERSION;
         if !list
             .paths

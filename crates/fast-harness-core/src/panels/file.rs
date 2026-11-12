@@ -7,6 +7,7 @@ use std::path::{Path, PathBuf};
 use serde::Deserialize;
 
 use super::native::{NativePanel, NativeRef};
+use crate::config::ext_file;
 use crate::config::layers::{kind_files, LayerFile, Layers, Skipped, Source};
 
 /// Where a panel opens.
@@ -79,9 +80,10 @@ pub fn load(layers: &Layers) -> (Vec<PanelFile>, Vec<LayerFile>, Vec<Skipped>) {
 
 fn read(path: &Path, source: Source) -> Result<PanelFile, String> {
     let text = std::fs::read_to_string(path).map_err(|e| e.to_string())?;
-    let raw: Raw = serde_json::from_str(&text).map_err(|e| e.to_string())?;
-    let good = |c: char| c.is_ascii_alphanumeric() || c == '-' || c == '_';
-    if raw.id.is_empty() || !raw.id.chars().all(good) {
+    let value: serde_json::Value = serde_json::from_str(&text).map_err(|e| e.to_string())?;
+    ext_file::on(ext_file::json_header(&value)?)?;
+    let raw: Raw = serde_json::from_value(value).map_err(|e| e.to_string())?;
+    if ext_file::check_name(&raw.id).is_err() {
         return Err("id must be letters, digits, - or _".into());
     }
     if raw.command.trim().is_empty() {

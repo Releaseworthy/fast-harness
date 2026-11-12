@@ -92,6 +92,21 @@ fn nest(current: Option<Value>, path: &[&str], value: Value) -> Value {
     Value::Object(object)
 }
 
+/// `fast-harness ext list [--json]` (phase 29): reads the settings only.
+pub fn ext_list(json: bool, cwd: Option<PathBuf>) -> Result<ExitCode, String> {
+    let (home, cwd) = (crate::home()?, crate::work_dir(cwd)?);
+    let settings = load_settings(&home, Some(&cwd), &env_value)?;
+    let list = fast_harness_core::app::ext_list(&settings);
+    match json {
+        true => println!(
+            "{}",
+            serde_json::to_string_pretty(&list).unwrap_or_default()
+        ),
+        false => print!("{}", fast_harness_core::app::ext_lines(&list)),
+    }
+    Ok(ExitCode::SUCCESS)
+}
+
 pub fn trust(path: Option<PathBuf>) -> Result<ExitCode, String> {
     let home = crate::home()?;
     let dir = crate::work_dir(path)?;
