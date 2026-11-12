@@ -147,7 +147,16 @@ Target met: 200 logs of 1 MB list in 2.8 ms with a warm index (target 50 ms). A 
 | Open a 1 MB session | 6.2 ms | 2.6 ms |
 | Trace page after a turn, 10 MB log | a full read on the UI thread | none (worker) |
 
-Idle private working set and CPU time (Phase 21A method): not measured in this chunk.
+Idle, by the method of phase 21A (release builds of 47a1dc0 and of ae31d39, a fresh empty `FAST_HARNESS_HOME`, alternated twice, measured by the parent after the chunk; GPU not measured):
+
+| Measure | Before (47a1dc0) | After (ae31d39) |
+|---|---|---|
+| Private working set after 10 s idle | 18.2 and 18.1 MB | 18.2 and 18.1 MB |
+| Working set after 10 s idle | 56.8 and 43.4 MB | 43.7 and 43.7 MB |
+| Private bytes after 10 s idle | 74.4 and 74.3 MB | 74.5 and 74.4 MB |
+| CPU time over 30 s idle | 15.6 and 15.6 ms | 0.0 and 0.0 ms |
+
+The workers cost nothing at idle: they run when asked and end (15.6 ms is one tick of the process clock).
 
 ## Experiments 2026-11-12 (phase 10, E1 to E6)
 

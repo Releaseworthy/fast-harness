@@ -25,6 +25,16 @@ The list is generated: `cargo test -p fast-harness-gui ui_contract` fails when i
 
 Both front ends draw a tool call from `view::Item::Tool`. While it runs (`output` is `None`) its `live` tail holds the newest lines of the tool's live output (`AgentEvent::ToolProgress`, PLAN.md D58): at most `view::LIVE_LINES` (8) lines of at most `view::LIVE_LINE_BYTES` (256) bytes, with escape sequences and control characters removed, `\r\n` or `\n` ending a line and a lone `\r` starting it again. The TUI shows the tail under the spinning tool row in the dim role, one row per line clipped to the width; the GUI shows `MsgRow.live` (the tail joined by `\n`, empty otherwise) under the running card's header in `Theme.dim` mono text, one line per line, never wrapped. When the result arrives the tail is gone and the row is the finished tool row, the same as in a replayed session (progress is never in the trace). A user UI without `MsgRow.live` simply does not show the tail.
 
+## Loading
+
+Both front ends list the sessions of a workspace and read a trace log on worker threads, so a screen opens at once and can be empty for a moment (PLAN.md D60). While that read runs, each front end shows one muted waiting text:
+
+- GUI sidebar: an expanded workspace whose sessions have not been listed once gets one row of kind `loading` in `MainWindow.side-rows` where its session rows will be: `title` `Loading sessions…`, empty `id`, `detail` and `run`, not current and not clickable. The row is drawn at 28px with `Theme.font-xs` in `Theme.dim`, indented like a session row. The first list of that workspace replaces it with the session rows. A later list (after a turn, or on Reopen) does not bring it back: the rows shown stay until the new ones arrive.
+- GUI Trace page: while the page shows a session whose rows it does not have yet, `MainWindow.trace-message` is `Loading the session log…`, drawn in `Theme.dim`, wrapped and centred in an 80px band above the rows. The rows that arrive replace the text. While a newer read of the same session runs the rows shown stay and no text is set.
+- TUI: the Sessions screen draws `Loading sessions...` in the dim style when a read runs and no rows are shown yet, and `No sessions yet.` in the plain text style when a list came back empty. The Trace screen draws `Loading the session log...` in the dim style while its read runs, in place of entries, steps and error.
+
+A user UI that keeps `MainWindow.side-rows` and `MainWindow.trace-message` shows the two texts; one that draws neither kind simply shows the workspace or the page without rows while the read runs.
+
 ## Entries
 
 <!-- contract:start -->
