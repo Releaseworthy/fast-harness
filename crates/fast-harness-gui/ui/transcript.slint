@@ -4,7 +4,8 @@ import { Theme, LinkText, Columns, Mark, AccentFill, Elevation, Card, Halo } fro
 import { Icons } from "icons.slint";
 import { BusySpinner, IconButton } from "widgets.slint";
 import { ScrollBar } from "scrollbar.slint";
-import { ThinkingQuote, CodeBox } from "blocks.slint";
+import { ThinkingQuote } from "blocks.slint";
+import { ToolFrame } from "toolcard.slint";
 
 // The user's message: a bubble on the right, at most 80% of the column.
 component UserBubble {
@@ -96,101 +97,6 @@ component AssistantBlock {
     }
 }
 
-// The status of a tool: dots while it runs, then a mark and a word, so the
-// state never rests on colour alone.
-component ToolStatus inherits Rectangle {
-    in property <MsgRow> msg;
-    property <color> tone: msg.running ? Theme.accent : msg.error ? Theme.error : Theme.success;
-    border-radius: self.height / 2;
-    border-width: 1px;
-    border-color: root.tone.with-alpha(0.6);
-    width: chip.preferred-width;
-    chip := HorizontalLayout {
-        padding-left: Theme.space-s;
-        padding-right: Theme.space-s;
-        spacing: Theme.space-xs;
-        if msg.running: BusySpinner { label: "Running " + msg.title; }
-        if !msg.running: Mark {
-            text: msg.error ? Icons.error : Icons.check;
-            color: root.tone;
-            font-size: Theme.font-s;
-        }
-        Text {
-            text: msg.running ? "running" : msg.error ? "failed" : "done";
-            color: root.tone;
-            font-size: Theme.font-xs;
-            font-weight: 700;
-            vertical-alignment: center;
-        }
-    }
-}
-
-component ToolCard inherits Rectangle {
-    in property <MsgRow> msg;
-    callback copy(string);
-    callback toggle();
-    Card {
-        radius: Theme.radius-l;
-        edge: msg.error ? Theme.error : Theme.line;
-        elevation: 0.7;
-    }
-    VerticalLayout {
-        padding: Theme.space-s + 2px;
-        padding-left: Theme.space-m;
-        padding-right: Theme.space-m;
-        spacing: Theme.space-s;
-        HorizontalLayout {
-            spacing: Theme.space-s;
-            Rectangle {
-                width: 24px;
-                height: 24px;
-                border-radius: Theme.radius-s;
-                background: Theme.accent-surface;
-                Mark {
-                    width: parent.width;
-                    height: parent.height;
-                    horizontal-alignment: center;
-                    text: Icons.tools;
-                    color: Theme.accent;
-                    font-size: Theme.font-s;
-                }
-            }
-            Text {
-                text: msg.title;
-                font-family: Theme.mono;
-                font-size: Theme.font-s;
-                font-weight: 700;
-                color: Theme.text;
-                vertical-alignment: center;
-            }
-            Text {
-                text: msg.summary;
-                color: Theme.dim;
-                font-size: Theme.font-s;
-                overflow: elide;
-                vertical-alignment: center;
-                horizontal-stretch: 1;
-            }
-            VerticalLayout {
-                alignment: center;
-                horizontal-stretch: 0;
-                ToolStatus { msg: msg; height: 20px; }
-            }
-            if !msg.running: LinkText {
-                text: msg.expanded ? "Hide output" : "Show output";
-                vertical-alignment: center;
-                clicked => { root.toggle(); }
-            }
-            if !msg.running: LinkText {
-                text: "Copy";
-                vertical-alignment: center;
-                clicked => { root.copy(msg.text); }
-            }
-        }
-        if msg.expanded && !msg.running: CodeBox { text: msg.output; }
-    }
-}
-
 // A note line: a mark per kind (refresh: retry, git-compare: switch, error, info).
 component Note {
     in property <MsgRow> msg;
@@ -235,10 +141,14 @@ component MessageView {
             toggle => { root.toggle(); }
             link(u) => { root.link(u); }
         }
-        if msg.kind == "tool": ToolCard {
-            msg: msg;
-            copy(t) => { root.copy(t); }
+        if msg.kind == "tool": ToolFrame {
+            tool: msg.tool;
+            error: msg.error;
+            expanded: msg.expanded;
             toggle => { root.toggle(); }
+            status: true;
+            running: msg.running;
+            copy => { root.copy(msg.text); }
         }
         if msg.kind == "note": Note { msg: msg; }
         if msg.kind == "footer": Text {

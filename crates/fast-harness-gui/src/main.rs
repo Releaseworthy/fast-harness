@@ -37,8 +37,11 @@ mod shots_prompt;
 #[cfg(test)]
 mod shots_tests;
 #[cfg(test)]
+mod shots_tools;
+#[cfg(test)]
 mod shots_trace;
 mod theme;
+mod tool_rows;
 mod trace_rows;
 mod turn;
 mod window_state;

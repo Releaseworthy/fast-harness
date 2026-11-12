@@ -4,10 +4,11 @@ use fast_harness_core::accounts::model::{Account, AccountKind};
 use fast_harness_core::accounts::pool::AccountStatus;
 use fast_harness_core::accounts::usage::{current_usage, Window};
 use fast_harness_core::session::SessionSummary;
-use fast_harness_core::view::{Item, NoteKind};
+use fast_harness_core::view::{tool_detail, Item, NoteKind};
 use slint::{SharedString, StyledText};
 
 use crate::format::{ago, duration, fraction, tokens, window_caption};
+use crate::tool_rows::tool_view;
 use crate::trace_rows::expanded;
 use crate::{AccountRow, MsgRow, SessionRow};
 
@@ -35,18 +36,24 @@ pub fn msg_row(item: &Item) -> MsgRow {
         },
         Item::Tool {
             name,
+            arguments,
             summary,
             output,
             is_error,
+            duration_ms,
             ..
-        } => MsgRow {
-            title: name.into(),
-            summary: summary.into(),
-            output: expanded(output.as_deref().unwrap_or("")).into(),
-            running: output.is_none(),
-            error: *is_error,
-            ..row("tool", output.as_deref().unwrap_or(""))
-        },
+        } => {
+            let detail = tool_detail(name, arguments, output.as_deref(), *is_error, *duration_ms);
+            MsgRow {
+                title: name.into(),
+                summary: summary.into(),
+                output: expanded(output.as_deref().unwrap_or("")).into(),
+                running: output.is_none(),
+                error: *is_error,
+                tool: tool_view(name, &detail),
+                ..row("tool", output.as_deref().unwrap_or(""))
+            }
+        }
         Item::Note { kind, text } => MsgRow {
             tone: tone(*kind).into(),
             ..row("note", text)

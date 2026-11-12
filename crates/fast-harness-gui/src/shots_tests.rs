@@ -12,7 +12,9 @@ use slint::platform::{Platform, WindowAdapter};
 use slint::{ComponentHandle, ModelRc, PhysicalSize, Rgb8Pixel, SharedString, VecModel};
 
 use crate::rows::markdown;
-use crate::{shots_png, shots_trace, theme, AccountRow, MainWindow, MsgRow, SideRow, TraceRow};
+use crate::{
+    shots_png, shots_tools, shots_trace, theme, AccountRow, MainWindow, MsgRow, SideRow, TraceRow,
+};
 
 /// The sample timeline with the failed tool output opened by the user.
 fn trace_entries() -> Vec<TraceRow> {
@@ -52,18 +54,6 @@ fn msg(kind: &str, text: &str) -> MsgRow {
     }
 }
 
-fn tool(title: &str, summary: &str, output: &str, error: bool, running: bool) -> MsgRow {
-    MsgRow {
-        title: title.into(),
-        summary: summary.into(),
-        output: output.into(),
-        error,
-        running,
-        expanded: error,
-        ..msg("tool", output)
-    }
-}
-
 fn note(tone: &str, text: &str) -> MsgRow {
     MsgRow {
         tone: tone.into(),
@@ -81,9 +71,10 @@ fn messages() -> Vec<MsgRow> {
             expanded: true,
             ..msg("assistant", answer)
         },
-        tool("read", "crates/fast-harness-gui/ui/pages.slint", "80 lines", false, false),
-        tool("bash", "cargo test -p fast-harness-gui", "error[E0425]: cannot find value `palette`", true, false),
-        tool("grep", "Palette\\. in ui/*.slint", "", false, true),
+        shots_tools::read(),
+        shots_tools::shell_failed(),
+        shots_tools::edit_error(),
+        shots_tools::running_grep(),
         note("retry", "Overloaded (529): retrying in 4 s (attempt 2 of 5)"),
         note("switch", "Switched to account work@example.com (5h limit reached)"),
         note("error", "The request failed: connection reset"),
@@ -319,6 +310,8 @@ fn shots() {
         let size = (WIDTH, HEIGHT);
         crate::shots_prompt::shot(&ui, &window, &dir, &core.id, size, || render(&window));
         crate::shots_appearance::shot(&ui, &dir, &core.id, size, || render(&window));
+        shots_tools::shot(&ui, &window, &dir, &core.id, size);
+        ui.set_messages(model(messages()));
     }
 }
 

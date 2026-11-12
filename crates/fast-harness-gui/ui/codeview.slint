@@ -1,0 +1,98 @@
+// The code view of a tool card: the lines a tool read, wrote or matched,
+// and an edit's diff. Each row is a component (the root of a `for` that
+// holds wrapped text, ui/blocks.slint says why). Added and removed rows
+// carry a "+" or "−" mark next to their tint, so the meaning never rests
+// on colour alone.
+import { CodeLine } from "types.slint";
+import { Theme, Mark } from "parts.slint";
+import { Icons } from "icons.slint";
+
+// One line: number columns, the mark column and the wrapped text. A header
+// row (a grep file) shows the file mark and its path on the raised colour;
+// a gap row shows an ellipsis.
+export component CodeRow inherits Rectangle {
+    in property <CodeLine> line;
+    in property <bool> two-numbers;
+    in property <bool> marks;
+    in property <length> number-width;
+    property <bool> header: line.kind == "header";
+    property <bool> numbered: root.number-width > 0 && !root.header;
+    // The diff tints are `theme::DIFF_ALPHA` (0.12): the theme tests check
+    // text and dim on code blended with success and error at that alpha.
+    background: line.kind == "added" ? Theme.success.with-alpha(0.12) : line.kind == "removed" ? Theme.error.with-alpha(0.12) : root.header ? Theme.raised : transparent;
+    HorizontalLayout {
+        padding-left: Theme.space-s;
+        padding-right: Theme.space-m;
+        padding-top: root.header ? 4px : 1px;
+        padding-bottom: root.header ? 4px : 1px;
+        spacing: Theme.space-s;
+        if root.numbered && root.two-numbers: Text {
+            text: line.old;
+            width: root.number-width;
+            horizontal-alignment: right;
+            color: Theme.dim;
+            font-family: Theme.mono;
+            font-size: Theme.font-xs;
+            vertical-alignment: top;
+        }
+        if root.numbered: Text {
+            text: line.new;
+            width: root.number-width;
+            horizontal-alignment: right;
+            color: Theme.dim;
+            font-family: Theme.mono;
+            font-size: Theme.font-xs;
+            vertical-alignment: top;
+        }
+        if root.marks && !root.header: Text {
+            text: line.kind == "added" ? "+" : line.kind == "removed" ? "−" : "";
+            width: 8px;
+            color: Theme.text;
+            font-family: Theme.mono;
+            font-size: Theme.font-s;
+            font-weight: 700;
+            vertical-alignment: top;
+        }
+        if root.header || line.kind == "gap": Mark {
+            text: root.header ? Icons.file : Icons.ellipsis;
+            color: root.header ? Theme.text : Theme.dim;
+            font-size: Theme.font-s;
+            vertical-alignment: center;
+        }
+        Text {
+            text: line.text;
+            color: Theme.text;
+            font-family: Theme.mono;
+            font-size: Theme.font-s;
+            font-weight: root.header ? 600 : 400;
+            wrap: word-wrap;
+            horizontal-stretch: 1;
+        }
+    }
+}
+
+// The rounded box on the code colour with a row per line.
+export component CodeView inherits Rectangle {
+    in property <[CodeLine]> lines;
+    in property <bool> two-numbers;
+    in property <bool> marks;
+    in property <int> digits;
+    // Consolas at the extra-small size: about 6.1 px a digit.
+    property <length> number-width: root.digits > 0 ? root.digits * 6.5px + 2px : 0px;
+    border-radius: Theme.radius-m;
+    border-width: 1px;
+    border-color: Theme.line;
+    background: Theme.code;
+    VerticalLayout {
+        padding-top: 4px;
+        padding-bottom: 4px;
+        padding-left: 1px;
+        padding-right: 1px;
+        for line in root.lines: CodeRow {
+            line: line;
+            two-numbers: root.two-numbers;
+            marks: root.marks;
+            number-width: root.number-width;
+        }
+    }
+}

@@ -8,7 +8,8 @@ use slint::{Model, ModelRc, SharedString, VecModel};
 
 use crate::app::App;
 use crate::format::{duration, tokens};
-use crate::{MainWindow, TraceRow};
+use crate::tool_rows::{entry_detail, tool_view};
+use crate::{MainWindow, ToolView, TraceRow};
 
 /// A body longer than this many lines or characters starts collapsed.
 pub const PREVIEW_LINES: usize = 8;
@@ -97,10 +98,24 @@ pub fn expanded(body: &str) -> String {
     }
     out
 }
+/// The tool card of a call or result entry that carries tool information.
+fn entry_tool(entry: &Entry) -> Option<ToolView> {
+    let tool = entry.tool.as_ref()?;
+    if !matches!(entry.kind, EntryKind::ToolCall | EntryKind::ToolResult) {
+        return None;
+    }
+    let detail = entry_detail(entry.kind, tool, entry.is_error);
+    Some(tool_view(&tool.name, &detail))
+}
+
 pub fn entry_row(entry: &Entry) -> TraceRow {
     // Thinking often ends in blank lines: they would only stretch the block.
     let body = entry.body.trim_end();
-    let long = starts_collapsed(entry.kind, body);
+    let tool = entry_tool(entry);
+    let long = match &tool {
+        Some(tool) => tool.more,
+        None => starts_collapsed(entry.kind, body),
+    };
     let copy = if body.is_empty() {
         entry.title.clone()
     } else {
@@ -119,6 +134,7 @@ pub fn entry_row(entry: &Entry) -> TraceRow {
         expanded: false,
         error: entry.is_error || entry.kind == EntryKind::Failure,
         copy: copy.into(),
+        tool: tool.unwrap_or_default(),
     }
 }
 

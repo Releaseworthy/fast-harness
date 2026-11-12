@@ -83,6 +83,41 @@ fn trace_rows_grow_with_their_wrapped_text() {
     }
 }
 
+/// A shell result through the real mapping, opened: its output wraps.
+fn tool_result(body: &str) -> TraceRow {
+    use fast_harness_core::trace::detail::{Entry, EntryKind, EntryTool};
+    let entry = Entry {
+        kind: EntryKind::ToolResult,
+        turn: 1,
+        step: 1,
+        title: "Tool result shell".into(),
+        body: body.into(),
+        is_error: false,
+        tool: Some(EntryTool {
+            name: "shell".into(),
+            arguments: r#"{"command":"cargo test"}"#.into(),
+            output: Some(body.into()),
+            duration_ms: None,
+        }),
+    };
+    TraceRow {
+        expanded: true,
+        ..crate::trace_rows::entry_row(&entry)
+    }
+}
+
+#[test]
+fn trace_tool_cards_grow_with_their_wrapped_text() {
+    let (window, ui) = window();
+    ui.set_trace_mode("timeline".into());
+    ui.set_page("trace".into());
+    let short = trace_height(&ui, &window, tool_result("short"));
+    let long = trace_height(&ui, &window, tool_result(&long_text()));
+    assert!(
+        long - short > MIN_GROWTH,
+        "a wrapped tool result grows its row: {short} px short, {long} px long"
+    );
+}
 fn chat_height(ui: &MainWindow, window: &MinimalSoftwareWindow, row: MsgRow) -> f32 {
     ui.set_messages(ModelRc::new(VecModel::from(vec![row])));
     frames(window);
@@ -100,16 +135,37 @@ fn thinking(text: &str) -> MsgRow {
     }
 }
 
-fn tool_output(text: &str) -> MsgRow {
+/// A tool card through the real mapping, opened.
+fn tool(name: &str, arguments: &str, output: Option<&str>) -> MsgRow {
+    let item = fast_harness_core::view::Item::Tool {
+        id: "t1".into(),
+        name: name.into(),
+        arguments: arguments.into(),
+        summary: String::new(),
+        output: output.map(str::to_string),
+        is_error: false,
+        duration_ms: None,
+    };
     MsgRow {
-        kind: "tool".into(),
-        title: "shell".into(),
-        summary: "cargo test".into(),
-        output: text.into(),
-        text: text.into(),
         expanded: true,
-        ..MsgRow::default()
+        ..crate::rows::msg_row(&item)
     }
+}
+
+fn tool_output(text: &str) -> MsgRow {
+    tool("shell", r#"{"command":"cargo test"}"#, Some(text))
+}
+
+/// Short: one numbered line; long: forty, each one wrapped.
+fn code_lines(text: &str) -> MsgRow {
+    let count = if text == "short" { 1 } else { 40 };
+    let out: Vec<String> = (1..=count).map(|i| format!("{i}: {text}")).collect();
+    tool("read", r#"{"path":"src/a.rs"}"#, Some(&out.join("\n")))
+}
+
+fn field_value(text: &str) -> MsgRow {
+    let args = serde_json::json!({ "prompt": text }).to_string();
+    tool("subagent", &args, None)
 }
 
 type MakeRow = fn(&str) -> MsgRow;
@@ -118,7 +174,12 @@ type MakeRow = fn(&str) -> MsgRow;
 fn chat_rows_grow_with_their_wrapped_text() {
     let (window, ui) = window();
     ui.set_page("chat".into());
-    let cases: [(&str, MakeRow); 2] = [("thinking", thinking), ("tool output", tool_output)];
+    let cases: [(&str, MakeRow); 4] = [
+        ("thinking", thinking),
+        ("tool output", tool_output),
+        ("code lines", code_lines),
+        ("field value", field_value),
+    ];
     for (name, make) in cases {
         let short = chat_height(&ui, &window, make("short"));
         let long = chat_height(&ui, &window, make(&long_text()));

@@ -1,5 +1,63 @@
 // Rows the Rust side fills (src/rows.rs maps the core types to these).
 
+// A tool card chip (`fast_harness_core::view::Chip`). `tone`: plain,
+// success, error, info or warning; the text always says what it means.
+export struct ToolChip {
+    text: string,
+    tone: string,
+}
+
+// The chips of one line of the card (src/tool_rows.rs splits them).
+export struct ChipRow {
+    chips: [ToolChip],
+}
+
+// A labelled argument; `preview` is its first lines (collapsed card).
+export struct ToolField {
+    label: string,
+    value: string,
+    preview: string,
+}
+
+// One line of the code view. `kind`: context, added, removed, header or
+// gap; `old` and `new` are line numbers as text, "" when none.
+export struct CodeLine {
+    kind: string,
+    old: string,
+    new: string,
+    text: string,
+}
+
+// What a tool card draws (src/tool_rows.rs maps `view::ToolDetail`).
+// `kind`: read, write, edit, grep, glob, shell, subagent, find or other;
+// "" for rows without tool information.
+export struct ToolView {
+    kind: string,
+    // The tool's name as the model called it.
+    name: string,
+    // The file name (read, write, edit), pattern, command or description,
+    // and the folder of a file target.
+    target: string,
+    target-dir: string,
+    chip-rows: [ChipRow],
+    fields: [ToolField],
+    // Every line (at most 200) and the first ones (collapsed card).
+    lines: [CodeLine],
+    lines-preview: [CodeLine],
+    // Lines the core cut ("120 more lines not shown; Copy takes all").
+    lines-note: string,
+    // An edit diff: old and new number columns.
+    two-numbers: bool,
+    // Digits of the widest line number (the number column width).
+    digits: int,
+    // The output as text when there are no lines, and its first lines.
+    text: string,
+    text-preview: string,
+    // Anything beyond the preview, and the words of the link that opens it.
+    more: bool,
+    more-label: string,
+}
+
 // One transcript entry. `kind`: user, assistant, tool, note or footer.
 export struct MsgRow {
     kind: string,
@@ -21,6 +79,8 @@ export struct MsgRow {
     expanded: bool,
     // Note kind: retry, switch, error or info.
     tone: string,
+    // The tool card (kind "tool").
+    tool: ToolView,
 }
 
 // One entry of the trace timeline (src/trace_rows.rs). `kind`: turn, user,
@@ -38,6 +98,8 @@ export struct TraceRow {
     error: bool,
     // What Copy puts on the clipboard: the title and the whole body.
     copy: string,
+    // Tool calls and results with tool information (kind "" otherwise).
+    tool: ToolView,
 }
 
 // A sidebar row: kind "workspace" (id and detail: the folder path; title: its name)

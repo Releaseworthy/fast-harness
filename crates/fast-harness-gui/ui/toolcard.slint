@@ -1,0 +1,343 @@
+// The tool card: a stripe and a tile in the colour of the tool's kind, the
+// name and target, the chips (line ranges, counts, exit codes: each says
+// what it means in words), the arguments, then the code view or the
+// output text. Used by the chat transcript and the Trace page.
+import { ToolView, ToolChip, ChipRow, ToolField } from "types.slint";
+import { Theme, Mark, LinkText, AccentFill, Card } from "parts.slint";
+import { Icons } from "icons.slint";
+import { BusySpinner } from "widgets.slint";
+import { CodeBox } from "blocks.slint";
+import { CodeView } from "codeview.slint";
+
+// The colour and mark of each tool kind, and the colour of each chip tone,
+// all from the theme roles.
+export global ToolStyle {
+    pure public function color(kind: string) -> color {
+        if kind == "read" { return Theme.info; }
+        if kind == "write" { return Theme.success; }
+        if kind == "edit" { return Theme.warning; }
+        if kind == "grep" || kind == "glob" { return Theme.accent2; }
+        if kind == "shell" || kind == "find" || kind == "subagent" { return Theme.accent; }
+        return Theme.dim;
+    }
+    pure public function icon(kind: string) -> string {
+        if kind == "read" { return Icons.eye; }
+        if kind == "write" { return Icons.new-file; }
+        if kind == "edit" { return Icons.edit; }
+        if kind == "grep" { return Icons.search; }
+        if kind == "glob" { return Icons.files; }
+        if kind == "shell" { return Icons.terminal; }
+        if kind == "subagent" { return Icons.robot; }
+        if kind == "find" { return Icons.tools; }
+        return Icons.symbol-misc;
+    }
+    pure public function tone(tone: string) -> color {
+        if tone == "success" { return Theme.success; }
+        if tone == "error" { return Theme.error; }
+        if tone == "info" { return Theme.info; }
+        if tone == "warning" { return Theme.warning; }
+        return Theme.dim;
+    }
+    // A file target: the name, then its folder.
+    pure public function path-kind(kind: string) -> bool {
+        return kind == "read" || kind == "write" || kind == "edit";
+    }
+    pure public function mono-kind(kind: string) -> bool {
+        return kind == "shell" || kind == "grep" || kind == "glob";
+    }
+}
+
+// The status of a tool: a spinner while it runs, then a mark and a word,
+// so the state never rests on colour alone.
+export component ToolStatus inherits Rectangle {
+    in property <bool> running;
+    in property <bool> error;
+    in property <string> label;
+    property <color> tone: root.running ? Theme.accent : root.error ? Theme.error : Theme.success;
+    border-radius: self.height / 2;
+    border-width: 1px;
+    border-color: root.tone.with-alpha(0.6);
+    width: chip.preferred-width;
+    chip := HorizontalLayout {
+        padding-left: Theme.space-s;
+        padding-right: Theme.space-s;
+        spacing: Theme.space-xs;
+        if root.running: BusySpinner { label: "Running " + root.label; }
+        if !root.running: Mark {
+            text: root.error ? Icons.error : Icons.check;
+            color: root.tone;
+            font-size: Theme.font-s;
+        }
+        Text {
+            text: root.running ? "running" : root.error ? "failed" : "done";
+            color: root.tone;
+            font-size: Theme.font-xs;
+            font-weight: 700;
+            vertical-alignment: center;
+        }
+    }
+}
+
+// The kind's mark on a tinted rounded tile. The tint is
+// `theme::TILE_ALPHA` (0.16): the theme tests check each tone on the
+// surface blended with itself at that alpha. Subagents get the gradient.
+component ToolTile inherits Rectangle {
+    in property <string> kind;
+    property <color> tint: ToolStyle.color(root.kind);
+    property <bool> plain: root.kind != "subagent" && ToolStyle.color(root.kind) == Theme.dim;
+    width: 30px;
+    height: 30px;
+    if root.kind == "subagent": AccentFill { radius: 9px; }
+    if root.kind != "subagent": Rectangle {
+        border-radius: 9px;
+        background: root.plain ? Theme.raised : root.tint.with-alpha(0.16);
+        border-width: 1px;
+        border-color: root.plain ? Theme.line : root.tint.with-alpha(0.45);
+    }
+    Mark {
+        width: parent.width;
+        height: parent.height;
+        horizontal-alignment: center;
+        text: ToolStyle.icon(root.kind);
+        color: root.kind == "subagent" ? Theme.on-accent : root.tint;
+        font-size: Theme.font-m + 1px;
+    }
+}
+
+// A chip: an outlined pill on the card's surface (tone colours are only
+// checked on bg, bg-end and surface, so the pill has no fill).
+component ChipPill inherits Rectangle {
+    in property <ToolChip> chip;
+    property <color> tint: ToolStyle.tone(root.chip.tone);
+    height: 20px;
+    width: label.preferred-width + 16px;
+    border-radius: 10px;
+    border-width: 1px;
+    border-color: root.chip.tone == "plain" ? Theme.border.with-alpha(0.55) : root.tint.with-alpha(0.55);
+    label := Text {
+        text: root.chip.text;
+        color: root.tint;
+        font-size: Theme.font-xs;
+        font-weight: 600;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+}
+
+component ChipLines inherits VerticalLayout {
+    in property <[ChipRow]> rows;
+    spacing: 6px;
+    for row in root.rows: HorizontalLayout {
+        spacing: 6px;
+        alignment: start;
+        for chip in row.chips: ChipPill { chip: chip; }
+    }
+}
+
+// A labelled argument: the label in a fixed column, the value wrapped.
+component FieldRow {
+    in property <ToolField> field;
+    in property <bool> expanded;
+    HorizontalLayout {
+        spacing: Theme.space-s;
+        Text {
+            text: root.field.label;
+            width: 92px;
+            color: Theme.dim;
+            font-size: Theme.font-xs;
+            font-weight: 600;
+            overflow: elide;
+            vertical-alignment: top;
+        }
+        Text {
+            text: root.expanded ? root.field.value : root.field.preview;
+            color: Theme.text;
+            font-family: Theme.mono;
+            font-size: Theme.font-s;
+            wrap: word-wrap;
+            horizontal-stretch: 1;
+        }
+    }
+}
+
+// Show all N lines / Show less: a chevron and the words.
+component MoreLink inherits HorizontalLayout {
+    in property <bool> expanded;
+    in property <string> label;
+    callback clicked();
+    spacing: Theme.space-xs;
+    alignment: start;
+    Mark {
+        text: root.expanded ? Icons.chevron-up : Icons.chevron-down;
+        color: Theme.accent;
+        font-size: Theme.font-s;
+    }
+    LinkText {
+        text: root.expanded ? "Show less" : root.label;
+        color: Theme.accent;
+        font-size: Theme.font-s;
+        font-weight: 600;
+        vertical-alignment: center;
+        clicked => { root.clicked(); }
+    }
+}
+
+// Chips, fields, then the lines or the text; collapsed it shows the
+// previews. `show-link` adds the Show all link (the Trace page has its own).
+export component ToolBody {
+    in property <ToolView> tool;
+    in property <bool> expanded;
+    in property <bool> error;
+    in property <bool> show-link: true;
+    // Left padding: the body lines up with the name after the tile.
+    in property <length> indent;
+    callback toggle();
+    VerticalLayout {
+        padding-left: root.indent;
+        spacing: Theme.space-s;
+        if root.tool.chip-rows.length > 0: ChipLines { rows: root.tool.chip-rows; }
+        for field in root.tool.fields: FieldRow { field: field; expanded: root.expanded; }
+        if root.tool.lines.length > 0: CodeView {
+            lines: root.expanded ? root.tool.lines : root.tool.lines-preview;
+            two-numbers: root.tool.two-numbers;
+            marks: root.tool.kind == "write" || root.tool.kind == "edit";
+            digits: root.tool.digits;
+        }
+        if root.tool.lines.length == 0 && root.tool.text != "": CodeBox {
+            text: root.expanded ? root.tool.text : root.tool.text-preview;
+            error: root.error;
+        }
+        if root.expanded && root.tool.lines-note != "": Text {
+            text: root.tool.lines-note;
+            color: Theme.dim;
+            font-size: Theme.font-xs;
+        }
+        if root.show-link && root.tool.more: MoreLink {
+            expanded: root.expanded;
+            label: root.tool.more-label;
+            clicked => { root.toggle(); }
+        }
+    }
+}
+
+// The stripe on the left edge of a card, between its rounded corners.
+component Stripe inherits Rectangle {
+    in property <string> kind;
+    in property <length> radius;
+    x: 0;
+    y: root.radius;
+    width: 3px;
+    border-radius: 1.5px;
+    background: root.kind == "subagent" ? @linear-gradient(180deg, Theme.accent 0%, Theme.accent2 100%) : ToolStyle.color(root.kind);
+}
+
+// The card: a raised surface with the kind's stripe, the tile, the name
+// and target (in the chat also the status and Copy), then
+// the body lined up with the name. The status and Copy are built in:
+// with them passed as children (`@children`) Slint 1.18.1 measured the
+// wrapped body at one line (src/layout_tests.rs).
+export component ToolFrame inherits Rectangle {
+    in property <ToolView> tool;
+    in property <bool> error;
+    in property <bool> expanded;
+    in property <bool> show-link: true;
+    in property <float> elevation: 0.7;
+    in property <bool> status;
+    in property <bool> running;
+    callback toggle();
+    callback copy();
+    property <color> tint: ToolStyle.color(root.tool.kind);
+    property <length> radius: Theme.radius-l;
+    Card {
+        radius: root.radius;
+        edge: root.error ? Theme.error : Theme.line;
+        elevation: root.elevation;
+    }
+    Stripe { kind: root.tool.kind; radius: root.radius; height: root.height - 2 * root.radius; }
+    VerticalLayout {
+        padding: Theme.space-m;
+        padding-left: Theme.space-m + 2px;
+        spacing: Theme.space-s;
+        HorizontalLayout {
+            spacing: Theme.space-s;
+            tile := ToolTile { kind: root.tool.kind; }
+            Rectangle { width: Theme.space-xs; }
+            Text {
+                text: root.tool.name;
+                color: root.tint;
+                font-family: Theme.mono;
+                font-size: Theme.font-s;
+                font-weight: 700;
+                vertical-alignment: center;
+            }
+            if ToolStyle.path-kind(root.tool.kind): Text {
+                text: root.tool.target;
+                color: Theme.text;
+                font-size: Theme.font-s;
+                font-weight: 600;
+                overflow: elide;
+                vertical-alignment: center;
+            }
+            if ToolStyle.path-kind(root.tool.kind): Text {
+                text: root.tool.target-dir;
+                color: Theme.dim;
+                font-size: Theme.font-xs;
+                overflow: elide;
+                vertical-alignment: center;
+                horizontal-stretch: 1;
+            }
+            if !ToolStyle.path-kind(root.tool.kind): Text {
+                text: root.tool.target;
+                color: Theme.text;
+                font-family: ToolStyle.mono-kind(root.tool.kind) ? Theme.mono : "";
+                font-size: Theme.font-s;
+                overflow: elide;
+                vertical-alignment: center;
+                horizontal-stretch: 1;
+            }
+            // The chat card: the status and Copy at the end of the line.
+            if root.status: VerticalLayout {
+                alignment: center;
+                horizontal-stretch: 0;
+                ToolStatus { running: root.running; error: root.error; label: root.tool.name; height: 20px; }
+            }
+            if root.status && !root.running: LinkText {
+                text: "Copy";
+                vertical-alignment: center;
+                clicked => { root.copy(); }
+            }
+        }
+        ToolBody {
+            tool: root.tool;
+            expanded: root.expanded;
+            error: root.error;
+            show-link: root.show-link;
+            indent: 30px + Theme.space-s + Theme.space-xs + Theme.space-s;
+            toggle => { root.toggle(); }
+        }
+    }
+}
+// A Trace result: the card without the headline (the entry's title names
+// the tool), only the output's chips and lines or text.
+export component ToolResultFrame inherits Rectangle {
+    in property <ToolView> tool;
+    in property <bool> error;
+    in property <bool> expanded;
+    Card {
+        radius: Theme.radius-l;
+        edge: root.error ? Theme.error : Theme.line;
+        elevation: 0;
+    }
+    Stripe { kind: root.tool.kind; radius: Theme.radius-l; height: root.height - 2 * Theme.radius-l; }
+
+    HorizontalLayout {
+        padding: Theme.space-m;
+        padding-left: Theme.space-m + 2px;
+        ToolBody {
+            tool: root.tool;
+            expanded: root.expanded;
+            error: root.error;
+            show-link: false;
+        }
+    }
+}

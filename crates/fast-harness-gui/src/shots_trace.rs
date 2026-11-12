@@ -2,7 +2,7 @@
 //! prompt, thinking, a long tool output, a failed tool, a retry and a
 //! switch, mapped through the same functions the page uses.
 
-use fast_harness_core::trace::detail::{Entry, EntryKind};
+use fast_harness_core::trace::detail::{Entry, EntryKind, EntryTool};
 use fast_harness_core::trace::report::StepRow;
 use fast_harness_core::types::Usage;
 use slint::{ModelRc, SharedString, VecModel};
@@ -20,6 +20,27 @@ fn entry(kind: EntryKind, title: &str, body: &str, is_error: bool) -> Entry {
         is_error,
         tool: None,
     }
+}
+
+/// A tool call or result with the tool information the page draws.
+fn tool(entry: Entry, name: &str, args: serde_json::Value, output: Option<&str>) -> Entry {
+    Entry {
+        tool: Some(EntryTool {
+            name: name.into(),
+            arguments: args.to_string(),
+            output: output.map(str::to_string),
+            duration_ms: output.map(|_| 41),
+        }),
+        ..entry
+    }
+}
+
+fn edit_args() -> serde_json::Value {
+    serde_json::json!({
+        "path": "crates/fast-harness-gui/ui/trace.slint",
+        "old_string": "        if entry.kind == \"call\": CodeBox {}",
+        "new_string": "        // The tool card.\n        if entry.kind == \"call\": ToolFrame {}",
+    })
 }
 
 fn long_output() -> String {
@@ -44,10 +65,12 @@ pub fn entries() -> Vec<TraceRow> {
         entry(Request, "Step 1 request · claude-opus-5-5 · effort high · account work@example.com · attempt 1", "", false),
         entry(Thinking, "Thinking", "The page reads trace::report only. The detail module already has the user message and the blocks; I should map those entries.", false),
         entry(Response, "Response", "I will read the page and the detail module first.", false),
-        entry(ToolCall, "Tool call grep", "{\n  \"pattern\": \"fn render\",\n  \"path\": \"crates/fast-harness-gui\"\n}", false),
+        tool(entry(ToolCall, "Tool call grep", "{\n  \"pattern\": \"fn render\",\n  \"path\": \"crates/fast-harness-gui\"\n}", false), "grep", serde_json::json!({ "pattern": "fn render", "path": "crates/fast-harness-gui" }), None),
         entry(Answer, "Step 1 answer · stop tool_use · TTFB 850 ms · total 3200 ms · in 1200 · out 300 · cache read 80000 · cache write 4000", "", false),
-        entry(ToolResult, "Tool result grep · 41 ms", &long_output(), false),
-        entry(ToolResult, "Tool error bash · 2210 ms", "error[E0425]: cannot find value `palette` in this scope\n --> crates/fast-harness-gui/src/theme.rs:12:5", true),
+        tool(entry(ToolResult, "Tool result grep · 41 ms", &long_output(), false), "grep", serde_json::json!({ "pattern": "fn render", "path": "crates/fast-harness-gui" }), Some(&long_output())),
+        tool(entry(ToolCall, "Tool call edit", &edit_args().to_string(), false), "edit", edit_args(), None),
+        tool(entry(ToolResult, "Tool result edit · 3 ms", "Replaced 1 occurrence at line 160", false), "edit", edit_args(), Some("Replaced 1 occurrence in crates/fast-harness-gui/ui/trace.slint at line 160")),
+        tool(entry(ToolResult, "Tool error shell · 2210 ms", "error[E0425]: cannot find value `palette` in this scope\n --> crates/fast-harness-gui/src/theme.rs:12:5\n[exit code: 101]", true), "shell", serde_json::json!({ "command": "cargo build" }), Some("error[E0425]: cannot find value `palette` in this scope\n --> crates/fast-harness-gui/src/theme.rs:12:5\n[exit code: 101]")),
         entry(Retry, "Retry 2 in 4000 ms", "Overloaded (529)", false),
         entry(Failure, "Attempt 1 failed after 30000 ms", "connection reset by peer", true),
         entry(Switch, "Account switch work@example.com → home@example.com · 5h limit reached", "", false),

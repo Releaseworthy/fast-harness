@@ -9,6 +9,7 @@ import { Icons } from "icons.slint";
 import { ActionButton, FocusRing } from "widgets.slint";
 import { ThinkingQuote, CodeBox } from "blocks.slint";
 import { StepsTable } from "steps.slint";
+import { ToolFrame, ToolResultFrame } from "toolcard.slint";
 
 // The timeline rows' height as the list measured it (read by the layout
 // tests: the page sits under an `if`, so a global carries it out).
@@ -157,7 +158,20 @@ component TraceEntryView {
             toggle => { root.toggle(); }
             copy(t) => { root.copy(t); }
         }
-        if entry.kind != "turn" && root.shown != "": EntryBody { entry: entry; shown: root.shown; }
+        if entry.kind != "turn" && entry.tool.kind == "" && root.shown != "": EntryBody { entry: entry; shown: root.shown; }
+        // Tool calls and results with tool information: the tool card.
+        if entry.kind == "call" && entry.tool.kind != "": ToolFrame {
+            tool: entry.tool;
+            error: entry.error;
+            expanded: entry.expanded;
+            show-link: false;
+            elevation: 0;
+        }
+        if entry.kind == "result" && entry.tool.kind != "": ToolResultFrame {
+            tool: entry.tool;
+            error: entry.error;
+            expanded: entry.expanded;
+        }
     }
 }
 
