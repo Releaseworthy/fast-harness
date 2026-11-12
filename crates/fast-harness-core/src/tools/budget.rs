@@ -49,6 +49,13 @@ impl ToolSession {
         reads.get(key).cloned()
     }
 
+    /// Forgets every returned range: after a compaction the model no longer
+    /// sees the earlier results (PLAN.md D38).
+    pub fn clear_reads(&self) {
+        let mut reads = self.reads.lock().unwrap_or_else(|e| e.into_inner());
+        reads.clear();
+    }
+
     /// Records that `call_id` returned `key` (the first call keeps it).
     pub fn remember_read(&self, key: ReadKey, call_id: &str) {
         let mut reads = self.reads.lock().unwrap_or_else(|e| e.into_inner());

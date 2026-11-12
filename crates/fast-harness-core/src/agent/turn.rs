@@ -4,7 +4,7 @@ use std::io;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Instant;
 
-use crate::agent::{repair, Agent, Conversation};
+use crate::agent::{compact, repair, Agent, Conversation};
 use crate::auth::Lease;
 use crate::events::{AgentEvent, TurnOutcome};
 use crate::llm::catalog::context_window;
@@ -12,7 +12,7 @@ use crate::llm::Completion;
 use crate::types::{Block, Message, StopReason, Usage};
 
 /// The error shown when the prompt no longer fits the context window.
-pub const OVERFLOW_NOTE: &str = "the conversation no longer fits the model's context window: start a new session (automatic compaction is not available yet)";
+pub const OVERFLOW_NOTE: &str = "the conversation no longer fits the model's context window, even after a compaction: start a new session";
 
 /// Turn-internal result: `Err` is a session log failure that ends the turn.
 pub(super) type Res<T> = Result<T, String>;
@@ -35,6 +35,16 @@ pub(super) struct Turn<'a> {
     pub usage: Usage,
     /// The one automatic continuation after a tool call cut at max_tokens was used.
     pub continued: bool,
+    /// The one compaction after a context overflow was used (PLAN.md D38).
+    pub overflowed: bool,
+    /// An automatic compaction failed this turn: no second try.
+    pub compact_failed: bool,
+    /// A compaction's summary request runs: no deltas to the sink.
+    pub quiet: bool,
+    /// Model and effort of the summary request while it runs.
+    pub request: Option<(String, Option<String>)>,
+    /// The error text of a context overflow, shown when compaction cannot help.
+    pub last_error: Option<String>,
 }
 
 pub(super) fn run(
@@ -55,6 +65,11 @@ pub(super) fn run(
         steps: 0,
         usage: Usage::default(),
         continued: false,
+        overflowed: false,
+        compact_failed: false,
+        quiet: false,
+        request: None,
+        last_error: None,
     };
     let outcome = turn.run(text).unwrap_or_else(|message| {
         (turn.sink)(AgentEvent::Error(message));
@@ -79,9 +94,18 @@ impl Turn<'_> {
         traced(self.conv.trace.turn_start(self.turn))?;
         (self.sink)(AgentEvent::TurnStart { turn: self.turn });
         repair(&mut self.conv.messages);
+        if let Some(instructions) = compact::command(text) {
+            return self.manual_compact(instructions);
+        }
         let agent = self.agent;
         let specs = agent.tools.specs();
         let note = (self.conv).freeze(&agent.parts.system, specs, agent.context.as_ref());
+        // The header (with the new context stamp) goes first: a crash before
+        // the user message then cannot repeat the context update on resume.
+        traced(self.conv.header_if_changed())?;
+        if let Some(outcome) = self.auto_compact(false)? {
+            return Ok(outcome);
+        }
         let message = user_message(note, text);
         traced(self.conv.trace.user_message(self.turn, &message))?;
         self.conv.messages.push(message);
@@ -91,6 +115,12 @@ impl Turn<'_> {
             }
             if self.steps >= self.agent.parts.config.max_steps {
                 return Ok(TurnOutcome::StepLimit);
+            }
+            // Between steps the tool results are complete (PLAN.md D38).
+            if self.steps > 0 {
+                if let Some(outcome) = self.auto_compact(true)? {
+                    return Ok(outcome);
+                }
             }
             self.steps += 1;
             if let Some(outcome) = self.step()? {
@@ -105,7 +135,11 @@ impl Turn<'_> {
         traced(self.conv.trace.step_start(turn, step))?;
         (self.sink)(AgentEvent::StepStart { turn, step });
         traced(self.conv.header_if_changed())?;
-        let outcome = match self.call_model(step)? {
+        let mut called = self.call_model(step)?;
+        if matches!(called, Err(TurnOutcome::ContextOverflow)) {
+            called = self.after_overflow(step)?;
+        }
+        let outcome = match called {
             Ok((completion, lease)) => self.finish_step(step, completion, &lease)?,
             Err(outcome) => Some(outcome),
         };
@@ -140,10 +174,7 @@ impl Turn<'_> {
             }
             StopReason::MaxTokens => return Ok(Some(TurnOutcome::Truncated)),
             StopReason::PauseTurn => {}
-            StopReason::ContextWindow => {
-                (self.sink)(AgentEvent::Error(OVERFLOW_NOTE.into()));
-                return Ok(Some(TurnOutcome::ContextOverflow));
-            }
+            StopReason::ContextWindow => return self.window_full(),
             _ => return Ok(Some(TurnOutcome::Done)),
         }
         Ok(None)
@@ -168,6 +199,8 @@ impl Turn<'_> {
             window,
         ))?;
         self.usage.add(&done.usage);
+        self.conv.last_context = done.usage.context();
+        self.conv.compacted = false;
         (self.sink)(AgentEvent::StepEnd {
             turn,
             step,

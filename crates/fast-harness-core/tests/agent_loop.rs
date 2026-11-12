@@ -48,9 +48,9 @@ fn two_step_turn_writes_the_exact_trace() {
     assert_eq!(outcome, TurnOutcome::Done);
     let expected = [
         "turn/start",
+        "request/header",
         "user/message",
         "step/start",
-        "request/header",
         "request/context",
         "assistant/message",
         "tool/call",
@@ -191,9 +191,9 @@ fn overloaded_is_retried_then_succeeds() {
     assert_eq!(outcome, TurnOutcome::Done);
     let expected = [
         "turn/start",
+        "request/header",
         "user/message",
         "step/start",
-        "request/header",
         "request/context",
         "assistant/attempt",
         "llm/retry",

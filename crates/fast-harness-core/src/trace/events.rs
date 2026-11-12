@@ -20,7 +20,7 @@ pub mod kind {
     pub const ACCOUNT_SWITCH: &str = "account/switch";
     pub const ASSISTANT_MESSAGE: &str = "assistant/message";
     pub const REQUEST_TRANSFORMATIONS: &str = "request/transformations";
-    /// Written by the compaction of a later phase; counted by `stats`.
+    /// A compaction (PLAN.md D38): `session::replay` starts at the last one.
     pub const COMPACTION: &str = "compaction";
     pub const TOOL_CALL: &str = "tool/call";
     pub const TOOL_RESULT: &str = "tool/result";
@@ -252,6 +252,11 @@ impl TraceWriter {
             data["spilled"] = json!(path);
         }
         self.emit(kind::TOOL_RESULT, data)
+    }
+
+    /// `compaction` with the data built by the agent (PLAN.md D38).
+    pub fn compaction(&mut self, data: Value) -> io::Result<u64> {
+        self.emit(kind::COMPACTION, data)
     }
 
     pub fn step_end(&mut self, turn: u32, step: u32, duration_ms: u64) -> io::Result<u64> {

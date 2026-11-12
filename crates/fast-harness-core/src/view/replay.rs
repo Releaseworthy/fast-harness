@@ -1,6 +1,8 @@
 //! Building a [`Transcript`] from a replayed conversation or a session log.
 
-use super::{new_tool, retry_text, switch_text, turn_end_text, Item, NoteKind, Transcript};
+use super::{
+    compaction_text, new_tool, retry_text, switch_text, turn_end_text, Item, NoteKind, Transcript,
+};
 use crate::llm::Timing;
 use crate::trace::{kind, TraceEvent};
 use crate::types::{Block, Message, Role, StopReason, Usage};
@@ -132,6 +134,13 @@ impl Replay {
                     let duration = data.get("durationMs").and_then(Value::as_u64);
                     self.view.add_results(&message, duration);
                 }
+            }
+            kind::COMPACTION => {
+                self.flush();
+                let auto = data["auto"].as_bool().unwrap_or(true);
+                let text = compaction_text(auto, num(data, "before"), num(data, "after"));
+                self.view.note(NoteKind::Info, text);
+                self.view.context = num(data, "after");
             }
             kind::STEP_END => self.flush(),
             kind::TURN_END => self.turn_end(data),

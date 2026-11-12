@@ -147,6 +147,8 @@ pub(crate) fn switch_text(from: &str, to: &str, reason: &str) -> String {
     format!("Account {from} -> {to} ({reason})")
 }
 
+pub use crate::trace::detail::compaction_text;
+
 pub(crate) fn turn_end_text(outcome: &str) -> String {
     format!("Turn ended: {outcome}")
 }
@@ -284,6 +286,15 @@ impl Transcript {
                 }
             }
             AgentEvent::Error(text) => self.note(NoteKind::Error, text.clone()),
+            AgentEvent::Compaction {
+                before,
+                after,
+                auto,
+                ..
+            } => {
+                self.note(NoteKind::Info, compaction_text(*auto, *before, *after));
+                self.context = *after;
+            }
             _ => {}
         }
     }

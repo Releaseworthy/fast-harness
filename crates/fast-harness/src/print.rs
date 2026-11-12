@@ -140,6 +140,16 @@ impl Printer {
                 format!("[account] {from} -> {to} ({reason})")
             }
             AgentEvent::Error(message) => format!("[error] {message}"),
+            AgentEvent::Compaction {
+                summary,
+                before,
+                after,
+                auto,
+            } => {
+                println!("{summary}");
+                let how = if auto { "auto" } else { "manual" };
+                format!("[compaction] {how}: context {before} -> about {after} tokens")
+            }
             AgentEvent::TurnEnd {
                 usage,
                 duration_ms,

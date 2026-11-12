@@ -7,6 +7,7 @@
 //! written before the matching [`AgentEvent`] is sent.
 
 mod call;
+mod compact;
 pub mod context;
 mod conversation;
 pub mod prompt;
@@ -26,6 +27,7 @@ use crate::http::Transport;
 use crate::llm::Provider;
 use crate::tools::{self, Registry};
 
+pub use compact::{facts, COMMAND as COMPACT_COMMAND, NO_TOOLS, SUMMARY_REQUEST};
 pub use context::Context;
 pub use conversation::{repair, Conversation, MISSING_RESULT};
 pub use subagent::{ChildStats, SubagentTool};
@@ -80,6 +82,7 @@ impl Agent {
     /// Runs one turn on `conv`. `cancel` may be set from another thread; the
     /// turn then ends `Cancelled` as soon as the model call, the waits and
     /// the tools notice it. `sink` sees the events in order, `TurnEnd` last.
+    /// `/compact [instructions]` runs a turn that only compacts (PLAN.md D38).
     pub fn run_turn(
         &self,
         conv: &mut Conversation,

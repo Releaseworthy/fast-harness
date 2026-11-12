@@ -3,6 +3,8 @@
 //! are ignored. `FAST_HARNESS_MODEL`, `FAST_HARNESS_EFFORT`, `FAST_HARNESS_THEME`, `FAST_HARNESS_GREYSCALE`, `FAST_HARNESS_ICONS` and `FAST_HARNESS_WIRE` override
 //! the file. [`save_setting`] writes one key back for the front ends.
 
+pub mod compaction;
+
 use std::collections::BTreeMap;
 use std::io;
 use std::path::Path;
@@ -60,6 +62,10 @@ pub struct Config {
     pub tool_output_bytes: usize,
     /// `toolOutput`: budgets per tool name, e.g. `{"read": 16384}`.
     pub tool_output: BTreeMap<String, usize>,
+    /// `compaction` (PLAN.md D38): the base layer of the compaction settings.
+    pub compaction: compaction::CompactionPatch,
+    /// `models`: per provider (`"antigravity/*"`) or per model overrides.
+    pub models: BTreeMap<String, compaction::ModelEntry>,
 }
 
 impl Default for Config {
@@ -80,6 +86,8 @@ impl Default for Config {
             wire: false,
             tool_output_bytes: DEFAULT_TOOL_OUTPUT_BYTES,
             tool_output: BTreeMap::new(),
+            compaction: compaction::CompactionPatch::default(),
+            models: BTreeMap::new(),
         }
     }
 }
@@ -159,6 +167,12 @@ impl Config {
             .copied()
             .unwrap_or(self.tool_output_bytes);
         bytes.max(MIN_TOOL_OUTPUT_BYTES)
+    }
+
+    /// The compaction settings of the configured model on `provider`:
+    /// defaults, `compaction`, the provider entry, the model entry (D38).
+    pub fn compaction_for(&self, provider: &str) -> compaction::Compaction {
+        compaction::resolve(&self.compaction, &self.models, provider, &self.model)
     }
 
     /// The cache TTL in effect: `cacheTtl`, else `"1h"` for `cacheLong: true`, else `auto`.

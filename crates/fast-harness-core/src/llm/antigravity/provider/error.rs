@@ -23,6 +23,21 @@ fn is_validation(message: &str) -> bool {
     message.to_lowercase().contains(VALIDATION_WORDS)
 }
 
+/// A 400 that says the prompt does not fit (PLAN.md D38). Gemini's wording
+/// "The input token count (n) exceeds the maximum number of tokens allowed
+/// (m)" and Claude's "prompt is too long" through Antigravity; neither was
+/// seen live on Antigravity (unverified).
+fn is_overflow(message: &str) -> bool {
+    let lower = message.to_ascii_lowercase();
+    [
+        "exceeds the maximum number of tokens",
+        "prompt is too long",
+        "input is too long",
+    ]
+    .iter()
+    .any(|words| lower.contains(words))
+}
+
 /// `ErrorInfo.reason` of Google's account verification request.
 const VALIDATION_REASON: &str = "VALIDATION_REQUIRED";
 
@@ -86,8 +101,11 @@ pub(crate) fn from_event(error: &Value) -> LlmError {
 
 fn from_google(status: u16, error: &Value, head: Option<HttpHead>) -> LlmError {
     let google = error["status"].as_str().unwrap_or("");
-    let kind = kind_for(status, google);
+    let mut kind = kind_for(status, google);
     let mut message = describe(error, status);
+    if kind == ErrorKind::BadRequest && is_overflow(&message) {
+        kind = ErrorKind::ContextOverflow;
+    }
     if status == 403 || google == "PERMISSION_DENIED" {
         if let Some(text) = validation(error, &message) {
             message = text;
@@ -251,6 +269,16 @@ pub(crate) fn redact(mut err: LlmError, secret: &str) -> LlmError {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_too_long_prompt_is_a_context_overflow() {
+        let error = serde_json::json!({"code": 400, "status": "INVALID_ARGUMENT",
+            "message": "The input token count (1200000) exceeds the maximum number of tokens allowed (1048576)."});
+        assert_eq!(from_event(&error).kind, ErrorKind::ContextOverflow);
+        let other = serde_json::json!({"code": 400, "status": "INVALID_ARGUMENT",
+            "message": "Invalid JSON payload"});
+        assert_eq!(from_event(&other).kind, ErrorKind::BadRequest);
+    }
 
     #[test]
     fn durations_and_kinds() {

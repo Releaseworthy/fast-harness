@@ -24,6 +24,9 @@ Usage:
       Context and cache numbers of a session (default latest) or of every session of the
       directory: prompt tokens, cache hit rate, cache rewrites after an idle gap, tool result
       bytes per tool, the largest and clipped results, find_tools steps, transformations.
+  fast-harness compact [ID|latest] [--cwd DIR]
+      Summarize a session (default latest) into a fresh history; the log keeps the full
+      transcript. /compact [instructions] does the same in the TUI and the GUI.
   fast-harness models [--json]
       The Claude models with their effort levels, read live from the API (else the last
       known list); --json prints the full entries.
@@ -232,6 +235,16 @@ pub fn parse(args: Vec<String>) -> Result<Command, String> {
             }
             let (all, json) = (opts.all, opts.json);
             return Ok(Command::Stats { id, all, json, cwd });
+        }
+        // `compact [ID|latest]`: a print-mode turn running `/compact` (D38).
+        Some("compact") if opts.positional.len() <= 2 => {
+            let id = opts.positional.get(1).filter(|id| *id != "latest").cloned();
+            return Ok(Command::Print(PrintArgs {
+                prompt: "/compact".into(),
+                continue_latest: id.is_none(),
+                resume: id,
+                ..opts.print
+            }));
         }
         Some("models") if opts.positional.len() == 1 => {
             return Ok(Command::Models { json: opts.json })

@@ -2,6 +2,8 @@
 //! Layout (PLAN.md "Files on disk"):
 //! `<app_home>/sessions/<cwd slug>/<id>.jsonl` and `<id>.wire/`.
 
+pub mod compacted;
+
 use crate::trace::{self, TraceEvent};
 use crate::types::{Message, Role};
 use std::io;
@@ -166,8 +168,9 @@ fn message_of(event: &TraceEvent) -> io::Result<Message> {
 }
 
 /// Rebuilds the conversation from `user/message`, `assistant/message` and
-/// `tool/result` events in seq order. A turn without `turn/end` (a crash or
-/// a cancel) still counts.
+/// `tool/result` events in seq order, starting from the history of the last
+/// `compaction` (PLAN.md D38). A turn without `turn/end` (a crash or a
+/// cancel) still counts.
 pub fn replay(path: &Path) -> io::Result<Vec<Message>> {
     let (_, mut events) = trace::read(path)?;
     events.sort_by_key(|e| e.seq);
@@ -177,6 +180,10 @@ pub fn replay(path: &Path) -> io::Result<Vec<Message>> {
             trace::kind::USER_MESSAGE => Role::User,
             trace::kind::ASSISTANT_MESSAGE => Role::Assistant,
             trace::kind::TOOL_RESULT => Role::Tool,
+            trace::kind::COMPACTION => {
+                messages = compacted::from_event(&event.data);
+                continue;
+            }
             _ => continue,
         };
         let message = message_of(event)?;

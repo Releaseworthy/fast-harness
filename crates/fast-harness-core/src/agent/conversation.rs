@@ -35,6 +35,12 @@ pub struct Conversation {
     /// Spill folder and read ranges of this session's tools (PLAN.md D37);
     /// a resume starts with no read ranges.
     pub tool_session: ToolSession,
+    /// `context` of the last step (or the estimate after the last
+    /// compaction); compared with the compaction threshold (PLAN.md D38).
+    pub last_context: u64,
+    /// True from a compaction until the next model answer: no second
+    /// automatic compaction before a step measured the new context.
+    pub compacted: bool,
 }
 
 impl Conversation {
@@ -56,6 +62,8 @@ impl Conversation {
             system: None,
             tools: None,
             context: None,
+            last_context: 0,
+            compacted: false,
         })
     }
 
@@ -79,7 +87,10 @@ impl Conversation {
             .map(|e| e.data.clone());
         let trace = TraceWriter::open_append(&log_path)?;
         let header = last_header.as_ref();
+        let (last_context, compacted) = last_context(&events);
         Ok(Conversation {
+            last_context,
+            compacted,
             id: id.to_string(),
             messages,
             turn,
@@ -127,6 +138,22 @@ impl Conversation {
         self.last_header = Some(data);
         Ok(())
     }
+}
+
+/// `context` of the last `assistant/message`, or `after` of a later
+/// `compaction` (then `true`).
+fn last_context(events: &[trace::TraceEvent]) -> (u64, bool) {
+    let mut out = (0, false);
+    for event in events {
+        match event.kind.as_str() {
+            trace::kind::ASSISTANT_MESSAGE => {
+                out = (event.data["context"].as_u64().unwrap_or(0), false);
+            }
+            trace::kind::COMPACTION => out = (event.data["after"].as_u64().unwrap_or(0), true),
+            _ => {}
+        }
+    }
+    out
 }
 
 /// The tools of a `request/header` (`[{name, description, schema}]`).

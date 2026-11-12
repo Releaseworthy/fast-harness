@@ -5,6 +5,7 @@ use std::time::{Duration, Instant};
 
 use crate::agent::turn::{ms, traced, Res, Turn};
 use crate::auth::{Failover, Lease};
+use crate::config::Config;
 use crate::events::{AgentEvent, TurnOutcome};
 use crate::http::Transport;
 use crate::llm::{Cache, ChatRequest, Completion, Delta, ErrorKind, LlmError, Timing};
@@ -76,7 +77,8 @@ impl Turn<'_> {
                 }
             };
             self.note_switch(&mut state, &lease)?;
-            let wire = format!("t{}-s{step}-a{}", self.turn, state.attempt);
+            let mark = if self.quiet { "c" } else { "a" };
+            let wire = format!("t{}-s{step}-{mark}{}", self.turn, state.attempt);
             self.trace_context(step, state.attempt, &lease, &wire)?;
             let started = Instant::now();
             let err = match self.stream_once(&lease, &wire) {
@@ -91,8 +93,11 @@ impl Turn<'_> {
             let trace = &mut self.conv.trace;
             traced(trace.assistant_attempt(self.turn, step, state.attempt, &text, &timing))?;
             if let Next::End(outcome) = self.on_error(step, &mut state, &lease, &err)? {
-                if matches!(outcome, TurnOutcome::Failed | TurnOutcome::ContextOverflow) {
-                    (self.sink)(AgentEvent::Error(text));
+                // An overflow is reported by the turn once compaction cannot help.
+                match outcome {
+                    TurnOutcome::Failed => (self.sink)(AgentEvent::Error(text)),
+                    TurnOutcome::ContextOverflow => self.last_error = Some(text),
+                    _ => {}
                 }
                 return Ok(Err(outcome));
             }
@@ -122,19 +127,20 @@ impl Turn<'_> {
     fn trace_context(&mut self, step: u32, attempt: u32, lease: &Lease, wire: &str) -> Res<()> {
         let agent = self.agent;
         let parts = &agent.parts;
+        let (model, effort) = request_model(&self.request, &parts.config);
         let context = RequestContext {
             turn: self.turn,
             step,
             attempt,
             provider: parts.provider.id(),
-            model: &parts.config.model,
+            model,
             account: &lease.account,
-            effort: parts.config.effort.as_deref(),
+            effort,
             wire: parts.config.wire.then_some(wire),
         };
         traced(self.conv.trace.request_context(&context))?;
         (self.sink)(AgentEvent::Request {
-            model: parts.config.model.clone(),
+            model: model.to_string(),
             account: lease.account.clone(),
             attempt,
         });
@@ -156,13 +162,14 @@ impl Turn<'_> {
         let (system_1h, messages_1h) = parts.config.cache_hours();
         // The session's frozen system and tools (PLAN.md D36).
         let conv = &*self.conv;
+        let (model, effort) = request_model(&self.request, &parts.config);
         let req = ChatRequest {
-            model: &parts.config.model,
+            model,
             system: conv.system.as_deref().unwrap_or(&parts.system),
             messages: &conv.messages,
             tools: conv.tools.as_deref().unwrap_or(agent.tools.specs()),
             max_tokens: parts.config.max_tokens,
-            effort: parts.config.effort.as_deref(),
+            effort,
             cache: Cache {
                 system_1h,
                 messages_1h,
@@ -172,7 +179,13 @@ impl Turn<'_> {
         };
         let sink = &mut *self.sink;
         let mut ids: Vec<String> = Vec::new();
-        let mut on_delta = |delta: Delta<'_>| forward(delta, &mut ids, sink);
+        // The summary request of a compaction streams nothing to the views.
+        let quiet = self.quiet;
+        let mut on_delta = |delta: Delta<'_>| {
+            if !quiet {
+                forward(delta, &mut ids, sink)
+            }
+        };
         parts
             .provider
             .stream(http, &lease.auth, &req, &mut on_delta)
@@ -253,6 +266,18 @@ impl Turn<'_> {
             true => Next::Again,
             false => Next::End(TurnOutcome::Cancelled),
         })
+    }
+}
+
+/// The model and effort of a call: the compaction's own (PLAN.md D38) while
+/// one runs, else the configured ones.
+pub(super) fn request_model<'a>(
+    request: &'a Option<(String, Option<String>)>,
+    config: &'a Config,
+) -> (&'a str, Option<&'a str>) {
+    match request {
+        Some((model, effort)) => (model, effort.as_deref()),
+        None => (&config.model, config.effort.as_deref()),
     }
 }
 

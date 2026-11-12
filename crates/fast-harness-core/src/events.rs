@@ -89,6 +89,14 @@ pub enum AgentEvent {
         timing: Timing,
         stop: StopReason,
     },
+    /// The history was replaced by a summary (PLAN.md D38): `before` is the
+    /// context of the last step, `after` an estimate of the new one.
+    Compaction {
+        summary: String,
+        before: u64,
+        after: u64,
+        auto: bool,
+    },
     TurnEnd {
         turn: u32,
         usage: Usage,

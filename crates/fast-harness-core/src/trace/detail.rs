@@ -15,6 +15,26 @@ fn call_title(name: &str, arguments: &str) -> String {
 }
 use crate::types::{Block, Message, Usage};
 use serde_json::Value;
+
+/// The "compacted" divider of the views (PLAN.md D38): the transcript above
+/// it stays readable, the model sees only the summary from there on.
+pub fn compaction_text(auto: bool, before: u64, after: u64) -> String {
+    let how = if auto { "auto" } else { "manual" };
+    format!(
+        "compacted ({how}): context {} -> about {} tokens; the model continues from a summary",
+        tokens(before),
+        tokens(after)
+    )
+}
+
+/// `812K`, `1.2M` or `950`.
+fn tokens(count: u64) -> String {
+    match count {
+        1_000_000.. => format!("{:.1}M", count as f64 / 1e6),
+        1000.. => format!("{}K", (count + 500) / 1000),
+        _ => count.to_string(),
+    }
+}
 use std::collections::{HashMap, HashSet};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -145,6 +165,12 @@ impl State {
                 self.push(EntryKind::Switch, title, String::new());
             }
             kind::TURN_END => self.turn_end(data),
+            kind::COMPACTION => {
+                let auto = data["auto"].as_bool().unwrap_or(true);
+                let (before, after) = (int(data, "before"), int(data, "after"));
+                let title = compaction_text(auto, before, after);
+                self.push(EntryKind::Header, title, text(data, "summary").into());
+            }
             _ => {}
         }
     }

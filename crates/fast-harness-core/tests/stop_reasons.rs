@@ -129,32 +129,49 @@ fn pause_turn_continues_the_turn() {
     );
 }
 
+/// A full window compacts once (PLAN.md D38) and goes on; when the summary
+/// request fails too, the turn ends as an overflow.
 #[test]
-fn context_window_stop_is_an_overflow() {
-    let responses = vec![reply(Some("x"), None, "model_context_window_exceeded")];
-    let (outcome, errors, _, word) = run("stop-window", responses);
+fn context_window_stop_compacts_then_is_an_overflow() {
+    let full = || reply(Some("x"), None, "model_context_window_exceeded");
+    let responses = vec![full(), text_reply("summary"), text_reply("done")];
+    let (outcome, errors, bodies, _) = run("stop-window-ok", responses);
+    assert_eq!(
+        (outcome, bodies.len()),
+        (TurnOutcome::Done, 3),
+        "{errors:?}"
+    );
+    let failed = error_reply(400, "invalid_request_error", "bad field");
+    let (outcome, errors, _, word) = run("stop-window", vec![full(), failed]);
     assert_eq!(
         (outcome, word.as_str()),
         (TurnOutcome::ContextOverflow, "context_overflow")
     );
-    assert!(errors[0].contains("context window"));
+    assert!(errors.last().unwrap().contains("context window"));
 }
 
+/// "prompt is too long" is not retried as it is: one compaction, then the
+/// step again; a summary request that overflows too ends the turn.
 #[test]
 fn prompt_too_long_is_an_overflow_without_retry() {
     for status in [400, 413] {
-        let too_long = error_reply(
-            status,
-            "invalid_request_error",
-            "prompt is too long: 1000001 tokens > 1000000 maximum",
-        );
-        let (outcome, errors, bodies, _) = run("stop-long", vec![too_long, text_reply("never")]);
+        let too_long = || {
+            error_reply(
+                status,
+                "invalid_request_error",
+                "prompt is too long: 1000001 tokens > 1000000 maximum",
+            )
+        };
+        let responses = vec![too_long(), too_long(), text_reply("never")];
+        let (outcome, errors, bodies, _) = run("stop-long", responses);
         assert_eq!(
             (outcome, bodies.len()),
-            (TurnOutcome::ContextOverflow, 1),
+            (TurnOutcome::ContextOverflow, 2),
             "{status}"
         );
-        assert!(errors[0].starts_with(&format!("ContextOverflow (HTTP {status})")));
+        let expected = format!("ContextOverflow (HTTP {status})");
+        assert!(errors[0].contains(&expected), "{errors:?}");
+        assert!(errors.last().unwrap().contains("context window"));
     }
     let other = error_reply(400, "invalid_request_error", "bad field");
     let (outcome, ..) = run("stop-bad", vec![other]);
