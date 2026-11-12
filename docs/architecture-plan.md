@@ -210,6 +210,7 @@ Phases 22 and 23 touch no format and no contract and can start as soon as G5 and
 | 24 | done 2026-11-13 | 76ce350 (types, constructors, `api`), 6aae0c9 (progress, output parts, shell output live), 65a6ed6 (the tail in both views) | PLAN.md D57, D58 |
 | 30 | done 2026-11-13 | 9f314df (PLAN.md split, README), d610cb3 (guard-rail tests) | docs/decisions/, ARCHITECTURE.md |
 | 25 | done 2026-11-13 | b6d3aae (service guard, queue, TUI), 3e1ec2f (GUI, pickers and state words in app) | docs/decisions/D59.md |
+| 26 | part A done 2026-11-13 (index, one-pass resume, damaged line) | 50e1c80 | docs/decisions/D60.md |
 
 Checked for both: `fmt`, `clippy`, 590 tests passed, 0 failed, 9 ignored on Windows; CI green on Windows and Linux at da69164 (run 43269200480); `tests/parallel_edits.rs` passes un-ignored; `fast-harness accounts` with the new binary reads the real store and rewrites nothing.
 
