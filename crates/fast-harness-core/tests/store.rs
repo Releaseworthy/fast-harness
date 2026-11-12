@@ -107,13 +107,13 @@ fn write_atomic_leaves_one_whole_content_and_no_temp_file() {
             scope.spawn(move || {
                 for _ in 0..50 {
                     store::write_atomic(path, content).unwrap();
-                    let now = fs::read(path).unwrap();
+                    let now = store::read(path).unwrap();
                     assert!(contents.contains(&now), "a torn file");
                 }
             });
         }
     });
-    assert!(contents.contains(&fs::read(&path).unwrap()));
+    assert!(contents.contains(&store::read(&path).unwrap()));
     assert_eq!(names(&dir.0), ["file.json"]);
 }
 

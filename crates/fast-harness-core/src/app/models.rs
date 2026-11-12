@@ -29,7 +29,7 @@ struct CacheFile {
 /// The cached list of `home`; `None` when the file is missing, corrupt, of
 /// another version or empty.
 pub fn read_cache(home: &Path) -> Option<Vec<ModelInfo>> {
-    let bytes = std::fs::read(home.join(CACHE_FILE)).ok()?;
+    let bytes = crate::store::read(home.join(CACHE_FILE)).ok()?;
     let file: CacheFile = serde_json::from_slice(&bytes).ok()?;
     (file.version == CACHE_VERSION && !file.models.is_empty()).then_some(file.models)
 }

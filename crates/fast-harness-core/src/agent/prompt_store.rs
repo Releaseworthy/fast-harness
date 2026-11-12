@@ -63,7 +63,7 @@ pub fn path(home: &Path, cwd: &Path, scope: Scope) -> PathBuf {
 
 /// The text of `file`; `None` when it does not exist.
 pub fn read(file: &Path) -> Result<Option<String>, String> {
-    match std::fs::read_to_string(file) {
+    match crate::store::read_to_string(file) {
         Ok(text) => Ok(Some(text)),
         Err(err) if err.kind() == ErrorKind::NotFound => Ok(None),
         Err(err) => Err(err.to_string()),

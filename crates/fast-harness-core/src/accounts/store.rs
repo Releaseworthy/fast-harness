@@ -184,7 +184,7 @@ impl AccountStore {
         let path = path.into();
         // Taken before the read: a write in between only causes one more reload.
         let stamp = stamp(&path);
-        let text = match fs::read_to_string(&path) {
+        let text = match crate::store::read_to_string(&path) {
             Ok(text) => text,
             Err(err) if err.kind() == io::ErrorKind::NotFound => String::new(),
             Err(err) => return Err(err.into()),

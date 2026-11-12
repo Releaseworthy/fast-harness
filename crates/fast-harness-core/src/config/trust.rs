@@ -40,7 +40,7 @@ fn key(path: &Path) -> String {
 
 /// The trusted list of `home`; a missing or unreadable file is empty.
 pub fn read(home: &Path) -> Trusted {
-    std::fs::read(home.join(FILE_NAME))
+    crate::store::read(home.join(FILE_NAME))
         .ok()
         .and_then(|bytes| serde_json::from_slice(&bytes).ok())
         .unwrap_or_default()

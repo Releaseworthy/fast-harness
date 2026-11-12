@@ -35,7 +35,7 @@ pub struct Lock {
 
 /// The lock at `path`, if it parses.
 pub fn read(path: &Path) -> Option<Lock> {
-    let text = fs::read_to_string(path).ok()?;
+    let text = crate::store::read_to_string(path).ok()?;
     serde_json::from_str(&text).ok()
 }
 
@@ -177,7 +177,7 @@ impl Held {
     /// as ours), an error when another process holds it (or `last`, the
     /// retry, found it again), false after a stale one was removed.
     fn claim_existing(&self, last: bool) -> io::Result<bool> {
-        let Ok(bytes) = fs::read(&self.path) else {
+        let Ok(bytes) = crate::store::read(&self.path) else {
             return Ok(false);
         };
         let found = serde_json::from_slice::<Lock>(&bytes).ok();

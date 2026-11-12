@@ -62,8 +62,39 @@ fn write_new(temp: &Path, bytes: &[u8]) -> io::Result<()> {
     file.sync_all()
 }
 
-/// How long a rename refused with `PermissionDenied` is tried again.
+/// How long a read or a rename refused with `PermissionDenied` is tried again.
 const RENAME_WAIT: Duration = Duration::from_secs(2);
+
+/// Reads a file another process may be replacing right now. On Windows an
+/// open during a rename over the file can answer `PermissionDenied` (seen
+/// on a CI runner, 2026-11-13: eight threads replacing and reading one
+/// file); such a read is tried again for up to 2 s. Every reader of a file
+/// written through [`write_atomic`] reads it here.
+pub fn read(path: impl AsRef<Path>) -> io::Result<Vec<u8>> {
+    retry(|| fs::read(path.as_ref()))
+}
+
+/// [`read`] as text.
+pub fn read_to_string(path: impl AsRef<Path>) -> io::Result<String> {
+    retry(|| fs::read_to_string(path.as_ref()))
+}
+
+fn retry<T>(mut op: impl FnMut() -> io::Result<T>) -> io::Result<T> {
+    let start = Instant::now();
+    let mut pause = Duration::from_millis(1);
+    loop {
+        match op() {
+            Err(err)
+                if err.kind() == io::ErrorKind::PermissionDenied
+                    && start.elapsed() < RENAME_WAIT =>
+            {
+                std::thread::sleep(pause);
+                pause = (pause * 2).min(Duration::from_millis(32));
+            }
+            done => return done,
+        }
+    }
+}
 
 /// A rename that retries on `PermissionDenied` for up to [`RENAME_WAIT`]:
 /// Windows refuses a rename over a file that another rename is replacing
@@ -101,7 +132,7 @@ pub fn update<T>(
     f: impl FnOnce(Option<Vec<u8>>) -> io::Result<(Vec<u8>, T)>,
 ) -> io::Result<T> {
     locked(path, wait, || {
-        let current = match fs::read(path) {
+        let current = match read(path) {
             Ok(bytes) => Some(bytes),
             Err(err) if err.kind() == io::ErrorKind::NotFound => None,
             Err(err) => return Err(err),

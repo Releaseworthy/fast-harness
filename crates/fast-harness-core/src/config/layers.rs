@@ -248,7 +248,7 @@ pub fn load(layers: Layers, env: &dyn Fn(&str) -> Option<String>) -> Result<Laye
 /// One `config.json`: `None` when missing; an error when it is not a JSON
 /// object or a key has a value of the wrong type.
 fn read_layer(path: &Path) -> Result<Option<Value>, String> {
-    let bytes = match std::fs::read(path) {
+    let bytes = match crate::store::read(path) {
         Ok(bytes) => bytes,
         Err(err) if err.kind() == io::ErrorKind::NotFound => return Ok(None),
         Err(err) => return Err(err.to_string()),

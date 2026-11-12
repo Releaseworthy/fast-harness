@@ -58,7 +58,7 @@ pub fn path(home: &Path, server: &str) -> PathBuf {
 /// The cache of `spec`; `None` when missing, unreadable or written for
 /// another command or URL.
 pub fn read(home: &Path, spec: &ServerSpec) -> Option<CacheFile> {
-    let bytes = std::fs::read(path(home, &spec.name)).ok()?;
+    let bytes = crate::store::read(path(home, &spec.name)).ok()?;
     let file: CacheFile = serde_json::from_slice(&bytes).ok()?;
     (file.fingerprint == spec.fingerprint() && file.server == spec.name).then_some(file)
 }

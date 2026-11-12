@@ -6,7 +6,6 @@
 use crate::accounts::usage::Usage;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
-use std::fs;
 use std::io;
 use std::path::PathBuf;
 
@@ -40,7 +39,7 @@ pub(super) struct Snapshot {
 impl Snapshot {
     /// Reads `path`; a missing, unreadable or foreign file starts empty.
     pub fn load(path: PathBuf, now: u64) -> Snapshot {
-        let mut entries = fs::read_to_string(&path)
+        let mut entries = crate::store::read_to_string(&path)
             .ok()
             .and_then(|text| serde_json::from_str::<FileData>(&text).ok())
             .filter(|data| data.version == VERSION)

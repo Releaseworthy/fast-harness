@@ -6,7 +6,6 @@
 //! update. There is no memory tool: the block names the folder and the model
 //! uses `read`, `write`, `edit` and `grep` on it (absolute paths are allowed).
 
-use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 
@@ -40,7 +39,7 @@ impl Memory {
     /// Reads the index of `cwd`'s memory folder; a missing file is empty.
     pub fn read(app_home: &Path, cwd: &Path) -> Memory {
         let dir = dir(app_home, cwd);
-        let index = fs::read_to_string(dir.join(INDEX)).unwrap_or_default();
+        let index = crate::store::read_to_string(dir.join(INDEX)).unwrap_or_default();
         Memory { dir, index }
     }
 

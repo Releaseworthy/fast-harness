@@ -172,7 +172,7 @@ impl Config {
         env: &dyn Fn(&str) -> Option<String>,
     ) -> Result<Config, String> {
         let path = app_home.join(FILE_NAME);
-        let mut config = match std::fs::read(&path) {
+        let mut config = match crate::store::read(&path) {
             Ok(bytes) => serde_json::from_slice::<Config>(&bytes)
                 .map_err(|err| format!("{}: {err}", path.display()))?,
             Err(err) if err.kind() == io::ErrorKind::NotFound => Config::default(),

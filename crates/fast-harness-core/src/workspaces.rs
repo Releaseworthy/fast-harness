@@ -7,7 +7,6 @@ use crate::session;
 use crate::store;
 use serde::{Deserialize, Serialize};
 use std::fmt;
-use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 
@@ -70,7 +69,7 @@ impl Workspaces {
     /// every session folder (not saved yet); a corrupt file or another version is an error.
     pub fn load(app_home: &Path) -> Result<Workspaces, WorkspacesError> {
         let path = app_home.join(FILE_NAME);
-        let text = match fs::read_to_string(&path) {
+        let text = match crate::store::read_to_string(&path) {
             Ok(text) => text,
             Err(err) if err.kind() == io::ErrorKind::NotFound => {
                 return Ok(Workspaces::seed(app_home, path)?);
