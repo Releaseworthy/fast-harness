@@ -1,7 +1,7 @@
 //! The readable trace timeline: `trace::detail::entries` and `format_text`.
 
 use fast_harness_core::llm::{Timing, ToolSpec};
-use fast_harness_core::trace::detail::{entries, format_text, Entry, EntryKind};
+use fast_harness_core::trace::detail::{entries, format_text, Entry, EntryKind, EntryTool};
 use fast_harness_core::trace::{self, RequestContext, SessionHeader, TraceEvent, TraceWriter};
 use fast_harness_core::types::{Block, Message, Role, StopReason, Usage};
 use serde_json::{json, Value};
@@ -304,6 +304,41 @@ fn tool_call_without_an_assistant_block_and_one_step() {
 }
 
 #[test]
+fn a_call_and_its_result_carry_their_tool() {
+    let result = json!({"role": "tool", "content": [
+        {"type": "tool_result", "callId": "c1", "content": "1: a"}]});
+    let arguments = r#"{"path":"a.rs"}"#;
+    let events = [
+        ev(0, "turn/start", json!({"turn": 1})),
+        ev(
+            1,
+            "tool/call",
+            json!({"turn": 1, "step": 1, "callId": "c1", "name": "read", "arguments": arguments}),
+        ),
+        ev(
+            2,
+            "tool/result",
+            json!({"turn": 1, "step": 1, "message": result, "durationMs": 12}),
+        ),
+    ];
+    let list = entries(&events);
+    assert_eq!(list[0].tool, None);
+    let call = EntryTool {
+        name: "read".into(),
+        arguments: arguments.into(),
+        output: None,
+        duration_ms: None,
+    };
+    assert_eq!(list[1].tool.as_ref(), Some(&call));
+    let done = EntryTool {
+        output: Some("1: a".into()),
+        duration_ms: Some(12),
+        ..call
+    };
+    assert_eq!(list[2].tool.as_ref(), Some(&done));
+}
+
+#[test]
 fn missing_keys_give_defaults() {
     let kinds = [
         "turn/start",
@@ -356,6 +391,7 @@ fn entry(kind: EntryKind, title: &str, body: &str) -> Entry {
         title: title.into(),
         body: body.into(),
         is_error: false,
+        tool: None,
     }
 }
 

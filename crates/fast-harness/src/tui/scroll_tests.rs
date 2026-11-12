@@ -53,6 +53,7 @@ fn a_huge_trace_body_scrolls_without_overlapping_lines() {
         title: "bash".into(),
         body,
         is_error: false,
+        tool: None,
     };
     view.set(vec![entry], Vec::new(), None);
     ui.trace = view;

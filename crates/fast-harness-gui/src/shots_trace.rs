@@ -18,6 +18,7 @@ fn entry(kind: EntryKind, title: &str, body: &str, is_error: bool) -> Entry {
         title: title.into(),
         body: body.into(),
         is_error,
+        tool: None,
     }
 }
 

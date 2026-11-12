@@ -34,6 +34,15 @@ pub enum EntryKind {
     TurnEnd,
 }
 
+/// The tool call behind a ToolCall or ToolResult entry.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct EntryTool {
+    pub name: String,
+    pub arguments: String,
+    pub output: Option<String>,
+    pub duration_ms: Option<u64>,
+}
+
 /// One line of the timeline with its full text.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Entry {
@@ -45,6 +54,8 @@ pub struct Entry {
     /// Full text, may be empty.
     pub body: String,
     pub is_error: bool,
+    /// The call behind a ToolCall or ToolResult entry, else None.
+    pub tool: Option<EntryTool>,
 }
 
 /// The timeline of `events`, in their order. Missing or odd data keys give
@@ -88,6 +99,8 @@ struct State {
     step: u32,
     /// Tool name by call id.
     names: HashMap<String, String>,
+    /// Tool arguments by call id.
+    arguments: HashMap<String, String>,
     /// Call ids already shown from an assistant message.
     shown: HashSet<String>,
     out: Vec<Entry>,
@@ -145,6 +158,7 @@ impl State {
             title,
             body,
             is_error: false,
+            tool: None,
         });
     }
 
@@ -203,9 +217,7 @@ impl State {
                     ..
                 } => {
                     self.shown.insert(id.clone());
-                    self.names.insert(id, name.clone());
-                    let title = call_title(&name, &arguments);
-                    self.push(EntryKind::ToolCall, title, pretty(&arguments));
+                    self.call(&id, &name, &arguments);
                 }
                 _ => {}
             }
@@ -225,11 +237,29 @@ impl State {
 
     fn tool_call(&mut self, data: &Value) {
         let (id, name) = (text(data, "callId"), text(data, "name"));
+        if self.shown.contains(id) {
+            self.names.insert(id.to_string(), name.to_string());
+        } else {
+            self.call(id, name, text(data, "arguments"));
+        }
+    }
+
+    /// A ToolCall entry; remembers the name and arguments for its result.
+    fn call(&mut self, id: &str, name: &str, arguments: &str) {
         self.names.insert(id.to_string(), name.to_string());
-        if !self.shown.contains(id) {
-            let arguments = text(data, "arguments");
-            let title = call_title(name, arguments);
-            self.push(EntryKind::ToolCall, title, pretty(arguments));
+        self.arguments.insert(id.to_string(), arguments.to_string());
+        let title = call_title(name, arguments);
+        self.push(EntryKind::ToolCall, title, pretty(arguments));
+        self.attach(EntryTool {
+            name: name.to_string(),
+            arguments: arguments.to_string(),
+            ..EntryTool::default()
+        });
+    }
+
+    fn attach(&mut self, tool: EntryTool) {
+        if let Some(entry) = self.out.last_mut() {
+            entry.tool = Some(tool);
         }
     }
 
@@ -242,13 +272,17 @@ impl State {
                 is_error,
             } = block
             {
-                let name = self.names.get(&call_id).cloned().unwrap_or(call_id);
-                let (kind, word) = (
-                    EntryKind::ToolResult,
-                    if is_error { "error" } else { "result" },
-                );
-                self.push(kind, format!("Tool {word} {name} · {duration} ms"), content);
+                let name = self.names.get(&call_id).cloned().unwrap_or(call_id.clone());
+                let word = if is_error { "error" } else { "result" };
+                let title = format!("Tool {word} {name} · {duration} ms");
+                self.push(EntryKind::ToolResult, title, content.clone());
                 self.mark_error(is_error);
+                self.attach(EntryTool {
+                    name,
+                    arguments: self.arguments.get(&call_id).cloned().unwrap_or_default(),
+                    output: Some(content),
+                    duration_ms: num(data, "durationMs"),
+                });
             }
         }
     }

@@ -58,6 +58,7 @@ fn entry(kind: EntryKind, title: &str, body: &str) -> Entry {
         title: title.into(),
         body: body.into(),
         is_error: false,
+        tool: None,
     }
 }
 
