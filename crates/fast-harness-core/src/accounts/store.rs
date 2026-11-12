@@ -8,7 +8,8 @@
 //! top-level keys (such as `activeGoogle`) are kept on save, and so are records
 //! of a provider this build does not know (`"google"`, whose code moved to
 //! branch `antigravity`, PLAN.md D53): they stay raw JSON, are never listed and
-//! are written back unchanged after the known accounts.
+//! are written back unchanged after the known accounts. Every change is a
+//! read-change-write under the store lock ([`AccountStore::update`], D56).
 //!
 //! Version 1 is version 2 plus accounts of kind `linked` (claude-switch links,
 //! removed 2026-11-11, PLAN.md D8). They never held a secret: loading a version
@@ -21,12 +22,14 @@
 use crate::accounts::crypto::{base64_decode, base64_encode, Base64Error};
 use crate::accounts::model::{Account, AccountKind, Provider, Secret};
 use crate::platform::{self, PlatformError};
+use crate::store;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use std::fmt;
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
+use std::time::{Duration, SystemTime};
 
 /// The schema version this code reads and writes.
 pub const VERSION: u64 = 3;
@@ -140,7 +143,7 @@ fn entries_of(version: u64, accounts: Vec<Value>) -> Result<(Vec<Entry>, Vec<Val
     Ok((entries, foreign))
 }
 
-/// The accounts file in memory. Changes reach the disk on [`AccountStore::save`].
+/// The accounts file in memory. Changes reach the disk only through [`AccountStore::update`].
 pub struct AccountStore {
     path: PathBuf,
     active: Option<String>,
@@ -148,6 +151,14 @@ pub struct AccountStore {
     /// Records of providers this build does not know, kept as read.
     foreign: Vec<Value>,
     extra: Map<String, Value>,
+    /// Length and modified time of the file when this store read or wrote it.
+    stamp: Option<(u64, SystemTime)>,
+}
+
+/// Length and modified time of `path`; `None` when it is missing.
+fn stamp(path: &Path) -> Option<(u64, SystemTime)> {
+    let meta = fs::metadata(path).ok()?;
+    Some((meta.len(), meta.modified().ok()?))
 }
 
 impl fmt::Debug for AccountStore {
@@ -171,6 +182,8 @@ impl AccountStore {
     /// Reads `path`. A missing file is an empty store.
     pub fn load(path: impl Into<PathBuf>) -> Result<AccountStore, StoreError> {
         let path = path.into();
+        // Taken before the read: a write in between only causes one more reload.
+        let stamp = stamp(&path);
         let text = match fs::read_to_string(&path) {
             Ok(text) => text,
             Err(err) if err.kind() == io::ErrorKind::NotFound => String::new(),
@@ -182,6 +195,7 @@ impl AccountStore {
             entries: Vec::new(),
             foreign: Vec::new(),
             extra: Map::new(),
+            stamp,
         };
         if text.trim().is_empty() {
             return Ok(store);
@@ -204,8 +218,29 @@ impl AccountStore {
         &self.path
     }
 
-    /// Writes the store: a temporary file in the same folder, renamed over the old one.
-    pub fn save(&self) -> Result<(), StoreError> {
+    /// The one way to change the file (PLAN.md D56): under `<file>.lock` the
+    /// file is read afresh, `f` changes that copy, it is written with
+    /// `store::write_atomic`, and only then does it replace `self`. So a change
+    /// is a delta on what other processes wrote. When `f` fails, nothing is
+    /// written and `self` is unchanged. Waits at most `wait` for the lock.
+    pub fn update<T>(
+        &mut self,
+        wait: Duration,
+        f: impl FnOnce(&mut AccountStore) -> Result<T, StoreError>,
+    ) -> Result<T, StoreError> {
+        let path = self.path.clone();
+        let (fresh, out) = store::locked(&path, wait, || {
+            let mut fresh = AccountStore::load(path.clone())?;
+            let out = f(&mut fresh)?;
+            fresh.write()?;
+            Ok::<_, StoreError>((fresh, out))
+        })??;
+        *self = fresh;
+        Ok(out)
+    }
+
+    /// Writes the whole store; called only by [`AccountStore::update`], inside the lock.
+    fn write(&mut self) -> Result<(), StoreError> {
         let mut accounts = self
             .entries
             .iter()
@@ -221,27 +256,22 @@ impl AccountStore {
         };
         let mut text = serde_json::to_string_pretty(&data).map_err(StoreError::Json)?;
         text.push('\n');
-        if let Some(dir) = self.path.parent().filter(|d| !d.as_os_str().is_empty()) {
-            fs::create_dir_all(dir)?;
-        }
-        let tmp = self.temp_path();
-        if let Err(err) = fs::write(&tmp, text).and_then(|()| fs::rename(&tmp, &self.path)) {
-            let _ = fs::remove_file(&tmp);
-            return Err(err.into());
-        }
+        store::write_atomic(&self.path, text.as_bytes())?;
+        self.stamp = stamp(&self.path);
         Ok(())
     }
 
-    fn temp_path(&self) -> PathBuf {
-        let mut name = self
-            .path
-            .file_name()
-            .map(|n| n.to_os_string())
-            .unwrap_or_else(|| "accounts.json".into());
-        name.push(format!(".{}.tmp", std::process::id()));
-        self.path.with_file_name(name)
+    /// Whether the file changed on disk (length or modified time) since this
+    /// store last read or wrote it: one `fs::metadata` call.
+    pub fn changed_on_disk(&self) -> bool {
+        stamp(&self.path) != self.stamp
     }
 
+    /// Reads the file again (no lock: every write is a rename).
+    pub fn reload(&mut self) -> Result<(), StoreError> {
+        *self = AccountStore::load(self.path.clone())?;
+        Ok(())
+    }
     /// Every account, in file order.
     pub fn list(&self) -> Vec<&Account> {
         self.entries.iter().map(|e| &e.account).collect()

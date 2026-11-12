@@ -7,6 +7,7 @@ use fast_harness_core::accounts::store::AccountStore;
 use fast_harness_core::auth::{AuthSource, Failover, Lease};
 use fast_harness_core::http::{HttpHead, ScriptedResponse, ScriptedTransport};
 use fast_harness_core::llm::{Auth, ErrorKind, LlmError};
+use fast_harness_core::store::WAIT;
 use std::fs;
 use std::path::PathBuf;
 
@@ -49,8 +50,9 @@ impl Fixture {
             expires_at: now_unix_ms() + 8 * HOUR,
         };
         let id = account.id.clone();
-        store.upsert(account, Some(secret)).unwrap();
-        store.save().unwrap();
+        store
+            .update(WAIT, |store| store.upsert(account, Some(secret)))
+            .unwrap();
         id
     }
 

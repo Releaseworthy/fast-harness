@@ -1,12 +1,13 @@
 //! The pool as an [`AuthSource`]: leases, live usage and failover.
 //!
-//! The pool's mutex is held while a token refreshes, so one single-use
-//! refresh token is never spent twice at once (claude-switch's `refreshGrant`
-//! runs one refresh per token at a time for the same reason).
+//! The pool's mutex and the store lock are held while a token refreshes
+//! (`pool/sync.rs`), so one single-use refresh token is never spent twice at
+//! once, in this process or another (claude-switch's `refreshGrant` runs one
+//! refresh per token at a time for the same reason).
 
+use super::sync::{usable, Refreshed};
 use super::{now_ms, AccountPool, State};
 use crate::accounts::model::{now_unix_ms, AccountKind, Provider, Secret};
-use crate::accounts::oauth::{self, OAuthError};
 use crate::accounts::order::{
     candidates, hold_for_limit, Candidate, BROKEN_HOLD_MS, RETRY_INTERVAL_MS,
 };
@@ -60,37 +61,24 @@ impl State {
             return None;
         };
         let now = now_unix_ms();
-        let usable = expires_at > now.saturating_add(REFRESH_MARGIN_MS);
+        let usable = usable(expires_at);
         if self.dead.contains(id) {
             return (usable && !force).then_some(Auth::OAuth(access));
         }
         if !force && usable {
             return Some(Auth::OAuth(access));
         }
-        match oauth::refresh(http, &refresh) {
-            Ok(tokens) => {
-                let secret = Secret::Own {
-                    refresh: tokens.refresh,
-                    access: tokens.access.clone(),
-                    expires_at: tokens.expires_at,
-                };
-                // The old refresh token is spent: keep the new pair in memory
-                // even if this write fails; the next save writes it.
-                if self.store.set_secret(id, secret).is_ok() {
-                    let _ = self.store.save();
-                }
-                Some(Auth::OAuth(tokens.access))
-            }
-            Err(OAuthError::Dead(_)) => {
+        match self.refresh_own(id, &refresh, http) {
+            Refreshed::Token(token) => Some(Auth::OAuth(token)),
+            Refreshed::Dead => {
                 self.dead.insert(id.to_string());
                 self.hold(id, now_ms() + BROKEN_HOLD_MS, "refresh token refused");
                 None
             }
-            Err(_) if !force && expires_at > now => Some(Auth::OAuth(access)),
-            Err(_) => None,
+            Refreshed::Failed if !force && expires_at > now => Some(Auth::OAuth(access)),
+            Refreshed::Failed => None,
         }
     }
-
     fn candidate_list(&self) -> Vec<Candidate> {
         self.store
             .list()
@@ -116,11 +104,14 @@ impl State {
         }
     }
 
+    /// Makes `id` active on disk. A failed write leaves the pointer as it
+    /// was and shows as the pool's warning; the next lease tries again.
     fn make_active(&mut self, id: &str) {
-        if self.store.active().map(|a| a.id.as_str()) != Some(id)
-            && self.store.set_active(id).is_ok()
-        {
-            let _ = self.store.save();
+        if self.store.active().map(|a| a.id.as_str()) == Some(id) {
+            return;
+        }
+        if let Err(err) = self.change(|store| store.set_active(id)) {
+            self.save_error = Some(err.to_string());
         }
     }
 
@@ -196,6 +187,7 @@ impl AuthSource for AccountPool {
     /// held active account again (after a `Wait` the call is simply retried).
     fn lease(&self, http: &dyn Transport) -> Result<Lease, AuthError> {
         let mut state = self.lock();
+        state.fresh();
         let now = now_ms();
         let active = state.store.active().map(|a| a.id.clone());
         let current = active.clone().unwrap_or_default();
@@ -242,5 +234,9 @@ impl AuthSource for AccountPool {
             ErrorKind::Auth => self.on_auth(lease, model, http),
             _ => Failover::Fail,
         }
+    }
+
+    fn warning(&self) -> Option<String> {
+        self.save_error()
     }
 }

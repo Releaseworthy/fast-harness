@@ -52,6 +52,8 @@ pub(super) struct Turn<'a> {
     pub hook_context: Vec<String>,
     /// A Stop hook already continued this turn (`stopHookActive`).
     pub stop_continued: bool,
+    /// The credential source's warning was shown this turn.
+    pub warned: bool,
 }
 
 /// How a turn begins: with a user text, or by resuming a history that ends
@@ -94,6 +96,7 @@ pub(super) fn run(
         last_error: None,
         hook_context: Vec::new(),
         stop_continued: false,
+        warned: false,
     };
     let outcome = turn.run(start).unwrap_or_else(|message| {
         (turn.sink)(AgentEvent::Error(message));

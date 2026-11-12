@@ -4,6 +4,7 @@
 
 use fast_harness_core::accounts::model::{Account, AccountKind, Provider};
 use fast_harness_core::accounts::store::AccountStore;
+use fast_harness_core::store::WAIT;
 use serde_json::{json, Value};
 use std::path::PathBuf;
 
@@ -70,9 +71,13 @@ fn unknown_provider_records_load_and_survive_save() {
         plan: None,
         added_at: 2,
     };
-    store.upsert(added, None).unwrap();
-    store.remove("k-12345678");
-    store.save().unwrap();
+    store
+        .update(WAIT, |store| {
+            store.upsert(added, None)?;
+            store.remove("k-12345678");
+            Ok(())
+        })
+        .unwrap();
     let saved = read(&path);
     assert_eq!(saved["activeGoogle"], "g-1098765");
     let accounts = saved["accounts"].as_array().unwrap();
@@ -83,9 +88,9 @@ fn unknown_provider_records_load_and_survive_save() {
         google_record(),
         "kept byte for byte in meaning"
     );
-    let again = AccountStore::load(&path).unwrap();
+    let mut again = AccountStore::load(&path).unwrap();
     assert_eq!(again.list().len(), 1);
-    again.save().unwrap();
+    again.update(WAIT, |_| Ok(())).unwrap();
     assert_eq!(read(&path)["accounts"][1], google_record());
 }
 
@@ -98,6 +103,6 @@ fn unknown_record_ids_are_not_accounts() {
     assert!(store.get("g-1098765").is_none());
     assert!(store.set_active("g-1098765").is_err());
     assert!(store.remove("g-1098765").is_none());
-    store.save().unwrap();
+    store.update(WAIT, |_| Ok(())).unwrap();
     assert_eq!(read(&path)["accounts"][1], google_record());
 }

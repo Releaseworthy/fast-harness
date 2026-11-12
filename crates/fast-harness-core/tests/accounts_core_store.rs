@@ -1,5 +1,6 @@
 use fast_harness_core::accounts::model::{Account, AccountKind, Secret};
 use fast_harness_core::accounts::store::{AccountStore, StoreError};
+use fast_harness_core::store::WAIT;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -60,13 +61,12 @@ fn accounts_without_secrets_round_trip() {
     let home = TempHome::new();
     let mut store = AccountStore::load(home.file()).unwrap();
     store
-        .upsert(account("k-0011aabb", AccountKind::ApiKey), None)
+        .update(WAIT, |store| {
+            store.upsert(account("k-0011aabb", AccountKind::ApiKey), None)?;
+            store.upsert(account("u-own-1", AccountKind::Own), None)?;
+            store.set_active("u-own-1")
+        })
         .unwrap();
-    store
-        .upsert(account("u-own-1", AccountKind::Own), None)
-        .unwrap();
-    store.set_active("u-own-1").unwrap();
-    store.save().unwrap();
     let names: Vec<_> = std::fs::read_dir(home.file().parent().unwrap())
         .unwrap()
         .map(|e| e.unwrap().file_name())
@@ -176,11 +176,11 @@ fn version_1_drops_linked_records_and_saves_as_version_3() {
     let home = TempHome::new();
     std::fs::create_dir_all(home.file().parent().unwrap()).unwrap();
     std::fs::write(home.file(), v1_file("k-0011aabb")).unwrap();
-    let store = AccountStore::load(home.file()).unwrap();
+    let mut store = AccountStore::load(home.file()).unwrap();
     let ids: Vec<&str> = store.list().iter().map(|a| a.id.as_str()).collect();
     assert_eq!(ids, ["u-own-1", "k-0011aabb"]);
     assert_eq!(store.active().unwrap().id, "k-0011aabb");
-    store.save().unwrap();
+    store.update(WAIT, |_| Ok(())).unwrap();
     let text = std::fs::read_to_string(home.file()).unwrap();
     let raw: serde_json::Value = serde_json::from_str(&text).unwrap();
     assert_eq!(raw["version"], 3);
@@ -213,8 +213,8 @@ fn unknown_top_level_keys_survive_save() {
     std::fs::create_dir_all(home.file().parent().unwrap()).unwrap();
     let text = r#"{"version":1,"active":null,"accounts":[],"usage":{"u-a":1}}"#;
     std::fs::write(home.file(), text).unwrap();
-    let store = AccountStore::load(home.file()).unwrap();
-    store.save().unwrap();
+    let mut store = AccountStore::load(home.file()).unwrap();
+    store.update(WAIT, |_| Ok(())).unwrap();
     let raw: serde_json::Value =
         serde_json::from_str(&std::fs::read_to_string(home.file()).unwrap()).unwrap();
     assert_eq!(raw["usage"]["u-a"], 1);
@@ -253,12 +253,11 @@ mod encrypted {
         };
         let key_id = Account::api_key_id("test-key-1");
         store
-            .upsert(account(&key_id, AccountKind::ApiKey), Some(key.clone()))
+            .update(WAIT, |store| {
+                store.upsert(account(&key_id, AccountKind::ApiKey), Some(key.clone()))?;
+                store.upsert(account("u-own", AccountKind::Own), Some(own_secret(1)))
+            })
             .unwrap();
-        store
-            .upsert(account("u-own", AccountKind::Own), Some(own_secret(1)))
-            .unwrap();
-        store.save().unwrap();
 
         let text = std::fs::read_to_string(home.file()).unwrap();
         for plain in ["test-key-1", "test-access-1", "test-refresh-1"] {
@@ -289,9 +288,10 @@ mod encrypted {
         let home = TempHome::new();
         let mut store = AccountStore::load(home.file()).unwrap();
         store
-            .upsert(account("u-own", AccountKind::Own), Some(own_secret(1)))
+            .update(WAIT, |store| {
+                store.upsert(account("u-own", AccountKind::Own), Some(own_secret(1)))
+            })
             .unwrap();
-        store.save().unwrap();
         let mut raw: serde_json::Value =
             serde_json::from_str(&std::fs::read_to_string(home.file()).unwrap()).unwrap();
         raw["accounts"][0]["secret"] = "AAAA".into();

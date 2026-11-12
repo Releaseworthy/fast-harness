@@ -59,6 +59,18 @@ enum Next {
 }
 
 impl Turn<'_> {
+    /// The credential source's warning (an accounts file not written), shown
+    /// once per turn.
+    fn warn_once(&mut self) {
+        if self.warned {
+            return;
+        }
+        if let Some(warning) = self.agent.parts.auth.warning() {
+            self.warned = true;
+            (self.sink)(AgentEvent::Error(format!("accounts: {warning}")));
+        }
+    }
+
     /// The completion and the lease that produced it, or how the turn ends.
     pub(super) fn call_model(
         &mut self,
@@ -76,6 +88,7 @@ impl Turn<'_> {
                     return Ok(Err(TurnOutcome::Failed));
                 }
             };
+            self.warn_once();
             self.note_switch(&mut state, &lease)?;
             let mark = if self.quiet { "c" } else { "a" };
             let wire = format!("t{}-s{step}-{mark}{}", self.turn, state.attempt);

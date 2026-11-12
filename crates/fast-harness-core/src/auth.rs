@@ -56,6 +56,12 @@ pub trait AuthSource: Send + Sync {
         model: &str,
         http: &dyn Transport,
     ) -> Failover;
+
+    /// A problem the user should see that does not stop the call, such as an
+    /// accounts file that could not be written. Never holds a secret.
+    fn warning(&self) -> Option<String> {
+        None
+    }
 }
 
 /// A fixed credential, for example an API key from the environment.

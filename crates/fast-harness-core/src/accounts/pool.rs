@@ -6,6 +6,7 @@
 mod auth;
 mod poll;
 mod snapshot;
+mod sync;
 
 use crate::accounts::model::{now_unix_ms, Account, AccountKind, Provider, Secret};
 use crate::accounts::oauth::{self, LoginFlow, OAuthError};
@@ -23,6 +24,7 @@ use std::sync::{Mutex, MutexGuard, PoisonError};
 use std::time::Duration;
 
 pub use poll::{READ_GAP_MS, USAGE_EVERY_MS};
+pub use sync::REFRESH_WAIT;
 
 /// One account as a UI shows it.
 #[derive(Clone, Debug, PartialEq)]
@@ -83,6 +85,7 @@ impl From<PlatformError> for PoolError {
 /// Everything behind the pool's mutex.
 struct State {
     store: AccountStore,
+    /// `usage.json`: a cache, so its save errors are ignored.
     snapshot: Snapshot,
     holds: HashMap<String, Hold>,
     /// Own accounts refreshed after an auth failure, until a call succeeds.
@@ -91,6 +94,13 @@ struct State {
     dead: HashSet<String>,
     /// Usage-endpoint pauses after 429 answers.
     backoff: HashMap<String, poll::Backoff>,
+    /// Refreshed pairs whose write failed, written by the next store change.
+    unsaved: HashMap<String, Secret>,
+    /// The last failed write that still matters; never holds a secret.
+    save_error: Option<String>,
+    /// The store lock wait of a change, and of a refresh.
+    wait: Duration,
+    refresh_wait: Duration,
 }
 
 /// The saved accounts. `Send + Sync`; every method takes `&self`.
@@ -123,6 +133,10 @@ impl AccountPool {
             forced: HashSet::new(),
             dead: HashSet::new(),
             backoff: HashMap::new(),
+            unsaved: HashMap::new(),
+            save_error: None,
+            wait: crate::store::WAIT,
+            refresh_wait: REFRESH_WAIT,
         };
         Ok(AccountPool {
             state: Mutex::new(state),
@@ -138,7 +152,8 @@ impl AccountPool {
 
     /// Every account with its usage, hold and credential state.
     pub fn status(&self) -> Vec<AccountStatus> {
-        let state = self.lock();
+        let mut state = self.lock();
+        state.fresh();
         let now = now_ms();
         let active: Vec<String> = [Provider::Anthropic]
             .into_iter()
@@ -167,19 +182,15 @@ impl AccountPool {
     /// Makes `id` the active account.
     pub fn set_active(&self, id: &str) -> Result<(), PoolError> {
         let mut state = self.lock();
-        state.store.set_active(id)?;
-        state.store.save()?;
+        state.change(|store| store.set_active(id))?;
         Ok(())
     }
 
     /// Removes an account and its usage.
     pub fn remove(&self, id: &str) -> Result<Account, PoolError> {
         let mut state = self.lock();
-        let account = state
-            .store
-            .remove(id)
-            .ok_or_else(|| PoolError::UnknownAccount(id.to_string()))?;
-        state.store.save()?;
+        let removed = state.change(|store| Ok(store.remove(id)))?;
+        let account = removed.ok_or_else(|| PoolError::UnknownAccount(id.to_string()))?;
         state.snapshot.remove(id);
         state.holds.remove(id);
         let _ = state.snapshot.save(now_unix_ms(), true);
@@ -193,23 +204,24 @@ impl AccountPool {
             return Err(PoolError::EmptyKey);
         }
         let label = label.trim();
-        let mut state = self.lock();
         let id = Account::api_key_id(key);
-        let account = Account {
-            added_at: state.store.get(&id).map_or(now_unix_ms(), |a| a.added_at),
-            id,
-            kind: AccountKind::ApiKey,
-            provider: Provider::Anthropic,
-            email: None,
-            name: (!label.is_empty()).then(|| label.to_string()),
-            plan: None,
-        };
         let secret = Secret::ApiKey {
             key: key.to_string(),
         };
-        state.store.upsert(account.clone(), Some(secret))?;
-        state.activate_if_none(&account.id)?;
-        state.store.save()?;
+        let account = self.lock().change(|store| {
+            let account = Account {
+                added_at: store.get(&id).map_or(now_unix_ms(), |a| a.added_at),
+                id: id.clone(),
+                kind: AccountKind::ApiKey,
+                provider: Provider::Anthropic,
+                email: None,
+                name: (!label.is_empty()).then(|| label.to_string()),
+                plan: None,
+            };
+            store.upsert(account.clone(), Some(secret))?;
+            activate_if_none(store, &account.id)?;
+            Ok(account)
+        })?;
         Ok(account)
     }
 
@@ -243,23 +255,25 @@ impl AccountPool {
         let profile = oauth::profile(http, &tokens.access)?;
         let mut state = self.lock();
         let id = Account::oauth_id(&profile.uuid);
-        let account = Account {
-            added_at: state.store.get(&id).map_or(now_unix_ms(), |a| a.added_at),
-            id,
-            kind: AccountKind::Own,
-            provider: Provider::Anthropic,
-            email: profile.email,
-            name: profile.name,
-            plan: profile.plan,
-        };
         let secret = Secret::Own {
             refresh: tokens.refresh,
             access: tokens.access,
             expires_at: tokens.expires_at,
         };
-        state.store.upsert(account.clone(), Some(secret))?;
-        state.activate_if_none(&account.id)?;
-        state.store.save()?;
+        let account = state.change(|store| {
+            let account = Account {
+                added_at: store.get(&id).map_or(now_unix_ms(), |a| a.added_at),
+                id: id.clone(),
+                kind: AccountKind::Own,
+                provider: Provider::Anthropic,
+                email: profile.email,
+                name: profile.name,
+                plan: profile.plan,
+            };
+            store.upsert(account.clone(), Some(secret))?;
+            activate_if_none(store, &account.id)?;
+            Ok(account)
+        })?;
         state.holds.remove(&account.id);
         state.forced.remove(&account.id);
         state.dead.remove(&account.id);
@@ -272,16 +286,30 @@ impl AccountPool {
         self.read_gap_ms
             .store(ms, std::sync::atomic::Ordering::Relaxed);
     }
+
+    /// The store lock wait of a change and of a refresh (tests shorten it).
+    pub fn set_lock_wait(&self, wait: Duration) {
+        let mut state = self.lock();
+        state.wait = wait;
+        state.refresh_wait = wait;
+    }
+
+    /// Why the last write of `accounts.json` that still matters failed: a
+    /// refreshed pair kept only in memory (written again by the next pool
+    /// call) or an active account not switched on disk. Never holds a secret.
+    pub fn save_error(&self) -> Option<String> {
+        self.lock().save_error.clone()
+    }
+}
+
+fn activate_if_none(store: &mut AccountStore, id: &str) -> Result<(), StoreError> {
+    if store.active().is_none() {
+        store.set_active(id)?;
+    }
+    Ok(())
 }
 
 impl State {
-    fn activate_if_none(&mut self, id: &str) -> Result<(), StoreError> {
-        if self.store.active().is_none() {
-            self.store.set_active(id)?;
-        }
-        Ok(())
-    }
-
     /// The holds in the form `order::candidates` takes.
     fn holds(&self) -> Holds {
         let mut holds = Holds::new();

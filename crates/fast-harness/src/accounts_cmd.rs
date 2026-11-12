@@ -136,6 +136,9 @@ fn print_list(pool: &AccountPool) {
     for status in &claude {
         println!("{}", row(status, now));
     }
+    if let Some(warning) = pool.save_error() {
+        println!("warning: accounts: {warning}");
+    }
 }
 fn row(status: &AccountStatus, now: i64) -> String {
     let account = &status.account;
