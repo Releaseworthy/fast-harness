@@ -64,6 +64,7 @@ pub fn connect(ui: &MainWindow) {
         with_app(model_refresh::start);
     });
     appearance::connect(ui);
+    crate::config_page::connect(ui);
     connect_accounts(ui);
     prompt_settings::connect(ui);
     connect_google(ui);

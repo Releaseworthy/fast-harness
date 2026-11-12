@@ -4,6 +4,7 @@
 //! the file. [`save_setting`] writes one key back for the front ends.
 
 pub mod compaction;
+pub mod index;
 pub mod layers;
 pub mod trust;
 
@@ -70,6 +71,16 @@ pub struct Config {
     pub models: BTreeMap<String, compaction::ModelEntry>,
     /// `subagent` (PLAN.md D40): defaults of the subagent tool.
     pub subagent: SubagentConfig,
+    /// `tools` (PLAN.md D42): `preload`, tools loaded from the start.
+    pub tools: ToolsConfig,
+}
+
+/// The `tools` settings. `preload` names tools a top-level session finds
+/// before its first step (empty by default, D30 and G1).
+#[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(default, rename_all = "camelCase")]
+pub struct ToolsConfig {
+    pub preload: Vec<String>,
 }
 
 /// The `subagent` settings; a `null` model or effort inherits the parent's.
@@ -119,6 +130,7 @@ impl Default for Config {
             compaction: compaction::CompactionPatch::default(),
             models: BTreeMap::new(),
             subagent: SubagentConfig::default(),
+            tools: ToolsConfig::default(),
         }
     }
 }

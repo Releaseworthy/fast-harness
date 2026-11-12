@@ -11,10 +11,14 @@ use serde_json::Value;
 
 use crate::llm::ToolSpec;
 pub use budget::ToolSession;
+pub use command::CommandTool;
+pub use ext::Extensions;
 
 mod args;
 pub mod budget;
+mod command;
 mod edit;
+pub mod ext;
 pub mod find;
 mod glob;
 mod grep;
@@ -93,6 +97,8 @@ pub struct Registry {
     /// With `find`, `specs[0]` is `find_tools` and `specs[i + 1]` is `tools[i]`.
     specs: Vec<ToolSpec>,
     find: bool,
+    /// Added to `find_tools`' description (the agent types, D42).
+    note: String,
 }
 
 impl Registry {
@@ -104,10 +110,17 @@ impl Registry {
     /// A registry that starts with `find_tools` first and defers the other
     /// tools until a find loads them (PLAN.md D30).
     pub fn with_find() -> Registry {
+        Registry::with_find_note(String::new())
+    }
+
+    /// [`Registry::with_find`] whose `find_tools` description ends with
+    /// `note` (nothing when empty).
+    pub fn with_find_note(note: String) -> Registry {
         Registry {
             tools: Vec::new(),
-            specs: vec![find::spec(&[])],
+            specs: vec![find::spec_noted(&[], &note)],
             find: true,
+            note,
         }
     }
 
@@ -115,7 +128,7 @@ impl Registry {
         self.specs.push(tool.spec());
         self.tools.push(tool);
         if self.find {
-            self.specs[0] = find::spec(&self.specs[1..]);
+            self.specs[0] = find::spec_noted(&self.specs[1..], &self.note);
         }
     }
 
@@ -161,13 +174,22 @@ impl Registry {
 /// shell, grep, glob.
 pub fn builtin() -> Registry {
     let mut registry = Registry::with_find();
-    registry.add(Box::new(read::ReadTool));
-    registry.add(Box::new(write::WriteTool));
-    registry.add(Box::new(edit::EditTool));
-    registry.add(Box::new(shell::ShellTool));
-    registry.add(Box::new(grep::GrepTool));
-    registry.add(Box::new(glob::GlobTool));
+    for tool in builtin_tools() {
+        registry.add(tool);
+    }
     registry
+}
+
+/// The built-in tools in their fixed order.
+fn builtin_tools() -> Vec<Box<dyn Tool>> {
+    vec![
+        Box::new(read::ReadTool),
+        Box::new(write::WriteTool),
+        Box::new(edit::EditTool),
+        Box::new(shell::ShellTool),
+        Box::new(grep::GrepTool),
+        Box::new(glob::GlobTool),
+    ]
 }
 
 #[cfg(test)]

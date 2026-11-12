@@ -65,14 +65,21 @@ fn build(tool: &SubagentTool, spec: &Spec) -> Result<(Agent, Conversation), Stri
     if let Some(effort) = spec.effort.as_deref().or(settings.effort.as_deref()) {
         parts.config.set_effort(effort);
     }
-    let nested = depth < settings.max_depth;
-    check_tools(&spec.tools, nested)?;
+    // An agent type's `maxDepth` may only lower the setting.
+    let max_depth = spec
+        .max_depth
+        .map_or(settings.max_depth, |m| m.min(settings.max_depth));
+    let nested = depth < max_depth;
+    check_tools(&spec.tools, nested, &parts.extensions)?;
     let conv = Conversation::create_at(&tool.app_home, &parts.cwd, Some(&tool.session), depth)
         .map_err(|err| format!("cannot start a subagent session: {err}"))?;
     let home = &tool.app_home;
     let mut agent = match nested {
         true => Agent::with_subagents(parts, home, &conv.id, depth, tool.router.clone()),
-        false => Agent::new(parts, Arc::new(tools::builtin())),
+        false => {
+            let registry = parts.extensions.registry();
+            Agent::new(parts, Arc::new(registry))
+        }
     };
     agent.preload = spec.tools.clone();
     Ok((agent, conv))
@@ -98,8 +105,8 @@ fn route(tool: &SubagentTool, parts: &mut AgentParts, model: &str) -> Result<(),
 }
 
 /// Every name in `names` must be a tool of the child (not `find_tools`).
-fn check_tools(names: &[String], nested: bool) -> Result<(), String> {
-    let builtin = tools::builtin();
+fn check_tools(names: &[String], nested: bool, ext: &tools::Extensions) -> Result<(), String> {
+    let builtin = ext.registry();
     let mut known: Vec<&str> = builtin.specs()[1..]
         .iter()
         .map(|s| s.name.as_str())

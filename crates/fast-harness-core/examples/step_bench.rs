@@ -114,6 +114,7 @@ fn main() {
         ..Config::default()
     };
     let parts = AgentParts {
+        extensions: Default::default(),
         provider: Arc::new(Anthropic::default()),
         transport: Arc::new(ScriptedTransport::new(responses)),
         auth: Arc::new(StaticAuth::new(

@@ -19,6 +19,7 @@ use crate::llm::catalog::{provider_of, ANTIGRAVITY};
 use crate::llm::custom::ProviderFile;
 use crate::llm::{Auth, Provider};
 use crate::net::UreqTransport;
+use crate::tools::Extensions;
 use crate::{platform, session};
 
 /// Everything a front end loads once at start.
@@ -43,6 +44,9 @@ pub struct Runtime {
     pub layered: Layered,
     /// The providers of `providers/*.json` with their adapters.
     custom: Vec<(Arc<dyn Provider>, ProviderFile)>,
+    /// The tool, agent and command files (PLAN.md D42), indexed when the
+    /// settings load.
+    pub extensions: Arc<Extensions>,
     /// Notes handed out once with the next agent (an untrusted project).
     notes: Mutex<Vec<String>>,
 }
@@ -90,6 +94,7 @@ impl Runtime {
             antigravity: Arc::new(Antigravity::default()),
             interactive: false,
             custom: Vec::new(),
+            extensions: Arc::default(),
             notes: Mutex::default(),
         };
         runtime.apply(loaded);
@@ -161,6 +166,7 @@ impl Runtime {
             config,
             system,
             cwd: cwd.to_path_buf(),
+            extensions: Arc::clone(&self.extensions),
         })
     }
 
@@ -176,9 +182,26 @@ impl Runtime {
         let system = conv.system.clone().unwrap_or_else(|| context.system());
         let parts = self.parts_with(cwd, system)?;
         let router = Some(self.router());
-        let agent =
+        let mut agent =
             Agent::with_subagents(parts, &self.home, &conv.id, 0, router).with_context(context);
+        agent.preload = self.preload(&agent, conv, &mut notes);
         Ok((agent, notes))
+    }
+
+    /// `tools.preload` (PLAN.md D42) for a top-level session: the names its
+    /// tool list has; on a new session an unknown name is a note.
+    fn preload(&self, agent: &Agent, conv: &Conversation, notes: &mut Vec<String>) -> Vec<String> {
+        let specs = agent.tools.specs();
+        let (known, unknown): (Vec<String>, Vec<String>) = (self.config.tools.preload.iter())
+            .cloned()
+            .partition(|name| specs.iter().skip(1).any(|spec| &spec.name == name));
+        if !unknown.is_empty() && conv.messages.is_empty() {
+            notes.push(format!(
+                "tools.preload: no tool named {}",
+                unknown.join(", ")
+            ));
+        }
+        known
     }
 
     /// [`Runtime::route`] for subagents with another model (PLAN.md D40);
@@ -240,8 +263,10 @@ impl Runtime {
 mod ag_models;
 mod models;
 mod settings;
+mod slash;
 
 pub use settings::{doctor, load_settings, provider_for, Settings};
+pub use slash::{expand_body, help, slash, Slash};
 
 pub use ag_models::{read_ag_cache, write_ag_cache, AG_CACHE_FILE, AG_CACHE_VERSION};
 pub use models::{read_cache, write_cache, ModelSource, CACHE_FILE, CACHE_VERSION};

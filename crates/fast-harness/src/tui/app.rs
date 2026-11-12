@@ -9,7 +9,7 @@ use std::sync::Arc;
 use fast_harness_core::accounts::model::Provider;
 use fast_harness_core::accounts::providers::ClientState;
 use fast_harness_core::agent::{Agent, Conversation, Inbox, Input};
-use fast_harness_core::app::Runtime;
+use fast_harness_core::app::{Runtime, Slash};
 use fast_harness_core::events::{AgentEvent, TurnOutcome};
 use fast_harness_core::llm::anthropic::ModelInfo;
 use fast_harness_core::session;
@@ -237,6 +237,12 @@ impl Tui {
             }
             return;
         }
+        // `/help` and the user's commands/*.md (PLAN.md D42).
+        let text = match self.rt.slash(&text) {
+            Slash::Send(text) => text,
+            Slash::Help(help) => return self.note(NoteKind::Info, help),
+            Slash::Error(err) => return self.note(NoteKind::Error, err),
+        };
         if self.conv.is_none() {
             self.ui.status = "a turn is running".into();
             return;

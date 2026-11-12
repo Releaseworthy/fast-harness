@@ -61,6 +61,9 @@ pub struct AgentParts {
     /// The system prompt of a new session; a session that has one keeps
     /// its own (PLAN.md D36).
     pub system: String,
+    /// The tool, agent and command files of the settings (PLAN.md D42);
+    /// every registry of the session and of its children is built from it.
+    pub extensions: Arc<tools::Extensions>,
 }
 
 pub struct Agent {
@@ -111,12 +114,14 @@ impl Agent {
         router: Option<Router>,
     ) -> Agent {
         let children = children::of_session(session);
-        let mut registry = tools::builtin();
+        let ext = Arc::clone(&parts.extensions);
+        let mut registry = ext.builtin();
         let tool = SubagentTool::new(parts.clone(), app_home, session, depth, router);
-        registry.add(Box::new(tool));
+        ext.add(&mut registry, Box::new(tool));
         for tool in child_tools::all(&children) {
-            registry.add(tool);
+            ext.add(&mut registry, tool);
         }
+        ext.add_commands(&mut registry);
         let mut agent = Agent::new(parts, Arc::new(registry));
         agent.children = Some(children);
         agent

@@ -4,6 +4,7 @@ use std::io::Write;
 use std::process::ExitCode;
 use std::sync::atomic::{AtomicBool, Ordering};
 
+use fast_harness_core::app::Slash;
 use fast_harness_core::events::{AgentEvent, TurnOutcome};
 use fast_harness_core::{platform, session};
 
@@ -39,6 +40,15 @@ pub fn run(args: PrintArgs) -> Result<ExitCode, String> {
             eprintln!("[note] no session to continue; starting a new one");
         }
     }
+    // `/help` and the user's commands/*.md (PLAN.md D42).
+    let prompt = match rt.slash(&args.prompt) {
+        Slash::Send(text) => text,
+        Slash::Help(help) => {
+            println!("{help}");
+            return Ok(ExitCode::SUCCESS);
+        }
+        Slash::Error(err) => return Err(err),
+    };
     let mut conv = rt.open_conversation(&cwd, args.resume.as_deref(), args.continue_latest)?;
     let (agent, notes) = rt.agent(&cwd, &conv)?;
     for note in notes {
@@ -51,7 +61,7 @@ pub fn run(args: PrintArgs) -> Result<ExitCode, String> {
         session: conv.id.clone(),
         ..Printer::default()
     };
-    let outcome = agent.run_turn(&mut conv, &args.prompt, &CANCEL, &mut |event| {
+    let outcome = agent.run_turn(&mut conv, &prompt, &CANCEL, &mut |event| {
         printer.event(event)
     });
     if outcome == TurnOutcome::Truncated {

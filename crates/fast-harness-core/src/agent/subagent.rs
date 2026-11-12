@@ -11,8 +11,9 @@ use serde_json::{json, Value};
 use super::child_run;
 use super::children::{self, Children};
 use crate::agent::{AgentParts, Router};
+use crate::config::index::{read_md, MdFile};
 use crate::llm::ToolSpec;
-use crate::tools::{Tool, ToolCtx, ToolOutput};
+use crate::tools::{Extensions, Tool, ToolCtx, ToolOutput};
 
 pub const NAME: &str = "subagent";
 
@@ -55,6 +56,8 @@ pub(super) struct Spec {
     pub effort: Option<String>,
     pub tools: Vec<String>,
     pub background: bool,
+    /// The agent type's `maxDepth` (it only lowers `subagent.maxDepth`).
+    pub max_depth: Option<u32>,
 }
 
 impl Tool for SubagentTool {
@@ -74,7 +77,7 @@ impl Tool for SubagentTool {
                 "properties": {
                     "prompt": {"type": "string", "description": "The complete task."},
                     "description": {"type": "string", "description": "A short label, 3 to 5 words."},
-                    "agent": {"type": "string", "description": "An agent type; none exist yet."},
+                    "agent": {"type": "string", "description": "An agent type (agents/*.md; find_tools names them): its prompt, model, effort and tools apply."},
                     "model": {"type": "string", "description": "Model id; default: the parent's."},
                     "effort": {"type": "string", "description": "low, medium, high, max or off."},
                     "tools": {"type": "array", "items": {"type": "string"}, "description": "Tools loaded from the start."},
@@ -86,53 +89,79 @@ impl Tool for SubagentTool {
     }
 
     fn run(&self, args: &Value, ctx: &ToolCtx<'_>) -> ToolOutput {
-        Spec::parse(args)
+        Spec::parse(args, &self.parts.extensions)
             .and_then(|spec| child_run::start(self, &spec, ctx))
             .unwrap_or_else(ToolOutput::err)
     }
 }
 
 impl Spec {
-    fn parse(args: &Value) -> Result<Spec, String> {
+    fn parse(args: &Value, ext: &Extensions) -> Result<Spec, String> {
         let prompt = args["prompt"].as_str().filter(|p| !p.trim().is_empty());
         let prompt = prompt.ok_or_else(|| "`prompt` must be a non-empty string".to_string())?;
-        agent_type(&args["agent"])?;
+        let kind = agent_type(&args["agent"], ext)?.unwrap_or_default();
         let text = |key: &str| {
             let value = args.get(key).and_then(Value::as_str).map(str::trim);
             value.filter(|s| !s.is_empty()).map(str::to_string)
         };
-        let names = "`tools` must be a list of tool names";
-        let tools = match args.get("tools") {
-            None | Some(Value::Null) => Vec::new(),
-            Some(Value::Array(list)) => list
-                .iter()
-                .map(|v| {
-                    v.as_str()
-                        .map(str::to_string)
-                        .ok_or_else(|| names.to_string())
-                })
-                .collect::<Result<_, _>>()?,
-            Some(_) => return Err(names.into()),
+        let mut tools = tool_names(args)?;
+        if tools.is_empty() {
+            tools.clone_from(&kind.tools);
+        }
+        // The type's body opens the child's first user message: the system
+        // prompt stays the parent's, so the cached prefix is shared.
+        let prompt = match kind.body.is_empty() {
+            true => prompt.to_string(),
+            false => format!("{}\n\n{prompt}", kind.body),
         };
         Ok(Spec {
-            prompt: prompt.to_string(),
-            label: text("description").unwrap_or_default(),
-            model: text("model"),
-            effort: text("effort"),
+            prompt,
+            label: text("description").unwrap_or_else(|| kind.name.clone()),
+            model: text("model").or(kind.model),
+            effort: text("effort").or(kind.effort),
             tools,
             background: args["background"].as_bool().unwrap_or(false),
+            max_depth: kind.max_depth,
         })
     }
 }
 
-/// The one place agent types (`agents/*.md`, phase 17A) will resolve; no
-/// type exists yet, so any name is an error.
-fn agent_type(value: &Value) -> Result<(), String> {
+fn tool_names(args: &Value) -> Result<Vec<String>, String> {
+    let names = "`tools` must be a list of tool names";
+    match args.get("tools") {
+        None | Some(Value::Null) => Ok(Vec::new()),
+        Some(Value::Array(list)) => list
+            .iter()
+            .map(|v| {
+                v.as_str()
+                    .map(str::to_string)
+                    .ok_or_else(|| names.to_string())
+            })
+            .collect(),
+        Some(_) => Err(names.into()),
+    }
+}
+
+/// The agent type `value` names (`agents/*.md`, PLAN.md D42), read now;
+/// `None` without one.
+fn agent_type(value: &Value, ext: &Extensions) -> Result<Option<MdFile>, String> {
     let name = value.as_str().map(str::trim).unwrap_or_default();
     if name.is_empty() {
-        return Ok(());
+        return Ok(None);
     }
-    Err(format!(
-        "unknown agent type `{name}`: agent types (agents/*.md) are not available yet; omit `agent`"
-    ))
+    match ext.agent(name) {
+        Some(item) => read_md(&item.path).map(Some),
+        None => {
+            let names: Vec<&str> = (ext.index.agents.iter())
+                .map(|item| item.entry.name.as_str())
+                .collect();
+            let known = match names.is_empty() {
+                true => "none: add agents/<name>.md".to_string(),
+                false => names.join(", "),
+            };
+            Err(format!(
+                "unknown agent type `{name}` (agent types: {known})"
+            ))
+        }
+    }
 }

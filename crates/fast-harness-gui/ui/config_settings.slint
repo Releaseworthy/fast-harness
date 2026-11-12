@@ -1,0 +1,50 @@
+// Settings > Configuration (PLAN.md D41, D42): every resolved key with its
+// value and the layer that set it, the extension files that loaded, and
+// "Open config folder". State lives in the ConfigUi global.
+import { Theme } from "parts.slint";
+import { Icons } from "icons.slint";
+import { ActionButton } from "widgets.slint";
+
+// One resolved key: `value` is JSON, `source` default, user, project, env
+// or command line.
+export struct ConfigRow {
+    key: string,
+    value: string,
+    source: string,
+}
+
+export global ConfigUi {
+    in property <[ConfigRow]> rows;
+    // The config folder and the extension files summary.
+    in property <string> folder;
+    in property <string> files;
+    callback open-folder();
+}
+
+export component ConfigSettings {
+    VerticalLayout {
+        spacing: Theme.space-m;
+        Text { text: "Configuration"; color: Theme.text; font-size: Theme.font-m; font-weight: 600; }
+        Text {
+            text: "Every setting with its value and where it came from. Edit config.json, providers, tools, agents and commands in the config folder; a new session picks them up.";
+            color: Theme.dim;
+            font-size: Theme.font-s;
+            wrap: word-wrap;
+        }
+        HorizontalLayout {
+            alignment: start;
+            ActionButton { icon: Icons.folder-opened; text: "Open config folder"; clicked => { ConfigUi.open-folder(); } }
+        }
+        if ConfigUi.folder != "": Text { text: ConfigUi.folder; color: Theme.dim; font-size: Theme.font-xs; wrap: word-wrap; }
+        if ConfigUi.files != "": Text { text: ConfigUi.files; color: Theme.dim; font-size: Theme.font-xs; wrap: word-wrap; }
+        VerticalLayout {
+            spacing: Theme.space-xs;
+            for row in ConfigUi.rows: HorizontalLayout {
+                spacing: Theme.space-s;
+                Text { text: row.key; color: Theme.text; font-size: Theme.font-s; width: 34%; overflow: elide; }
+                Text { text: row.value; color: Theme.dim; font-size: Theme.font-s; horizontal-stretch: 1; overflow: elide; }
+                Text { text: row.source; color: row.source == "default" ? Theme.dim : Theme.text; font-size: Theme.font-xs; width: 13%; horizontal-alignment: right; overflow: elide; }
+            }
+        }
+    }
+}

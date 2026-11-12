@@ -30,6 +30,7 @@ fn replace<T: Clone + 'static>(current: ModelRc<T>, items: Vec<T>) -> Option<Mod
 /// Fills the pickers from the cached list (the last fetch, else the table).
 pub fn fill(app: &mut App, ui: &MainWindow) {
     crate::appearance::show(app, ui);
+    crate::config_page::show(app, ui);
     let list = model_list(&app.rt.models().cached(), &app.rt.config.model);
     show_models(app, ui, list);
 }

@@ -72,6 +72,7 @@ fn check_model(model: &str, auth: Auth, dir: &Path) {
         ..Config::default()
     };
     let parts = AgentParts {
+        extensions: Default::default(),
         provider: Arc::new(Antigravity::default()),
         transport: Arc::new(UreqTransport::new()),
         auth: Arc::new(StaticAuth::new("live", "live Google account", auth)),

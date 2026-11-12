@@ -7,6 +7,7 @@ use std::sync::Arc;
 
 use super::{Route, Runtime};
 use crate::auth::{AuthSource, StaticAuth};
+use crate::config::index::{ExtIndex, Item};
 use crate::config::layers::{self, kind_files, Layered, Layers};
 use crate::config::{trust, Config};
 use crate::http::Transport;
@@ -14,11 +15,14 @@ use crate::llm::anthropic::Anthropic;
 use crate::llm::custom::{self, ProviderFile, API_OPENAI};
 use crate::llm::openai::OpenAiChat;
 use crate::llm::{Auth, ChatRequest, Completion, Delta, LlmError, Provider};
+use crate::tools::Extensions;
 
 /// The resolved layers and the provider files they found.
 pub struct Settings {
     pub layered: Layered,
     pub providers: Vec<ProviderFile>,
+    /// The tool, agent and command files of the same folders (D42).
+    pub index: ExtIndex,
 }
 
 /// Every layer for `cwd` (the user layer only without one), then the
@@ -39,7 +43,13 @@ pub fn load_settings(
     layered.report.loaded.extend(loaded);
     layered.report.skipped.extend(skipped);
     add_compaction(&mut layered.config, &providers);
-    Ok(Settings { layered, providers })
+    let index = ExtIndex::build(&layered.layers);
+    layered.report.skipped.extend(index.skipped.iter().cloned());
+    Ok(Settings {
+        layered,
+        providers,
+        index,
+    })
 }
 
 /// A model entry's `compaction` joins `models` under its full id unless
@@ -129,7 +139,17 @@ impl Runtime {
     }
 
     pub(super) fn apply(&mut self, settings: Settings) {
-        let Settings { layered, providers } = settings;
+        let Settings {
+            mut layered,
+            providers,
+            index,
+        } = settings;
+        let extensions = Extensions::new(index);
+        // A tool file's `outputBytes` unless `toolOutput` names the tool.
+        for (name, bytes) in extensions.output_bytes() {
+            layered.config.tool_output.entry(name).or_insert(bytes);
+        }
+        self.extensions = Arc::new(extensions);
         custom::remember(&providers);
         self.custom = providers
             .into_iter()
@@ -217,6 +237,7 @@ pub fn doctor(settings: &Settings) -> String {
         };
         let _ = writeln!(out, "  {} ({kind}, {} models)", file.id, file.models.len());
     }
+    extension_lines(&mut out, &settings.index);
     let _ = writeln!(out, "settings not at their default:");
     let changed = layered
         .sources
@@ -230,4 +251,38 @@ pub fn doctor(settings: &Settings) -> String {
         let _ = writeln!(out, "  {key} = {value} ({source})");
     }
     out
+}
+
+/// The `tools`, `agents` and `commands` sections of `doctor`.
+fn extension_lines(out: &mut String, index: &ExtIndex) {
+    use std::fmt::Write;
+    let sections: [(&str, &[Item]); 3] = [
+        ("tools", &index.tools),
+        ("agents", &index.agents),
+        ("commands", &index.commands),
+    ];
+    for (kind, items) in sections {
+        let _ = writeln!(out, "{kind}:");
+        for item in items {
+            let entry = &item.entry;
+            let what = match (kind, entry.command, entry.disabled) {
+                ("tools", _, true) => "disabled",
+                ("tools", true, _) => "command tool",
+                ("tools", false, _) => "override",
+                _ => "",
+            };
+            let what = if what.is_empty() {
+                String::new()
+            } else {
+                format!(" [{what}]")
+            };
+            let (source, path) = (item.source.word(), item.path.display());
+            let _ = writeln!(out, "  {}{what} ({source}) {path}", entry.name);
+        }
+    }
+    let _ = writeln!(
+        out,
+        "index: {} files read, {} from index.json",
+        index.reads, index.cached
+    );
 }

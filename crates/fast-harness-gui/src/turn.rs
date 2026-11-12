@@ -7,6 +7,7 @@ use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::thread;
 
 use fast_harness_core::agent::{Agent, Conversation};
+use fast_harness_core::app::Slash;
 use fast_harness_core::events::{AgentEvent, TurnOutcome};
 use fast_harness_core::view::{Item, NoteKind};
 
@@ -100,6 +101,18 @@ fn start_text(app: &mut App, ui: &MainWindow, text: String) -> bool {
         }
         return false;
     }
+    // `/help` and the user's commands/*.md (PLAN.md D42).
+    let text = match app.rt.slash(&text) {
+        Slash::Send(text) => text,
+        Slash::Help(help) => {
+            ui.set_error_text(help.into());
+            return false;
+        }
+        Slash::Error(err) => {
+            show_error(ui, err);
+            return false;
+        }
+    };
     // Checked first so a refused send leaves no empty session behind; the
     // model picks Claude's credential or the Google accounts.
     if let Err(err) = app.rt.route(&app.rt.config.model) {

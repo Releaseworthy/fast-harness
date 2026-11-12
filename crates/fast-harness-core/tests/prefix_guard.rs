@@ -116,6 +116,7 @@ fn session(case: Case, change: Change) -> (Vec<Value>, String) {
         };
         let (context, _) = Context::read_at(&env.home, &env.cwd, case.model, &date);
         let parts = AgentParts {
+            extensions: Default::default(),
             provider: case.provider.clone(),
             transport: transport.clone(),
             auth: case.auth.clone(),

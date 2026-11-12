@@ -3,6 +3,7 @@ import { Theme, Columns, Card, PageTitle, Eyebrow, Badge } from "parts.slint";
 import { ActionButton, Dropdown } from "widgets.slint";
 import { PromptSettings } from "prompt_settings.slint";
 import { Appearance } from "appearance.slint";
+import { ConfigSettings } from "config_settings.slint";
 
 // A labelled settings row: the name, a dropdown and a caption under it.
 component SettingRow {
@@ -103,6 +104,7 @@ export component SettingsPage inherits Rectangle {
         if root.note != "": Text { text: root.note; color: Theme.text; font-size: Theme.font-s; wrap: word-wrap; }
         } }
         Section { PromptSettings { } }
+        Section { ConfigSettings { } }
     }
     }
 }

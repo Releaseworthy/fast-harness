@@ -15,17 +15,27 @@ pub const MAX_LIMIT: usize = 20;
 
 /// The spec, whose description names the `others` without their schemas.
 pub fn spec(others: &[ToolSpec]) -> ToolSpec {
+    spec_noted(others, "")
+}
+
+/// [`spec`] whose description ends with `note` (the agent types, D42).
+pub fn spec_noted(others: &[ToolSpec], note: &str) -> ToolSpec {
     let names: Vec<&str> = others.iter().map(|tool| tool.name.as_str()).collect();
+    let mut description = format!(
+        "Load tools: only loaded tools can be called. Tools: {}. Pass `names` \
+        (exact tool names) or `query` (words matched against tool names, \
+        descriptions and parameter names); at most {MAX_RESULTS} tools per call \
+        unless you pass `limit` (up to {MAX_LIMIT}). \
+        A loaded tool stays loaded for the session.",
+        names.join(", ")
+    );
+    if !note.is_empty() {
+        description.push(' ');
+        description.push_str(note);
+    }
     ToolSpec {
         name: FIND_TOOLS.into(),
-        description: format!(
-            "Load tools: only loaded tools can be called. Tools: {}. Pass `names` \
-            (exact tool names) or `query` (words matched against tool names, \
-            descriptions and parameter names); at most {MAX_RESULTS} tools per call \
-            unless you pass `limit` (up to {MAX_LIMIT}). \
-            A loaded tool stays loaded for the session.",
-            names.join(", ")
-        ),
+        description,
         schema: json!({
             "type": "object",
             "properties": {

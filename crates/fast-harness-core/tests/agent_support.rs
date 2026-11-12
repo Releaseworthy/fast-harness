@@ -118,6 +118,7 @@ pub fn parts(
     cwd: &Path,
 ) -> AgentParts {
     AgentParts {
+        extensions: Default::default(),
         provider: Arc::new(Anthropic::new("http://scripted.invalid")),
         transport: transport.clone(),
         auth,

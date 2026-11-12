@@ -10,6 +10,7 @@ mod app;
 mod appearance;
 #[cfg(test)]
 mod appearance_tests;
+mod config_page;
 mod format;
 mod google;
 #[cfg(test)]

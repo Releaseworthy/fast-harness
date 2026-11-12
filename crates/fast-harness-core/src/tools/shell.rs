@@ -68,16 +68,16 @@ impl Tool for ShellTool {
     }
 }
 
-enum Ending {
+pub(super) enum Ending {
     Exited(ExitStatus),
     TimedOut(u64, Option<ExitStatus>),
     Cancelled(Option<ExitStatus>),
 }
 
 #[derive(Default)]
-struct Capture {
-    bytes: Vec<u8>,
-    dropped: usize,
+pub(super) struct Capture {
+    pub(super) bytes: Vec<u8>,
+    pub(super) dropped: usize,
 }
 
 impl Capture {
@@ -146,7 +146,7 @@ fn powershell() -> &'static str {
 }
 
 /// Forwards everything `source` produces to `tx` from a background thread.
-fn pump(mut source: impl Read + Send + 'static, tx: Sender<Vec<u8>>) {
+pub(super) fn pump(mut source: impl Read + Send + 'static, tx: Sender<Vec<u8>>) {
     std::thread::spawn(move || {
         let mut buf = [0u8; 8192];
         loop {
@@ -164,7 +164,7 @@ fn pump(mut source: impl Read + Send + 'static, tx: Sender<Vec<u8>>) {
 
 /// Collects output until the child exits, the deadline passes or `cancel`
 /// is set; in the last two cases the whole group is killed.
-fn supervise(
+pub(super) fn supervise(
     child: &mut Child,
     group: &ProcessGroup,
     rx: &Receiver<Vec<u8>>,
@@ -206,7 +206,7 @@ fn stop(child: &mut Child, group: &ProcessGroup) -> Option<ExitStatus> {
 }
 
 /// Takes output still in flight, until both pipes close or the grace ends.
-fn drain(rx: &Receiver<Vec<u8>>, capture: &mut Capture) {
+pub(super) fn drain(rx: &Receiver<Vec<u8>>, capture: &mut Capture) {
     let until = Instant::now() + DRAIN_GRACE;
     loop {
         let left = until.saturating_duration_since(Instant::now());

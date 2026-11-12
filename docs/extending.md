@@ -119,3 +119,85 @@ A local server (Ollama, llama.cpp, LM Studio, vLLM), no key:
   "models": [{"id": "qwen3:8b", "contextWindow": 32768, "price": {"input": 0, "output": 0}}]
 }
 ```
+
+## Tools: `tools/*.json`
+
+Every tool but `find_tools` is deferred (D30): a tool file costs one name in `find_tools`' description until the model finds it.
+
+### Command tools
+
+A file with a `command` is a new tool. The arguments go in on stdin as one JSON object, stdout is the result (cut to the tool's byte budget, the rest spilled to a file like any tool), a non-zero exit is an error that carries the exit code and the last 2,000 bytes of stderr. On timeout or cancel the whole process tree is killed.
+
+`~/.fast-harness/tools/word_count.json`:
+
+```json
+{
+  "name": "word_count",
+  "description": "Count the words of a text.",
+  "schema": {"type": "object", "properties": {"text": {"type": "string"}}, "required": ["text"]},
+  "command": "pwsh",
+  "args": ["-NoProfile", "-Command", "($input | ConvertFrom-Json).text.Split(' ', [StringSplitOptions]::RemoveEmptyEntries).Count"],
+  "stdin": "json",
+  "timeoutMs": 30000,
+  "outputBytes": 2048
+}
+```
+
+- `name`: 1 to 64 letters, digits, `_` or `-`; the file name without `.json` when missing.
+- `description` (required for a command tool) and `schema` (a JSON Schema object; `{"type":"object"}` when missing).
+- `command`: a program on `PATH`, an absolute path, or a path with a `/` or `\` relative to the tool file's folder (`./bin/tool.exe`). `args` follow it as given (no shell).
+- `stdin`: `json` (default) or `none`. The process runs in the session's working directory with `FAST_HARNESS_TOOL_DIR` set to the tool file's folder.
+- `timeoutMs`: default 120000. `outputBytes`: this tool's result budget (a `toolOutput` entry in `config.json` wins).
+
+### Overriding a built-in tool
+
+A file without `command`, named after a tool (`read`, `write`, `edit`, `shell`, `grep`, `glob`, `subagent`, `agent_send`, `agent_stop`, `agent_output`), changes that tool:
+
+```json
+{"name": "read", "outputBytes": 16384}
+```
+
+```json
+{"name": "shell", "disabled": true}
+```
+
+```json
+{"name": "glob", "description": "Find files by glob pattern; prefer this over shell dir listings."}
+```
+
+## Agent types: `agents/*.md`
+
+Front matter and a body. The subagent tool's `agent` argument names the type; `find_tools`' description lists the type names (at most about 1 KB, then "and n more").
+
+```markdown
+---
+name: reviewer
+description: Reviews a change for bugs
+model: claude-sonnet-5
+effort: medium
+tools: [read, grep, glob]
+maxDepth: 1
+---
+You review code. Report bugs with file and line; do not edit files.
+```
+
+The body opens the child's first user message, followed by the `prompt` of the call; the system prompt stays the parent's, so the child shares the parent's cached prefix. `model`, `effort` and `tools` (preloaded, no find step) apply unless the call passes its own; `maxDepth` can only lower `subagent.maxDepth`.
+
+## Commands: `commands/*.md`
+
+`/name args` in the TUI, the GUI and `fast-harness -p "/name args"` sends the body with `$ARGUMENTS` replaced by `args` (without the placeholder, the arguments follow the body after a blank line). `/help` lists the built-in commands (`/compact`, `/trust`, `/help`, which a file cannot replace) and yours.
+
+```markdown
+---
+description: Explain a file
+---
+Read $ARGUMENTS and explain what it does in five lines.
+```
+
+## The index and preloading
+
+At session creation the `tools`, `agents` and `commands` folders of the user folder and of a trusted project are listed; only names and descriptions are read, and kept in `~/.fast-harness/index.json` by path, size and modified time, so an unchanged file is not read again. Bodies are read on use: a command tool's file when the session's tool list is first rendered (the list is then frozen in the session log), an agent or command body when it is called. Without any of these folders nothing is read. A project file with the same name as a user file replaces it.
+
+`"tools": {"preload": ["read", "grep"]}` in `config.json` loads tools from the start of a top-level session (a synthetic `find_tools` call before the first step), so the first call needs no find. Empty by default.
+
+`fast-harness doctor` lists the tool, agent and command files that loaded, their layer, and the files skipped with the reason. The GUI's Settings page lists every key with its value and source, and opens the config folder.
