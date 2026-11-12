@@ -63,6 +63,12 @@ impl ProcessGroup {
         Ok((group, child))
     }
 
+    /// Ends the group after the child is done: closing the job kills the
+    /// processes the child left running, so the pipes they hold close.
+    pub fn close(self) {
+        drop(self);
+    }
+
     /// Kills every process in the group.
     pub fn kill(&self) -> Result<(), PlatformError> {
         // SAFETY: `self.job` is a valid job handle owned by `self`.

@@ -116,6 +116,7 @@ fn shell_cancel_kills_the_command() {
 }
 
 /// Pid printed by the command as `<label>=<pid>`.
+#[cfg(windows)]
 fn pid_of(output: &str, label: &str) -> u32 {
     let prefix = format!("{label}=");
     let line = output.lines().find(|line| line.starts_with(&prefix));

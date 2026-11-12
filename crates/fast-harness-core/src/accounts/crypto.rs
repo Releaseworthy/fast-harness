@@ -140,20 +140,21 @@ pub fn sha256(data: &[u8]) -> [u8; 32] {
         message.push(0);
     }
     message.extend_from_slice(&bit_len.to_be_bytes());
-    for block in message.chunks_exact(64) {
+    // The padding above makes the length a multiple of 64: no remainder.
+    for block in message.as_chunks::<64>().0 {
         compress(&mut state, block);
     }
     let mut out = [0u8; 32];
-    for (slot, word) in out.chunks_exact_mut(4).zip(state) {
-        slot.copy_from_slice(&word.to_be_bytes());
+    for (slot, word) in out.as_chunks_mut::<4>().0.iter_mut().zip(state) {
+        *slot = word.to_be_bytes();
     }
     out
 }
 
-fn compress(state: &mut [u32; 8], block: &[u8]) {
+fn compress(state: &mut [u32; 8], block: &[u8; 64]) {
     let mut w = [0u32; 64];
-    for (i, word) in block.chunks_exact(4).enumerate() {
-        w[i] = u32::from_be_bytes([word[0], word[1], word[2], word[3]]);
+    for (i, word) in block.as_chunks::<4>().0.iter().enumerate() {
+        w[i] = u32::from_be_bytes(*word);
     }
     for i in 16..64 {
         let s0 = w[i - 15].rotate_right(7) ^ w[i - 15].rotate_right(18) ^ (w[i - 15] >> 3);

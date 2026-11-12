@@ -56,6 +56,7 @@ pub fn hold_text(hold: &GoogleHold, now_ms: u64) -> String {
         HoldReason::RateLimit => format!("Held for {left}: rate limit"),
         HoldReason::Validation => "Needs verification in the browser".into(),
         HoldReason::Refused => format!("Held for {left}: refused by Google"),
+        HoldReason::Disabled => "Disabled by Google (Terms of Service)".into(),
     }
 }
 

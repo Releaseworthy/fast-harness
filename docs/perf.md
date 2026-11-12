@@ -119,6 +119,18 @@ No further live call was made. Side finding: after the second 403 the Google poo
 | bare pwsh with the tool's UTF-8 prelude | 227 ms | 238 ms | 249 ms |
 
   Conclusion: about 220 ms is PowerShell start, about 20 ms the prelude (`[Console]::OutputEncoding` and friends), and about 75 ms the tool's own supervision: `supervise` polls every 50 ms (`POLL`) and, once both pipes have closed, sleeps another 50 ms before `try_wait`; the job object and `drain` add the rest (not split further). The 513 ms seen once is not reproduced (cold pwsh start or a loaded machine, unverified). Saving: wait on the child (or a pipe-close signal) instead of the fixed sleep, about 50 ms per call; a long-lived pwsh would save the 220 ms start.
+
+  After the fix (same day, `supervise` checks the child at once when the pipes close, then backs off from 1 ms to `POLL`; cancel and timeout unchanged), same command, 2 release runs of 10:
+
+| Run | min | median | max |
+|---|---|---|---|
+| `shell` tool `echo 1` (registry `run`) | 317 to 334 ms | 348 to 349 ms | 373 to 399 ms |
+| bare `pwsh -NoLogo -NoProfile -NonInteractive -Command "echo 1"` | 245 to 247 ms | 269 to 273 ms | 291 to 299 ms |
+| bare pwsh with the tool's UTF-8 prelude | 278 to 287 ms | 301 to 307 ms | 317 to 320 ms |
+
+  The machine was slower than in the first run (bare start median 269 to 273 ms against 219 to 220 ms), so compare the tool against bare pwsh with the prelude: the overhead fell from about 76 ms (314 - 238) to 42 to 48 ms (median). The rest is the job object, `drain` and thread start-up (not split further).
+
+  The `TOS_VIOLATION` side finding is fixed too: the Antigravity provider marks the error "account disabled by the provider", the Google pool holds that account as `Disabled` (the TUI and GUI account rows show "disabled by the provider"; the hold lives in the running process, the account is never deleted) and returns `Fail` instead of an hour-long `Wait` when no other account can take over, so the turn ends with the message.
 - E5, GUI time per text delta at 500 transcript items: `crates/fast-harness-gui/src/mirror_bench.rs` (ignored; `cargo test --release -p fast-harness-gui delta_time -- --ignored --nocapture`) applies 200 deltas of 24 bytes through `Transcript::apply` and `Mirror::sync` into a `VecModel<MsgRow>` (the work `turn::deliver` does per event, without `refresh_status`, the Slint layout and the paint): 501 items, new turn (`turn_from` at the last user item): mean 10.2 us, median 10.7 us, p95 16.1 us, max 20.0 us; all 501 items in one turn (`from` 0, every item compared): mean 16.7 us, median 16.7 us, p95 23.2 us, max 30.2 us. Conclusion: the model side is far below a frame (16.7 ms) at 500 items; `sync_rows` per event needs no batching. Render cost per delta: unmeasured (needs a window).
 - E6, the synthetic `find_tools` pair (compaction D38, subagent preload D40) on Antigravity Claude with thinking: unmeasured, account disabled. Offline tests only.
 

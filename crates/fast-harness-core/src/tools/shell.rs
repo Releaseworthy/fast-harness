@@ -112,7 +112,7 @@ fn run_shell(command: &str, timeout_ms: u64, ctx: &ToolCtx<'_>) -> Result<ToolOu
     let ending = supervise(&mut child, &group, &rx, &mut capture, deadline, ctx.cancel);
     // Closing the group kills processes the command left running, so the
     // pipes they hold close and the readers finish.
-    drop(group);
+    group.close();
     drain(&rx, &mut capture);
     Ok(render(capture, ending?, timeout_ms))
 }
@@ -173,11 +173,19 @@ pub(super) fn supervise(
     cancel: &AtomicBool,
 ) -> Result<Ending, String> {
     let started = Instant::now();
+    // Zero while the pipes are open; once they close, the pause between
+    // exit checks, starting at 1 ms and doubling up to POLL.
+    let mut idle = Duration::ZERO;
     loop {
-        match rx.recv_timeout(POLL) {
-            Ok(chunk) => capture.push(&chunk),
-            Err(RecvTimeoutError::Timeout) => {}
-            Err(RecvTimeoutError::Disconnected) => std::thread::sleep(POLL),
+        if idle.is_zero() {
+            match rx.recv_timeout(POLL) {
+                Ok(chunk) => capture.push(&chunk),
+                Err(RecvTimeoutError::Timeout) => {}
+                Err(RecvTimeoutError::Disconnected) => idle = Duration::from_millis(1),
+            }
+        } else {
+            std::thread::sleep(idle.min(deadline.saturating_duration_since(Instant::now())));
+            idle = (idle * 2).min(POLL);
         }
         match child.try_wait() {
             Ok(Some(status)) => return Ok(Ending::Exited(status)),

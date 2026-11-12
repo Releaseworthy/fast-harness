@@ -4,7 +4,7 @@
 mod antigravity_support;
 
 use antigravity_support::*;
-use fast_harness_core::accounts::google::{is_validation, validation_url};
+use fast_harness_core::accounts::google::{is_disabled, is_validation, validation_url};
 use fast_harness_core::http::ScriptedResponse;
 use fast_harness_core::llm::{Auth, ErrorKind, Provider};
 use fast_harness_core::types::StopReason;
@@ -101,12 +101,36 @@ fn verification_request_is_detected_with_its_url() {
 }
 
 #[test]
+fn terms_of_service_ban_is_a_permanent_auth_error() {
+    // The live body of 2026-11-12 (docs/perf.md, Experiments 2026-11-12).
+    let error = json!({"code": 403, "status": "PERMISSION_DENIED",
+        "message": "This service has been disabled in this account for violation of Terms of Service.",
+        "details": [{"@type": "type.googleapis.com/google.rpc.ErrorInfo",
+            "reason": "TOS_VIOLATION", "domain": "cloudcode-pa.googleapis.com"}]});
+    let out = call(vec![manifest(), google_error(403, error)]);
+    let err = out.err();
+    assert_eq!(err.kind, ErrorKind::Auth);
+    assert!(is_disabled(&err.message), "{}", err.message);
+    assert!(!is_validation(&err.message));
+    assert!(err.message.contains("Terms of Service"), "{}", err.message);
+    // Matched by the words alone too, without the ErrorInfo reason.
+    let bare = json!({"code": 403, "status": "PERMISSION_DENIED",
+        "message": "This service has been disabled in this account for violation of Terms of Service."});
+    assert!(is_disabled(
+        &call(vec![manifest(), google_error(403, bare)])
+            .err()
+            .message
+    ));
+}
+
+#[test]
 fn plain_forbidden_is_auth_without_validation() {
     let error = json!({"code": 403, "status": "PERMISSION_DENIED", "message": "The caller does not have permission"});
     let out = call(vec![manifest(), google_error(403, error)]);
     let err = out.err();
     assert_eq!(err.kind, ErrorKind::Auth);
     assert!(!is_validation(&err.message));
+    assert!(!is_disabled(&err.message));
 }
 
 #[test]

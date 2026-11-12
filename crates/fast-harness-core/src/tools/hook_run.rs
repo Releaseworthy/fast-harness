@@ -70,7 +70,7 @@ fn execute(
     let deadline = Instant::now() + Duration::from_millis(entry.timeout_ms());
     let mut out = Capture::default();
     let ending = supervise(&mut child, &group, &out_rx, &mut out, deadline, cancel);
-    drop(group);
+    group.close();
     drain(&out_rx, &mut out);
     let mut err = Capture::default();
     drain(&err_rx, &mut err);

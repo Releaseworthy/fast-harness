@@ -20,6 +20,10 @@ impl ProcessGroup {
         Ok((ProcessGroup { pid: child.id() }, child))
     }
 
+    /// Ends the group after the child is done. Without process trees there
+    /// is nothing to release: leftover grandchildren keep running.
+    pub fn close(self) {}
+
     pub fn kill(&self) -> Result<(), PlatformError> {
         if !cfg!(unix) {
             return Err(PlatformError::Unsupported);

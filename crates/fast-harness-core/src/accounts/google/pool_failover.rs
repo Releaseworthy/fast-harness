@@ -16,6 +16,15 @@ pub fn is_validation(message: &str) -> bool {
     message.to_lowercase().contains(VALIDATION)
 }
 
+/// The words the Antigravity provider puts in front of a permanent 403
+/// (`llm/antigravity/provider/error.rs` `DISABLED_WORDS`).
+const DISABLED: &str = "account disabled by the provider";
+
+/// Whether an auth error says Google disabled the account for good.
+pub fn is_disabled(message: &str) -> bool {
+    message.to_lowercase().contains(DISABLED)
+}
+
 /// The first `http://` or `https://` URL in `message`, without trailing punctuation.
 pub fn validation_url(message: &str) -> Option<String> {
     let start = message
@@ -54,6 +63,7 @@ impl GoogleAuth {
         let soonest = state
             .holds
             .values()
+            .filter(|h| h.reason != HoldReason::Disabled)
             .map(|h| h.until)
             .filter(|u| *u > now)
             .min();
@@ -98,6 +108,25 @@ impl GoogleAuth {
         state.hold(id, until, HoldReason::Validation, url);
         state.errors.insert(id.to_string(), err.message.clone());
         self.fail_over(&mut state, id, model, http)
+    }
+
+    /// A permanent refusal: no refresh or wait helps, so the turn fails at
+    /// once unless another account takes over.
+    fn on_disabled(
+        &self,
+        lease: &Lease,
+        err: &LlmError,
+        model: &str,
+        http: &dyn Transport,
+    ) -> Failover {
+        let mut state = self.lock();
+        let id = lease.account.as_str();
+        state.hold(id, u64::MAX, HoldReason::Disabled, None);
+        state.errors.insert(id.to_string(), err.message.clone());
+        match self.fail_over(&mut state, id, model, http) {
+            Failover::Retry => Failover::Retry,
+            _ => Failover::Fail,
+        }
     }
 
     fn on_auth(
@@ -176,6 +205,9 @@ impl AuthSource for GoogleAuth {
         }
         match err.kind {
             ErrorKind::RateLimit => self.on_limit(lease, err, model, http),
+            ErrorKind::Auth if is_disabled(&err.message) => {
+                self.on_disabled(lease, err, model, http)
+            }
             ErrorKind::Auth if is_validation(&err.message) => {
                 self.on_validation(lease, err, model, http)
             }

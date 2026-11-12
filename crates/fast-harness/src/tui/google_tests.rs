@@ -73,6 +73,8 @@ fn google_row_states() {
     );
     let verify = google_row(&status(Some(hold(HoldReason::Validation)), None), NOW, "*");
     assert!(verify.ends_with("needs verification"), "{verify}");
+    let banned = google_row(&status(Some(hold(HoldReason::Disabled)), None), NOW, "*");
+    assert!(banned.ends_with("disabled by the provider"), "{banned}");
     let mut failed = status(None, None);
     failed.last_error = Some("Google refused (HTTP 500)".into());
     failed.active = false;

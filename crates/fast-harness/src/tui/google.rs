@@ -46,6 +46,7 @@ fn state(status: &GoogleStatus, now: u64) -> String {
             HoldReason::RateLimit => format!("held (rate limit), resumes {left}"),
             HoldReason::Validation => "needs verification".into(),
             HoldReason::Refused => format!("held (refused), resumes {left}"),
+            HoldReason::Disabled => "disabled by the provider".into(),
         };
     }
     match &status.last_error {

@@ -202,6 +202,58 @@ https://accounts.example.com/verify?id=fake-1.";
     assert!(home.google.status().iter().all(|s| s.hold.is_none()));
 }
 
+/// The message the Antigravity provider makes of the live TOS 403.
+const TOS_MESSAGE: &str = "account disabled by the provider: PERMISSION_DENIED (TOS_VIOLATION): \
+This service has been disabled in this account for violation of Terms of Service.";
+
+#[test]
+fn disabled_only_account_fails_at_once_without_a_hold_wait() {
+    let home = home();
+    let a = add(&home, "a", NOW + HOUR);
+    home.google.use_account(&a).unwrap();
+    let first = lease(&home);
+    let err = LlmError::new(ErrorKind::Auth, TOS_MESSAGE);
+    let http = ScriptedTransport::new(vec![]);
+    let outcome = home.google.on_failure(&first, &err, "gemini-3-pro", &http);
+    assert_eq!(outcome, Failover::Fail, "no hour-long wait, no refresh");
+    assert!(http.requests().is_empty(), "no token refresh for a ban");
+    let status = home.google.status();
+    let held = status_of(&status, &a).hold.clone().unwrap();
+    assert_eq!(held.reason, HoldReason::Disabled);
+    assert_eq!(
+        status_of(&status, &a).last_error.as_deref(),
+        Some(TOS_MESSAGE)
+    );
+    // The account stays in the list.
+    assert_eq!(status.len(), 1);
+}
+
+#[test]
+fn disabled_account_hands_over_to_another() {
+    let home = home();
+    let a = add(&home, "a", NOW + HOUR);
+    let b = add(&home, "b", NOW + HOUR);
+    home.google.use_account(&a).unwrap();
+    let first = lease(&home);
+    let err = LlmError::new(ErrorKind::Auth, TOS_MESSAGE);
+    let http = ScriptedTransport::new(vec![]);
+    assert_eq!(
+        home.google.on_failure(&first, &err, "gemini-3-pro", &http),
+        Failover::Retry
+    );
+    assert_eq!(lease(&home).account, b);
+    // A rate limit on b never waits for a's permanent hold.
+    let second = lease(&home);
+    let limit = LlmError::new(ErrorKind::RateLimit, "429");
+    let wait = home
+        .google
+        .on_failure(&second, &limit, "gemini-3-pro", &http);
+    assert!(
+        matches!(wait, Failover::Wait(ms) if ms <= 15 * 60_000),
+        "{wait:?}"
+    );
+}
+
 #[test]
 fn other_errors_and_foreign_leases_fail() {
     let home = home();

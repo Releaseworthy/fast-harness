@@ -23,6 +23,25 @@ fn is_validation(message: &str) -> bool {
     message.to_lowercase().contains(VALIDATION_WORDS)
 }
 
+/// The words `accounts::google::is_disabled` looks for: Google turned the
+/// service off for the account for good (a test checks the two agree).
+const DISABLED_WORDS: &str = "account disabled by the provider";
+
+/// `ErrorInfo.reason` and words of a 403 for a Terms of Service violation
+/// ("This service has been disabled in this account for violation of Terms
+/// of Service", seen live 2026-11-12).
+const TOS_REASON: &str = "TOS_VIOLATION";
+const TOS_WORDS: &str = "violation of terms of service";
+
+/// `message` marked with [`DISABLED_WORDS`] when Google disabled the account.
+fn disabled(error: &Value, message: &str) -> Option<String> {
+    let by_reason = details(error)
+        .iter()
+        .any(|d| d["reason"].as_str() == Some(TOS_REASON));
+    let by_words = message.to_lowercase().contains(TOS_WORDS);
+    (by_reason || by_words).then(|| format!("{DISABLED_WORDS}: {message}"))
+}
+
 /// A 400 that says the prompt does not fit (PLAN.md D38). Gemini's wording
 /// "The input token count (n) exceeds the maximum number of tokens allowed
 /// (m)" and Claude's "prompt is too long" through Antigravity; neither was
@@ -107,7 +126,7 @@ fn from_google(status: u16, error: &Value, head: Option<HttpHead>) -> LlmError {
         kind = ErrorKind::ContextOverflow;
     }
     if status == 403 || google == "PERMISSION_DENIED" {
-        if let Some(text) = validation(error, &message) {
+        if let Some(text) = disabled(error, &message).or_else(|| validation(error, &message)) {
             message = text;
         }
     }

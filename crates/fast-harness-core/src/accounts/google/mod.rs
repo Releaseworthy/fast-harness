@@ -39,7 +39,7 @@ pub use pool::{
     GoogleAuth, GoogleHold, GoogleStatus, HoldReason, GOOGLE_BROKEN_HOLD_MS,
     GOOGLE_REFRESH_MARGIN_MS,
 };
-pub use pool_failover::{is_validation, validation_url};
+pub use pool_failover::{is_disabled, is_validation, validation_url};
 pub use project::{ProjectInfo, FALLBACK_PROJECT_ID};
 pub use quota::{parse_quota_summary, GoogleQuota, QuotaGroup, QuotaWindow};
 pub use signin::{complete_sign_in, fetch_sign_in, save_sign_in, SignIn};

@@ -32,6 +32,9 @@ pub enum HoldReason {
     Validation,
     /// The token or the refresh token was refused.
     Refused,
+    /// Google disabled the service for the account (a Terms of Service
+    /// violation): permanent, kept until the user chooses the account again.
+    Disabled,
 }
 
 /// A running hold.
