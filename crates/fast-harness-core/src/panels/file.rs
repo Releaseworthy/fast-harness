@@ -6,6 +6,7 @@ use std::path::{Path, PathBuf};
 
 use serde::Deserialize;
 
+use super::native::{NativePanel, NativeRef};
 use crate::config::layers::{kind_files, LayerFile, Layers, Skipped, Source};
 
 /// Where a panel opens.
@@ -40,6 +41,8 @@ pub struct PanelFile {
     /// against it, and the process sees it as `FAST_HARNESS_PANEL_DIR`.
     pub dir: PathBuf,
     pub source: Source,
+    /// A native plugin's panel (D52), drawn in process instead of `command`.
+    pub native: Option<NativeRef>,
 }
 
 #[derive(Deserialize)]
@@ -97,5 +100,23 @@ fn read(path: &Path, source: Source) -> Result<PanelFile, String> {
         args: raw.args,
         dir: path.parent().map(Path::to_path_buf).unwrap_or_default(),
         source,
+        native: None,
     })
+}
+
+impl PanelFile {
+    /// The entry of a native plugin's panel (D52): no command, no file.
+    pub fn native(panel: std::sync::Arc<dyn NativePanel>) -> PanelFile {
+        PanelFile {
+            id: panel.id().to_string(),
+            title: panel.title().to_string(),
+            icon: panel.icon().to_string(),
+            place: panel.place(),
+            command: String::new(),
+            args: Vec::new(),
+            dir: PathBuf::new(),
+            source: Source::Default,
+            native: Some(NativeRef(panel)),
+        }
+    }
 }

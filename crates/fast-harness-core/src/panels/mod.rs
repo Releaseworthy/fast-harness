@@ -6,6 +6,7 @@
 //! the GUI and the TUI draw the flat [`Row`]s.
 
 mod file;
+mod native;
 mod process;
 mod proto;
 mod view;
@@ -14,12 +15,13 @@ mod view;
 mod tests;
 
 pub use file::{load, PanelFile, Place};
+pub use native::{NativePanel, NativeRef};
 pub use process::{Msg, Process};
 pub use proto::{event_line, init_line, parse_line, session_event, Incoming};
 pub use view::{flatten, patch, Cell, Row};
 
 use std::path::Path;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use serde_json::Value;
 
@@ -48,6 +50,10 @@ pub struct Panel {
     /// The process ended (or never started); opening the panel restarts it.
     pub ended: bool,
     events: Vec<String>,
+    /// A native panel (D52): its answers wait here for [`Panel::poll`],
+    /// like a process's lines, and `wake` tells the front end.
+    queued: Mutex<Vec<Incoming>>,
+    wake: Option<Wake>,
 }
 
 impl Panel {
@@ -60,16 +66,39 @@ impl Panel {
             status: String::new(),
             ended: false,
             events: Vec::new(),
+            queued: Mutex::default(),
+            wake: None,
         }
     }
 
     /// Whether the command was started (it never is before the first open).
     pub fn started(&self) -> bool {
-        self.process.is_some()
+        self.process.is_some() || self.wake.is_some()
+    }
+
+    /// Queues a native panel's answer and wakes the front end.
+    fn queue(&self, messages: Vec<Incoming>) {
+        if messages.is_empty() {
+            return;
+        }
+        self.queued
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .extend(messages);
+        if let Some(wake) = &self.wake {
+            wake();
+        }
     }
 
     /// Starts the command unless it runs; a start failure becomes the status.
     pub fn open(&mut self, host: Host<'_>, wake: Wake) {
+        if let Some(native) = self.file.native.clone() {
+            if self.wake.is_none() {
+                self.wake = Some(wake);
+                self.queue(native.0.open(host));
+            }
+            return;
+        }
         if self.process.is_some() && !self.ended {
             return;
         }
@@ -88,7 +117,11 @@ impl Panel {
 
     /// Applies every queued message; true when the view or status changed.
     pub fn poll(&mut self) -> bool {
-        let mut changed = false;
+        let queued = std::mem::take(&mut *self.queued.lock().unwrap_or_else(|p| p.into_inner()));
+        let mut changed = !queued.is_empty();
+        for incoming in queued {
+            self.apply(incoming);
+        }
         while let Some(msg) = self.process.as_ref().and_then(Process::try_recv) {
             changed = true;
             match msg {
@@ -126,6 +159,9 @@ impl Panel {
 
     /// Sends a `click`, `submit` or `change` event to the running process.
     pub fn send(&self, kind: &str, id: &str, value: Value) {
+        if let Some(native) = self.file.native.as_ref().filter(|_| self.wake.is_some()) {
+            return self.queue(native.0.event(kind, id, &value));
+        }
         if let Some(process) = self.process.as_ref().filter(|_| !self.ended) {
             process.send(event_line(kind, id, value));
         }
@@ -137,6 +173,9 @@ impl Panel {
             return;
         };
         if self.events.iter().any(|e| e == kind) {
+            if let Some(native) = self.file.native.as_ref().filter(|_| self.wake.is_some()) {
+                return self.queue(native.0.session(event));
+            }
             let line = serde_json::json!({ "type": "session", "event": body });
             if let Some(process) = self.process.as_ref().filter(|_| !self.ended) {
                 process.send(line.to_string());

@@ -85,6 +85,8 @@ fn run(ui: MainWindow, note: Option<String>) {
 /// Loads the settings and wires the app, or shows why it cannot.
 fn start_runtime(ui: &MainWindow, stop: &Arc<AtomicBool>) {
     let ui = ui.clone_strong();
+    // Native plugins of a custom build (PLAN.md D52); none in official builds.
+    fast_harness_plugins::install();
     match Runtime::load() {
         Ok(mut rt) => {
             rt.interactive = true;

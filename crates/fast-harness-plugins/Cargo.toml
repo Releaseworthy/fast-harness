@@ -1,0 +1,15 @@
+[package]
+name = "fast-harness-plugins"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Fast Harness native plugins: register_all generated from plugins.toml (docs/plugins.md)."
+build = "build.rs"
+
+[dependencies]
+fast-harness-core.workspace = true
+# The plugin crates of plugins.toml, written by `bun scripts/apply-plugins.ts`
+# (docs/plugins.md); build.rs fails when this list and plugins.toml differ.
+# BEGIN PLUGINS
+# END PLUGINS

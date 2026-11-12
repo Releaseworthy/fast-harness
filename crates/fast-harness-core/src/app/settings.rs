@@ -175,20 +175,29 @@ impl Runtime {
             mcp,
             panels,
         } = settings;
-        self.panels = panels;
+        // Native plugins (D52): empty in the official builds.
+        let plugins = crate::ext::installed();
+        self.panels = super::plugins::with_panels(panels, &plugins);
         let transport: Arc<dyn Transport> = self.transport.clone();
         let mcp = McpServers::new(&self.home, mcp, Some(transport));
-        let extensions = Extensions::new(index).with_hooks(hooks).with_mcp(mcp);
+        let extensions = Extensions::new(index)
+            .with_hooks(hooks)
+            .with_mcp(mcp)
+            .with_native(plugins.tools().to_vec(), plugins.hooks().to_vec());
         // A tool file's `outputBytes` unless `toolOutput` names the tool.
         for (name, bytes) in extensions.output_bytes() {
             layered.config.tool_output.entry(name).or_insert(bytes);
         }
         self.extensions = Arc::new(extensions);
-        custom::remember(&providers);
+        let native = super::plugins::providers(&providers, &plugins);
+        let mut known = providers.clone();
+        known.extend(native.iter().map(|(_, file)| file.clone()));
+        custom::remember(&known);
         self.custom = providers
             .into_iter()
             .filter(ProviderFile::is_custom)
             .map(|file| (provider_for(&file), file))
+            .chain(native)
             .collect();
         let mut notes = self.notes.lock().unwrap_or_else(|p| p.into_inner());
         for note in [layered.layers.untrusted_note(), keys.note()]
@@ -260,6 +269,9 @@ pub fn doctor(settings: &Settings) -> String {
         (None, _) => "none".into(),
     };
     let _ = writeln!(out, "project: {project}");
+    if let Some(line) = super::plugins::summary(&crate::ext::installed()) {
+        let _ = writeln!(out, "{line}");
+    }
     let _ = writeln!(out, "loaded:");
     for file in &layered.report.loaded {
         let _ = writeln!(out, "  {:<8} {}", file.source.word(), file.path.display());

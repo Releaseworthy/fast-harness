@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/fast-harness-core", "crates/fast-harness", "crates/fast-harness-gui"]
+members = ["crates/fast-harness-core", "crates/fast-harness", "crates/fast-harness-gui", "crates/fast-harness-plugins"]
 
 [workspace.package]
 version = "0.1.0"
@@ -11,6 +11,8 @@ repository = "https://github.com/Releaseworthy/fast-harness"
 # The whole dependency list (PLAN.md, D1): adding a crate needs the owner's OK.
 [workspace.dependencies]
 fast-harness-core = { path = "crates/fast-harness-core" }
+# The generated register_all of native plugins (PLAN.md D52, docs/plugins.md).
+fast-harness-plugins = { path = "crates/fast-harness-plugins" }
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.154"
 ureq = { version = "3.5.1", default-features = false, features = ["rustls", "platform-verifier"] }
@@ -44,3 +46,9 @@ strip = true
 
 [profile.dev]
 debug = 1
+
+# A plugin's git dependency on fast-harness-core resolves to this checkout, so
+# plugins and the binaries share one core; written by scripts/apply-plugins.ts
+# only when plugins.toml lists plugins (an unused patch makes cargo warn).
+# BEGIN PLUGIN PATCH
+# END PLUGIN PATCH

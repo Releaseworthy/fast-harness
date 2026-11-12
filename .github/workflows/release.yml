@@ -1,0 +1,17 @@
+# Official releases: a `v*` tag builds the official binaries with the same
+# reusable workflow plugin repositories use, with an empty plugin list
+# (PLAN.md D52), and attaches them to the tag's release.
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+
+jobs:
+  build:
+    permissions:
+      contents: write
+    uses: ./.github/workflows/build-custom.yml
+    with:
+      ref: ${{ github.ref_name }}
+      plugins: ""

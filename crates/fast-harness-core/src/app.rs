@@ -304,6 +304,7 @@ impl Runtime {
 mod ag_models;
 mod host;
 mod models;
+mod plugins;
 pub mod reflect;
 mod settings;
 mod slash;

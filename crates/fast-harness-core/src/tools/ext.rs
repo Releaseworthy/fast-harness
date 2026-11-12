@@ -4,8 +4,10 @@
 //! from the index; every registry of the session is built from it, so the
 //! tool list a session freezes is builtins plus the index.
 
+use std::sync::Arc;
+
 use super::command::CommandTool;
-use super::hooks::Hooks;
+use super::hooks::{HookEvent, Hooks, NativeHook};
 use super::mcp::wire::{self, CallTool, DescribeTool, McpTool};
 use super::mcp::McpServers;
 use super::skills::{skills_line, Skill};
@@ -24,6 +26,10 @@ pub struct Extensions {
     pub hooks: Hooks,
     /// The `mcp.json` servers (PLAN.md D47); none started yet.
     pub mcp: McpServers,
+    /// Tools of native plugins (D52), added after the built-ins.
+    native_tools: Vec<Arc<dyn Tool>>,
+    /// In-process hooks of native plugins (D52), run after `hooks`.
+    pub native_hooks: Vec<Arc<dyn NativeHook>>,
 }
 
 impl Extensions {
@@ -37,7 +43,32 @@ impl Extensions {
             commands,
             hooks: Hooks::default(),
             mcp: McpServers::default(),
+            native_tools: Vec::new(),
+            native_hooks: Vec::new(),
         }
+    }
+
+    /// These extensions with the tools and hooks of native plugins.
+    pub fn with_native(
+        mut self,
+        tools: Vec<Arc<dyn Tool>>,
+        hooks: Vec<Arc<dyn NativeHook>>,
+    ) -> Extensions {
+        self.native_tools = tools;
+        self.native_hooks = hooks;
+        self
+    }
+
+    /// Whether any hook (file entry or native) exists.
+    pub fn has_hooks(&self) -> bool {
+        !self.hooks.is_empty() || !self.native_hooks.is_empty()
+    }
+
+    /// Whether a PostToolUse hook matches tool `name`.
+    pub fn has_post_tool(&self, name: &str) -> bool {
+        let event = HookEvent::PostToolUse;
+        self.hooks.matching(event, Some(name)).next().is_some()
+            || (self.native_hooks.iter()).any(|hook| hook.matches(event, Some(name)))
     }
 
     /// These extensions running `hooks`.
@@ -118,6 +149,15 @@ impl Extensions {
     /// The command tools whose name no tool of `registry` has yet, then
     /// the MCP tools ([`Extensions::add_mcp`]).
     pub fn add_commands(&self, registry: &mut Registry) {
+        for tool in &self.native_tools {
+            if !registry
+                .specs()
+                .iter()
+                .any(|spec| spec.name == tool.spec().name)
+            {
+                self.add(registry, Box::new(Shared(Arc::clone(tool))));
+            }
+        }
         for tool in &self.commands {
             let name = tool.spec().name;
             if !registry.specs().iter().any(|spec| spec.name == name) {
@@ -228,6 +268,19 @@ impl Tool for Described {
 
     fn run(&self, args: &serde_json::Value, ctx: &ToolCtx<'_>) -> ToolOutput {
         self.tool.run(args, ctx)
+    }
+}
+
+/// A native plugin's tool, shared by every registry of the process.
+struct Shared(Arc<dyn Tool>);
+
+impl Tool for Shared {
+    fn spec(&self) -> ToolSpec {
+        self.0.spec()
+    }
+
+    fn run(&self, args: &serde_json::Value, ctx: &ToolCtx<'_>) -> ToolOutput {
+        self.0.run(args, ctx)
     }
 }
 

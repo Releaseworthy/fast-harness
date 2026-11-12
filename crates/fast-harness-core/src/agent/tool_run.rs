@@ -199,7 +199,7 @@ fn run_one(run: &Run<'_>, call: &Call) -> (ToolOutput, Vec<Record>, Vec<String>)
         call_id: &call.id,
         session: Some(run.session),
     };
-    let go = || match agent.parts.extensions.hooks.is_empty() {
+    let go = || match !agent.parts.extensions.has_hooks() {
         true => (
             agent.tools.run(&call.name, &call.arguments, &ctx),
             Vec::new(),

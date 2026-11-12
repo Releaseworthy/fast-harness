@@ -22,6 +22,8 @@ use std::process::ExitCode;
 use args::Command;
 
 fn main() -> ExitCode {
+    // Native plugins of a custom build (PLAN.md D52); none in official builds.
+    fast_harness_plugins::install();
     let argv: Vec<String> = std::env::args().skip(1).collect();
     let terminal = std::io::stdin().is_terminal() && std::io::stdout().is_terminal();
     let parsed = if argv.is_empty() && terminal {

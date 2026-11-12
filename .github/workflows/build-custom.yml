@@ -1,0 +1,154 @@
+# Builds Fast Harness with native plugins and UI overrides (PLAN.md D52,
+# docs/plugins.md). Reusable: a plugin repository calls it with
+#   uses: Releaseworthy/fast-harness/.github/workflows/build-custom.yml@main
+# (https://docs.github.com/en/actions/how-tos/reuse-automations/reuse-workflows).
+# In a called workflow the `github` context is the caller's: the caller's
+# repository is checked out next to Fast Harness, and on a tag the binaries
+# are attached to the caller's release with the caller's GITHUB_TOKEN.
+# Unverified until the first run: that windows-latest has the MSVC
+# toolchain `ring` needs, the Linux packages Slint needs, and the minutes.
+name: build-custom
+
+on:
+  workflow_call:
+    inputs:
+      ref:
+        description: Fast Harness tag or commit to build
+        type: string
+        default: main
+      plugins:
+        description: The plugin list, plugins.toml text or JSON; a relative `path` is relative to the caller repository
+        type: string
+        default: ""
+      ui:
+        description: Folder in the caller repository whose .slint files replace crates/fast-harness-gui/ui files
+        type: string
+        default: ""
+      targets:
+        description: JSON list of Rust target triples
+        type: string
+        default: '["x86_64-pc-windows-msvc", "x86_64-unknown-linux-gnu"]'
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Fast Harness tag or commit to build
+        type: string
+        default: main
+      plugins:
+        description: The plugin list, plugins.toml text or JSON
+        type: string
+        default: ""
+      ui:
+        description: Folder with .slint overrides
+        type: string
+        default: ""
+      targets:
+        description: JSON list of Rust target triples
+        type: string
+        default: '["x86_64-pc-windows-msvc", "x86_64-unknown-linux-gnu"]'
+
+permissions:
+  contents: read
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.matrix.outputs.matrix }}
+    steps:
+      - id: matrix
+        env:
+          TARGETS: ${{ inputs.targets }}
+        run: |
+          matrix=$(echo "$TARGETS" | jq -c '[.[] | {target: ., os: (if test("windows") then "windows-latest" elif test("apple") then "macos-latest" else "ubuntu-latest" end)}]')
+          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: plan
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: write
+    defaults:
+      run:
+        shell: bash
+    env:
+      TARGET: ${{ matrix.target }}
+      CARGO_TERM_COLOR: always
+    steps:
+      - name: Check out Fast Harness
+        uses: actions/checkout@v7
+        with:
+          repository: Releaseworthy/fast-harness
+          ref: ${{ inputs.ref }}
+          path: fast-harness
+      - name: Check out the caller
+        uses: actions/checkout@v7
+        with:
+          path: caller
+      - uses: oven-sh/setup-bun@v2
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: fast-harness
+          key: ${{ matrix.target }}
+      - name: Linux packages for Slint (winit, fontconfig)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libfontconfig1-dev libxkbcommon-dev libxcb-shape0-dev libxcb-xfixes0-dev
+      - name: Write the plugin list
+        env:
+          PLUGINS: ${{ inputs.plugins }}
+        run: |
+          printf '%s\n' "$PLUGINS" > "$RUNNER_TEMP/plugins.input"
+          bun fast-harness/scripts/apply-plugins.ts --from "$RUNNER_TEMP/plugins.input" --base "$GITHUB_WORKSPACE/caller"
+          cat fast-harness/plugins.toml
+      - name: Copy the UI overrides
+        if: inputs.ui != ''
+        env:
+          UI: ${{ inputs.ui }}
+        run: |
+          test -d "caller/$UI" || { echo "ui folder $UI not found in the caller repository"; exit 1; }
+          cp -R "caller/$UI/." fast-harness/crates/fast-harness-gui/ui/
+          find fast-harness/crates/fast-harness-gui/ui -name '*.slint' -exec touch {} +
+      - name: Gates
+        working-directory: fast-harness
+        run: |
+          cargo fmt --all -- --check
+          cargo clippy --workspace --all-targets -- -D warnings
+          cargo test --workspace
+      - name: Build release binaries
+        working-directory: fast-harness
+        run: cargo build --release --target "$TARGET" -p fast-harness -p fast-harness-gui
+      - name: Package
+        run: |
+          ext=""; case "$TARGET" in *windows*) ext=".exe";; esac
+          name="fast-harness-$TARGET"
+          mkdir -p "dist/$name"
+          for bin in fast-harness fast-harness-gui; do
+            cp "fast-harness/target/$TARGET/release/$bin$ext" "dist/$name/"
+          done
+          cp fast-harness/plugins.toml "dist/$name/"
+          (cd fast-harness && git rev-parse HEAD) > "dist/$name/fast-harness-commit.txt"
+          case "$TARGET" in
+            *windows*) (cd dist && 7z a -tzip "$name.zip" "$name" > /dev/null && echo "ASSET=dist/$name.zip" >> "$GITHUB_ENV");;
+            *) tar -C dist -czf "dist/$name.tar.gz" "$name" && echo "ASSET=dist/$name.tar.gz" >> "$GITHUB_ENV";;
+          esac
+      - uses: actions/upload-artifact@v7
+        with:
+          name: fast-harness-${{ matrix.target }}
+          path: dist/fast-harness-${{ matrix.target }}/
+      - name: Attach to the caller's release
+        if: github.ref_type == 'tag'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+          REPO: ${{ github.repository }}
+        run: |
+          gh release view "$TAG" --repo "$REPO" > /dev/null 2>&1 || gh release create "$TAG" --repo "$REPO" --title "$TAG" --notes "Built by build-custom.yml" || true
+          gh release upload "$TAG" "$ASSET" --repo "$REPO" --clobber

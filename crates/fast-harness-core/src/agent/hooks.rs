@@ -5,6 +5,7 @@
 //! ignored (fail open). Without hooks nothing here runs a process.
 
 use std::sync::atomic::AtomicBool;
+use std::time::Instant;
 
 use serde_json::{json, Value};
 
@@ -13,7 +14,7 @@ use crate::agent::turn::{traced, Res, Turn};
 use crate::agent::Agent;
 use crate::config::compaction::Compaction;
 use crate::events::{AgentEvent, TurnOutcome};
-use crate::tools::hooks::{self, Answer, HookEvent};
+use crate::tools::hooks::{self, Answer, HookEvent, HookRun};
 use crate::tools::{ToolCtx, ToolOutput};
 use crate::trace::kind;
 use crate::types::Role;
@@ -53,8 +54,8 @@ pub(super) fn fire(
     data: Value,
 ) -> Verdict {
     let mut verdict = Verdict::default();
-    let hooks = &agent.parts.extensions.hooks;
-    if hooks.is_empty() {
+    let ext = &agent.parts.extensions;
+    if !ext.has_hooks() {
         return verdict;
     }
     let cwd = &agent.parts.cwd;
@@ -63,32 +64,54 @@ pub(super) fn fire(
     if let (Value::Object(map), Value::Object(data)) = (&mut input, data) {
         map.extend(data);
     }
-    for entry in hooks.matching(event, tool) {
+    for entry in ext.hooks.matching(event, tool) {
         let run = hooks::run(entry, &input, cwd, cancel);
         let mut command = entry.command.clone();
         for arg in &entry.args {
             command = format!("{command} {arg}");
         }
-        let result = match &run.answer {
-            Ok(answer) => Ok(answer.decision()),
-            Err(error) => Err(error.clone()),
-        };
-        verdict.records.push(Record {
-            event,
-            command,
-            ms: run.ms,
-            result,
-        });
-        if let Ok(answer) = run.answer {
-            if verdict.take(event, answer, &mut input) {
-                break;
-            }
+        if verdict.record(event, command, run, &mut input) {
+            return verdict;
+        }
+    }
+    // Native plugin hooks (D52) after the file entries, same input and answer.
+    for hook in (ext.native_hooks.iter()).filter(|hook| hook.matches(event, tool)) {
+        let started = Instant::now();
+        let answer = hook.run(event, &input);
+        let ms = started.elapsed().as_millis() as u64;
+        let command = format!("native:{}", hook.name());
+        if verdict.record(event, command, HookRun { ms, answer }, &mut input) {
+            break;
         }
     }
     verdict
 }
 
 impl Verdict {
+    /// Records one run and merges its answer; true on a block.
+    fn record(
+        &mut self,
+        event: HookEvent,
+        command: String,
+        run: HookRun,
+        input: &mut Value,
+    ) -> bool {
+        let result = match &run.answer {
+            Ok(answer) => Ok(answer.decision()),
+            Err(error) => Err(error.clone()),
+        };
+        self.records.push(Record {
+            event,
+            command,
+            ms: run.ms,
+            result,
+        });
+        match run.answer {
+            Ok(answer) => self.take(event, answer, input),
+            Err(_) => false,
+        }
+    }
+
     /// Merges one answer (keys of other events are ignored); a later hook
     /// sees rewritten arguments and output in its input. True on a block.
     fn take(&mut self, event: HookEvent, answer: Answer, input: &mut Value) -> bool {
@@ -137,12 +160,7 @@ pub(super) fn run_tool(
     let raw = pre
         .arguments
         .map_or_else(|| raw.to_string(), |args| args.to_string());
-    let hooks = &agent.parts.extensions.hooks;
-    if hooks
-        .matching(HookEvent::PostToolUse, Some(name))
-        .next()
-        .is_none()
-    {
+    if !agent.parts.extensions.has_post_tool(name) {
         return (agent.tools.run(name, &raw, ctx), records, context);
     }
     let output = agent.tools.run_with(name, &raw, ctx, &mut |args, output| {
@@ -172,7 +190,7 @@ fn blocked(reason: &str) -> ToolOutput {
 
 impl Turn<'_> {
     fn has_hooks(&self) -> bool {
-        !self.agent.parts.extensions.hooks.is_empty()
+        self.agent.parts.extensions.has_hooks()
     }
 
     /// Runs the hooks of `event`, traces them and keeps their context texts

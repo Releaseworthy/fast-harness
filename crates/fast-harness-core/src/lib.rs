@@ -3,7 +3,10 @@
 //! Layering (a module never imports a higher one):
 //! `types` -> `http` / `sse` / `platform` -> `llm` / `tools` / `auth` -> `trace` / `session`
 //! -> `workspaces` / `accounts` -> `agent` -> `view` / `panels` / `stats` -> `reflect`
-//! -> `service` -> `app`.
+//! -> `service` -> `ext` -> `app`.
+//! `ext` is the native plugin API (PLAN.md D52); the generated
+//! `fast-harness-plugins` crate sits above the core and only the binaries
+//! depend on it.
 //! OS specific code lives only under `platform`.
 //! See PLAN.md for the decisions behind this layout.
 
@@ -13,6 +16,7 @@ pub mod app;
 pub mod auth;
 pub mod config;
 pub mod events;
+pub mod ext;
 pub mod http;
 pub mod keys;
 pub mod llm;

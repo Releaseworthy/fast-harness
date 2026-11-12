@@ -24,6 +24,7 @@ ui-files = ["slint/live-preview", "dep:slint-interpreter"]
 
 [dependencies]
 fast-harness-core.workspace = true
+fast-harness-plugins.workspace = true
 slint.workspace = true
 serde_json.workspace = true
 slint-interpreter = { workspace = true, optional = true }

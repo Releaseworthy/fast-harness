@@ -62,6 +62,21 @@ impl HookEvent {
     }
 }
 
+/// An in-process hook of a native plugin (PLAN.md D52): the seven events
+/// of [`HookEvent`] with the same input object a `hooks.json` command reads
+/// on stdin and the same [`Answer`]. Runs after the file entries of its
+/// event; an `Err` is traced as `hook/error` and ignored (fail open).
+pub trait NativeHook: Send + Sync {
+    /// Shown in traces as `native:<name>`.
+    fn name(&self) -> &str;
+    /// Whether the hook runs for `event` (and, for tool events, `tool`).
+    fn matches(&self, event: HookEvent, tool: Option<&str>) -> bool {
+        let _ = (event, tool);
+        true
+    }
+    fn run(&self, event: HookEvent, input: &Value) -> Result<Answer, String>;
+}
+
 /// One entry of a hooks file.
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "camelCase")]

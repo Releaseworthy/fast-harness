@@ -1,0 +1,15 @@
+name: build
+on:
+  push:
+  workflow_dispatch:
+jobs:
+  build:
+    permissions:
+      contents: write # attach the binaries to this repository's release on a tag
+    uses: Releaseworthy/fast-harness/.github/workflows/build-custom.yml@main
+    with:
+      ref: main # a Fast Harness tag pins the build; match the tag in Cargo.toml
+      plugins: |
+        [[plugin]]
+        name = "my-plugin"
+        path = "."

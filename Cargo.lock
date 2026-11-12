@@ -1338,6 +1338,7 @@ name = "fast-harness"
 version = "0.1.0"
 dependencies = [
  "fast-harness-core",
+ "fast-harness-plugins",
  "pulldown-cmark",
  "ratatui",
  "serde_json",
@@ -1360,10 +1361,18 @@ name = "fast-harness-gui"
 version = "0.1.0"
 dependencies = [
  "fast-harness-core",
+ "fast-harness-plugins",
  "serde_json",
  "slint",
  "slint-build",
  "slint-interpreter",
+]
+
+[[package]]
+name = "fast-harness-plugins"
+version = "0.1.0"
+dependencies = [
+ "fast-harness-core",
 ]
 
 [[package]]
