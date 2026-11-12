@@ -10,7 +10,7 @@ use crate::agent::{Agent, AgentParts, Conversation};
 use crate::events::{AgentEvent, TurnOutcome};
 use crate::llm::ToolSpec;
 use crate::tools::{self, Tool, ToolCtx, ToolOutput};
-use crate::types::Role;
+use crate::types::{Role, Usage};
 
 pub const NAME: &str = "subagent";
 
@@ -63,9 +63,12 @@ impl Tool for SubagentTool {
             };
         let agent = Agent::new(self.parts.clone(), Arc::new(tools::builtin()));
         let mut errors: Vec<String> = Vec::new();
+        let mut stats = ChildStats::default();
         let outcome = agent.run_turn(&mut conv, prompt, ctx.cancel, &mut |event| {
             if let AgentEvent::Error(message) = event {
                 errors.push(message);
+            } else {
+                stats.record(event);
             }
         });
         let text = conv
@@ -75,17 +78,64 @@ impl Tool for SubagentTool {
             .find(|m| m.role == Role::Assistant)
             .map(|m| m.text())
             .unwrap_or_default();
-        result(text, &conv.id, outcome, &errors)
+        let last = stats.line(&conv.id);
+        result(text, &last, outcome, &errors)
     }
 }
 
-fn result(text: String, session: &str, outcome: TurnOutcome, errors: &[String]) -> ToolOutput {
+/// What the child agent did, for the last line of the tool output.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct ChildStats {
+    /// The model of the last request.
+    pub model: String,
+    pub steps: u32,
+    /// Distinct tool names in first-use order.
+    pub tools: Vec<String>,
+    pub usage: Usage,
+}
+
+impl ChildStats {
+    pub fn record(&mut self, event: AgentEvent) {
+        match event {
+            AgentEvent::Request { model, .. } => self.model = model,
+            AgentEvent::StepEnd { .. } => self.steps += 1,
+            AgentEvent::ToolCall { name, .. } if !self.tools.contains(&name) => {
+                self.tools.push(name)
+            }
+            AgentEvent::TurnEnd { usage, .. } => self.usage = usage,
+            _ => {}
+        }
+    }
+
+    /// `[subagent session ID · model M · N steps · tools a, b · in I out O]`
+    /// without the empty parts.
+    pub fn line(&self, session: &str) -> String {
+        let mut parts = vec![format!("session {session}")];
+        if !self.model.is_empty() {
+            parts.push(format!("model {}", self.model));
+        }
+        match self.steps {
+            0 => {}
+            1 => parts.push("1 step".to_string()),
+            n => parts.push(format!("{n} steps")),
+        }
+        if !self.tools.is_empty() {
+            parts.push(format!("tools {}", self.tools.join(", ")));
+        }
+        if self.usage.input > 0 || self.usage.output > 0 {
+            parts.push(format!("in {} out {}", self.usage.input, self.usage.output));
+        }
+        format!("[subagent {}]", parts.join(" · "))
+    }
+}
+
+fn result(text: String, last: &str, outcome: TurnOutcome, errors: &[String]) -> ToolOutput {
     let mut content = text.trim_end().to_string();
     if outcome != TurnOutcome::Done {
         let detail = errors.last().map(|e| format!(": {e}")).unwrap_or_default();
         content.push_str(&format!("\n\nsubagent ended {outcome:?}{detail}"));
     }
-    content.push_str(&format!("\n\n[subagent session {session}]"));
+    content.push_str(&format!("\n\n{last}"));
     ToolOutput {
         content: content.trim_start().to_string(),
         is_error: outcome != TurnOutcome::Done,

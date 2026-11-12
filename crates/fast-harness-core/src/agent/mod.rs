@@ -26,7 +26,7 @@ use crate::llm::Provider;
 use crate::tools::{self, Registry};
 
 pub use conversation::{repair, Conversation, MISSING_RESULT};
-pub use subagent::SubagentTool;
+pub use subagent::{ChildStats, SubagentTool};
 
 /// Everything an agent needs besides its tools; cheap to clone (shared parts
 /// are `Arc`s), so a subagent reuses its parent's.

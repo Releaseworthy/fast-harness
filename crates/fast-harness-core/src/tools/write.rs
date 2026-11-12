@@ -13,7 +13,8 @@ impl Tool for WriteTool {
         ToolSpec {
             name: "write".into(),
             description: "Create or fully replace a UTF-8 text file with `content`. Missing \
-                parent folders are created. Reports the number of bytes written."
+                parent folders are created. Reports the bytes and lines written and whether \
+                the file was new."
                 .into(),
             schema: object_schema(
                 json!({
@@ -44,7 +45,26 @@ fn write(args: &Value, ctx: &ToolCtx<'_>) -> Result<String, String> {
         std::fs::create_dir_all(parent)
             .map_err(|err| format!("cannot create folders for {path_arg}: {err}"))?;
     }
+    // A file that cannot be read counts as new.
+    let old = std::fs::read(&path).ok();
     std::fs::write(&path, content.as_bytes())
         .map_err(|err| format!("cannot write {path_arg}: {err}"))?;
-    Ok(format!("Wrote {} bytes to {path_arg}", content.len()))
+    let lines = line_count(content);
+    let bytes = content.len();
+    Ok(match old {
+        Some(old) => format!(
+            "Wrote {bytes} bytes ({lines}) to {path_arg} (replaced {} bytes, {})",
+            old.len(),
+            line_count(&String::from_utf8_lossy(&old))
+        ),
+        None => format!("Wrote {bytes} bytes ({lines}) to {path_arg} (new file)"),
+    })
+}
+
+/// "1 line" or "N lines".
+fn line_count(text: &str) -> String {
+    match text.lines().count() {
+        1 => "1 line".to_string(),
+        n => format!("{n} lines"),
+    }
 }

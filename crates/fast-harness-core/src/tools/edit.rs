@@ -69,12 +69,30 @@ fn edit(args: &Value, ctx: &ToolCtx<'_>) -> Result<String, String> {
     };
     std::fs::write(&path, updated.as_bytes())
         .map_err(|err| format!("cannot write {path_arg}: {err}"))?;
-    let noun = if replaced == 1 {
-        "occurrence"
+    let lines = match_lines(&content, &old, replaced);
+    Ok(if replaced == 1 {
+        format!("Replaced 1 occurrence in {path_arg} at line {lines}")
     } else {
-        "occurrences"
-    };
-    Ok(format!("Replaced {replaced} {noun} in {path_arg}"))
+        format!("Replaced {replaced} occurrences in {path_arg} at lines {lines}")
+    })
+}
+
+/// The 1-based line numbers of the first `count` matches of `old` in
+/// `content`: at most 10, then ", ...".
+fn match_lines(content: &str, old: &str, count: usize) -> String {
+    let mut numbers = Vec::new();
+    let mut line = 1;
+    let mut seen = 0;
+    for (index, _) in content.match_indices(old).take(count.min(10)) {
+        line += content[seen..index].matches('\n').count();
+        seen = index;
+        numbers.push(line.to_string());
+    }
+    let mut text = numbers.join(", ");
+    if count > 10 {
+        text.push_str(", ...");
+    }
+    text
 }
 
 /// The strings to use: as given, or with CRLF line ends when the given ones
