@@ -11,7 +11,7 @@ mod unfinished;
 pub use index::{latest, list, list_counted, Listing};
 pub use unfinished::{unfinished, Unfinished};
 
-use crate::trace::{self, TraceEvent};
+use crate::trace::{self, Record, TraceEvent};
 use crate::types::{Message, Role};
 use std::io;
 use std::path::{Path, PathBuf};
@@ -129,8 +129,10 @@ pub fn summary_of(path: &Path) -> Option<SessionSummary> {
 fn summarize(header: trace::SessionHeader, events: &[TraceEvent]) -> SessionSummary {
     let title = events
         .iter()
-        .filter(|e| e.kind == trace::kind::USER_MESSAGE)
-        .find_map(|e| message_of(e).ok())
+        .find_map(|e| match e.record() {
+            Record::UserMessage(user) => Some(user.message),
+            _ => None,
+        })
         .map(|m| m.text().chars().take(TITLE_CHARS).collect::<String>())
         .unwrap_or_default();
     let turns = events
@@ -152,15 +154,22 @@ fn summarize(header: trace::SessionHeader, events: &[TraceEvent]) -> SessionSumm
     }
 }
 
-fn message_of(event: &TraceEvent) -> io::Result<Message> {
-    let value = event.data.get("message").cloned().unwrap_or_default();
-    serde_json::from_value(value).map_err(|err| {
-        let message = format!(
-            "seq {}: {} has no valid message: {err}",
-            event.seq, event.kind
-        );
-        io::Error::new(io::ErrorKind::InvalidData, message)
-    })
+/// True for the event types that carry a message (PLAN.md D61).
+fn carries_message(kind: &str) -> bool {
+    matches!(
+        kind,
+        trace::kind::USER_MESSAGE | trace::kind::ASSISTANT_MESSAGE | trace::kind::TOOL_RESULT
+    )
+}
+
+/// The error of a line that must carry a message but does not have the shape
+/// this build reads.
+fn no_message(event: &TraceEvent) -> io::Error {
+    let text = format!(
+        "seq {}: {} has no valid message: its data is not the shape this build reads",
+        event.seq, event.kind
+    );
+    io::Error::new(io::ErrorKind::InvalidData, text)
 }
 
 /// Rebuilds the conversation from `user/message`, `assistant/message` and
@@ -177,17 +186,17 @@ pub fn replay_events(events: &[TraceEvent]) -> io::Result<Vec<Message>> {
     sorted.sort_by_key(|e| e.seq);
     let mut messages = Vec::new();
     for event in sorted {
-        let role = match event.kind.as_str() {
-            trace::kind::USER_MESSAGE => Role::User,
-            trace::kind::ASSISTANT_MESSAGE => Role::Assistant,
-            trace::kind::TOOL_RESULT => Role::Tool,
-            trace::kind::COMPACTION => {
-                messages = compacted::from_event(&event.data);
+        let (role, message) = match event.record() {
+            Record::UserMessage(user) => (Role::User, user.message),
+            Record::AssistantMessage(answer) => (Role::Assistant, answer.message),
+            Record::ToolResult(result) => (Role::Tool, result.message),
+            Record::Compaction(compaction) => {
+                messages = compacted::from_event(&compaction);
                 continue;
             }
+            Record::Raw { .. } if carries_message(&event.kind) => return Err(no_message(event)),
             _ => continue,
         };
-        let message = message_of(event)?;
         if message.role != role {
             let text = format!(
                 "seq {}: {} holds a {:?} message",

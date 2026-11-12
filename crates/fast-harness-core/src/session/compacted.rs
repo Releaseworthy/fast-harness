@@ -1,10 +1,11 @@
 //! The history that replaces a session's messages after a compaction
 //! (PLAN.md D38), built the same way live and on replay from the
-//! `compaction` event's data.
+//! `compaction` event's record (PLAN.md D61).
 
-use serde_json::{json, Value};
+use serde_json::json;
 
 use crate::llm::find::{loaded_line, FIND_TOOLS};
+use crate::trace::record::Compaction;
 use crate::types::{Block, Message, Role};
 
 /// Starts the summary user message.
@@ -64,19 +65,16 @@ pub fn history(
     out
 }
 
-/// [`history`] from the data of a `compaction` event.
-pub fn from_event(data: &Value) -> Vec<Message> {
-    let text = |key: &str| data[key].as_str().unwrap_or_default();
-    let list = |key: &str| -> Vec<String> {
-        data[key]
-            .as_array()
-            .map(|list| {
-                let names = list.iter().filter_map(Value::as_str);
-                names.map(str::to_string).collect()
-            })
-            .unwrap_or_default()
-    };
-    let mid = data["mid"].as_bool().unwrap_or(false);
-    let (loaded, kept) = (list("loaded"), list("kept"));
-    history(text("summary"), &loaded, &kept, text("callId"), mid)
+/// [`history`] from the record of a `compaction` event.
+pub fn from_event(event: &Compaction) -> Vec<Message> {
+    let list = |names: &Option<Vec<String>>| names.clone().unwrap_or_default();
+    let (loaded, kept) = (list(&event.loaded), list(&event.kept));
+    let call_id = event.call_id.as_deref().unwrap_or_default();
+    history(
+        &event.summary,
+        &loaded,
+        &kept,
+        call_id,
+        event.mid.unwrap_or(false),
+    )
 }
