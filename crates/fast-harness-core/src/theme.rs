@@ -22,7 +22,10 @@ pub mod format;
 mod grey;
 mod palette;
 
-pub use contrast::{apca_lc, check, contrast_ratio, luminance, Failure, Requirement, REQUIREMENTS};
+pub use contrast::{
+    apca_lc, blend, check, contrast_ratio, luminance, Failure, Requirement, TintRequirement,
+    DIFF_ALPHA, REQUIREMENTS, TILE_ALPHA, TINTS,
+};
 pub use grey::{greyscale, level_of, parse_level, GREYSCALE_MAX};
 pub use palette::{Palette, ROLES};
 

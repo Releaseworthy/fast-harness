@@ -131,11 +131,67 @@ pub const REQUIREMENTS: &[Requirement] = &[
     ),
 ];
 
+/// Alpha of the success or error tint under a diff row.
+pub const DIFF_ALPHA: f64 = 0.12;
+/// Alpha of a tone's tint under its tool icon tile.
+pub const TILE_ALPHA: f64 = 0.16;
+
+/// A promise on a tinted background: `fg` on `bg` blended with `tint` at
+/// `alpha` reaches `min_ratio` (WCAG 2.2) and `min_lc` (APCA |Lc|).
+#[derive(Clone, Copy, Debug)]
+pub struct TintRequirement {
+    pub fg: &'static str,
+    pub bg: &'static str,
+    pub tint: &'static str,
+    pub alpha: f64,
+    pub min_ratio: f64,
+    pub min_lc: f64,
+}
+
+const fn tint(fg: &'static str, bg: &'static str, tint: &'static str, a: f64) -> TintRequirement {
+    let (min_ratio, min_lc) = match fg.as_bytes() {
+        b"text" => (7.0, 75.0),
+        b"dim" => (4.5, 60.0),
+        _ => (3.0, 0.0),
+    };
+    TintRequirement {
+        fg,
+        bg,
+        tint,
+        alpha: a,
+        min_ratio,
+        min_lc,
+    }
+}
+
+/// Diff rows: body and dim text on `code` tinted with success or error.
+/// Tool icon tiles: each tone's glyph on `surface` tinted with that tone.
+pub const TINTS: &[TintRequirement] = &[
+    tint("text", "code", "success", DIFF_ALPHA),
+    tint("text", "code", "error", DIFF_ALPHA),
+    tint("dim", "code", "success", DIFF_ALPHA),
+    tint("dim", "code", "error", DIFF_ALPHA),
+    tint("success", "surface", "success", TILE_ALPHA),
+    tint("error", "surface", "error", TILE_ALPHA),
+    tint("info", "surface", "info", TILE_ALPHA),
+    tint("warning", "surface", "warning", TILE_ALPHA),
+    tint("accent", "surface", "accent", TILE_ALPHA),
+    tint("accent2", "surface", "accent2", TILE_ALPHA),
+];
+
+/// `bg` with `tint` laid over it at `alpha`, per sRGB channel, rounded.
+pub fn blend(bg: Rgb, tint: Rgb, alpha: f64) -> Rgb {
+    let mix = |b: u8, t: u8| (f64::from(b) * (1.0 - alpha) + f64::from(t) * alpha).round() as u8;
+    Rgb(mix(bg.0, tint.0), mix(bg.1, tint.1), mix(bg.2, tint.2))
+}
+
 /// A colour pair below its requirement.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Failure {
     pub fg: &'static str,
     pub bg: &'static str,
+    /// The tint laid over `bg` and its alpha, for a [`TINTS`] entry.
+    pub tint: Option<(&'static str, f64)>,
     pub ratio: f64,
     pub lc: f64,
     pub min_ratio: f64,
@@ -144,11 +200,11 @@ pub struct Failure {
 
 impl fmt::Display for Failure {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "{} on {}: {:.2}:1 (needs {}:1)",
-            self.fg, self.bg, self.ratio, self.min_ratio
-        )?;
+        write!(f, "{} on {}", self.fg, self.bg)?;
+        if let Some((tint, alpha)) = self.tint {
+            write!(f, "+{tint}@{alpha:.2}")?;
+        }
+        write!(f, ": {:.2}:1 (needs {}:1)", self.ratio, self.min_ratio)?;
         if self.min_lc > 0.0 {
             write!(f, ", APCA Lc {:.1} (needs {})", self.lc.abs(), self.min_lc)?;
         }
@@ -156,30 +212,49 @@ impl fmt::Display for Failure {
     }
 }
 
-/// Every colour pair of `palette` below its [`REQUIREMENTS`] entry; empty
-/// when the palette passes.
+/// Every colour pair of `palette` below its [`REQUIREMENTS`] or [`TINTS`]
+/// entry; empty when the palette passes.
 pub fn check(palette: &Palette) -> Vec<Failure> {
     let mut failures = Vec::new();
     for r in REQUIREMENTS {
-        let Some(fg) = palette.get(r.fg) else {
-            continue;
-        };
-        for &bg_name in r.bgs {
-            let Some(bg) = palette.get(bg_name) else {
-                continue;
-            };
-            let (ratio, lc) = (contrast_ratio(fg, bg), apca_lc(fg, bg));
-            if ratio < r.min_ratio || lc.abs() < r.min_lc {
-                failures.push(Failure {
-                    fg: r.fg,
-                    bg: bg_name,
-                    ratio,
-                    lc,
-                    min_ratio: r.min_ratio,
-                    min_lc: r.min_lc,
-                });
-            }
+        for &bg in r.bgs {
+            let pair = (r.fg, bg, None, r.min_ratio, r.min_lc);
+            failures.extend(check_pair(palette, pair));
         }
     }
+    for t in TINTS {
+        let pair = (t.fg, t.bg, Some((t.tint, t.alpha)), t.min_ratio, t.min_lc);
+        failures.extend(check_pair(palette, pair));
+    }
     failures
+}
+
+type Pair = (
+    &'static str,
+    &'static str,
+    Option<(&'static str, f64)>,
+    f64,
+    f64,
+);
+
+/// The failure of one pair, None when it passes or a role is missing.
+fn check_pair(
+    palette: &Palette,
+    (fg_name, bg_name, tint, min_ratio, min_lc): Pair,
+) -> Option<Failure> {
+    let fg = palette.get(fg_name)?;
+    let mut bg = palette.get(bg_name)?;
+    if let Some((tint_name, alpha)) = tint {
+        bg = blend(bg, palette.get(tint_name)?, alpha);
+    }
+    let (ratio, lc) = (contrast_ratio(fg, bg), apca_lc(fg, bg));
+    (ratio < min_ratio || lc.abs() < min_lc).then_some(Failure {
+        fg: fg_name,
+        bg: bg_name,
+        tint,
+        ratio,
+        lc,
+        min_ratio,
+        min_lc,
+    })
 }

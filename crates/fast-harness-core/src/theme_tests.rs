@@ -233,7 +233,17 @@ fn contrast_check_lists_the_failing_pairs() {
     let mut p = by_id("dark").palette;
     p.text = p.bg;
     let failures = check(&p);
-    assert_eq!(failures.len(), 9, "text fails on every background");
+    assert_eq!(
+        failures.len(),
+        11,
+        "text fails on every background, tinted too"
+    );
+    assert_eq!(
+        (failures[9].bg, failures[9].tint),
+        ("code", Some(("success", 0.12)))
+    );
+    let tinted = failures[10].to_string();
+    assert!(tinted.starts_with("text on code+error@0.12: "), "{tinted}");
     let first = &failures[0];
     assert_eq!((first.fg, first.bg), ("text", "bg"));
     assert!((first.ratio - 1.0).abs() < 1e-9);
@@ -246,6 +256,39 @@ fn contrast_check_lists_the_failing_pairs() {
     let f = check(&p);
     assert_eq!(f.len(), 4);
     assert!(f[0].to_string().starts_with("border on bg: ") && !f[0].to_string().contains("Lc"));
+}
+
+#[test]
+fn blend_mixes_each_channel_and_rounds() {
+    let (black, white) = (Rgb(0, 0, 0), Rgb(255, 255, 255));
+    assert_eq!(blend(black, white, 0.12), Rgb(31, 31, 31));
+    assert_eq!(
+        blend(Rgb(100, 200, 10), Rgb(200, 0, 10), 0.5),
+        Rgb(150, 100, 10)
+    );
+    assert_eq!(blend(white, black, 0.0), white);
+    assert_eq!(TINTS.len(), 10);
+}
+
+/// The tinted pairs: cargo test -p fast-harness-core tint_report -- --ignored --nocapture.
+#[test]
+#[ignore]
+fn tint_report() {
+    for theme in builtins() {
+        for level in LEVELS {
+            let p = theme.shown(level);
+            let cells: Vec<String> = TINTS
+                .iter()
+                .filter_map(|t| {
+                    let bg = blend(p.get(t.bg)?, p.get(t.tint)?, t.alpha);
+                    let fg = p.get(t.fg)?;
+                    let (r, lc) = (contrast_ratio(fg, bg), apca_lc(fg, bg).abs());
+                    Some(format!("{}/{} {r:.2} Lc {lc:.0}", t.fg, t.tint))
+                })
+                .collect();
+            println!("{:<10} grey {level:>3}: {}", theme.id, cells.join(" | "));
+        }
+    }
 }
 
 #[test]
