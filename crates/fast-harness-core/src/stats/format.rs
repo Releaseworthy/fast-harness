@@ -70,6 +70,39 @@ fn count_lines(out: &mut String, s: &Stats) {
         "transformations {} (prefix_binding_mismatch {})",
         s.transformations, s.prefix_binding_mismatches
     );
+    signal_lines(out, s);
+}
+
+/// The free signals of PLAN.md D50.
+fn signal_lines(out: &mut String, s: &Stats) {
+    let g = &s.signals;
+    let per_turn = match s.turns {
+        0 => "-".to_string(),
+        turns => format!("{:.1}", s.steps as f64 / turns as f64),
+    };
+    let _ = writeln!(
+        out,
+        "steps per turn {per_turn} (most {}), cache rewrites {}",
+        g.max_turn_steps, g.cache_rewrites
+    );
+    let _ = writeln!(
+        out,
+        "repeated reads {}, not loaded yet {}, failed edits {}, failed shell commands {}",
+        g.repeated_reads, g.not_loaded, g.failed_edits, g.shell_failures
+    );
+    let list = |items: &[super::NameCount]| {
+        let parts: Vec<String> = items
+            .iter()
+            .map(|i| format!("{} x{}", i.name, i.count))
+            .collect();
+        parts.join(", ")
+    };
+    if !g.repeated_files.is_empty() {
+        let _ = writeln!(out, "  re-read: {}", list(&g.repeated_files));
+    }
+    if !g.failed_commands.is_empty() {
+        let _ = writeln!(out, "  non-zero exits: {}", list(&g.failed_commands));
+    }
 }
 
 fn tool_lines(out: &mut String, s: &Stats) {

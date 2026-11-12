@@ -26,6 +26,10 @@ Usage:
       A session (default latest): what the user sent, each request, the model's thinking,
       answers and tool calls, then one row per step. --steps prints only the step table,
       --json the raw events.
+  fast-harness reflect [ID|latest] [--apply] [--cwd DIR]
+      A subagent on the cheapest configured model (reflect.model) reads the stats and a
+      digest of the session's trace and prints a diff of memory, AGENTS.md, skill and tool
+      edits; --apply applies it (selfImprove auto applies the memory edits, off refuses).
   fast-harness stats [ID|latest|--all] [--json] [--cwd DIR]
       Context and cache numbers of a session (default latest) or of every session of the
       directory: prompt tokens, cache hit rate, cache rewrites after an idle gap, tool result
@@ -161,6 +165,12 @@ pub enum Command {
         json: bool,
         cwd: Option<PathBuf>,
     },
+    /// `reflect [ID] [--apply]` (PLAN.md D50).
+    Reflect {
+        id: Option<String>,
+        apply: bool,
+        cwd: Option<PathBuf>,
+    },
     Accounts(AccountsAction),
     Models {
         json: bool,
@@ -233,6 +243,7 @@ struct Opts {
     json: bool,
     steps: bool,
     all: bool,
+    apply: bool,
     no_browser: bool,
     google: bool,
     project: bool,
@@ -264,6 +275,7 @@ fn read_opts(args: Vec<String>) -> Result<Opts, String> {
             "--json" => opts.json = true,
             "--steps" => opts.steps = true,
             "--all" => opts.all = true,
+            "--apply" => opts.apply = true,
             "--no-browser" => opts.no_browser = true,
             "--google" => opts.google = true,
             "--project" => opts.project = true,
@@ -386,6 +398,11 @@ pub fn parse(args: Vec<String>) -> Result<Command, String> {
             }
             let (all, json) = (opts.all, opts.json);
             return Ok(Command::Stats { id, all, json, cwd });
+        }
+        Some("reflect") if opts.positional.len() <= 2 => {
+            let id = opts.positional.get(1).filter(|id| *id != "latest").cloned();
+            let apply = opts.apply;
+            return Ok(Command::Reflect { id, apply, cwd });
         }
         // `compact [ID|latest]`: a print-mode turn running `/compact` (D38).
         Some("compact") if opts.positional.len() <= 2 => {

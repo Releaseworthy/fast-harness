@@ -202,6 +202,9 @@ impl Runtime {
         let (mut context, read_notes) = Context::read(&self.home, cwd, &config.model);
         context.skills = self.extensions.skills_line();
         context.agents_bytes = config.agents_bytes.max(1024);
+        if !config.memory {
+            context.memory = None;
+        }
         let mut notes = self.take_notes();
         notes.extend(read_notes);
         let system = conv.system.clone().unwrap_or_else(|| context.system());
@@ -301,11 +304,12 @@ impl Runtime {
 mod ag_models;
 mod host;
 mod models;
+pub mod reflect;
 mod settings;
 mod slash;
 
 pub use settings::{doctor, load_settings, mcp_lines, provider_for, Settings};
-pub use slash::{expand_body, help, slash, Slash};
+pub use slash::{expand_body, help, reflect_args, slash, Slash};
 
 pub use host::RuntimeHost;
 

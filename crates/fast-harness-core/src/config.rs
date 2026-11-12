@@ -76,6 +76,20 @@ pub struct Config {
     /// `agentsBytes` (PLAN.md D43): the cap of the AGENTS.md section of a
     /// new session's system prompt (root to working directory).
     pub agents_bytes: usize,
+    /// `memory` (PLAN.md D50): the workspace memory block and the facts of
+    /// compactions written to it; on by default.
+    pub memory: bool,
+    /// `selfImprove` (PLAN.md D50): `ask` (default), `auto` or `off`.
+    pub self_improve: String,
+    /// `reflect` (PLAN.md D50): `model` of the reflect subagent.
+    pub reflect: ReflectConfig,
+}
+
+/// The `reflect` settings; a `null` model picks the cheapest priced one.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(default, rename_all = "camelCase")]
+pub struct ReflectConfig {
+    pub model: Option<String>,
 }
 
 /// Default `agentsBytes`.
@@ -138,6 +152,9 @@ impl Default for Config {
             subagent: SubagentConfig::default(),
             tools: ToolsConfig::default(),
             agents_bytes: DEFAULT_AGENTS_BYTES,
+            memory: true,
+            self_improve: "ask".into(),
+            reflect: ReflectConfig::default(),
         }
     }
 }

@@ -138,14 +138,27 @@ pub(crate) fn build(
     (Value::Object(body), betas)
 }
 
+/// The system blocks: the OAuth identity, the stable prompt, then the memory
+/// index (PLAN.md D50), each with a breakpoint of the system lifetime. With a
+/// memory block the identity block has none, so a request keeps at most 4
+/// (the last loaded tool, the stable block, the memory block, the last user
+/// block); the stable block's breakpoint still covers the identity.
 fn system_blocks(system: &str, oauth: bool, cache: &Value) -> Vec<Value> {
+    let (stable, memory) = crate::llm::split_memory(system);
     let mut blocks = Vec::new();
     let block = |text: &str| json!({"type": "text", "text": text, "cache_control": cache});
     if oauth {
-        blocks.push(block(CLAUDE_CODE_IDENTITY));
+        let mut identity = block(CLAUDE_CODE_IDENTITY);
+        if memory.is_some() && !stable.is_empty() {
+            identity.as_object_mut().map(|o| o.remove("cache_control"));
+        }
+        blocks.push(identity);
     }
-    if !system.is_empty() {
-        blocks.push(block(system));
+    if !stable.is_empty() {
+        blocks.push(block(stable));
+    }
+    if let Some(memory) = memory {
+        blocks.push(block(memory));
     }
     blocks
 }

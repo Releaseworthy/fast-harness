@@ -105,6 +105,11 @@ fn start_text(app: &mut App, ui: &MainWindow, text: String) -> bool {
     if crate::panels::slash(app, ui, &text) {
         return false;
     }
+    // `/reflect [apply]` runs off the UI thread (PLAN.md D50).
+    if let Some(args) = fast_harness_core::app::reflect_args(&text) {
+        crate::reflect::start(app, ui, args);
+        return false;
+    }
     // `/help` and the user's commands/*.md (PLAN.md D42).
     let text = match app.rt.slash(&text) {
         Slash::Send(text) => text,

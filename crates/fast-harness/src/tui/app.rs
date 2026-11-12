@@ -35,6 +35,8 @@ pub enum Msg {
     Models(Result<Vec<ModelInfo>, String>),
     /// A panel process queued messages (PLAN.md D46).
     Panel,
+    /// The text of a finished `/reflect` (PLAN.md D50), or its error.
+    Reflected(Result<String, String>),
 }
 
 pub struct Tui {
@@ -160,6 +162,8 @@ impl Tui {
                 self.transcript.apply(&event);
             }
             Msg::Panel => self.panel_poll(),
+            Msg::Reflected(Ok(text)) => self.note(NoteKind::Info, text),
+            Msg::Reflected(Err(err)) => self.note(NoteKind::Error, err),
             Msg::TurnDone(conv, outcome, leftover) => self.turn_done(*conv, outcome, leftover),
             Msg::Login(result) => self.login_done(result),
             Msg::Models(result) => self.ui.models_fetched(result),
@@ -253,6 +257,10 @@ impl Tui {
         // `/panel [id]` (PLAN.md D46).
         if self.panel_command(&text) {
             return;
+        }
+        // `/reflect [apply]` runs off the UI thread (PLAN.md D50).
+        if let Some(args) = fast_harness_core::app::reflect_args(&text) {
+            return self.reflect(args);
         }
         // `/help` and the user's commands/*.md (PLAN.md D42).
         let text = match self.rt.slash(&text) {

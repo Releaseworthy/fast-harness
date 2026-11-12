@@ -2,7 +2,8 @@
 //!
 //! Layering (a module never imports a higher one):
 //! `types` -> `http` / `sse` / `platform` -> `llm` / `tools` / `auth` -> `trace` / `session`
-//! -> `workspaces` / `accounts` -> `agent` -> `view` / `panels` / `stats` -> `service` -> `app`.
+//! -> `workspaces` / `accounts` -> `agent` -> `view` / `panels` / `stats` -> `reflect`
+//! -> `service` -> `app`.
 //! OS specific code lives only under `platform`.
 //! See PLAN.md for the decisions behind this layout.
 
@@ -18,6 +19,7 @@ pub mod llm;
 pub mod net;
 pub mod panels;
 pub mod platform;
+pub mod reflect;
 pub mod service;
 pub mod session;
 pub mod sse;

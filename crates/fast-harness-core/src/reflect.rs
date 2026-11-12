@@ -1,0 +1,194 @@
+//! `fast-harness reflect` and `/reflect` (PLAN.md D50): one subagent on the
+//! cheapest configured model reads the stats and a digest of a session's
+//! trace (tool names, errors, sizes and counts: never the transcript) and
+//! proposes edits to memory notes, AGENTS.md lines, skills and tool
+//! overrides as a unified diff. `selfImprove` decides what is applied:
+//! `ask` applies nothing until asked, `auto` applies the memory edits only,
+//! `off` turns reflect off. Nothing runs by itself at turn end.
+
+pub mod patch;
+
+use std::collections::BTreeMap;
+use std::fmt::Write;
+
+use serde_json::Value;
+
+use crate::config::Config;
+use crate::llm::custom;
+use crate::trace::{kind, TraceEvent};
+
+/// The system prompt of the reflect subagent.
+pub const SYSTEM: &str = "You review how a coding agent harness session went and propose small, \
+durable improvements. You see numbers and a digest of the trace, not the conversation. Answer \
+with one unified diff (```diff fenced, `--- a/<path>` and `+++ b/<path>` headers, `@@` hunks, \
+`--- /dev/null` for a new file) and at most five short lines of reasons. Paths: `memory/<file>` \
+is the workspace memory folder (MEMORY.md, its index of one line per note, at most 2 KB, and \
+notes/*.md); other paths are relative to the workspace (AGENTS.md, .fast-harness/skills/<name>/\
+SKILL.md, .fast-harness/tools/*.json). Change only what the signals justify; an empty diff is fine.";
+
+/// The longest error line kept in a digest.
+pub const ERROR_CHARS: usize = 120;
+
+/// `selfImprove`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Mode {
+    Ask,
+    Auto,
+    Off,
+}
+
+impl Mode {
+    /// `"auto"` and `"off"`; anything else is `ask` (the default).
+    pub fn of(config: &Config) -> Mode {
+        match config.self_improve.trim() {
+            "auto" => Mode::Auto,
+            "off" => Mode::Off,
+            _ => Mode::Ask,
+        }
+    }
+}
+
+/// `reflect.model`, else the cheapest model with a price in the provider
+/// files (input plus output per million tokens), else the session model.
+pub fn pick_model(config: &Config) -> String {
+    if let Some(model) = config
+        .reflect
+        .model
+        .as_ref()
+        .filter(|m| !m.trim().is_empty())
+    {
+        return model.clone();
+    }
+    let mut best: Option<(f64, String)> = None;
+    for provider in custom::providers() {
+        for model in &provider.models {
+            let Some(price) = model.price else { continue };
+            let cost = price.input + price.output;
+            let name = match provider.id.as_str() {
+                "anthropic" => model.id.clone(),
+                id => format!("{id}/{}", model.id),
+            };
+            if best.as_ref().is_none_or(|(known, _)| cost < *known) {
+                best = Some((cost, name));
+            }
+        }
+    }
+    best.map_or_else(|| config.model.clone(), |(_, name)| name)
+}
+
+/// One turn of a digest.
+#[derive(Default)]
+struct TurnDigest {
+    steps: u64,
+    /// name -> (calls, result bytes, errors)
+    tools: BTreeMap<String, (u64, u64, u64)>,
+    errors: Vec<String>,
+}
+
+/// The digest of a session's trace: per turn the step count, each tool's
+/// calls, result bytes and errors, and the first line of each error result
+/// (at most [`ERROR_CHARS`]). No user, assistant or tool result text.
+pub fn digest(events: &[TraceEvent]) -> String {
+    let mut turns: BTreeMap<u64, TurnDigest> = BTreeMap::new();
+    let mut names: BTreeMap<String, String> = BTreeMap::new();
+    let mut compactions = 0;
+    for event in events {
+        let data = &event.data;
+        let turn = data["turn"].as_u64().unwrap_or(0);
+        match event.kind.as_str() {
+            kind::STEP_START => turns.entry(turn).or_default().steps += 1,
+            kind::TOOL_CALL => {
+                let name = data["name"].as_str().unwrap_or("?").to_string();
+                turns
+                    .entry(turn)
+                    .or_default()
+                    .tools
+                    .entry(name.clone())
+                    .or_default()
+                    .0 += 1;
+                names.insert(data["callId"].as_str().unwrap_or("").into(), name);
+            }
+            kind::TOOL_RESULT => result(turns.entry(turn).or_default(), data, &names),
+            kind::COMPACTION => compactions += 1,
+            _ => {}
+        }
+    }
+    let mut out = String::new();
+    for (turn, digest) in &turns {
+        turn_lines(&mut out, *turn, digest);
+    }
+    let _ = writeln!(out, "compactions {compactions}");
+    out
+}
+
+fn result(digest: &mut TurnDigest, data: &Value, names: &BTreeMap<String, String>) {
+    let blocks = data["message"]["content"].as_array().map(Vec::as_slice);
+    for block in blocks.unwrap_or_default() {
+        let id = block["callId"].as_str().unwrap_or("");
+        let name = names.get(id).map_or("?", String::as_str);
+        let content = block["content"].as_str().unwrap_or("");
+        let entry = digest.tools.entry(name.to_string()).or_default();
+        entry.1 += content.len() as u64;
+        if block["isError"].as_bool().unwrap_or(false) {
+            entry.2 += 1;
+            let line: String = content
+                .lines()
+                .next()
+                .unwrap_or("")
+                .chars()
+                .take(ERROR_CHARS)
+                .collect();
+            digest.errors.push(format!("{name}: {line}"));
+        }
+    }
+}
+
+fn turn_lines(out: &mut String, turn: u64, digest: &TurnDigest) {
+    let tools: Vec<String> = digest
+        .tools
+        .iter()
+        .map(|(name, (calls, bytes, errors))| match errors {
+            0 => format!("{name} x{calls} ({bytes} B)"),
+            e => format!("{name} x{calls} ({bytes} B, {e} errors)"),
+        })
+        .collect();
+    let _ = writeln!(
+        out,
+        "turn {turn}: {} steps; {}",
+        digest.steps,
+        tools.join(", ")
+    );
+    for error in &digest.errors {
+        let _ = writeln!(out, "  error {error}");
+    }
+}
+
+/// The user message of the reflect subagent.
+pub fn prompt(stats: &str, digest: &str, memory_index: &str) -> String {
+    let index = if memory_index.trim().is_empty() {
+        "(empty)"
+    } else {
+        memory_index.trim()
+    };
+    format!(
+        "Session numbers:\n{stats}\nTrace digest:\n{digest}\nmemory/MEMORY.md now:\n{index}\n\n\
+         Propose the diff."
+    )
+}
+
+/// The diff of an answer: the first ```diff (or ```patch) fence, else the
+/// text from the first `--- ` line; empty when there is none.
+pub fn extract_diff(answer: &str) -> String {
+    for fence in ["```diff", "```patch"] {
+        if let Some(start) = answer.find(fence) {
+            let body = &answer[start + fence.len()..];
+            let body = body.split_once('\n').map_or("", |(_, rest)| rest);
+            let end = body.find("```").unwrap_or(body.len());
+            return body[..end].to_string();
+        }
+    }
+    match answer.find("--- ") {
+        Some(start) if start == 0 || answer[..start].ends_with('\n') => answer[start..].to_string(),
+        _ => String::new(),
+    }
+}

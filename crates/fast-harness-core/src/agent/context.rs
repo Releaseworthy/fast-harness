@@ -13,6 +13,7 @@ use std::path::{Path, PathBuf};
 
 use serde_json::{json, Map, Value};
 
+use super::memory::Memory;
 use super::prompt::{self, MAX_AGENTS_BYTES};
 use super::prompt_store::{self, Source};
 use crate::types::stable_hash;
@@ -38,6 +39,8 @@ pub struct Context {
     pub skills: String,
     /// `agentsBytes`: the cap of the AGENTS.md section.
     pub agents_bytes: usize,
+    /// The workspace memory (PLAN.md D50); `None` with `"memory": false`.
+    pub memory: Option<Memory>,
 }
 
 impl Context {
@@ -68,12 +71,24 @@ impl Context {
             agents: prompt::agents_files(cwd),
             skills: String::new(),
             agents_bytes: MAX_AGENTS_BYTES,
+            memory: Some(Memory::read(home, cwd)),
         };
         (context, template.notes)
     }
 
-    /// The system prompt of a new session: the prompt, then the AGENTS.md section.
+    /// The system prompt of a new session: the stable part (the prompt, then
+    /// the AGENTS.md section), then the memory block after a blank line.
     pub fn system(&self) -> String {
+        let stable = self.stable_system();
+        match &self.memory {
+            Some(memory) => format!("{stable}\n\n{}", memory.block()),
+            None => stable,
+        }
+    }
+
+    /// The stable part of [`Context::system`]: the same for every session
+    /// of the workspace on one date, whatever the memory holds.
+    pub fn stable_system(&self) -> String {
         prompt::compose_with(
             self.prompt.clone(),
             &self.skills,
@@ -82,14 +97,34 @@ impl Context {
         )
     }
 
-    /// `{date, prompt, agents: {path: hash}}`, kept in `request/header`.
+    /// `{date, prompt, agents: {path: hash}, memory}`, kept in `request/header`.
     pub fn stamp(&self) -> Value {
         let agents: Map<String, Value> = self
             .agents
             .iter()
             .map(|(path, text)| (path.display().to_string(), json!(hash(text))))
             .collect();
-        json!({"date": self.date, "prompt": hash(&self.prompt_key), "agents": agents})
+        let mut stamp =
+            json!({"date": self.date, "prompt": hash(&self.prompt_key), "agents": agents});
+        if let Some(memory) = &self.memory {
+            stamp["memory"] = json!(hash(&memory.index));
+        }
+        stamp
+    }
+
+    /// The memory line of an update: only for a session stamped with a
+    /// memory hash (an older session never had the block).
+    fn memory_line(&self, old: &Value, lines: &mut Vec<String>) {
+        let (Some(memory), Some(before)) = (&self.memory, old["memory"].as_str()) else {
+            return;
+        };
+        if before != hash(&memory.index) {
+            lines.push(format!(
+                "{PREFIX} The memory index {} changed; it now reads:\n{}",
+                memory.dir.join(super::memory::INDEX).display(),
+                memory.index.trim_end()
+            ));
+        }
     }
 
     /// The context update for a session stamped `old`; `None` when nothing
@@ -108,6 +143,7 @@ impl Context {
             ));
         }
         self.agents_lines(&old["agents"], &mut lines);
+        self.memory_line(old, &mut lines);
         if lines.is_empty() {
             return None;
         }

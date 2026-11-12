@@ -80,6 +80,22 @@ pub struct Cache {
     pub messages_1h: bool,
 }
 
+/// The first and last line of the memory index block (PLAN.md D50).
+pub const MEMORY_OPEN: &str = "<memory_index>";
+pub const MEMORY_CLOSE: &str = "</memory_index>";
+
+/// `system` split into its stable part and the memory index block that ends
+/// it after a blank line (PLAN.md D50). Claude sends them as two system
+/// blocks with a breakpoint each, so the stable block stays byte-identical
+/// across the sessions of a workspace; other providers send the text whole.
+pub fn split_memory(system: &str) -> (&str, Option<&str>) {
+    let opener = format!("\n\n{MEMORY_OPEN}\n");
+    match system.rfind(&opener) {
+        Some(at) if system.ends_with(MEMORY_CLOSE) => (&system[..at], Some(&system[at + 2..])),
+        _ => (system, None),
+    }
+}
+
 /// Incremental output, delivered on the calling thread in arrival order.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Delta<'a> {

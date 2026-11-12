@@ -9,10 +9,14 @@ use crate::config::index::read_md;
 use crate::tools::Extensions;
 
 /// Slash commands the harness itself handles; a file cannot replace them.
-const BUILT_IN: [(&str, &str); 4] = [
+const BUILT_IN: [(&str, &str); 5] = [
     (
         "compact [instructions]",
         "summarise the conversation so far",
+    ),
+    (
+        "reflect [apply]",
+        "propose memory, AGENTS.md, skill and tool edits from this session's signals (selfImprove)",
     ),
     ("trust", "trust this project's .fast-harness folder"),
     (
@@ -56,6 +60,12 @@ pub fn slash(ext: &Extensions, text: &str) -> Slash {
         Ok(file) => Slash::Send(expand_body(&file.body, args)),
         Err(err) => Slash::Error(format!("/{name}: {err}")),
     }
+}
+
+/// The arguments of a `/reflect` text (PLAN.md D50), `None` for any other.
+pub fn reflect_args(text: &str) -> Option<&str> {
+    let rest = text.trim().strip_prefix("/reflect")?;
+    (rest.is_empty() || rest.starts_with(char::is_whitespace)).then(|| rest.trim())
 }
 
 /// `body` with `$ARGUMENTS` replaced by `args`; without the placeholder the

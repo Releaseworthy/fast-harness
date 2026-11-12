@@ -106,11 +106,14 @@ fn resume_after_a_prompt_edit_sends_the_logged_system_once_noted() {
     turn(&env, &transport, &mut conv, registry(true));
     let sent = bodies(&transport);
     for body in &sent {
-        // Golden: the logged system text, byte for byte, and the frozen tools.
+        // Golden: the logged system text, byte for byte (the stable block,
+        // then the memory block, PLAN.md D50), and the frozen tools.
+        let (stable, memory) = fast_harness_core::llm::split_memory(&logged);
+        let cache = json!({"type": "ephemeral", "ttl": "1h"});
         assert_eq!(
             body["system"],
-            json!([{"type": "text", "text": logged,
-            "cache_control": {"type": "ephemeral", "ttl": "1h"}}])
+            json!([{"type": "text", "text": stable, "cache_control": cache},
+            {"type": "text", "text": memory.unwrap(), "cache_control": cache}])
         );
         let names: Vec<&str> = body["tools"]
             .as_array()

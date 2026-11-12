@@ -5,8 +5,10 @@
 //! prices: they come with the model entries of a later phase.
 
 mod format;
+pub mod signals;
 
 pub use format::format_text;
+pub use signals::{NameCount, Signals};
 
 use std::collections::{HashMap, HashSet};
 
@@ -73,6 +75,8 @@ pub struct Stats {
     /// `price` in `providers/*.json` (PLAN.md D41), and how many steps that is.
     pub cost_micro_usd: u64,
     pub priced_steps: u64,
+    /// Free signals for `reflect` (PLAN.md D50).
+    pub signals: Signals,
 }
 
 /// One pass over one session's events.
@@ -84,6 +88,8 @@ struct Pass {
     last_step_end: Option<u64>,
     gap_ms: Option<u64>,
     names: HashMap<String, String>,
+    arguments: HashMap<String, String>,
+    signals: signals::SignalPass,
     find_steps: HashSet<(u64, u64)>,
     tools: HashMap<String, ToolBytes>,
     results: Vec<ResultSize>,
@@ -109,9 +115,13 @@ impl Pass {
     fn event(&mut self, event: &TraceEvent) {
         let data = &event.data;
         match event.kind.as_str() {
-            kind::TURN_START => self.stats.turns += 1,
+            kind::TURN_START => {
+                self.stats.turns += 1;
+                self.signals.turn();
+            }
             kind::STEP_START => {
                 self.stats.steps += 1;
+                self.signals.step();
                 let end = self.last_step_end;
                 self.gap_ms = end.map(|last| event.time.saturating_sub(last));
             }
@@ -132,6 +142,7 @@ impl Pass {
     fn answer(&mut self, data: &Value) {
         let usage: Usage = serde_json::from_value(data["usage"].clone()).unwrap_or_default();
         self.stats.usage.add(&usage);
+        (self.signals).answer(usage.cache_read, usage.cache_write);
         let model = data["message"]["model"].as_str().unwrap_or("");
         if let Some(price) = crate::llm::custom::price(model) {
             self.stats.cost_micro_usd += (price.cost(&usage) * 1_000_000.0).round() as u64;
@@ -160,6 +171,8 @@ impl Pass {
                 .insert((int(data, "turn"), int(data, "step")));
         }
         if let Some(id) = data["callId"].as_str() {
+            let arguments = data["arguments"].as_str().unwrap_or("");
+            self.arguments.insert(id.to_string(), arguments.to_string());
             self.names.insert(id.to_string(), name);
         }
     }
@@ -172,6 +185,9 @@ impl Pass {
             let content = block["content"].as_str().unwrap_or("");
             let id = block["callId"].as_str().unwrap_or("");
             let name = self.names.get(id).cloned().unwrap_or_else(|| "?".into());
+            let arguments = self.arguments.get(id).map_or("", String::as_str);
+            let is_error = block["isError"].as_bool().unwrap_or(false);
+            (self.signals).result(&name, arguments, content, is_error);
             let bytes = content.len() as u64;
             let entry = self.tools.entry(name.clone()).or_default();
             entry.results += 1;
@@ -198,6 +214,7 @@ impl Pass {
             .map(|(name, tool)| ToolBytes { name, ..tool })
             .collect();
         self.stats.largest = self.results;
+        self.stats.signals = self.signals.finish();
         tidy(&mut self.stats);
         self.stats
     }
@@ -244,6 +261,7 @@ impl Stats {
         self.prefix_binding_mismatches += other.prefix_binding_mismatches;
         self.cost_micro_usd += other.cost_micro_usd;
         self.priced_steps += other.priced_steps;
+        self.signals.merge(other.signals);
         tidy(self);
     }
 }

@@ -8,6 +8,7 @@ mod config_cmd;
 mod info;
 mod models_cmd;
 mod print;
+mod reflect_cmd;
 mod serve_cmd;
 mod session_cmd;
 mod stats_cmd;
@@ -53,6 +54,7 @@ fn main() -> ExitCode {
             cwd,
         } => info::trace(id, steps, json, cwd),
         Command::Stats { id, all, json, cwd } => stats_cmd::run(id, all, json, cwd),
+        Command::Reflect { id, apply, cwd } => reflect_cmd::run(id, apply, cwd),
         Command::Accounts(action) => accounts_cmd::run(action),
         Command::Models { json } => models_cmd::run(json),
         Command::Config { action, cwd } => config_cmd::config(action, cwd),

@@ -261,6 +261,29 @@ lines = [l for l in event["output"].splitlines() if not l.startswith(("Downloadi
 print(json.dumps({"output": "\n".join(lines)}))
 ```
 
+## Memory
+
+Each workspace has a memory folder, `~/.fast-harness/memory/<cwd slug>/` (the slug of `sessions/`): `MEMORY.md`, an index of at most 2 KB with one line per note (`- notes/build.md: how to build on Windows`), and the notes in `notes/*.md`. Edit them by hand or let the model do it: there is no memory tool, the system prompt names the folder and the model uses `read`, `write`, `edit` and `grep` on it.
+
+- A new session puts the index in a second system block after the stable prompt. On Claude it has its own cache breakpoint, so the stable block stays byte-identical (and cached) across the sessions of the workspace whatever the memory holds; the OAuth identity block then has none, keeping 4 breakpoints in all. Antigravity and OpenAI-style providers get the index appended to the system text.
+- The block is frozen for the session like the system prompt: a change of `MEMORY.md` reaches a running session as a `[context update]` note on its next message.
+- Compaction appends the summary's `Durable facts` to `notes/compaction-facts.md` under a dated heading and keeps its line in `MEMORY.md`. When the index passes 2 KB its oldest lines move to `notes/index-archive.md`.
+- `"memory": false` in `config.json` turns the block and the facts off.
+
+### Reflect
+
+`fast-harness reflect [ID] [--apply]` (or `/reflect` in the TUI and the GUI) runs one subagent on the cheapest model: `"reflect": {"model": "..."}` if set, else the model with the lowest `price` (input plus output) in `providers/*.json`, else the session model. It reads the numbers of `fast-harness stats` (including repeated reads, `not loaded yet` errors, failed edits, failed shell commands by program, steps per turn and cache rewrites) and a digest of the trace (tool names, errors, sizes and counts, never the conversation) and proposes a unified diff over memory notes (`memory/...`), `AGENTS.md` lines, skills and tool overrides (paths relative to the workspace).
+
+`"selfImprove"` decides what happens next: `"ask"` (default) shows the diff and applies nothing until `/reflect apply` or `--apply`; `"auto"` applies the memory edits at once and leaves the rest for `/reflect apply`; `"off"` refuses `/reflect`. Nothing runs by itself at turn end.
+
+### Another memory system
+
+The hooks are the plug: a `Stop` hook receives the end of every turn and a `PreCompact` hook runs before a compaction (and may add instructions or block it), so a command can export the session to an outside store, or inject what it recalls through the compaction instructions. Set `"memory": false` to rely on it alone. Example `hooks.json`:
+
+```json
+{"Stop": [{"command": "my-memory save"}], "PreCompact": [{"command": "my-memory recall"}]}
+```
+
 ## MCP servers: `mcp.json`
 
 `mcp.json` in `~/.fast-harness/` and in a trusted project's `.fast-harness/` names MCP servers (PLAN.md D47). A project server with the same name replaces the user one; an untrusted project's file is not read. The servers below are examples, not tested live.

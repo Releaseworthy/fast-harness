@@ -20,6 +20,7 @@ mod picker;
 mod picker_fetch_tests;
 #[cfg(test)]
 mod picker_tests;
+mod reflect;
 mod screens;
 #[cfg(test)]
 mod scroll_tests;

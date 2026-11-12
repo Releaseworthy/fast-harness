@@ -212,6 +212,19 @@ impl Turn<'_> {
         Ok(Err(TurnOutcome::Failed))
     }
 
+    /// Appends the summary's durable facts to the workspace memory (PLAN.md
+    /// D50); a top-level session only (a child has no context). A failed
+    /// write is an error event, the compaction still stands.
+    fn remember_facts(&mut self, summary: &str) {
+        let Some(memory) = self.agent.context.as_ref().and_then(|c| c.memory.as_ref()) else {
+            return;
+        };
+        let date = super::prompt::today();
+        if let Err(err) = super::memory::append_facts(&memory.dir, &facts(summary), &date) {
+            (self.sink)(AgentEvent::Error(format!("memory: {err}")));
+        }
+    }
+
     fn replace_history(
         &mut self,
         summary: &Summary,
@@ -231,6 +244,7 @@ impl Turn<'_> {
             "before": before, "after": after, "usage": usage, "auto": auto,
             "model": summary.model, "instructions": instructions });
         traced(self.conv.trace.compaction(data))?;
+        self.remember_facts(&summary.text);
         self.conv.messages = history;
         self.conv.last_context = after;
         self.conv.compacted = true;

@@ -16,6 +16,7 @@ mod conversation;
 pub mod hooks;
 mod inbox;
 mod inbox_file;
+pub mod memory;
 pub mod nested;
 mod preload;
 pub mod prompt;

@@ -29,6 +29,7 @@ mod prompt_settings;
 #[cfg(test)]
 mod prompt_settings_tests;
 mod providers;
+mod reflect;
 mod rows;
 mod runs;
 #[cfg(test)]
