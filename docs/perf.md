@@ -63,3 +63,19 @@ Wall time 4.0 s for the turn. `fast-harness.exe` release: 4.98 MB.
 | Request build, 1000 messages | 2,426 us, body 434,052 bytes |
 
 The request build grows with the history (about 2.4 us per message at 1000), so it is most of the 3 ms per-step budget on a long session.
+
+## Phase 21A: GUI resources before and after panels (2026-11-12)
+
+The GUI budgets are RAM, CPU and GPU use, not exe size (owner, 2026-11-12, PLAN.md D46). `cargo build --release -p fast-harness-gui` at d028d5e (before, its own worktree and target dir) and at the panels merge (after). Each run: a fresh empty `FAST_HARNESS_HOME` (no accounts, no sessions, no panels), the window left alone; after 10 s working set private (`Win32_PerfFormattedData_PerfProc_Process.WorkingSetPrivate`), working set and private bytes; then CPU time (`TotalProcessorTime`) delta over the next 30 s; `\GPU Engine(pid_<pid>_*)\Utilization Percentage` sampled 5 times over 10 s inside that window. Three runs each, before and after alternated (script `fh-measure.ps1`, outside the repo).
+
+| Measure | Before (d028d5e) | After (panels) |
+|---|---|---|
+| `fast-harness-gui.exe` size | 30,428,672 bytes | 30,755,328 bytes (+326,656) |
+| Private working set after 10 s idle | 17.9 to 18.1 MB | 18.1 to 18.2 MB |
+| Working set after 10 s idle | 44.4 to 56.9 MB | 44.7 to 56.1 MB |
+| Private bytes after 10 s idle | 74.7 to 74.9 MB | 74.9 to 75.0 MB |
+| CPU time over 30 s idle | 0 to 15.6 ms (one 15.6 ms timer tick in 2 of 3 runs) | 0 ms in 3 of 3 runs |
+| CPU time from start to 40 s | 78 to 94 ms | 62 to 94 ms |
+| GPU engine use | no `GPU Engine` instance for the pid (no GPU engine used) | the same |
+
+The renderer is Slint's software renderer (the default, `SLINT_BACKEND` unset); `opengl32.dll` is loaded but no GPU engine instance appears, while other processes' instances do. With one panel open: unmeasured, because a panel opens only from Settings > Configuration "Open" or by typing `/panel <id>` in the composer; there is no command-line or environment hook to open one without input.
