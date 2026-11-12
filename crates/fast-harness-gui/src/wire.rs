@@ -65,6 +65,7 @@ pub fn connect(ui: &MainWindow) {
     });
     appearance::connect(ui);
     crate::config_page::connect(ui);
+    crate::keys::connect(ui);
     connect_accounts(ui);
     prompt_settings::connect(ui);
     connect_google(ui);
@@ -160,6 +161,7 @@ fn open_page(app: &mut crate::app::App, ui: &MainWindow, page: &str) {
 pub fn first_paint() {
     with_app(|app, ui| {
         settings::fill(app, ui);
+        crate::keys::show(&app.rt.keys.gui, ui);
         prompt_settings::show(app, ui, "");
         app.refresh_sessions(ui);
         app.refresh_status(ui);

@@ -36,31 +36,28 @@ impl Ui {
         if self.screen == Screen::Accounts && !matches!(self.dialog, Dialog::None) {
             return self.dialog_key(key);
         }
-        if let (Screen::Accounts, Some(open), KeyCode::Esc) =
-            (self.screen, self.account_provider, key.code)
-        {
-            // Back to the provider list, on the provider just left.
-            self.account_provider = None;
-            self.selected = ProviderKey::ALL
-                .iter()
-                .position(|p| *p == open)
-                .unwrap_or(0);
-            return Action::None;
-        }
-        if key.code == KeyCode::Esc || key.code == KeyCode::Char('q') {
-            self.screen = Screen::Chat;
+        let scope = match self.screen {
+            Screen::Accounts => "accounts",
+            Screen::Trace => "trace",
+            Screen::Models => "models",
+            Screen::Sessions => "sessions",
+            Screen::Chat => "chat",
+        };
+        let action = self.action_of(scope, key);
+        if action == Some("back") {
+            self.back();
             return Action::None;
         }
         if self.screen == Screen::Trace {
-            self.trace_key(key);
+            self.trace_key(key, action);
             return Action::None;
         }
         if self.move_selection(key) {
             return Action::None;
         }
         match self.screen {
-            Screen::Accounts => self.accounts_key(key),
-            Screen::Models => self.models_key(key),
+            Screen::Accounts => self.accounts_key(key, action),
+            Screen::Models => self.models_key(key, action),
             Screen::Sessions => match (key.code, self.sessions.get(self.selected)) {
                 (KeyCode::Enter, Some(session)) => Action::Resume(session.id.clone()),
                 _ => Action::None,
@@ -69,8 +66,36 @@ impl Ui {
         }
     }
 
-    fn trace_key(&mut self, key: &KeyEvent) {
+    /// `back`: an open provider goes back to the provider list (on the
+    /// provider just left), any other screen to the chat.
+    fn back(&mut self) {
+        match (self.screen, self.account_provider) {
+            (Screen::Accounts, Some(open)) => {
+                self.account_provider = None;
+                self.selected = ProviderKey::ALL
+                    .iter()
+                    .position(|p| *p == open)
+                    .unwrap_or(0);
+            }
+            _ => self.screen = Screen::Chat,
+        }
+    }
+
+    fn trace_key(&mut self, key: &KeyEvent, action: Option<&str>) {
         let page = self.view_height.saturating_sub(1).max(1) as isize;
+        match action {
+            Some("trace_full") => {
+                self.trace.full = !self.trace.full;
+                self.trace_top = 0;
+                return;
+            }
+            Some("trace_steps") => {
+                self.trace.show_steps = !self.trace.show_steps;
+                self.trace_top = 0;
+                return;
+            }
+            _ => {}
+        }
         match key.code {
             KeyCode::Up => self.trace_scroll(-1),
             KeyCode::Down => self.trace_scroll(1),
@@ -78,14 +103,6 @@ impl Ui {
             KeyCode::PageDown => self.trace_scroll(page),
             KeyCode::Home => self.trace_top = 0,
             KeyCode::End => self.trace_scroll(isize::MAX / 2),
-            KeyCode::Char('f') => {
-                self.trace.full = !self.trace.full;
-                self.trace_top = 0;
-            }
-            KeyCode::Char('s') => {
-                self.trace.show_steps = !self.trace.show_steps;
-                self.trace_top = 0;
-            }
             _ => {}
         }
     }
@@ -112,28 +129,27 @@ impl Ui {
         self.selected = active.unwrap_or(0);
     }
 
-    fn accounts_key(&mut self, key: &KeyEvent) -> Action {
+    fn accounts_key(&mut self, key: &KeyEvent, action: Option<&str>) -> Action {
         let id = self.selected_account();
-        if key.modifiers.contains(KeyModifiers::CONTROL) {
-            return Action::None;
-        }
-        if self.account_provider.is_none() && key.code == KeyCode::Enter {
+        let plain_enter =
+            key.code == KeyCode::Enter && !key.modifiers.contains(KeyModifiers::CONTROL);
+        if self.account_provider.is_none() && plain_enter {
             self.open_provider();
             return Action::None;
         }
-        match (key.code, id) {
-            (KeyCode::Enter, Some(id)) => Action::UseAccount(id),
-            (KeyCode::Char('l'), _) => Action::Login,
-            (KeyCode::Char('g'), _) => Action::LoginGoogle,
-            (KeyCode::Char('k'), _) => {
+        match (action, id) {
+            (None, Some(id)) if plain_enter => Action::UseAccount(id),
+            (Some("account_sign_in"), _) => Action::Login,
+            (Some("account_google_sign_in"), _) => Action::LoginGoogle,
+            (Some("account_add_key"), _) => {
                 self.dialog = Dialog::AddKey(Input::masked());
                 Action::None
             }
-            (KeyCode::Char('d'), Some(id)) => {
+            (Some("account_remove"), Some(id)) => {
                 self.dialog = Dialog::ConfirmRemove(id);
                 Action::None
             }
-            (KeyCode::Char('r'), _) => Action::PollUsage,
+            (Some("account_usage"), _) => Action::PollUsage,
             _ => Action::None,
         }
     }
@@ -171,18 +187,15 @@ impl Ui {
         }
     }
 
-    fn models_key(&mut self, key: &KeyEvent) -> Action {
-        match key.code {
-            KeyCode::Enter => match self.models.get(self.selected) {
-                Some(model) => Action::SetModel(model.id.clone()),
+    fn models_key(&mut self, key: &KeyEvent, action: Option<&str>) -> Action {
+        if action == Some("cycle_effort") {
+            return match next_effort(&self.model, self.effort.as_deref()) {
+                Some(effort) => Action::SetEffort(effort),
                 None => Action::None,
-            },
-            KeyCode::Char('e') | KeyCode::Tab | KeyCode::Right | KeyCode::Left => {
-                match next_effort(&self.model, self.effort.as_deref()) {
-                    Some(effort) => Action::SetEffort(effort),
-                    None => Action::None,
-                }
-            }
+            };
+        }
+        match (key.code, self.models.get(self.selected)) {
+            (KeyCode::Enter, Some(model)) => Action::SetModel(model.id.clone()),
             _ => Action::None,
         }
     }

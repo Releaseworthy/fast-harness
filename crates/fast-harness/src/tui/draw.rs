@@ -87,21 +87,7 @@ pub fn header_text(ui: &Ui, view: &View<'_>, now_ms: u64) -> String {
 }
 
 fn hint_text(ui: &Ui) -> String {
-    if !ui.status.is_empty() {
-        return ui.status.clone();
-    }
-    match ui.screen {
-        Screen::Chat if ui.picker.is_some() => "↑↓ PgUp PgDn choose · Enter pick · Esc close".into(),
-        Screen::Chat if ui.running => "Enter steer · Alt+Enter queue · Ctrl+G pause · Ctrl+Backspace unqueue · Esc cancel · Ctrl+P model · Ctrl+E effort · PgUp/PgDn scroll · Ctrl+T thinking · F3 trace · F5 theme · F6 grey".into(),
-        Screen::Chat => "Enter send · Alt+Enter newline · Ctrl+P model · Ctrl+E effort · Ctrl+T thinking · Ctrl+N new · Ctrl+O sessions · F2 accounts · F3 trace · F5 theme · F6 grey".into(),
-        Screen::Accounts if ui.account_provider.is_none() => "↑↓ choose · Enter open provider · r read usage · Esc back".into(),
-        Screen::Accounts => "Enter use · l Claude sign-in · g Google sign-in · k add key · d remove · r read usage · Esc providers".into(),
-        Screen::Trace if ui.trace.show_steps => "s timeline · ↑↓ PgUp PgDn Home End scroll · Esc back".into(),
-        Screen::Trace if ui.trace.full => "f cut bodies · s steps table · ↑↓ PgUp PgDn Home End scroll · Esc back".into(),
-        Screen::Trace => "f full bodies · s steps table · ↑↓ PgUp PgDn Home End scroll · Esc back".into(),
-        Screen::Models => "↑↓ choose · Enter use model · e/Tab cycle effort · Esc back".into(),
-        Screen::Sessions => "↑↓ choose · Enter resume · Esc back".into(),
-    }
+    super::keys::hint_text(ui)
 }
 
 /// The tabs of a session: the current one is bold and reversed, so it

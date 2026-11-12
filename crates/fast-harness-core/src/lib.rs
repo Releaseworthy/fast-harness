@@ -12,6 +12,7 @@ pub mod auth;
 pub mod config;
 pub mod events;
 pub mod http;
+pub mod keys;
 pub mod llm;
 pub mod net;
 pub mod platform;

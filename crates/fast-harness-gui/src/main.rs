@@ -16,6 +16,7 @@ mod google;
 #[cfg(test)]
 mod google_fixtures;
 mod google_rows;
+mod keys;
 #[cfg(test)]
 mod layout_tests;
 mod mirror;

@@ -11,7 +11,8 @@ use crate::{ConfigRow, ConfigUi, MainWindow};
 /// Longest value shown in a row; the rest is elided.
 const VALUE_CHARS: usize = 120;
 
-/// `(key, value, source)` of every resolved key, sorted by key.
+/// `(key, value, source)` of every resolved key, sorted by key, then the
+/// key bindings as `keys.<front>.<action>` (PLAN.md D45).
 pub fn rows(rt: &Runtime) -> Vec<(String, String, String)> {
     let layered = &rt.layered;
     (layered.sources.keys())
@@ -23,6 +24,23 @@ pub fn rows(rt: &Runtime) -> Vec<(String, String, String)> {
                 None => value,
             };
             Some((key.clone(), value, source.word().to_string()))
+        })
+        .chain(key_rows(rt))
+        .collect()
+}
+
+fn key_rows(rt: &Runtime) -> Vec<(String, String, String)> {
+    let maps = [&rt.keys.tui, &rt.keys.gui];
+    (maps.into_iter())
+        .flat_map(|map| {
+            let front = map.front.word();
+            (map.rows().into_iter()).map(move |(name, keys, source)| {
+                (
+                    format!("keys.{front}.{name}"),
+                    keys,
+                    source.word().to_string(),
+                )
+            })
         })
         .collect()
 }

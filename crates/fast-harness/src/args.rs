@@ -48,6 +48,8 @@ Usage:
   fast-harness trust [PATH]                  Trust the project of PATH (default the current
       directory): its .fast-harness folder (config.json, providers/) loads from then on.
   fast-harness doctor [--cwd DIR]            What loaded, from where, and what was skipped and why.
+  fast-harness keys [--json] [--cwd DIR]     Every TUI and GUI action with its keys and the layer
+      that set them (keys.json in the user and trusted project folders; null unbinds).
   fast-harness --version                     Print the version.
   fast-harness help                          Print this text.
 
@@ -149,6 +151,10 @@ pub enum Command {
         path: Option<PathBuf>,
     },
     Doctor {
+        cwd: Option<PathBuf>,
+    },
+    Keys {
+        json: bool,
         cwd: Option<PathBuf>,
     },
     Version,
@@ -269,6 +275,12 @@ pub fn parse(args: Vec<String>) -> Result<Command, String> {
             return Ok(Command::Trust { path });
         }
         Some("doctor") if opts.positional.len() == 1 => return Ok(Command::Doctor { cwd }),
+        Some("keys") if opts.positional.len() == 1 => {
+            return Ok(Command::Keys {
+                json: opts.json,
+                cwd,
+            })
+        }
         Some("accounts") => {
             let action = accounts_action(&opts.positional[1..], &opts)?;
             return Ok(Command::Accounts(action));

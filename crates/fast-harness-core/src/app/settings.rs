@@ -26,6 +26,8 @@ pub struct Settings {
     pub index: ExtIndex,
     /// `hooks.json` of the same folders (D44); empty without a file.
     pub hooks: Hooks,
+    /// `keys.json` of the same folders (D45).
+    pub keys: crate::keys::Keys,
 }
 
 /// Every layer for `cwd` (the user layer only without one), then the
@@ -51,11 +53,15 @@ pub fn load_settings(
     let (hooks, skipped) = Hooks::load(&layered.layers);
     layered.report.loaded.extend(hooks.files.iter().cloned());
     layered.report.skipped.extend(skipped);
+    let (keys, skipped) = crate::keys::load(&layered.layers);
+    layered.report.loaded.extend(keys.files.iter().cloned());
+    layered.report.skipped.extend(skipped);
     Ok(Settings {
         layered,
         providers,
         index,
         hooks,
+        keys,
     })
 }
 
@@ -151,6 +157,7 @@ impl Runtime {
             providers,
             index,
             hooks,
+            keys,
         } = settings;
         let extensions = Extensions::new(index).with_hooks(hooks);
         // A tool file's `outputBytes` unless `toolOutput` names the tool.
@@ -164,12 +171,17 @@ impl Runtime {
             .filter(ProviderFile::is_custom)
             .map(|file| (provider_for(&file), file))
             .collect();
-        if let Some(note) = layered.layers.untrusted_note() {
-            let mut notes = self.notes.lock().unwrap_or_else(|p| p.into_inner());
+        let mut notes = self.notes.lock().unwrap_or_else(|p| p.into_inner());
+        for note in [layered.layers.untrusted_note(), keys.note()]
+            .into_iter()
+            .flatten()
+        {
             if !notes.contains(&note) {
                 notes.push(note);
             }
         }
+        drop(notes);
+        self.keys = Arc::new(keys);
         self.config = layered.config.clone();
         self.layered = layered;
     }
@@ -247,6 +259,7 @@ pub fn doctor(settings: &Settings) -> String {
     }
     extension_lines(&mut out, &settings.index);
     hook_lines(&mut out, &settings.hooks);
+    key_lines(&mut out, &settings.keys);
     let _ = writeln!(out, "settings not at their default:");
     let changed = layered
         .sources
@@ -260,6 +273,23 @@ pub fn doctor(settings: &Settings) -> String {
         let _ = writeln!(out, "  {key} = {value} ({source})");
     }
     out
+}
+
+/// The `keys` section of `doctor`: the problems, then every binding that is
+/// not at its default with its layer (`fast-harness keys` lists them all).
+fn key_lines(out: &mut String, keys: &crate::keys::Keys) {
+    use std::fmt::Write;
+    let _ = writeln!(out, "keys:");
+    for problem in &keys.problems {
+        let _ = writeln!(out, "  {problem}");
+    }
+    for map in [&keys.tui, &keys.gui] {
+        let front = map.front.word();
+        let rows = map.rows().into_iter();
+        for (name, keys, source) in rows.filter(|row| row.2 != layers::Source::Default) {
+            let _ = writeln!(out, "  {front}.{name} = {keys} ({source})");
+        }
+    }
 }
 
 /// The `hooks` section of `doctor`: one line per entry in run order.

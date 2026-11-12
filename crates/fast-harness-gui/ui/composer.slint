@@ -8,7 +8,10 @@ import { ActionButton, TextArea } from "widgets.slint";
 export component Composer inherits Rectangle {
     in-out property <string> text <=> area.text;
     in property <bool> busy;
-    in property <string> hint: "Enter to send · Shift+Enter for a new line";
+    // The keys bound to send and queue (keys.json, PLAN.md D45).
+    in property <string> send-key: "Enter";
+    in property <string> queue-key: "Alt+Enter";
+    in property <string> hint: root.send-key + " to send · Shift+Enter for a new line";
     // How the last turn stopped when Resume applies (D39), else empty.
     in property <string> resume-word;
     // A note that replaces the hint until the next send (e.g. the effort
@@ -21,7 +24,9 @@ export component Composer inherits Rectangle {
     callback queue();
     callback pause();
     callback resume();
-    property <string> busy-hint: "Enter steers · Alt+Enter queues";
+    // A key in the message box: true when the app ran its action.
+    callback shortcut(KeyEvent) -> bool;
+    property <string> busy-hint: root.send-key + " steers · " + root.queue-key + " queues";
     property <string> shown-hint: root.busy ? root.busy-hint
         : root.resume-word != "" ? "Last turn " + root.resume-word + ": Resume continues it"
         : root.hint;
@@ -44,18 +49,8 @@ export component Composer inherits Rectangle {
         spacing: Theme.space-s;
         area := TextArea {
             placeholder: "Message Fast Harness";
-            key-pressed(event) => {
-                if (event.text == Key.Return && !event.modifiers.shift) {
-                    // While busy the app steers (Enter) or queues (Alt+Enter).
-                    if (event.modifiers.alt) {
-                        root.queue();
-                    } else {
-                        root.submit();
-                    }
-                    return accept;
-                }
-                return reject;
-            }
+            // Send, steer, queue and stop go by keys.json; other keys edit.
+            key-pressed(event) => { return root.shortcut(event) ? accept : reject; }
         }
         HorizontalLayout {
             spacing: Theme.space-s;

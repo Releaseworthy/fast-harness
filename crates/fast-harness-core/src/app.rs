@@ -47,6 +47,8 @@ pub struct Runtime {
     /// The tool, agent and command files (PLAN.md D42), indexed when the
     /// settings load.
     pub extensions: Arc<Extensions>,
+    /// The TUI and GUI key bindings of `keys.json` (PLAN.md D45).
+    pub keys: Arc<crate::keys::Keys>,
     /// Notes handed out once with the next agent (an untrusted project).
     notes: Mutex<Vec<String>>,
 }
@@ -95,6 +97,7 @@ impl Runtime {
             interactive: false,
             custom: Vec::new(),
             extensions: Arc::default(),
+            keys: Arc::default(),
             notes: Mutex::default(),
         };
         runtime.apply(loaded);

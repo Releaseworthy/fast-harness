@@ -268,3 +268,83 @@ At session creation the `tools`, `agents`, `commands` and `skills` folders of th
 `"tools": {"preload": ["read", "grep"]}` in `config.json` loads tools from the start of a top-level session (a synthetic `find_tools` call before the first step), so the first call needs no find. Empty by default.
 
 `fast-harness doctor` lists the tool, agent, command and skill files that loaded, their layer, and the files skipped with the reason. The GUI's Settings page lists every key with its value and source, and opens the config folder.
+
+## Keys: `keys.json`
+
+Every key that starts an action in the TUI or the GUI is bound by action name, and `keys.json` in the user folder and in a trusted project folder rebinds it (no rebuild; the TUI and GUI read it at start). Later layer wins per action; `null` or `[]` unbinds.
+
+```json
+{
+  "version": 1,
+  "tui": {"pick_model": ["ctrl+k", "f9"], "pause": null},
+  "gui": {"new_session": "ctrl+shift+n"}
+}
+```
+
+Key strings: modifiers `ctrl`, `alt`, `shift`, `meta` joined with `+` before one key: a printable character (`k`, `,`, `/`; `ctrl++` is Ctrl and plus), a named key (`enter`, `esc`, `tab`, `backspace`, `delete`, `insert`, `space`, `up`, `down`, `left`, `right`, `home`, `end`, `pageup`, `pagedown`) or `f1` to `f24`. Case does not matter; `return`, `escape`, `pgup`, `pgdn`, `del`, `comma`, `control`, `cmd` are accepted and printed in the canonical form. An upper case letter is `shift+<letter>`.
+
+An unknown action, a bad key, an unknown section or two actions that one key would start in the same place and state are reported by `fast-harness doctor` and as a note in the first session; the bad entry is skipped, the rest of the file applies. A file that is not JSON or has another `version` is skipped. An action for one state (idle, while a turn runs) wins over an `always` action on the same key: that is how Enter sends when idle and steers while running, and Alt+Enter queues while running and adds a new line when idle.
+
+`fast-harness keys [--json]` prints the effective map with the layer of every action; the GUI's Settings > Configuration lists the same rows as `keys.tui.<action>` and `keys.gui.<action>`. The TUI hint line shows the keys as bound.
+
+Not actions (fixed): list navigation (arrows, PgUp/PgDn, Home/End, Enter to pick, Esc to close a picker or dialog), Enter on a list row, `y` to confirm a removal, and text editing keys in the input. In the GUI, window actions take only keys with Ctrl, Alt or Meta, or function keys, so typing in a field is never taken; Shift+Enter in the message box stays a native new line.
+
+### TUI actions
+
+Scopes: `global` on every screen, `chat` on the chat, `screens` on every screen but the chat, `accounts`, `trace`, `models` on that screen.
+
+| Action | Default keys | Where | When | Does |
+|---|---|---|---|---|
+| `interrupt` | `ctrl+c` | global | always | cancel the turn; twice when idle quits |
+| `cycle_theme` | `f5` | global | always | next theme |
+| `greyscale_up` | `f6` | global | always | greyscale +10 |
+| `greyscale_down` | `shift+f6` | global | always | greyscale -10 |
+| `open_accounts` | `f2`, `ctrl+a` | global | always | accounts screen |
+| `toggle_trace` | `f3`, `ctrl+r` | global | always | trace screen and back |
+| `open_models` | `f4` | global | always | models screen |
+| `open_sessions` | `ctrl+o` | global | always | sessions screen |
+| `send` | `enter` | chat | idle | send the input |
+| `steer` | `enter` | chat | while a turn runs | steer the running turn |
+| `queue` | `alt+enter` | chat | while a turn runs | queue a follow-up |
+| `newline` | `alt+enter`, `ctrl+enter`, `shift+enter`, `ctrl+j` | chat | always | new line in the input |
+| `stop` | `esc` | chat | while a turn runs | cancel the turn |
+| `pause` | `ctrl+g` | chat | while a turn runs | pause after this step's tools |
+| `remove_queued` | `ctrl+backspace` | chat | always | drop the last queued follow-up |
+| `quit` | `ctrl+d` | chat | idle | quit (empty input) |
+| `toggle_thinking` | `ctrl+t` | chat | always | show or hide thinking |
+| `new_session` | `ctrl+n` | chat | always | new session |
+| `pick_model` | `ctrl+p` | chat | always | model picker |
+| `pick_effort` | `ctrl+e` | chat | always | effort picker |
+| `scroll_page_up` | `pageup` | chat | always | scroll up a page |
+| `scroll_page_down` | `pagedown` | chat | always | scroll down a page |
+| `scroll_top` | `ctrl+home` | chat | always | scroll to the top |
+| `scroll_bottom` | `ctrl+end` | chat | always | follow the bottom |
+| `back` | `esc`, `q` | screens | always | back (to the chat) |
+| `trace_full` | `f` | trace | always | full or cut bodies |
+| `trace_steps` | `s` | trace | always | steps table or timeline |
+| `account_sign_in` | `l` | accounts | always | Claude sign-in |
+| `account_google_sign_in` | `g` | accounts | always | Google sign-in |
+| `account_add_key` | `k` | accounts | always | add an API key |
+| `account_remove` | `d` | accounts | always | remove the account |
+| `account_usage` | `r` | accounts | always | read usage |
+| `cycle_effort` | `e`, `tab`, `right`, `left` | models | always | next effort |
+
+### GUI actions
+
+Scopes: `window` anywhere in the window, `composer` while the message box has the focus.
+
+| Action | Default keys | Where | When | Does |
+|---|---|---|---|---|
+| `send` | `enter` | composer | idle | send the message |
+| `steer` | `enter` | composer | while a turn runs | steer the running turn |
+| `queue` | `alt+enter` | composer | while a turn runs | queue a follow-up |
+| `stop` | `esc` | composer | while a turn runs | stop the turn |
+| `pause` | `ctrl+g` | window | while a turn runs | pause after this step's tools |
+| `resume` | `ctrl+shift+r` | window | idle | resume the last turn |
+| `new_session` | `ctrl+n` | window | always | new session |
+| `toggle_sidebar` | `ctrl+b` | window | always | show or hide the sidebar |
+| `open_chat` | `ctrl+1` | window | always | chat page |
+| `open_accounts` | `f2` | window | always | accounts page |
+| `open_trace` | `f3` | window | always | trace page |
+| `open_settings` | `ctrl+,` | window | always | settings page |
+| `focus_composer` | `ctrl+l` | window | always | focus the message box |

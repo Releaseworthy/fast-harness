@@ -77,6 +77,7 @@ impl Tui {
         }
         ui.catalog = rt.models().cached();
         ui.icons = super::icons::by_id(&rt.config.icons);
+        ui.keys = rt.keys.tui.clone();
         let mut tui = Tui {
             rt,
             cwd,

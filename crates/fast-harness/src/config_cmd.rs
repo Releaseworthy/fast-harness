@@ -1,4 +1,4 @@
-//! `fast-harness config`, `trust` and `doctor` (PLAN.md D41).
+//! `fast-harness config`, `trust`, `doctor` (PLAN.md D41) and `keys` (D45).
 
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
@@ -100,5 +100,19 @@ pub fn doctor(cwd: Option<PathBuf>) -> Result<ExitCode, String> {
     let (home, cwd) = (crate::home()?, crate::work_dir(cwd)?);
     let settings = load_settings(&home, Some(&cwd), &env_value)?;
     print!("{}", doctor_text(&settings));
+    Ok(ExitCode::SUCCESS)
+}
+
+/// `fast-harness keys [--json]`: the effective key bindings with sources.
+pub fn keys(json: bool, cwd: Option<PathBuf>) -> Result<ExitCode, String> {
+    let (home, cwd) = (crate::home()?, crate::work_dir(cwd)?);
+    let settings = load_settings(&home, Some(&cwd), &env_value)?;
+    match json {
+        true => {
+            let text = serde_json::to_string_pretty(&settings.keys.json());
+            println!("{}", text.map_err(|err| err.to_string())?);
+        }
+        false => print!("{}", settings.keys.text()),
+    }
     Ok(ExitCode::SUCCESS)
 }

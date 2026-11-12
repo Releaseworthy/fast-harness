@@ -4,6 +4,7 @@
 use fast_harness_core::accounts::google::GoogleStatus;
 use fast_harness_core::accounts::pool::AccountStatus;
 use fast_harness_core::accounts::providers::{ClientState, ProviderKey};
+use fast_harness_core::keys::{Front, Keymap};
 use fast_harness_core::llm::anthropic::{builtin_models, ModelInfo};
 use fast_harness_core::session::SessionSummary;
 use fast_harness_core::theme::{self, Palette, Theme, ThemeSet};
@@ -125,6 +126,9 @@ pub struct Ui {
     pub palette: Palette,
     /// The mark set; plain until the controller reads the setting.
     pub icons: &'static Icons,
+    /// The TUI bindings of `keys.json` (PLAN.md D45); defaults until the
+    /// controller sets them.
+    pub keys: Keymap,
 }
 
 impl Ui {
@@ -162,6 +166,7 @@ impl Ui {
             greyscale: 0,
             palette: theme::by_id(theme::DEFAULT_THEME).palette,
             icons: &icons::PLAIN,
+            keys: Keymap::defaults(Front::Tui),
         }
     }
 
@@ -246,8 +251,7 @@ impl Ui {
             return Action::None;
         }
         self.status.clear();
-        let ctrl_c = is_ctrl(&key, 'c');
-        if !ctrl_c {
+        if self.action_of("global", &key) != Some("interrupt") {
             self.quit_armed = false;
         }
         if self.picker.is_some() && self.screen == Screen::Chat {
@@ -266,26 +270,29 @@ impl Ui {
         matches!(self.dialog, Dialog::AddKey(_)) && self.screen == Screen::Accounts
     }
 
+    /// The action of `key` in `scope` of the keymap.
+    pub(super) fn action_of(&self, scope: &str, key: &KeyEvent) -> Option<&'static str> {
+        let pressed = super::keys::key_of(key)?;
+        self.keys.lookup(scope, &pressed, self.running)
+    }
+
     fn global_key(&mut self, key: &KeyEvent) -> Option<Action> {
-        if is_ctrl(key, 'c') {
-            return Some(self.ctrl_c());
+        let name = self.action_of("global", key)?;
+        // The key dialog types: only keys that cannot type reach it.
+        let types = matches!(key.code, KeyCode::Char(_));
+        if self.typing_key() && types && name != "interrupt" {
+            return None;
         }
-        if key.code == KeyCode::F(5) {
-            return Some(Action::CycleTheme);
-        }
-        if key.code == KeyCode::F(6) {
-            let down = key.modifiers.contains(KeyModifiers::SHIFT);
-            return Some(Action::StepGreyscale(if down { -10 } else { 10 }));
-        }
-        let open = match key.code {
-            KeyCode::F(2) => Screen::Accounts,
-            KeyCode::F(3) if self.screen == Screen::Trace => Screen::Chat,
-            KeyCode::F(3) => Screen::Trace,
-            KeyCode::F(4) => Screen::Models,
-            _ if self.typing_key() => return None,
-            _ if is_ctrl(key, 'a') => Screen::Accounts,
-            _ if is_ctrl(key, 'r') => Screen::Trace,
-            _ if is_ctrl(key, 'o') => Screen::Sessions,
+        let open = match name {
+            "interrupt" => return Some(self.ctrl_c()),
+            "cycle_theme" => return Some(Action::CycleTheme),
+            "greyscale_up" => return Some(Action::StepGreyscale(10)),
+            "greyscale_down" => return Some(Action::StepGreyscale(-10)),
+            "open_accounts" => Screen::Accounts,
+            "toggle_trace" if self.screen == Screen::Trace => Screen::Chat,
+            "toggle_trace" => Screen::Trace,
+            "open_models" => Screen::Models,
+            "open_sessions" => Screen::Sessions,
             _ => return None,
         };
         if open == Screen::Sessions && self.running {
@@ -312,36 +319,38 @@ impl Ui {
         Action::None
     }
 
+    /// A chat key: its keymap action, else editing (PLAN.md D45).
     fn chat_key(&mut self, key: &KeyEvent) -> Action {
-        let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
-        let alt = key.modifiers.contains(KeyModifiers::ALT);
-        match key.code {
-            KeyCode::Esc if self.running => return Action::Cancel,
-            KeyCode::Enter if alt && !ctrl && self.running => return self.queue(),
-            KeyCode::Char('g') if ctrl && !alt && self.running => return Action::Pause,
-            KeyCode::Backspace if ctrl && !self.queued.is_empty() => self.drop_queued(),
-            KeyCode::Enter if alt || ctrl || key.modifiers.contains(KeyModifiers::SHIFT) => {
-                self.input.insert("\n")
+        let Some(name) = self.action_of("chat", key) else {
+            match key.code {
+                KeyCode::Home if self.input.is_empty() => self.top = Some(0),
+                KeyCode::End if self.input.is_empty() => self.top = None,
+                _ => self.edit_key(key),
             }
-            KeyCode::Char('j') if ctrl && !alt => self.input.insert("\n"),
-            KeyCode::Enter => return self.send(),
-            KeyCode::Char('d') if ctrl && !alt && self.input.is_empty() && !self.running => {
-                return Action::Quit
-            }
-            KeyCode::Char('t') if ctrl && !alt => self.show_thinking = !self.show_thinking,
-            KeyCode::Char('n') if ctrl && !alt => return self.new_session(),
-            KeyCode::Char('p') if ctrl && !alt => {
-                self.open_picker(PickerKind::Model);
+            return Action::None;
+        };
+        match name {
+            "stop" => return Action::Cancel,
+            "queue" => return self.queue(),
+            "pause" => return Action::Pause,
+            "send" | "steer" => return self.send(),
+            "quit" if self.input.is_empty() => return Action::Quit,
+            "new_session" => return self.new_session(),
+            "pick_model" | "pick_effort" => {
+                let kind = match name {
+                    "pick_model" => PickerKind::Model,
+                    _ => PickerKind::Effort,
+                };
+                self.open_picker(kind);
                 return Action::FetchModels;
             }
-            KeyCode::Char('e') if ctrl && !alt => {
-                self.open_picker(PickerKind::Effort);
-                return Action::FetchModels;
-            }
-            KeyCode::PageUp => self.scroll_up(self.page()),
-            KeyCode::PageDown => self.scroll_down(self.page()),
-            KeyCode::Home if ctrl || self.input.is_empty() => self.top = Some(0),
-            KeyCode::End if ctrl || self.input.is_empty() => self.top = None,
+            "remove_queued" if !self.queued.is_empty() => self.drop_queued(),
+            "newline" => self.input.insert("\n"),
+            "toggle_thinking" => self.show_thinking = !self.show_thinking,
+            "scroll_page_up" => self.scroll_up(self.page()),
+            "scroll_page_down" => self.scroll_down(self.page()),
+            "scroll_top" => self.top = Some(0),
+            "scroll_bottom" => self.top = None,
             _ => self.edit_key(key),
         }
         Action::None

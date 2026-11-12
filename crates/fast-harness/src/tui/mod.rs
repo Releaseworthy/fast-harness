@@ -7,6 +7,9 @@ mod draw;
 mod google;
 mod icons;
 mod input;
+mod keys;
+#[cfg(test)]
+mod keys_tests;
 mod markdown;
 mod panels;
 mod picker;

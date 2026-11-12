@@ -127,6 +127,29 @@ export component MainWindow inherits Window {
     callback window-toggle-maximize();
     // A click on the empty title bar (two within 500 ms maximize or restore).
     callback title-bar-clicked();
+    // A key as the name of its keys.json action ("" for none): the scope
+    // ("window" or "composer"), the key text, Ctrl, Alt, Shift, Meta, busy.
+    callback key-action(string, string, bool, bool, bool, bool, bool) -> string;
+    // The bound keys shown in the composer hint.
+    in property <string> send-key: "Enter";
+    in property <string> queue-key: "Alt+Enter";
+
+    // Runs a keys.json action; false for a name it does not know.
+    function run-action(name: string) -> bool {
+        if (name == "send" || name == "steer") { root.submit(); return true; }
+        if (name == "queue") { root.queue-text(); return true; }
+        if (name == "stop") { root.stop(); return true; }
+        if (name == "pause") { root.pause(); return true; }
+        if (name == "resume") { root.resume(); return true; }
+        if (name == "new_session") { root.new-session(); return true; }
+        if (name == "toggle_sidebar") { root.sidebar-open = !root.sidebar-open; return true; }
+        if (name == "open_chat") { root.open-page("chat"); return true; }
+        if (name == "open_accounts") { root.open-page("accounts"); return true; }
+        if (name == "open_trace") { root.open-page("trace"); return true; }
+        if (name == "open_settings") { root.open-page("settings"); return true; }
+        if (name == "focus_composer") { root.open-page("chat"); composer.focus-input(); return true; }
+        return false;
+    }
 
     // Copy: a hidden TextInput takes the text, selects it and copies it
     // (StyledText has no selection in Slint 1.18).
@@ -178,6 +201,12 @@ export component MainWindow inherits Window {
     }
 
 
+    // Window shortcuts (keys.json, PLAN.md D45): every key reaches Rust first,
+    // which names the action; text keys without Ctrl, Alt or Meta pass on.
+    FocusScope {
+    capture-key-pressed(e) => {
+        return root.run-action(root.key-action("window", e.text, e.modifiers.control, e.modifiers.alt, e.modifiers.shift, e.modifiers.meta, root.busy)) ? accept : reject;
+    }
     VerticalLayout {
         TitleBar {
             page: root.page;
@@ -272,6 +301,11 @@ export component MainWindow inherits Window {
                                     stop => { root.stop(); }
                                     pause => { root.pause(); }
                                     resume => { root.resume(); }
+                                    send-key: root.send-key;
+                                    queue-key: root.queue-key;
+                                    shortcut(e) => {
+                                        return root.run-action(root.key-action("composer", e.text, e.modifiers.control, e.modifiers.alt, e.modifiers.shift, e.modifiers.meta, root.busy));
+                                    }
                                     Dropdown {
                                         label: "Model";
                                         min-width: 200px;
@@ -378,6 +412,7 @@ export component MainWindow inherits Window {
                 }
             }
         }
+    }
     }
     // The window edge (no shadow on a frameless window).
     if !root.win-maximized: Rectangle {
