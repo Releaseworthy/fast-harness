@@ -15,7 +15,7 @@ use std::fs::{self, OpenOptions};
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 pub(crate) use lock::{age, remove_if_same};
 pub use lock::{lock_path, locked, stale, LOCK_SUFFIX};
@@ -62,19 +62,34 @@ fn write_new(temp: &Path, bytes: &[u8]) -> io::Result<()> {
     file.sync_all()
 }
 
-/// A rename that retries a short while on `PermissionDenied`: Windows
-/// refuses a rename over a file that another rename is replacing right now.
+/// How long a rename refused with `PermissionDenied` is tried again.
+const RENAME_WAIT: Duration = Duration::from_secs(2);
+
+/// A rename that retries on `PermissionDenied` for up to [`RENAME_WAIT`]:
+/// Windows refuses a rename over a file that another rename is replacing
+/// or a scanner holds open right now (100 ms was too short on a CI runner,
+/// 2026-11-13). A read-only target never gets writable by waiting: its
+/// error is returned at once.
 fn rename(from: &Path, to: &Path) -> io::Result<()> {
-    let mut tries = 0;
+    let start = Instant::now();
+    let mut pause = Duration::from_millis(1);
     loop {
         match fs::rename(from, to) {
-            Err(err) if err.kind() == io::ErrorKind::PermissionDenied && tries < 50 => {
-                tries += 1;
-                std::thread::sleep(Duration::from_millis(2));
+            Err(err)
+                if err.kind() == io::ErrorKind::PermissionDenied
+                    && start.elapsed() < RENAME_WAIT
+                    && !read_only(to) =>
+            {
+                std::thread::sleep(pause);
+                pause = (pause * 2).min(Duration::from_millis(32));
             }
             done => return done,
         }
     }
+}
+
+fn read_only(path: &Path) -> bool {
+    fs::metadata(path).is_ok_and(|meta| meta.permissions().readonly())
 }
 
 /// Reads, changes and writes `path` under its lock: `f` gets the current
