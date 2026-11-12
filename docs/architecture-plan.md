@@ -188,6 +188,23 @@ One fresh session per phase, each ending green (`fmt`, `clippy`, `test`, and `sc
 
 Phases 22 and 23 touch no format and no contract and can start as soon as G5 and G6 are answered. Phase 24 should land before any public tag; phase 28 c only with it.
 
+### Status
+
+| Phase | State | Commits | Decision |
+|---|---|---|---|
+| 22 | done 2026-11-12 | 9f12d48 | PLAN.md D54 |
+| 23 | done 2026-11-13 | 875f10b (store module, writers, session lock), b536da2 (lock errors at once), 79efd48 (accounts) | PLAN.md D55, D56 |
+
+Checked for both: `fmt`, `clippy`, 590 tests passed, 0 failed, 9 ignored on Windows; `tests/parallel_edits.rs` passes un-ignored; `fast-harness accounts` with the new binary reads the real store and rewrites nothing.
+
+Open from phases 22 and 23:
+- `scripts/live-smoke.ps1` was not run: every call answered HTTP 429 (the account's 5 hour limit was at 100%). Neither phase touches a request body.
+- Nothing was run on Linux or macOS before the push; the symlink path and the Unix permission copy of `tools/atomic.rs` have no test.
+- `Workspaces::save` merges against the file, but does not refresh its own list: a folder this process added and another process removed is added again by this process's next save.
+- Still written with plain `fs::write`: `config/index.rs` (the `index.json` cache), `reflect/patch.rs`, `app/reflect.rs`, and the write-once files of `tools/budget.rs` (spill) and `trace/wire.rs` (wire capture).
+- On Linux `session::lock::live_lock` still removes a lock it judges stale without the re-read (the start time is unknown there).
+- MCP tools are serial now (effect `Run`); a server's read-only tools could be declared `Read` through a setting.
+
 ## 6. Not proposed, with the reason
 
 - An async runtime: threads and blocking I/O serve every case above; D5 needs one helper thread per call at most.
