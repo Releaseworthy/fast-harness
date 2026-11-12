@@ -109,10 +109,17 @@ Owner decisions (2026-11-12, chosen from the options below):
 | G6 | a: one `store` module with a lock, no format change | "One store module with a lock" |
 | G9 | b and c: harden the plugin API now and call it unstable for 0.x (phase 24) | "Harden now and call it unstable for 0.x" |
 | Start | phases 22 and 23, one fresh session each | "Phases 22 and 23" |
+| G7 | a: the TUI, then the GUI, on `service::Service` (phase 25) | 2026-11-13, to the advice below: "làm tiếp mấy cái mày recomend đi" |
+| G8 | a and b, not c: the parity test, then typed `trace::Record` (phase 28) | the same words |
+| G10 | a: `sessions/<slug>/index.json`, lists on a worker, one-pass resume (phase 26) | the same words |
+| G11 | b: opt-in `approvals`, default `off`, after G7 | the same words |
+| G12 | b: an untrusted project supplies nothing, `AGENTS.md` included (phase 29) | the same words |
+| G13 | a: v0.1 is Windows only, the Unix backend after the first tag | the same words |
+| G14 | b: `ARCHITECTURE.md`, `docs/decisions/`, a short `PLAN.md` (phase 30, done first) | the same words |
 
-G7, G8 and G10 to G14 are still open.
+No gate is open. Phase 27 (registries become values) has no gate and was not part of the advice: it waits for the owner's word.
 
-Advice after phase 24 (2026-11-13; it replaces the recommendation lines below where they differ, and it is still not a decision):
+Advice after phase 24 (2026-11-13; it replaces the recommendation lines below where they differ; the owner took it as written on 2026-11-13):
 
 - Order: G14 first (phase 30's PLAN.md split: no behaviour change, and every later session stops reading 88.8 KB first), then G7, G10, G8, G12 with phase 29, G11 after G7 and before the tag, G13 after the tag.
 - G8: a and b; not c. With G9 the plugin API is unstable for every 0.x release and `AgentEvent` is `#[non_exhaustive]`, so c is no longer tied to the tag, and it would rewrite the live path of both UIs right after G7 rewires them. Take c up again only if the parity test of a keeps finding differences.
