@@ -64,7 +64,7 @@ Restore the official state with an empty list: `bun scripts/apply-plugins.ts --f
 
 The template repository (`templates/plugin-template/`): one plugin crate with an example tool (`word_count`) and panel (`counter`), a workflow of about ten lines calling `build-custom.yml@main`, and a README.
 
-Unverified until the first run: that `windows-latest` has the MSVC toolchain `ring` needs, that the Linux package list is enough for Slint, the action versions (`actions/checkout@v7`, `actions/upload-artifact@v7`, `oven-sh/setup-bun@v2`, `dtolnay/rust-toolchain@stable`, `Swatinem/rust-cache@v2`, read from their READMEs on 2026-11-12), and how many minutes a build takes.
+First run, 2026-11-12 (run 43220560727 of `Releaseworthy/fast-harness-plugin-template`, Fast Harness `main` at a143cfa, the template's `my-plugin` as a path plugin): green on both targets. `windows-latest` has the MSVC toolchain `ring` needs; the Linux package list is enough for Slint; the action versions (`actions/checkout@v7`, `actions/upload-artifact@v7`, `oven-sh/setup-bun@v2`, `dtolnay/rust-toolchain@stable`, `Swatinem/rust-cache@v2`) resolve. Wall time with a cold cache, gates included: Windows 17 min 16 s, Linux 10 min 31 s. Artifacts: Windows 16,543,973 bytes, Linux 17,940,362 bytes (zipped). Its first attempt failed two tests that assumed the official build (fixed in a143cfa).
 
 ## Safety
 
