@@ -10,7 +10,9 @@
 #   console.ps1 start -Exe <path\fast-harness.exe> -Cwd <dir> [-Arg <args>]
 #       starts `conhost.exe <exe> <args>` in <dir>; prints the TUI's pid
 #   console.ps1 type  -Exe <path> -Text "hello"     key down/up per character
-#   console.ps1 key   -Exe <path> -Key Enter        Enter, Escape, Tab, Back, Up, Down, F2..F4
+#   console.ps1 key   -Exe <path> -Key Enter        Enter, Escape, Tab, Back, Up, Down, Space, F2..F4,
+#                                                   or a chord Alt+<letter|digit>, Ctrl+<letter|digit>
+#                                                   (Alt+Y, Ctrl+O)
 #   console.ps1 text  -Exe <path> [-Out <file.txt>] the visible screen as text
 #   console.ps1 shot  -Exe <path> -Out <file.png>   PrintWindow of the console window
 #   console.ps1 close -Exe <path>                   kills the TUI (its console closes)
@@ -48,9 +50,10 @@ public static class FhCon {
   const uint RW = 0xC0000000, SHARE = 3, OPEN = 3;
   static IntPtr Open(string n) { return CreateFileW(n, RW, SHARE, IntPtr.Zero, OPEN, 0, IntPtr.Zero); }
   public static bool Attach(uint pid) { FreeConsole(); return AttachConsole(pid); }
-  public static uint Key(ushort vk, char c) {
+  public static uint Key(ushort vk, char c) { return Key(vk, c, 0); }
+  public static uint Key(ushort vk, char c, uint mods) {
     var r = new INPUT_RECORD[2];
-    for (int i = 0; i < 2; i++) { r[i].EventType = 1; r[i].KeyDown = i == 0 ? 1 : 0; r[i].Repeat = 1; r[i].Vk = vk; r[i].Char = c; }
+    for (int i = 0; i < 2; i++) { r[i].EventType = 1; r[i].KeyDown = i == 0 ? 1 : 0; r[i].Repeat = 1; r[i].Vk = vk; r[i].Char = c; r[i].Ctrl = mods; }
     IntPtr h = Open("CONIN$"); uint w; WriteConsoleInputW(h, r, 2, out w); CloseHandle(h); return w;
   }
   public static string Screen() {
@@ -66,7 +69,18 @@ public static class FhCon {
 }
 "@
 }
-$vks = @{ Enter = 0x0D; Escape = 0x1B; Tab = 0x09; Back = 0x08; Up = 0x26; Down = 0x28; F2 = 0x71; F3 = 0x72; F4 = 0x73 }
+$vks = @{ Enter = 0x0D; Escape = 0x1B; Tab = 0x09; Back = 0x08; Up = 0x26; Down = 0x28; F2 = 0x71; F3 = 0x72; F4 = 0x73; Space = 0x20 }
+
+# A chord `Alt+Y` or `Ctrl+O` (one letter or digit): the record a real console
+# gives, with LEFT_ALT_PRESSED (2) or LEFT_CTRL_PRESSED (8) and, for Ctrl, the
+# control character.
+function Send-Chord([string]$mod, [string]$name) {
+    $ch = [char]::ToLowerInvariant($name[0])
+    $vk = [uint16][char]::ToUpperInvariant($ch)
+    if ($mod -eq 'Alt') { return [FhCon]::Key($vk, $ch, 2) }
+    $c = if ($ch -match '[a-z]') { [char]([int]$ch - 96) } else { $ch }
+    [FhCon]::Key($vk, $c, 8)
+}
 
 function Find-Tui([int]$waitMs = 0) {
     $deadline = (Get-Date).AddMilliseconds($waitMs)
@@ -92,7 +106,12 @@ if ($Action -eq 'close') { $p.Kill(); return "closed $($p.Id)" }
 if (-not [FhCon]::Attach([uint32]$p.Id)) { throw "cannot attach to the console of $($p.Id)" }
 $res = switch ($Action) {
     'type' { foreach ($c in $Text.ToCharArray()) { [FhCon]::Key(0, $c) | Out-Null; Start-Sleep -Milliseconds 5 }; "typed $($Text.Length) chars" }
-    'key' { $vk = $vks[$Key]; $c = if ($Key -eq 'Enter') { [char]13 } elseif ($Key -eq 'Escape') { [char]27 } else { [char]0 }; [FhCon]::Key($vk, $c) | Out-Null; "key $Key" }
+    'key' {
+        if ($Key -match '^(Alt|Ctrl)\+([A-Za-z0-9])$') { Send-Chord $Matches[1] $Matches[2] | Out-Null; "key $Key"; break }
+        $vk = $vks[$Key]; if ($null -eq $vk) { throw "unknown key $Key" }
+        $c = switch ($Key) { 'Enter' { [char]13 } 'Escape' { [char]27 } 'Space' { [char]32 } default { [char]0 } }
+        [FhCon]::Key($vk, $c) | Out-Null; "key $Key"
+    }
     'text' { $s = [FhCon]::Screen(); if ($Out) { [IO.File]::WriteAllText($Out, $s) }; $s }
     'shot' {
         $h = [FhCon]::GetConsoleWindow(); $r = New-Object FhCon+RECT

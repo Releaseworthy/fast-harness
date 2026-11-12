@@ -35,6 +35,13 @@ Both front ends list the sessions of a workspace and read a trace log on worker 
 
 A user UI that keeps `MainWindow.side-rows` and `MainWindow.trace-message` shows the two texts; one that draws neither kind simply shows the workspace or the page without rows while the read runs.
 
+## Approvals
+
+With `"approvals": "ask"` a call can wait for an answer (PLAN.md D64). Both front ends read the requests of the shown session from `Session::approvals()` and each tool row's word from `view::Transcript::approvals` (`waiting for your answer`, `allowed once`, `allowed for this session`, `declined`, `cancelled`, `paused`, `refused: nobody can answer`, always a word next to the colour).
+
+- TUI: the oldest request is a prompt between the queue rows and the input box, in a frame with `warning` borders and the title `Approval`; the whole command (`view::approvals::prompt_text`) wraps in the text style, the key line in the accent style, `N more waiting after this one` in the dim style. The hint line repeats the key line. The tool row shows its word in the warning style after the mark. Nothing shows when no request waits.
+- GUI: not yet (the next chunk of G11 part B adds the prompt and its entries here).
+
 ## Entries
 
 <!-- contract:start -->

@@ -413,7 +413,7 @@ Not actions (fixed): list navigation (arrows, PgUp/PgDn, Home/End, Enter to pick
 
 ### TUI actions
 
-Scopes: `global` on every screen, `chat` on the chat, `screens` on every screen but the chat, `accounts`, `trace`, `models` on that screen.
+Scopes: `global` on every screen, `chat` on the chat, `screens` on every screen but the chat, `accounts`, `trace`, `models` on that screen, `approval` while an approval prompt shows.
 
 | Action | Default keys | Where | When | Does |
 |---|---|---|---|---|
@@ -449,6 +449,11 @@ Scopes: `global` on every screen, `chat` on the chat, `screens` on every screen 
 | `account_remove` | `d` | accounts | always | remove the account |
 | `account_usage` | `r` | accounts | always | read usage |
 | `cycle_effort` | `e`, `tab`, `right`, `left` | models | always | next effort |
+| `approve_once` | `alt+y` | approval | always | approval prompt: allow this call once |
+| `approve_session` | `alt+a` | approval | always | approval prompt: allow it for this session |
+| `decline` | `alt+n` | approval | always | approval prompt: decline the call |
+
+The `approval` scope is live only while an approval prompt shows on the chat (`"approvals": "ask"`, D64) and comes before the chat keys, so `doctor` reports a key bound both there and in `chat`. No key answers by default: Enter still steers, Space types, Esc (`stop`) cancels the turn and with it the request. Rebind like any action, for example `{"version": 1, "tui": {"approve_once": "ctrl+y", "decline": ["alt+n", "ctrl+shift+n"]}}`; an unbound answer shows as `(unbound)` in the prompt.
 
 ### GUI actions
 
