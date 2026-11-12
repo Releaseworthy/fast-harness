@@ -15,14 +15,17 @@ pub mod context;
 mod conversation;
 pub mod hooks;
 mod inbox;
+mod inbox_file;
 pub mod nested;
 mod preload;
 pub mod prompt;
 pub mod prompt_store;
+pub mod session_tools;
 mod subagent;
 mod tool_run;
 mod turn;
 mod waiting;
+pub mod worker;
 
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -123,6 +126,10 @@ impl Agent {
         for tool in child_tools::all(&children) {
             ext.add(&mut registry, tool);
         }
+        // Other sessions through their lock and inbox files (PLAN.md D49).
+        for tool in session_tools::all(app_home, worker::default_launcher()) {
+            ext.add(&mut registry, tool);
+        }
         ext.add_commands(&mut registry);
         let mut agent = Agent::new(parts, Arc::new(registry));
         agent.children = Some(children);
@@ -188,10 +195,12 @@ impl Agent {
         inbox: &mut Inbox,
         sink: &mut dyn FnMut(AgentEvent),
     ) -> TurnOutcome {
+        inbox.attach(conv, &self.parts.cwd);
         let outcome = self.turn_loop(conv, first, cancel, inbox, sink);
-        if cancel.load(Ordering::Relaxed) {
+        if cancel.load(Ordering::Relaxed) || inbox.stopped() {
             self.stop_children(sink);
         }
+        inbox.detach();
         outcome
     }
 
@@ -215,9 +224,10 @@ impl Agent {
                 sink: &mut *sink,
             };
             let outcome = turn::run(self, conv, start, io);
-            if outcome != TurnOutcome::Done || cancel.load(Ordering::Relaxed) {
+            if outcome != TurnOutcome::Done || cancel.load(Ordering::Relaxed) || inbox.stopped() {
                 return outcome;
             }
+            inbox.boundary(conv.turn, 0);
             // Background children still running: wait for their answers.
             let Some((text, steer)) = self.next_input(cancel, inbox, sink) else {
                 return outcome;

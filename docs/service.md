@@ -158,9 +158,60 @@ is running a turn (`_fh/compact`, `_fh/continue`, a replay), -32603 internal.
 - Replay sends text and tool calls only; assistant ids in a replay (`msg_r<index>`) differ
   from the live ones.
 
-### For the next part (phase 16 part 2)
+### Library API
 
-`fast_harness_core::service` is the API the session files, `send/ps/stop/pause/wait/tail/start`
-and the model's session tools build on: `Service::{create, resume, get, close, list,
-set_config, stats, start}` and `Session::{running, send(Input), cancel, wait, with_conv,
-config}` over a `Host` (`app::RuntimeHost`).
+`fast_harness_core::service`: `Service::{create, resume, get, close, list, set_config, stats,
+start, send_to}` and `Session::{running, send(Input), cancel, wait, with_conv, config}` over a
+`Host` (`app::RuntimeHost`).
+
+## Session coordination (no daemon)
+
+Any front end (TUI, GUI, `-p`, `serve`) that runs a turn of a top-level session keeps two
+files next to its log `<home>/sessions/<cwd slug>/<id>.jsonl` (PLAN.md D49):
+
+- `<id>.lock`: `{"pid","started","program","id","cwd","since","state","turn","step"}`,
+  written when the turns start (a temporary file renamed over it), rewritten at each step
+  (`state` is `running`, `pausing` or `stopping`), removed when the turns end. `started` is
+  the process creation time, so a reused pid is not taken for the owner. A lock whose process
+  is gone is stale: the next reader removes it. A subagent session has no lock.
+- `<id>.inbox.jsonl`: one JSON object per line, appended by any process:
+  `{"type":"steer","text"}`, `{"type":"follow_up","text"}`, `{"type":"pause"}`,
+  `{"type":"stop"}`. The running turn checks the file size once per step boundary, reads the
+  new whole lines from its last offset and feeds them to its inbox (D39): a steer joins after
+  that step's tool results, a follow-up starts a turn after one that ends `done`, a pause ends
+  the turn `paused` after the step's tools, a stop ends it `cancelled` (and stops its
+  background subagents) at the boundary. A model call that is streaming is not interrupted.
+  When the turns end the file gets a last read (unused texts are the inbox's leftover) and is
+  deleted; lines written while no turn runs are read by the next turn.
+
+### Commands
+
+| Command | Does |
+|---|---|
+| `fast-harness send <ID\|latest> <text> [--steer\|--queue] [--wait]` | A live lock: one inbox line (`steer` by default, `--queue` a follow-up); `--wait` waits for the lock to go and prints the last answer. No live lock: this process runs the turn (answer on stdout; exit 0 when `done`). |
+| `fast-harness ps [--json]` | The live locks: id, state, turn, step, pid, program, directory. |
+| `fast-harness stop <ID\|latest>` / `pause <ID\|latest>` | A `stop` / `pause` line; exit 1 when the session is not running. |
+| `fast-harness wait <ID\|latest>` | Returns when the session has no live lock. |
+| `fast-harness tail <ID\|latest> [--json]` | The log as text lines (`-- turn`, `> user`, answers, `[tool]`, `[result]`, `-- turn end`), or the raw events with `--json`, followed every 250 ms while a live lock exists. |
+| `fast-harness start [--model M] [--cwd DIR] <prompt>` | Creates a session, prints its id, and runs `fast-harness -p <prompt> --resume <id> --cwd DIR [--model M]` as a detached worker (Windows: `DETACHED_PROCESS` and `CREATE_NEW_PROCESS_GROUP`, outside the caller's Job Object when the job allows breakaway; null stdio). |
+
+`<ID>` is looked up in every directory under `<home>/sessions`; `latest` is the newest session
+of `--cwd` (else the current directory).
+
+### Tools for the model
+
+`sessions_list`, `session_start` (`prompt`, `cwd`, `model`: a detached worker, returns the id
+at once), `session_send` (`id`, `text`, `mode` `steer` or `queue`; an idle session runs the
+text in a worker), `session_read` (`id`: the state and the last answer, cut to the tool output
+budget, D37) and `session_stop` (`id`). Each is deferred behind `find_tools` (D30) and comes
+with `subagent` in every session below `subagent.maxDepth`. The GUI starts workers with the
+`fast-harness` program next to it.
+
+### Limits
+
+- Stop and pause act at step boundaries only; a long model call or tool runs to its end.
+- Liveness needs the OS: on Windows `OpenProcess` plus the creation time (a process of another
+  user cannot be opened, so its lock looks stale); elsewhere `/proc/<pid>` (Linux), and without
+  `/proc` every lock looks stale.
+- An idle session that another front end keeps open does not see a turn `send` ran in this
+  process until it is reopened.

@@ -139,3 +139,43 @@ fn parses_serve_and_json_print() {
     assert!(parse_str("serve").is_err());
     assert!(USAGE.contains("fast-harness serve --stdio"));
 }
+
+#[test]
+fn parses_session_commands() {
+    let Command::Session { action, cwd } =
+        parse_str("send latest look here --queue --wait --cwd d").unwrap()
+    else {
+        panic!("not a session command");
+    };
+    assert_eq!(cwd, Some(PathBuf::from("d")));
+    let want = SessionAction::Send {
+        id: "latest".into(),
+        text: "look here".into(),
+        queue: true,
+        wait: true,
+    };
+    assert_eq!(action, want);
+    let start = parse_str("start --model m1 fix the bug").unwrap();
+    let want = SessionAction::Start {
+        prompt: "fix the bug".into(),
+        model: Some("m1".into()),
+    };
+    assert_eq!(
+        start,
+        Command::Session {
+            action: want,
+            cwd: None
+        }
+    );
+    assert!(matches!(
+        parse_str("ps --json").unwrap(),
+        Command::Session {
+            action: SessionAction::Ps { json: true },
+            ..
+        }
+    ));
+    assert!(parse_str("send x hi --steer --queue").is_err());
+    assert!(parse_str("send x").is_err());
+    assert!(parse_str("stop a b").is_err());
+    assert!(parse_str("tail x --json").is_ok());
+}

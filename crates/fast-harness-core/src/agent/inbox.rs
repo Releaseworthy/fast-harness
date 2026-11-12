@@ -31,9 +31,13 @@ pub enum Input {
 #[derive(Default)]
 pub struct Inbox {
     rx: Option<Receiver<Input>>,
-    steers: Vec<String>,
-    follow_ups: VecDeque<String>,
-    paused: bool,
+    pub(super) steers: Vec<String>,
+    pub(super) follow_ups: VecDeque<String>,
+    pub(super) paused: bool,
+    /// A stop line of the inbox file arrived (PLAN.md D49).
+    pub(super) stopped: bool,
+    /// The inbox file and lock of a top-level session while a turn runs.
+    pub(super) file: Option<super::inbox_file::Watch>,
 }
 
 impl Inbox {
@@ -94,7 +98,7 @@ impl Inbox {
     /// front end shows them as queued again.
     pub fn leftover(&mut self) -> Vec<String> {
         self.poll();
-        self.paused = false;
+        (self.paused, self.stopped) = (false, false);
         let mut out = std::mem::take(&mut self.steers);
         out.extend(self.follow_ups.drain(..));
         out

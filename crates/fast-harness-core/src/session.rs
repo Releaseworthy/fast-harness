@@ -3,6 +3,8 @@
 //! `<app_home>/sessions/<cwd slug>/<id>.jsonl` and `<id>.wire/`.
 
 pub mod compacted;
+pub mod coord;
+pub mod lock;
 mod unfinished;
 
 pub use unfinished::{unfinished, Unfinished};
@@ -120,7 +122,7 @@ pub fn list(app_home: &Path, cwd: &Path) -> io::Result<Vec<SessionSummary>> {
     let mut sessions = Vec::new();
     for entry in entries {
         let path = entry?.path();
-        if path.extension().and_then(|e| e.to_str()) != Some("jsonl") || !path.is_file() {
+        if !coord::is_log(&path) || !path.is_file() {
             continue;
         }
         if let Ok((header, events)) = trace::read(&path) {
@@ -238,7 +240,7 @@ fn folder_cwd(folder: &Path) -> io::Result<Option<KnownCwd>> {
     let mut found: Option<KnownCwd> = None;
     for entry in std::fs::read_dir(folder)? {
         let path = entry?.path();
-        if path.extension().and_then(|e| e.to_str()) != Some("jsonl") {
+        if !coord::is_log(&path) {
             continue;
         }
         let Some(header) = read_header(&path) else {
@@ -265,7 +267,8 @@ fn folder_cwd(folder: &Path) -> io::Result<Option<KnownCwd>> {
     Ok(found.filter(|k| !k.cwd.as_os_str().is_empty()))
 }
 
-fn read_header(path: &Path) -> Option<trace::SessionHeader> {
+/// The header line of the log at `path` (nothing else is read).
+pub fn read_header(path: &Path) -> Option<trace::SessionHeader> {
     use std::io::BufRead;
     let file = std::fs::File::open(path).ok()?;
     let mut line = String::new();

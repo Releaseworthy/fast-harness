@@ -9,6 +9,7 @@ pub mod config;
 pub mod json;
 mod methods;
 mod prompt;
+pub mod remote;
 pub mod rpc;
 mod turn;
 
@@ -28,7 +29,8 @@ use crate::session::{self, SessionSummary};
 use crate::stats::{self, Stats};
 use crate::trace;
 
-pub use turn::{Finished, Start};
+pub use remote::{Mode, Sent};
+pub use turn::{Done, Finished, Sink, Start};
 
 /// What a prompt text becomes: text for the model, or a local answer
 /// (`/help`) that runs no model call.

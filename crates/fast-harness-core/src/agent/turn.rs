@@ -170,7 +170,9 @@ impl Turn<'_> {
     /// complete): cancel, step limit, pause, compaction, then steers.
     fn steps_loop(&mut self) -> Res<TurnOutcome> {
         loop {
-            if self.cancel.load(Ordering::Relaxed) {
+            // One inbox file check per step (PLAN.md D49).
+            self.inbox.boundary(self.turn, self.steps + 1);
+            if self.cancel.load(Ordering::Relaxed) || self.inbox.stopped() {
                 return Ok(TurnOutcome::Cancelled);
             }
             if self.steps >= self.agent.parts.config.max_steps {

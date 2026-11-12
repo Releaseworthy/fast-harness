@@ -2,6 +2,8 @@
 
 use std::path::PathBuf;
 
+use crate::args_sessions::{self, SessionAction};
+
 pub const USAGE: &str = "\
 Fast Harness: a coding agent harness
 
@@ -57,6 +59,17 @@ Usage:
   fast-harness mcp list|refresh [SERVER] [--cwd DIR]
       The MCP servers of mcp.json with their cached tool lists; refresh starts each enabled
       server (or SERVER), saves its tool list in mcp-cache/ and stops it.
+  fast-harness send <ID|latest> <text> [--steer|--queue] [--wait] [--cwd DIR]
+      Text for a session: a running turn (any front end, any process) reads it at its next
+      step (--steer, the default) or after it ends (--queue); --wait waits for the turn end
+      and prints the last answer. A session nobody runs runs the turn here (the answer on stdout).
+  fast-harness ps [--json]                   Running sessions: id, state, turn, step, pid, directory.
+  fast-harness stop|pause <ID|latest>        End a running turn at its next step (pause: after the step's tools).
+  fast-harness wait <ID|latest>              Wait until the session's turn ends.
+  fast-harness tail <ID|latest> [--json]     The session's log as text lines (--json: raw events),
+      followed while a turn runs.
+  fast-harness start [--model M] [--cwd DIR] <prompt>
+      A new session whose turn runs in a detached worker process; prints the session id.
   fast-harness --version                     Print the version.
   fast-harness help                          Print this text.
 
@@ -177,6 +190,11 @@ pub enum Command {
         model: Option<String>,
         effort: Option<String>,
     },
+    /// `send`, `ps`, `stop`, `pause`, `wait`, `tail`, `start` (PLAN.md D49).
+    Session {
+        action: SessionAction,
+        cwd: Option<PathBuf>,
+    },
     Version,
     Help,
 }
@@ -219,6 +237,9 @@ struct Opts {
     google: bool,
     project: bool,
     stdio: bool,
+    steer: bool,
+    queue: bool,
+    wait: bool,
     id: Option<String>,
     help: bool,
     version: bool,
@@ -247,6 +268,9 @@ fn read_opts(args: Vec<String>) -> Result<Opts, String> {
             "--google" => opts.google = true,
             "--project" => opts.project = true,
             "--stdio" => opts.stdio = true,
+            "--steer" => opts.steer = true,
+            "--queue" => opts.queue = true,
+            "--wait" => opts.wait = true,
             "--id" => opts.id = Some(value(&mut args, &arg)?),
             "-h" | "--help" => opts.help = true,
             "-V" | "--version" => opts.version = true,
@@ -288,6 +312,20 @@ fn mcp_command(args: &[String], cwd: Option<PathBuf>) -> Result<Command, String>
     })
 }
 
+/// `send`, `ps`, `stop`, `pause`, `wait`, `tail`, `start` (PLAN.md D49).
+fn session_command(opts: Opts) -> Result<Command, String> {
+    let flags = args_sessions::Flags {
+        steer: opts.steer,
+        queue: opts.queue,
+        wait: opts.wait,
+        json: opts.json,
+        model: opts.print.model,
+    };
+    let action = args_sessions::parse(&opts.positional[0], &opts.positional[1..], flags)?;
+    let cwd = opts.print.cwd;
+    Ok(Command::Session { action, cwd })
+}
+
 /// Parses the arguments after the program name.
 pub fn parse(args: Vec<String>) -> Result<Command, String> {
     let mut opts = read_opts(args)?;
@@ -313,6 +351,7 @@ pub fn parse(args: Vec<String>) -> Result<Command, String> {
         }
         Some("doctor") if opts.positional.len() == 1 => return Ok(Command::Doctor { cwd }),
         Some("mcp") => return mcp_command(&opts.positional[1..], cwd),
+        Some(verb) if args_sessions::is_verb(verb) => return session_command(opts),
         Some("serve") if opts.positional.len() == 1 => {
             if !opts.stdio {
                 return Err("usage: fast-harness serve --stdio (the only transport)".into());
