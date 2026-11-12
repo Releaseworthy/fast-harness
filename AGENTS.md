@@ -1,6 +1,6 @@
 # AGENTS.md
 
-Rules for anyone (human or agent) changing this repo. Read `PLAN.md` first: it holds the decisions and the formats.
+Rules for anyone (human or agent) changing this repo. Read `ARCHITECTURE.md` first (the current state), then the decision file of the area you touch (`docs/decisions/Dnn.md`, index in `PLAN.md`).
 
 ## Build and checks
 
@@ -18,7 +18,7 @@ Rules for anyone (human or agent) changing this repo. Read `PLAN.md` first: it h
 - The contracts are `http::Transport`, `llm::Provider`, `tools::Tool`, `auth::AuthSource`, `events::AgentEvent` and the `platform` items. Change one only together with every user of it.
 - No panics on input from the network, files or the model: return errors. `unwrap` and `expect` only in tests or on invariants with a comment.
 - Secrets: never in code, tests, fixtures, logs, traces or wire capture. Redact `authorization`, `x-api-key` and token fields. `Auth` prints as `<redacted>`.
-- Formats in `PLAN.md` (trace, accounts) change only with a version bump and a `PLAN.md` update in the same commit.
+- Formats in `docs/formats.md` (trace, accounts) change only with a version bump and an update there in the same commit. A new decision is a new `docs/decisions/Dnn.md` plus its index line in `PLAN.md`; `ARCHITECTURE.md` stays current and under 12,000 bytes.
 - Colours come only from `fast_harness_core::theme` roles (TUI `tui/theme.rs` Styles, GUI `Theme` global): no literal colours besides the neutral popup shadow. A palette change must keep `theme_tests.rs` green (WCAG 2.2 and APCA levels for every built-in theme at greyscale 0 to 100, pure grey at 100), and every status colour comes with a mark or a word. Built-in themes are JSON files (`crates/fast-harness-core/src/theme/builtin/`) in the same format users write (`docs/themes.md`, D33): a new or renamed role is a format change.
 
 ## Tests
