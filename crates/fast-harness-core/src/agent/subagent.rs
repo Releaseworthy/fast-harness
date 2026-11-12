@@ -1,49 +1,84 @@
-//! The `subagent` tool: a nested agent with the built-in tools only (so one
-//! level deep), its own session log naming the parent session, one turn.
+//! The `subagent` tool (PLAN.md D40): a child agent with its own session log
+//! naming the parent, an optional model, effort and preloaded tools, run in
+//! the foreground (the tool returns its answer) or in the background (the
+//! tool returns `{id}` and the answer reaches the parent's inbox later).
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use serde_json::{json, Value};
 
-use crate::agent::{Agent, AgentParts, Conversation};
-use crate::events::{AgentEvent, TurnOutcome};
+use super::child_run;
+use super::children::{self, Children};
+use crate::agent::{AgentParts, Router};
 use crate::llm::ToolSpec;
-use crate::tools::{self, Tool, ToolCtx, ToolOutput};
-use crate::types::{Role, Usage};
+use crate::tools::{Tool, ToolCtx, ToolOutput};
 
 pub const NAME: &str = "subagent";
 
 pub struct SubagentTool {
-    parts: AgentParts,
-    app_home: PathBuf,
-    parent: String,
+    pub(super) parts: AgentParts,
+    pub(super) app_home: PathBuf,
+    /// The session whose children this tool starts.
+    pub(super) session: String,
+    /// That session's nesting level (0 for a session a person started).
+    pub(super) depth: u32,
+    pub(super) router: Option<Router>,
+    pub(super) children: Arc<Children>,
 }
 
 impl SubagentTool {
-    /// `parts` are the parent agent's; `parent_session` goes into the child header.
-    pub fn new(parts: AgentParts, app_home: &Path, parent_session: &str) -> SubagentTool {
+    /// `parts` are the parent agent's; `session` goes into each child header.
+    pub fn new(
+        parts: AgentParts,
+        app_home: &Path,
+        session: &str,
+        depth: u32,
+        router: Option<Router>,
+    ) -> SubagentTool {
         SubagentTool {
             parts,
             app_home: app_home.to_path_buf(),
-            parent: parent_session.to_string(),
+            session: session.to_string(),
+            depth,
+            router,
+            children: children::of_session(session),
         }
     }
+}
+
+/// The arguments of one call.
+pub(super) struct Spec {
+    pub prompt: String,
+    pub label: String,
+    pub model: Option<String>,
+    pub effort: Option<String>,
+    pub tools: Vec<String>,
+    pub background: bool,
 }
 
 impl Tool for SubagentTool {
     fn spec(&self) -> ToolSpec {
         ToolSpec {
             name: NAME.into(),
-            description: "Run a self-contained task in a fresh agent with the same tools \
-                (except subagent) and its own context. Give it everything it needs in \
-                `prompt`; it returns its final answer."
+            description: "Run a self-contained task in a fresh agent with its own context; \
+                it returns its final answer. Give it everything it needs in `prompt`. \
+                Optional: `model` (a model id, `antigravity/<id>` for Google models) and \
+                `effort`; `tools` (tool names it may call at once, without find_tools); \
+                `background: true` returns `{id}` at once and the answer arrives later as a \
+                `[subagent <id> finished]` message (agent_send steers it, agent_stop stops \
+                it, agent_output reads its answer)."
                 .into(),
             schema: json!({
                 "type": "object",
                 "properties": {
                     "prompt": {"type": "string", "description": "The complete task."},
-                    "description": {"type": "string", "description": "A short label, 3 to 5 words."}
+                    "description": {"type": "string", "description": "A short label, 3 to 5 words."},
+                    "agent": {"type": "string", "description": "An agent type; none exist yet."},
+                    "model": {"type": "string", "description": "Model id; default: the parent's."},
+                    "effort": {"type": "string", "description": "low, medium, high, max or off."},
+                    "tools": {"type": "array", "items": {"type": "string"}, "description": "Tools loaded from the start."},
+                    "background": {"type": "boolean", "description": "Return {id} at once."}
                 },
                 "required": ["prompt"]
             }),
@@ -51,94 +86,53 @@ impl Tool for SubagentTool {
     }
 
     fn run(&self, args: &Value, ctx: &ToolCtx<'_>) -> ToolOutput {
-        let Some(prompt) = args["prompt"].as_str().filter(|p| !p.trim().is_empty()) else {
-            return ToolOutput::err("`prompt` must be a non-empty string");
+        Spec::parse(args)
+            .and_then(|spec| child_run::start(self, &spec, ctx))
+            .unwrap_or_else(ToolOutput::err)
+    }
+}
+
+impl Spec {
+    fn parse(args: &Value) -> Result<Spec, String> {
+        let prompt = args["prompt"].as_str().filter(|p| !p.trim().is_empty());
+        let prompt = prompt.ok_or_else(|| "`prompt` must be a non-empty string".to_string())?;
+        agent_type(&args["agent"])?;
+        let text = |key: &str| {
+            let value = args.get(key).and_then(Value::as_str).map(str::trim);
+            value.filter(|s| !s.is_empty()).map(str::to_string)
         };
-        let mut conv =
-            match Conversation::create(&self.app_home, &self.parts.cwd, Some(&self.parent)) {
-                Ok(conv) => conv,
-                Err(err) => {
-                    return ToolOutput::err(format!("cannot start a subagent session: {err}"))
-                }
-            };
-        // A subagent session is short: `cacheTtl: auto` gives its messages
-        // the 5 minute cache (PLAN.md D36).
-        let mut parts = self.parts.clone();
-        parts.config.interactive = false;
-        let agent = Agent::new(parts, Arc::new(tools::builtin()));
-        let mut errors: Vec<String> = Vec::new();
-        let mut stats = ChildStats::default();
-        let outcome = agent.run_turn(&mut conv, prompt, ctx.cancel, &mut |event| {
-            if let AgentEvent::Error(message) = event {
-                errors.push(message);
-            } else {
-                stats.record(event);
-            }
-        });
-        let text = conv
-            .messages
-            .iter()
-            .rev()
-            .find(|m| m.role == Role::Assistant)
-            .map(|m| m.text())
-            .unwrap_or_default();
-        let last = stats.line(&conv.id);
-        result(text, &last, outcome, &errors)
+        let names = "`tools` must be a list of tool names";
+        let tools = match args.get("tools") {
+            None | Some(Value::Null) => Vec::new(),
+            Some(Value::Array(list)) => list
+                .iter()
+                .map(|v| {
+                    v.as_str()
+                        .map(str::to_string)
+                        .ok_or_else(|| names.to_string())
+                })
+                .collect::<Result<_, _>>()?,
+            Some(_) => return Err(names.into()),
+        };
+        Ok(Spec {
+            prompt: prompt.to_string(),
+            label: text("description").unwrap_or_default(),
+            model: text("model"),
+            effort: text("effort"),
+            tools,
+            background: args["background"].as_bool().unwrap_or(false),
+        })
     }
 }
 
-/// What the child agent did, for the last line of the tool output.
-#[derive(Clone, Debug, Default, PartialEq)]
-pub struct ChildStats {
-    /// The model of the last request.
-    pub model: String,
-    pub steps: u32,
-    /// Distinct tool names in first-use order.
-    pub tools: Vec<String>,
-    pub usage: Usage,
-}
-
-impl ChildStats {
-    pub fn record(&mut self, event: AgentEvent) {
-        match event {
-            AgentEvent::Request { model, .. } => self.model = model,
-            AgentEvent::StepEnd { .. } => self.steps += 1,
-            AgentEvent::ToolCall { name, .. } if !self.tools.contains(&name) => {
-                self.tools.push(name)
-            }
-            AgentEvent::TurnEnd { usage, .. } => self.usage = usage,
-            _ => {}
-        }
+/// The one place agent types (`agents/*.md`, phase 17A) will resolve; no
+/// type exists yet, so any name is an error.
+fn agent_type(value: &Value) -> Result<(), String> {
+    let name = value.as_str().map(str::trim).unwrap_or_default();
+    if name.is_empty() {
+        return Ok(());
     }
-
-    /// `[subagent session ID · model M · N steps · tools a, b · in I out O]`
-    /// without the empty parts.
-    pub fn line(&self, session: &str) -> String {
-        let mut parts = vec![format!("session {session}")];
-        if !self.model.is_empty() {
-            parts.push(format!("model {}", self.model));
-        }
-        match self.steps {
-            0 => {}
-            1 => parts.push("1 step".to_string()),
-            n => parts.push(format!("{n} steps")),
-        }
-        if !self.tools.is_empty() {
-            parts.push(format!("tools {}", self.tools.join(", ")));
-        }
-        if self.usage.input > 0 || self.usage.output > 0 {
-            parts.push(format!("in {} out {}", self.usage.input, self.usage.output));
-        }
-        format!("[subagent {}]", parts.join(" · "))
-    }
-}
-
-fn result(text: String, last: &str, outcome: TurnOutcome, errors: &[String]) -> ToolOutput {
-    let mut content = text.trim_end().to_string();
-    if outcome != TurnOutcome::Done {
-        let detail = errors.last().map(|e| format!(": {e}")).unwrap_or_default();
-        content.push_str(&format!("\n\nsubagent ended {outcome:?}{detail}"));
-    }
-    content.push_str(&format!("\n\n{last}"));
-    ToolOutput::new(content.trim_start(), outcome != TurnOutcome::Done)
+    Err(format!(
+        "unknown agent type `{name}`: agent types (agents/*.md) are not available yet; omit `agent`"
+    ))
 }

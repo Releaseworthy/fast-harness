@@ -193,7 +193,8 @@ fn subagent_writes_a_child_log_naming_the_parent() {
     assert!(content.contains(&child.id));
     let requests = transport.requests();
     assert!(requests[0].body.contains(r#""name":"subagent""#));
-    // The child starts with find_tools only and has no subagent tool.
+    // The child starts with find_tools only; at depth 1 (below maxDepth 2)
+    // it has the parent's tool list, subagent included (PLAN.md D40).
     let child_body: serde_json::Value = serde_json::from_str(&requests[2].body).unwrap();
     let tools = child_body["tools"].as_array().unwrap();
     let loaded: Vec<&str> = tools
@@ -202,7 +203,8 @@ fn subagent_writes_a_child_log_naming_the_parent() {
         .map(|t| t["name"].as_str().unwrap())
         .collect();
     assert_eq!(loaded, ["find_tools"]);
-    assert!(!requests[2].body.contains(r#""name":"subagent""#));
+    assert!(requests[2].body.contains(r#""name":"subagent""#));
+    assert_eq!(header.depth, 1);
     drop(env);
 }
 

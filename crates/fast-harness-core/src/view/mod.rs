@@ -265,8 +265,9 @@ impl Transcript {
             }
             AgentEvent::Subagent { session, running } => {
                 let verb = if *running { "started" } else { "finished" };
-                self.note(NoteKind::Info, format!("Subagent {session} {verb}"));
+                self.subagent_note(session, verb);
             }
+            AgentEvent::SubagentProgress { session, line } => self.subagent_note(session, line),
             AgentEvent::StepEnd {
                 turn,
                 step,
@@ -375,6 +376,21 @@ impl Transcript {
 
     pub(crate) fn note(&mut self, kind: NoteKind, text: String) {
         self.items.push(Item::Note { kind, text });
+    }
+
+    /// One info note per subagent session (PLAN.md D40): `Subagent <id>
+    /// <state>`, replaced in place as progress and the end arrive.
+    fn subagent_note(&mut self, session: &str, state: &str) {
+        let head = format!("Subagent {session} ");
+        let text = format!("{head}{state}");
+        let found = self.items.iter_mut().rev().find_map(|item| match item {
+            Item::Note { text: old, .. } if old.starts_with(&head) => Some(old),
+            _ => None,
+        });
+        match found {
+            Some(old) => *old = text,
+            None => self.note(NoteKind::Info, text),
+        }
     }
 
     pub(crate) fn footer(

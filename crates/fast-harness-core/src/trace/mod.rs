@@ -29,7 +29,9 @@ use serde_json::Value;
 /// result cut to its budget, `spilled` (the spill file, PLAN.md D37).
 /// Version 7: `compaction` events (PLAN.md D38) replace the history before
 /// them on resume; `request/header` is written before `user/message`.
-pub const VERSION: u32 = 8;
+/// Version 9: the header may carry `depth` (a subagent session's nesting
+/// level, PLAN.md D40; absent means 0).
+pub const VERSION: u32 = 9;
 
 /// The oldest version the reader accepts; a resumed log keeps its own header.
 pub const MIN_VERSION: u32 = 1;
@@ -48,6 +50,14 @@ pub struct SessionHeader {
     /// Parent session id of a subagent session.
     #[serde(default)]
     pub parent: Option<String>,
+    /// Nesting level: 0 for a session a person started, 1 for its
+    /// subagents, and so on (version 9; absent means 0).
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub depth: u32,
+}
+
+fn is_zero(depth: &u32) -> bool {
+    *depth == 0
 }
 
 impl SessionHeader {
@@ -60,6 +70,7 @@ impl SessionHeader {
             cwd: cwd.to_string(),
             harness: format!("fast-harness {}", env!("CARGO_PKG_VERSION")),
             parent,
+            depth: 0,
         }
     }
 }

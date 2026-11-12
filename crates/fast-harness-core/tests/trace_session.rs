@@ -70,6 +70,7 @@ fn header(id: &str, created_at: u64) -> SessionHeader {
         cwd: "F:\\p".into(),
         harness: "fast-harness 0.1.0".into(),
         parent: None,
+        depth: 0,
     }
 }
 

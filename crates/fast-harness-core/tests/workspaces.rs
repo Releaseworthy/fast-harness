@@ -32,6 +32,7 @@ fn fake_session(home: &Path, cwd: &str, id: &str, created_at: u64) {
         cwd: cwd.to_string(),
         harness: "fast-harness test".to_string(),
         parent: None,
+        depth: 0,
     };
     let path = session::log_path(home, Path::new(cwd), id);
     std::fs::create_dir_all(path.parent().unwrap()).unwrap();

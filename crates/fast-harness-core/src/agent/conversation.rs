@@ -52,9 +52,21 @@ pub struct Conversation {
 impl Conversation {
     /// Starts a new session log for `cwd`. `parent` is set for a subagent session.
     pub fn create(app_home: &Path, cwd: &Path, parent: Option<&str>) -> io::Result<Conversation> {
+        Conversation::create_at(app_home, cwd, parent, 0)
+    }
+
+    /// [`Conversation::create`] for a session at nesting `depth` (PLAN.md D40).
+    pub fn create_at(
+        app_home: &Path,
+        cwd: &Path,
+        parent: Option<&str>,
+        depth: u32,
+    ) -> io::Result<Conversation> {
         let id = session::new_id();
         let log_path = session::log_path(app_home, cwd, &id);
-        let header = SessionHeader::new(&id, &cwd.to_string_lossy(), parent.map(str::to_string));
+        let mut header =
+            SessionHeader::new(&id, &cwd.to_string_lossy(), parent.map(str::to_string));
+        header.depth = depth;
         let trace = TraceWriter::create(&log_path, &header)?;
         Ok(Conversation {
             wire_dir: session::wire_dir(app_home, cwd, &id),

@@ -2,9 +2,10 @@
 
 use std::panic::{self, AssertUnwindSafe};
 use std::sync::atomic::AtomicBool;
-use std::sync::mpsc;
+use std::sync::mpsc::{self, RecvTimeoutError};
 use std::time::Instant;
 
+use crate::agent::children::TICK;
 use crate::agent::turn::{ms, traced, Res, Turn};
 use crate::agent::Agent;
 use crate::events::AgentEvent;
@@ -122,7 +123,17 @@ fn execute(
             });
         }
         drop(tx);
-        for (index, output, duration_ms) in rx {
+        loop {
+            // Subagents' events reach the sink while their tool call runs.
+            let (index, output, duration_ms) = match rx.recv_timeout(TICK) {
+                Ok(done) => done,
+                Err(RecvTimeoutError::Timeout) => {
+                    run.agent.forward_events(sink);
+                    continue;
+                }
+                Err(RecvTimeoutError::Disconnected) => break,
+            };
+            run.agent.forward_events(sink);
             sink(AgentEvent::ToolResult {
                 id: calls[index].id.clone(),
                 content: output.content.clone(),

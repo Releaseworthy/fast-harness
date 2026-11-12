@@ -82,10 +82,17 @@ pub enum AgentEvent {
     UsageUpdate {
         account: String,
     },
-    /// A subagent started or finished; its own session log has `session` as id.
+    /// A subagent (of this agent or a deeper descendant) started or
+    /// finished; its own session log has `session` as id (PLAN.md D40).
     Subagent {
         session: String,
         running: bool,
+    },
+    /// What a running subagent does now, at most every 500 ms per child:
+    /// `line` is short text such as `look · step 3 · read`.
+    SubagentProgress {
+        session: String,
+        line: String,
     },
     StepEnd {
         turn: u32,

@@ -8,7 +8,7 @@ use std::sync::Arc;
 
 use crate::accounts::google::GoogleAuth;
 use crate::accounts::pool::AccountPool;
-use crate::agent::{prompt, Agent, AgentParts, Context, Conversation};
+use crate::agent::{prompt, Agent, AgentParts, Context, Conversation, Router};
 use crate::auth::{AuthSource, StaticAuth};
 use crate::config::Config;
 use crate::http::Transport;
@@ -156,8 +156,27 @@ impl Runtime {
         let (context, notes) = Context::read(&self.home, cwd, &self.config.model);
         let system = conv.system.clone().unwrap_or_else(|| context.system());
         let parts = self.parts_with(cwd, system)?;
-        let agent = Agent::with_subagent(parts, &self.home, &conv.id).with_context(context);
+        let router = Some(self.router());
+        let agent =
+            Agent::with_subagents(parts, &self.home, &conv.id, 0, router).with_context(context);
         Ok((agent, notes))
+    }
+
+    /// [`Runtime::route`] for subagents with another model (PLAN.md D40);
+    /// the credential sources are picked now.
+    pub fn router(&self) -> Router {
+        let claude: Result<Route, String> = self.auth().map(|auth| {
+            let provider: Arc<dyn Provider> = self.provider.clone();
+            (provider, auth)
+        });
+        let google: Result<Route, String> = self.google_auth().map(|auth| {
+            let provider: Arc<dyn Provider> = self.antigravity.clone();
+            (provider, auth)
+        });
+        Arc::new(move |model: &str| match provider_of(model) == ANTIGRAVITY {
+            true => google.clone(),
+            false => claude.clone(),
+        })
     }
     /// `resume` when given, else the newest session of `cwd` when
     /// `continue_latest` (a new one when there is none), else a new session.

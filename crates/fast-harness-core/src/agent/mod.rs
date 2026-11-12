@@ -7,15 +7,20 @@
 //! written before the matching [`AgentEvent`] is sent.
 
 mod call;
+mod child_run;
+mod child_tools;
+mod children;
 mod compact;
 pub mod context;
 mod conversation;
 mod inbox;
+mod preload;
 pub mod prompt;
 pub mod prompt_store;
 mod subagent;
 mod tool_run;
 mod turn;
+mod waiting;
 
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -27,13 +32,21 @@ use crate::events::{AgentEvent, TurnOutcome};
 use crate::http::Transport;
 use crate::llm::Provider;
 use crate::tools::{self, Registry};
+pub use child_run::ChildStats;
+pub use child_tools::{OUTPUT as AGENT_OUTPUT, SEND as AGENT_SEND, STOP as AGENT_STOP};
+pub use children::Children;
 use turn::{Io, Start};
 
 pub use compact::{facts, COMMAND as COMPACT_COMMAND, NO_TOOLS, SUMMARY_REQUEST};
 pub use context::Context;
 pub use conversation::{repair, Conversation, MISSING_RESULT, NOTHING_TO_RESUME};
 pub use inbox::{Inbox, Input, CONTEXT as CONTEXT_KIND, STEER as STEER_KIND};
-pub use subagent::{ChildStats, SubagentTool};
+pub use subagent::{SubagentTool, NAME as SUBAGENT};
+
+/// The provider and credential source of a model id (`antigravity/<id>`
+/// included); a subagent with another model than its parent uses it.
+pub type Router =
+    Arc<dyn Fn(&str) -> Result<(Arc<dyn Provider>, Arc<dyn AuthSource>), String> + Send + Sync>;
 
 /// Everything an agent needs besides its tools; cheap to clone (shared parts
 /// are `Arc`s), so a subagent reuses its parent's.
@@ -56,6 +69,11 @@ pub struct Agent {
     /// The prompt sources read when this agent was built; a session whose
     /// stamp differs gets a context update. `None`: no updates.
     pub context: Option<Context>,
+    /// Tools found from the start of a new session (a subagent's `tools`,
+    /// PLAN.md D40): its first turn starts with a `find_tools` call naming them.
+    pub preload: Vec<String>,
+    /// The subagents of this agent's session; `None` without the tool.
+    pub children: Option<Arc<Children>>,
 }
 
 impl Agent {
@@ -64,6 +82,8 @@ impl Agent {
             parts,
             tools,
             context: None,
+            preload: Vec::new(),
+            children: None,
         }
     }
 
@@ -73,13 +93,33 @@ impl Agent {
         self
     }
 
-    /// The built-in tools plus `subagent`, whose child sessions name
-    /// `parent_session` as their parent.
+    /// The built-in tools plus `subagent` and the background tools, for a
+    /// session at depth 0 whose children use the parent's provider.
     pub fn with_subagent(parts: AgentParts, app_home: &Path, parent_session: &str) -> Agent {
+        Agent::with_subagents(parts, app_home, parent_session, 0, None)
+    }
+
+    /// The built-in tools, then `subagent`, `agent_send`, `agent_stop` and
+    /// `agent_output` (PLAN.md D40) for `session` at nesting `depth`; a
+    /// child with another model routes it through `router`. A child below
+    /// `maxDepth` gets the same list, so its tools match its parent's.
+    pub fn with_subagents(
+        parts: AgentParts,
+        app_home: &Path,
+        session: &str,
+        depth: u32,
+        router: Option<Router>,
+    ) -> Agent {
+        let children = children::of_session(session);
         let mut registry = tools::builtin();
-        let tool = SubagentTool::new(parts.clone(), app_home, parent_session);
+        let tool = SubagentTool::new(parts.clone(), app_home, session, depth, router);
         registry.add(Box::new(tool));
-        Agent::new(parts, Arc::new(registry))
+        for tool in child_tools::all(&children) {
+            registry.add(tool);
+        }
+        let mut agent = Agent::new(parts, Arc::new(registry));
+        agent.children = Some(children);
+        agent
     }
 
     /// Runs one turn on `conv` with no inbox. `cancel` may be set from
@@ -132,7 +172,23 @@ impl Agent {
         self.turns(conv, Start::Resume, cancel, inbox, sink)
     }
 
+    /// The turns, then on cancel every background descendant is stopped.
     fn turns(
+        &self,
+        conv: &mut Conversation,
+        first: Start<'_>,
+        cancel: &AtomicBool,
+        inbox: &mut Inbox,
+        sink: &mut dyn FnMut(AgentEvent),
+    ) -> TurnOutcome {
+        let outcome = self.turn_loop(conv, first, cancel, inbox, sink);
+        if cancel.load(Ordering::Relaxed) {
+            self.stop_children(sink);
+        }
+        outcome
+    }
+
+    fn turn_loop(
         &self,
         conv: &mut Conversation,
         first: Start<'_>,
@@ -155,12 +211,13 @@ impl Agent {
             if outcome != TurnOutcome::Done || cancel.load(Ordering::Relaxed) {
                 return outcome;
             }
-            let Some(text) = inbox.next_turn() else {
+            // Background children still running: wait for their answers.
+            let Some((text, steer)) = self.next_input(cancel, inbox, sink) else {
                 return outcome;
             };
             sink(AgentEvent::UserInput {
                 text: text.clone(),
-                steer: false,
+                steer,
             });
             follow_up = Some(text);
         }

@@ -139,6 +139,7 @@ impl Turn<'_> {
                 let message = user_message(note, text);
                 traced(self.conv.trace.user_message(self.turn, &message))?;
                 self.conv.messages.push(message);
+                self.preload()?;
             }
             None => {
                 if let Some(note) = note {

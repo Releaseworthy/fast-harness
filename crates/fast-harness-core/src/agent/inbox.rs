@@ -105,10 +105,18 @@ impl Turn<'_> {
     /// Adds the steers that arrived to the history: a text block after the
     /// last tool results or user text, else a new user message (Claude
     /// accepts text after the `tool_result` blocks of one user message).
+    /// Background subagents' answers (PLAN.md D40) join as steers, after
+    /// the front end's; their events reach the sink here too.
     pub(super) fn apply_steers(&mut self) -> Res<bool> {
-        let Some(text) = self.inbox.take_steers() else {
+        self.agent.forward_events(&mut *self.sink);
+        let texts: Vec<String> = [self.inbox.take_steers(), self.agent.take_notices()]
+            .into_iter()
+            .flatten()
+            .collect();
+        if texts.is_empty() {
             return Ok(false);
-        };
+        }
+        let text = texts.join("\n\n");
         self.add_user_text(&text, STEER)?;
         (self.sink)(AgentEvent::UserInput { text, steer: true });
         Ok(true)

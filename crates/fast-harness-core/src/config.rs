@@ -66,6 +66,34 @@ pub struct Config {
     pub compaction: compaction::CompactionPatch,
     /// `models`: per provider (`"antigravity/*"`) or per model overrides.
     pub models: BTreeMap<String, compaction::ModelEntry>,
+    /// `subagent` (PLAN.md D40): defaults of the subagent tool.
+    pub subagent: SubagentConfig,
+}
+
+/// The `subagent` settings; a `null` model or effort inherits the parent's.
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+pub struct SubagentConfig {
+    pub model: Option<String>,
+    pub effort: Option<String>,
+    /// A session at this depth gets no `subagent` tool (the root is 0).
+    pub max_depth: u32,
+    /// Children of one session running at once.
+    pub max_parallel: usize,
+    /// Byte budget of a child's answer (tool result and inbox notice).
+    pub output_bytes: usize,
+}
+
+impl Default for SubagentConfig {
+    fn default() -> SubagentConfig {
+        SubagentConfig {
+            model: None,
+            effort: None,
+            max_depth: 2,
+            max_parallel: 4,
+            output_bytes: DEFAULT_TOOL_OUTPUT_BYTES,
+        }
+    }
 }
 
 impl Default for Config {
@@ -88,6 +116,7 @@ impl Default for Config {
             tool_output: BTreeMap::new(),
             compaction: compaction::CompactionPatch::default(),
             models: BTreeMap::new(),
+            subagent: SubagentConfig::default(),
         }
     }
 }
@@ -161,11 +190,11 @@ impl Config {
     /// `toolOutput` entry of the tool, else `toolOutputBytes`, never below
     /// [`MIN_TOOL_OUTPUT_BYTES`]. The one place every budget is looked up.
     pub fn tool_budget(&self, tool: &str) -> usize {
-        let bytes = self
-            .tool_output
-            .get(tool)
-            .copied()
-            .unwrap_or(self.tool_output_bytes);
+        let fallback = match tool {
+            "subagent" | "agent_output" => self.subagent.output_bytes,
+            _ => self.tool_output_bytes,
+        };
+        let bytes = self.tool_output.get(tool).copied().unwrap_or(fallback);
         bytes.max(MIN_TOOL_OUTPUT_BYTES)
     }
 
