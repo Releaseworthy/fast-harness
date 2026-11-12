@@ -42,3 +42,7 @@ Rules for anyone (human or agent) changing this repo. Read `PLAN.md` first: it h
 - Context, cache, compaction, subagent, steering and extension work follows docs/efficiency-plan.md: the system prompt and tool list are frozen per session, messages are append-only, tool results shrink before the first send (never after).
 - Tool calls of one step run by effect (PLAN.md D54): a new tool that only reads declares `Effect::Read` and runs alongside other reads; anything else stays serial, in call order.
 - Claude 5.x thinking blocks go back unchanged and bind to the prefix: never drop, shorten or reorder earlier messages on the client.
+- Reachability is not struct fields: `ext::v1` also reaches `HttpRequest`, `HttpHead`, `HttpError`, `Flow`, `HttpErrorKind` and `ToolSession` through `Transport` and `ToolCtx`, so walk trait method signatures before listing the types a rule must cover.
+- `#[non_exhaustive]` still allows `Default` plus field assignment, so a type needs setters only where outside code must build it another way.
+- A cross-crate literal migration: list every site up front (one regex), fix them all, then check. `cargo check` stops per crate, so the errors otherwise arrive in about 5 waves.
+- A CRLF working copy shows as `i/lf w/crlf` in `git ls-files --eol`: the commit is fine and `git checkout` of the file rewrites the tree.

@@ -112,6 +112,12 @@ Owner decisions (2026-11-12, chosen from the options below):
 
 G7, G8 and G10 to G14 are still open.
 
+Advice after phase 24 (2026-11-13; it replaces the recommendation lines below where they differ, and it is still not a decision):
+
+- Order: G14 first (phase 30's PLAN.md split: no behaviour change, and every later session stops reading 88.8 KB first), then G7, G10, G8, G12 with phase 29, G11 after G7 and before the tag, G13 after the tag.
+- G8: a and b; not c. With G9 the plugin API is unstable for every 0.x release and `AgentEvent` is `#[non_exhaustive]`, so c is no longer tied to the tag, and it would rewrite the live path of both UIs right after G7 rewires them. Take c up again only if the parity test of a keeps finding differences.
+- G7 a, G10 a, G11 b (default `off`), G12 b, G13 a, G14 b: as recommended below.
+
 **G5. How the tool calls of one step run (A1, A2).**
 - a. A lock per path inside `write` and `edit`. Smallest change; edits all land, but `write` then `shell` still race and plugins' tools are not covered.
 - b. Each tool declares its effect (`Read`, `Write`, `Run`). Calls with `Read` run in parallel; the others run one at a time in call order, after the reads before them. Costs a `Tool` method (default `Run`, so an unknown tool is safe) and a rewrite of `execute`.
@@ -194,13 +200,29 @@ Phases 22 and 23 touch no format and no contract and can start as soon as G5 and
 |---|---|---|---|
 | 22 | done 2026-11-12 | 9f12d48 | PLAN.md D54 |
 | 23 | done 2026-11-13 | 875f10b (store module, writers, session lock), b536da2 (lock errors at once), 79efd48 (accounts), 27bc979 and da69164 (reads and renames retried on Windows) | PLAN.md D55, D56 |
+| 24 | done 2026-11-13 | 76ce350 (types, constructors, `api`), 6aae0c9 (progress, output parts, shell output live), 65a6ed6 (the tail in both views) | PLAN.md D57, D58 |
 
 Checked for both: `fmt`, `clippy`, 590 tests passed, 0 failed, 9 ignored on Windows; CI green on Windows and Linux at da69164 (run 43269200480); `tests/parallel_edits.rs` passes un-ignored; `fast-harness accounts` with the new binary reads the real store and rewrites nothing.
 
 Found by CI, not locally: on the Windows runner `fs::read` answered "Access is denied" while other threads replaced the file by rename (runs 43266120877 and 43267804839). Every reader of a file written through `store::write_atomic` now reads through `store::read` or `store::read_to_string`, which try again for up to 2 s.
 
+Phase 24 (2026-11-13), three chunks, each with `fmt`, `clippy` and the tests re-run by the parent:
+
+- 76ce350, D57: every struct with public fields and every enum reachable through `ext::v1` (20 structs, 14 enums) is `#[non_exhaustive]`, with constructors, and `v1` re-exports all of them; `api = 1` in the plugin list (absent reads as 1, another value fails `build.rs` and `apply-plugins.ts`); `docs/plugins.md` "Stability". 599 passed, 0 failed, 9 ignored; the template built as a path plugin.
+- 6aae0c9, D58: `ToolCtx::progress`, `AgentEvent::ToolProgress { id, chunk }` (live only: not in the trace, not in a message), `shell` output as it arrives (one event per 100 ms at most, 16 KB at most, whole characters), `ToolOutput` fields private behind accessors and holding `Part` values. 608 passed. `scripts/live-smoke.ps1` 6 of 6. A live `-p --json` turn printed `tool_progress` lines (`one`, `two`, `three`) before the `tool_result`.
+- 65a6ed6, D58: the running tool's tail (8 lines of 256 bytes, escape sequences stripped) under its row in the TUI and the GUI, gone at the result; a finished call equals its replay. 618 passed. Real window: `one`, `two` under the running shell card, then the result. GUI numbers in `docs/perf.md` "Phase 24C": idle unchanged (private working set 18.2 MB, 31.2 ms of CPU in 30 s), a 2.25 MB flood within the noise of two runs each.
+- The template repository (`Releaseworthy/fast-harness-plugin-template`, which builds against `main`) follows at e18855f.
+
+Open from phase 24:
+- No real terminal pass of the TUI: the repo has nothing that drives a real terminal. The TUI tail is covered by a render test only.
+- Only `shell` coalesces. `ctx.progress` itself has no limit: a plugin tool that calls it in a tight loop fills an unbounded channel until its call ends.
+- The fields of an enum variant are fixed (variants are not `#[non_exhaustive]`): new data comes as a new variant.
+- ACP shows the newest chunk only (a tool call update replaces its content). `shell` output of the last 100 ms before the end is not sent as progress (the result follows at once).
+- `scripts/apply-plugins.ts` has no tests; its `api` check was run by hand.
+- The front end crates match the `v1` enums with a wildcard arm where they match at all: a new `AgentEvent` is ignored there until handled, not a compile error.
+
 Open from phases 22 and 23:
-- `scripts/live-smoke.ps1` was not run: every call answered HTTP 429 (the account's 5 hour limit was at 100%). Neither phase touches a request body.
+- `scripts/live-smoke.ps1`: run on 2026-11-13 after a second account was signed in, 6 of 6 at 4b5e0b0 and again at 6aae0c9.
 - Linux ran only in CI (the secret store tests are skipped there); macOS not at all. The symlink path and the Unix permission copy of `tools/atomic.rs` have no test.
 - `Workspaces::save` merges against the file, but does not refresh its own list: a folder this process added and another process removed is added again by this process's next save.
 - Still written with plain `fs::write`: `config/index.rs` (the `index.json` cache), `reflect/patch.rs`, `app/reflect.rs`, and the write-once files of `tools/budget.rs` (spill) and `trace/wire.rs` (wire capture).
