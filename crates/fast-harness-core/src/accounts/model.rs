@@ -16,14 +16,14 @@ pub enum AccountKind {
 }
 
 /// Whose models an account calls (accounts.json version 3, PLAN.md D26).
+/// Records of other providers (Google, moved to branch `antigravity`, D53)
+/// stay raw in the store and are written back unchanged.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Provider {
     /// Claude (OAuth or API key). Records of versions 1 and 2 are all this.
     #[default]
     Anthropic,
-    /// Google Antigravity (OAuth only, kind `own`).
-    Google,
 }
 
 /// One account as listed in `accounts.json` (without its secret).
@@ -31,7 +31,7 @@ pub enum Provider {
 #[serde(rename_all = "camelCase")]
 pub struct Account {
     /// `u-<uuid>` for OAuth accounts, `k-<first 8 hex of sha256(key)>` for API
-    /// keys, `g-<Google user id>` for Google accounts.
+    /// keys.
     pub id: String,
     pub kind: AccountKind,
     #[serde(default)]
@@ -51,12 +51,6 @@ impl Account {
     /// claude-switch's `recordIdFor` (lowercase, only `[a-z0-9-]` kept).
     pub fn oauth_id(uuid: &str) -> String {
         format!("u-{}", clean_id(uuid))
-    }
-
-    /// The id of a Google account: `g-` and the Google user id, normalised like
-    /// [`Account::oauth_id`].
-    pub fn google_id(user_id: &str) -> String {
-        format!("g-{}", clean_id(user_id))
     }
 
     /// The id of an API key account: `k-` and the first 8 hex digits of sha256(key).
@@ -88,16 +82,6 @@ pub enum Secret {
     },
     /// An API key.
     ApiKey { key: String },
-    /// Google OAuth tokens and the Cloud Code project of a Google account.
-    Google {
-        refresh: String,
-        access: String,
-        /// Unix milliseconds when `access` expires.
-        #[serde(rename = "expiresAt")]
-        expires_at: u64,
-        #[serde(rename = "projectId", default, skip_serializing_if = "Option::is_none")]
-        project_id: Option<String>,
-    },
 }
 
 impl fmt::Debug for Secret {
@@ -112,17 +96,6 @@ impl fmt::Debug for Secret {
             Secret::ApiKey { .. } => f
                 .debug_struct("ApiKey")
                 .field("key", &"<redacted>")
-                .finish(),
-            Secret::Google {
-                expires_at,
-                project_id,
-                ..
-            } => f
-                .debug_struct("Google")
-                .field("refresh", &"<redacted>")
-                .field("access", &"<redacted>")
-                .field("expires_at", expires_at)
-                .field("project_id", project_id)
                 .finish(),
         }
     }

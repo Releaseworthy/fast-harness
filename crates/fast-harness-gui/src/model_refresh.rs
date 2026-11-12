@@ -122,17 +122,6 @@ mod tests {
         assert_eq!(merged.note, "");
         let gone = merge(Ok(fake(&[("new-a", false)])), "mine", None);
         assert_eq!(gone.list.unwrap()[1], ("mine".into(), "mine".into()));
-        let ag = merge(Ok(fake(&[("antigravity/gemini-r", false)])), "new-a", None);
-        let labels: Vec<String> = ag.list.unwrap().into_iter().map(|(_, l)| l).collect();
-        assert_eq!(
-            labels,
-            [
-                "Claude",
-                "new-a",
-                "Google Antigravity",
-                "ANTIGRAVITY/GEMINI-R"
-            ]
-        );
     }
 
     #[test]

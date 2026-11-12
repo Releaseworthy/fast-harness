@@ -211,6 +211,7 @@ impl Runtime {
         drop(notes);
         self.keys = Arc::new(keys);
         self.config = layered.config.clone();
+        self.retire_model();
         self.layered = layered;
     }
 

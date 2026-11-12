@@ -8,10 +8,6 @@ mod app;
 mod appearance;
 mod config_page;
 mod format;
-mod google;
-#[cfg(test)]
-mod google_fixtures;
-mod google_rows;
 mod keys;
 mod mirror;
 mod model_refresh;
@@ -102,11 +98,11 @@ fn start_runtime(ui: &MainWindow, stop: &Arc<AtomicBool>) {
             if let Err(err) = project {
                 ui.set_error_text(format!("Project settings: {err}").into());
             }
-            let (pool, google, http) = (rt.pool.clone(), rt.google.clone(), rt.transport.clone());
+            let (pool, http) = (rt.pool.clone(), rt.transport.clone());
             app::install(app::App::new(&ui, rt, cwd));
             wire::connect(&ui);
             wire::first_paint();
-            accounts::start_poller(pool, google, http, stop.clone());
+            accounts::start_poller(pool, http, stop.clone());
         }
         Err(err) => {
             theme::apply(

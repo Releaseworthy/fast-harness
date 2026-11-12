@@ -20,7 +20,7 @@ file, brings it back when needed):";
 
 /// The summary as a user message; then, when tools were found, a synthetic
 /// `find_tools` call `call_id` naming them and its result (Claude gets its
-/// `tool_reference` blocks, Antigravity its declarations); then, `mid` turn,
+/// `tool_reference` blocks, openai-chat its functions); then, `mid` turn,
 /// [`CONTINUE`]. No old thinking survives. `kept` are the mark lines of the
 /// skills and nested AGENTS.md files loaded before (PLAN.md D43), listed
 /// after the summary so they stay loaded once per session.

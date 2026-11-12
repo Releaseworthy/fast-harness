@@ -8,8 +8,8 @@ use fast_harness_core::llm::catalog::{
 use fast_harness_core::llm::{efforts, fit_effort};
 
 /// Model ids and labels of `models` (the cached or fetched list) grouped by
-/// provider (PLAN.md D24): a title row (empty id, "Claude" or "Google
-/// Antigravity") before each non-empty group, `configured` first in its
+/// provider (PLAN.md D24): a title row (empty id, "Claude" or a
+/// providers/*.json title) before each non-empty group, `configured` first in its
 /// group (labelled by its id) when the list lacks it, and " (deprecated)"
 /// after the label of a deprecated model.
 pub fn model_list(models: &[ModelInfo], configured: &str) -> Vec<(String, String)> {
@@ -176,30 +176,14 @@ mod tests {
 
     #[test]
     fn groups_by_provider_with_title_rows() {
-        let models = [
-            info("antigravity/gemini-g", "Gemini G"),
-            info("claude-c", "Claude C"),
-            info("antigravity/claude-c", "Claude C"),
-        ];
-        let list = model_list(&models, "antigravity/gemini-new");
+        let models = [info("claude-c", "Claude C"), info("claude-d", "Claude D")];
+        let list = model_list(&models, "claude-new");
         let labels: Vec<&str> = list.iter().map(|(_, l)| l.as_str()).collect();
-        assert_eq!(
-            labels,
-            [
-                "Claude",
-                "Claude C",
-                "Google Antigravity",
-                "antigravity/gemini-new",
-                "Gemini G",
-                "Claude C · Antigravity"
-            ]
-        );
-        assert!(is_header(&list[0]) && is_header(&list[2]));
-        assert_eq!(model_index(&list, "antigravity/claude-c"), 5);
+        assert_eq!(labels, ["Claude", "claude-new", "Claude C", "Claude D"]);
+        assert!(is_header(&list[0]));
+        assert_eq!(model_index(&list, "claude-d"), 3);
         assert_eq!(model_index(&list, ""), -1);
-        let only_claude = model_list(&models[1..2], "claude-c");
+        let only_claude = model_list(&models[..1], "claude-c");
         assert_eq!(only_claude.len(), 2);
-        let effort = effort_list("antigravity/gemini-3-pro-group");
-        assert_eq!(effort, ["low", "high"]);
     }
 }

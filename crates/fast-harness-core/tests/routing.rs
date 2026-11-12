@@ -1,13 +1,12 @@
 //! `Runtime::parts` picks the provider and the credential from the model id
-//! (PLAN.md D24): `antigravity/<id>` goes to Antigravity with the Google
-//! accounts, any other id to Claude.
+//! (PLAN.md D24). `antigravity/<id>` models moved to branch `antigravity`
+//! (D53): such a value in the settings or a picker falls back to the default
+//! model with a note instead of failing.
 
 use std::path::PathBuf;
 
-use fast_harness_core::accounts::google::SignIn;
-use fast_harness_core::accounts::model::{Account, AccountKind, Provider, Secret};
-use fast_harness_core::app::{Runtime, NO_GOOGLE_ACCOUNT};
-
+use fast_harness_core::app::Runtime;
+use fast_harness_core::config::Config;
 struct Home(PathBuf);
 
 impl Home {
@@ -26,44 +25,19 @@ impl Drop for Home {
     }
 }
 
-fn add_google(rt: &Runtime) {
-    let account = Account {
-        id: Account::google_id("user-route"),
-        kind: AccountKind::Own,
-        provider: Provider::Google,
-        email: Some("route@example.com".into()),
-        name: None,
-        plan: None,
-        added_at: 1,
-    };
-    let secret = Secret::Google {
-        refresh: "fake-refresh-route".into(),
-        access: "fake-access-route".into(),
-        expires_at: u64::MAX,
-        project_id: Some("proj-route".into()),
-    };
-    rt.pool.add_google(SignIn { account, secret }).unwrap();
-}
-
 #[test]
 #[cfg_attr(
     not(windows),
     ignore = "secrets are encrypted with DPAPI, which only Windows has"
 )]
 fn parts_follow_the_model_id() {
-    let home = Home::new("both");
+    let home = Home::new("claude");
     let mut rt = Runtime::load_at(home.0.clone()).unwrap();
     rt.pool.add_api_key("fake-key-route", "route key").unwrap();
-    add_google(&rt);
     rt.config.model = "claude-opus-5-5".into();
     let parts = rt.parts(&home.0).unwrap();
     assert_eq!(parts.provider.id(), "anthropic");
-    rt.config.model = "antigravity/gemini-3-flash".into();
-    let parts = rt.parts(&home.0).unwrap();
-    assert_eq!(parts.provider.id(), "antigravity");
-    assert_eq!(parts.config.model, "antigravity/gemini-3-flash");
-    let (provider, _) = rt.route("antigravity/claude-sonnet-5-5").unwrap();
-    assert_eq!(provider.id(), "antigravity");
+    assert!(rt.take_notes().is_empty());
 }
 
 #[test]
@@ -71,15 +45,32 @@ fn parts_follow_the_model_id() {
     not(windows),
     ignore = "secrets are encrypted with DPAPI, which only Windows has"
 )]
-fn antigravity_without_a_google_account_names_the_way_to_add_one() {
-    let home = Home::new("no-google");
+fn a_picked_antigravity_model_falls_back_with_a_note() {
+    let home = Home::new("retired-pick");
     let mut rt = Runtime::load_at(home.0.clone()).unwrap();
     rt.pool.add_api_key("fake-key-route", "route key").unwrap();
     rt.config.model = "antigravity/gemini-3-flash".into();
-    let err = rt.parts(&home.0).err().expect("no Google account");
-    assert_eq!(err, NO_GOOGLE_ACCOUNT);
-    assert!(err.contains("Accounts > Add Google account"));
-    assert!(err.contains("fast-harness accounts login --google"));
-    rt.config.model = "claude-opus-5-5".into();
-    assert!(rt.parts(&home.0).is_ok());
+    let parts = rt.parts(&home.0).expect("a retired model must not fail");
+    assert_eq!(parts.provider.id(), "anthropic");
+    assert_eq!(parts.config.model, Config::default().model);
+    let notes = rt.take_notes();
+    assert_eq!(notes.len(), 1, "{notes:?}");
+    assert!(notes[0].contains("antigravity/gemini-3-flash") && notes[0].contains("D53"));
+}
+
+#[test]
+fn a_configured_antigravity_model_falls_back_on_load() {
+    let home = Home::new("retired-config");
+    std::fs::write(
+        home.0.join("config.json"),
+        r#"{"model":"antigravity/gemini-3-pro"}"#,
+    )
+    .unwrap();
+    let rt = Runtime::load_at(home.0.clone()).expect("a retired model must not fail the load");
+    assert_eq!(rt.config.model, Config::default().model);
+    let notes = rt.take_notes();
+    assert!(
+        notes.iter().any(|n| n.contains("antigravity/gemini-3-pro")),
+        "{notes:?}"
+    );
 }

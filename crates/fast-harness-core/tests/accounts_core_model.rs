@@ -36,7 +36,6 @@ fn account_serializes_camel_case() {
     old.as_object_mut().unwrap().remove("provider");
     let back: Account = serde_json::from_value(old).unwrap();
     assert_eq!(back, own_account());
-    assert_eq!(Account::google_id("1098765"), "g-1098765");
 }
 
 #[test]

@@ -37,7 +37,7 @@ pub enum Block {
         id: String,
         name: String,
         arguments: String,
-        /// The Gemini thought signature of this call (Antigravity), sent back
+        /// The Gemini thought signature of this call (written by branch `antigravity`, D53), sent back
         /// unchanged only to the model that produced it.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         signature: Option<String>,
@@ -55,7 +55,7 @@ pub struct Message {
     pub role: Role,
     pub content: Vec<Block>,
     /// The full model id that produced an assistant message (`claude-...` or
-    /// `antigravity/<id>`); None for user and tool messages and for logs
+    /// `<provider id>/<id>`); None for user and tool messages and for logs
     /// written before trace version 3.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub model: Option<String>,
@@ -98,7 +98,7 @@ impl Message {
 /// Token counts of one model call. The first four fields are disjoint:
 /// the prompt size is `input + cache_read + cache_write`. `cache_write_1h` is
 /// the part of `cache_write` written with the 1 hour lifetime (Anthropic
-/// `usage.cache_creation.ephemeral_1h_input_tokens`; 0 for Antigravity).
+/// `usage.cache_creation.ephemeral_1h_input_tokens`; 0 for other providers).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Usage {

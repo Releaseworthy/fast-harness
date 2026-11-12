@@ -11,7 +11,7 @@ use super::children::{self, Children, Slot};
 use super::subagent::{Spec, SubagentTool, NAME};
 use crate::agent::{Agent, AgentParts, Conversation, Inbox};
 use crate::events::{AgentEvent, TurnOutcome};
-use crate::llm::antigravity::is_antigravity;
+use crate::llm::catalog;
 use crate::tools::{self, ToolCtx, ToolOutput};
 use crate::types::{Role, Usage};
 
@@ -91,9 +91,12 @@ fn route(tool: &SubagentTool, parts: &mut AgentParts, model: &str) -> Result<(),
     if model.is_empty() || model == parts.config.model {
         return Ok(());
     }
+    if let Some(note) = catalog::retired_note(model, &parts.config.model) {
+        return Err(note);
+    }
     match &tool.router {
         Some(router) => (parts.provider, parts.auth) = router(model)?,
-        None if is_antigravity(model) == is_antigravity(&parts.config.model) => {}
+        None if catalog::provider_of(model) == catalog::provider_of(&parts.config.model) => {}
         None => {
             return Err(format!(
                 "model `{model}` needs a provider this session lacks"

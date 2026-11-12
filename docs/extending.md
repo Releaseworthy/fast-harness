@@ -84,7 +84,7 @@ The `openai-chat` adapter streams (`stream: true` with `stream_options.include_u
 
 ### Overriding a built-in model
 
-A file whose `id` is `anthropic` or `antigravity` defines no provider: its model entries change the numbers of built-in models (`contextWindow`, `maxOutput`, `price`, `compaction`). Claude models use their bare id; Antigravity models the id after `antigravity/`.
+A file whose `id` is `anthropic` (or `antigravity`, reserved for the branch of PLAN.md D53) defines no provider: its model entries change the numbers of built-in models (`contextWindow`, `maxOutput`, `price`, `compaction`). Claude models use their bare id; Antigravity models the id after `antigravity/`.
 
 ```json
 {"id": "anthropic", "models": [{"id": "claude-opus-5-5", "price": {"input": 5, "output": 25, "cacheRead": 0.5, "cacheWrite": 6.25, "cacheWrite1h": 10}}]}
@@ -385,7 +385,6 @@ Scopes: `global` on every screen, `chat` on the chat, `screens` on every screen 
 | `trace_full` | `f` | trace | always | full or cut bodies |
 | `trace_steps` | `s` | trace | always | steps table or timeline |
 | `account_sign_in` | `l` | accounts | always | Claude sign-in |
-| `account_google_sign_in` | `g` | accounts | always | Google sign-in |
 | `account_add_key` | `k` | accounts | always | add an API key |
 | `account_remove` | `d` | accounts | always | remove the account |
 | `account_usage` | `r` | accounts | always | read usage |

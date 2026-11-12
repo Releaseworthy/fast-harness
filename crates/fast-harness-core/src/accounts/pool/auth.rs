@@ -41,10 +41,6 @@ impl State {
         force: bool,
     ) -> Option<Auth> {
         let account = self.store.get(id)?;
-        if account.provider != Provider::Anthropic {
-            // Google accounts have their own pool (PLAN.md D26).
-            return None;
-        }
         match account.kind {
             AccountKind::Own => self.own_token(id, http, force),
             AccountKind::ApiKey => match self.store.secret(id) {

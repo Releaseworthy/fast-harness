@@ -123,7 +123,7 @@ fn start_text(app: &mut App, ui: &MainWindow, text: String) -> bool {
         }
     };
     // Checked first so a refused send leaves no empty session behind; the
-    // model picks Claude's credential or the Google accounts.
+    // model picks its provider's credential.
     if let Err(err) = app.rt.route(&app.rt.config.model) {
         show_error(ui, err);
         return false;
@@ -298,8 +298,6 @@ fn after_turn(app: &mut App, ui: &MainWindow, id: &str, next: Option<String>) {
         app.refresh_run(ui);
     }
     app.refresh_sessions(ui);
-    // Schedules the Google quota read of the account the turn used (D23).
-    app.rt.google.after_turn(fast_harness_core::trace::now_ms());
     accounts::refresh(app, ui);
     if shown && ui.get_page() == "trace" {
         app.refresh_trace(ui);

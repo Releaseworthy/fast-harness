@@ -1,18 +1,21 @@
 //! `~/.fast-harness/accounts.json` with encrypted secrets.
 //!
 //! Schema (version 3):
-//! `{"version":3,"active":<id or null>,"activeGoogle":<id, optional>,
-//! "accounts":[{...account fields,"provider":"anthropic"|"google","secret":"<base64>"}]}`.
-//! `active` points at an Anthropic account, `activeGoogle` at a Google one.
+//! `{"version":3,"active":<id or null>,
+//! "accounts":[{...account fields,"provider":"anthropic","secret":"<base64>"}]}`.
+//! `active` points at an Anthropic account.
 //! A secret is base64(platform::protect(serde_json bytes of [`Secret`])). Unknown
-//! top-level keys are kept on save.
+//! top-level keys (such as `activeGoogle`) are kept on save, and so are records
+//! of a provider this build does not know (`"google"`, whose code moved to
+//! branch `antigravity`, PLAN.md D53): they stay raw JSON, are never listed and
+//! are written back unchanged after the known accounts.
 //!
 //! Version 1 is version 2 plus accounts of kind `linked` (claude-switch links,
 //! removed 2026-11-11, PLAN.md D8). They never held a secret: loading a version
 //! 1 file drops them (and an `active` pointing at one falls back to the first
 //! remaining account); the next save writes version 3.
 //!
-//! Version 2 is version 3 without `provider` and `activeGoogle`: its records
+//! Version 2 is version 3 without `provider`: its records
 //! load as `anthropic` (PLAN.md D26).
 
 use crate::accounts::crypto::{base64_decode, base64_encode, Base64Error};
@@ -91,10 +94,8 @@ struct FileData {
     version: u64,
     #[serde(default)]
     active: Option<String>,
-    #[serde(rename = "activeGoogle", skip_serializing_if = "Option::is_none")]
-    active_google: Option<String>,
     #[serde(default)]
-    accounts: Vec<Entry>,
+    accounts: Vec<Value>,
     #[serde(flatten)]
     extra: Map<String, Value>,
 }
@@ -105,34 +106,47 @@ struct RawFile {
     version: u64,
     #[serde(default)]
     active: Option<String>,
-    #[serde(default, rename = "activeGoogle")]
-    active_google: Option<String>,
     #[serde(default)]
     accounts: Vec<Value>,
     #[serde(flatten)]
     extra: Map<String, Value>,
 }
 
-/// The entries of a file of `version`; version 1 `linked` records are dropped.
-fn entries_of(version: u64, accounts: Vec<Value>) -> Result<Vec<Entry>, StoreError> {
+/// Whether `record` names a provider other than `anthropic` (a missing
+/// `provider` is `anthropic`, as in version 2).
+fn is_foreign(record: &Value) -> bool {
+    record
+        .get("provider")
+        .and_then(Value::as_str)
+        .is_some_and(|p| p != "anthropic")
+}
+
+/// The entries of a file of `version` and its records of unknown providers;
+/// version 1 `linked` records are dropped.
+fn entries_of(version: u64, accounts: Vec<Value>) -> Result<(Vec<Entry>, Vec<Value>), StoreError> {
     if ![VERSION, VERSION_V2, VERSION_V1].contains(&version) {
         return Err(StoreError::UnsupportedVersion(version));
     }
-    accounts
+    let (foreign, known): (Vec<Value>, Vec<Value>) = accounts
         .into_iter()
         .filter(|a| {
             version != VERSION_V1 || a.get("kind").and_then(Value::as_str) != Some("linked")
         })
+        .partition(is_foreign);
+    let entries = known
+        .into_iter()
         .map(|a| serde_json::from_value(a).map_err(StoreError::Json))
-        .collect()
+        .collect::<Result<Vec<Entry>, StoreError>>()?;
+    Ok((entries, foreign))
 }
 
 /// The accounts file in memory. Changes reach the disk on [`AccountStore::save`].
 pub struct AccountStore {
     path: PathBuf,
     active: Option<String>,
-    active_google: Option<String>,
     entries: Vec<Entry>,
+    /// Records of providers this build does not know, kept as read.
+    foreign: Vec<Value>,
     extra: Map<String, Value>,
 }
 
@@ -142,8 +156,8 @@ impl fmt::Debug for AccountStore {
         f.debug_struct("AccountStore")
             .field("path", &self.path)
             .field("active", &self.active)
-            .field("active_google", &self.active_google)
             .field("accounts", &ids)
+            .field("foreign", &self.foreign.len())
             .finish()
     }
 }
@@ -165,15 +179,15 @@ impl AccountStore {
         let mut store = AccountStore {
             path,
             active: None,
-            active_google: None,
             entries: Vec::new(),
+            foreign: Vec::new(),
             extra: Map::new(),
         };
         if text.trim().is_empty() {
             return Ok(store);
         }
         let data: RawFile = serde_json::from_str(&text).map_err(StoreError::Json)?;
-        store.entries = entries_of(data.version, data.accounts)?;
+        (store.entries, store.foreign) = entries_of(data.version, data.accounts)?;
         let pointed = data.active.is_some();
         store.active = data.active.filter(|id| {
             data.version != VERSION_V1 || store.entries.iter().any(|e| &e.account.id == id)
@@ -181,7 +195,6 @@ impl AccountStore {
         if pointed && store.active.is_none() {
             store.active = store.entries.first().map(|e| e.account.id.clone());
         }
-        store.active_google = data.active_google;
         store.extra = data.extra;
         Ok(store)
     }
@@ -193,11 +206,17 @@ impl AccountStore {
 
     /// Writes the store: a temporary file in the same folder, renamed over the old one.
     pub fn save(&self) -> Result<(), StoreError> {
+        let mut accounts = self
+            .entries
+            .iter()
+            .map(serde_json::to_value)
+            .collect::<Result<Vec<Value>, _>>()
+            .map_err(StoreError::Json)?;
+        accounts.extend(self.foreign.iter().cloned());
         let data = FileData {
             version: VERSION,
             active: self.active.clone(),
-            active_google: self.active_google.clone(),
-            accounts: self.entries.clone(),
+            accounts,
             extra: self.extra.clone(),
         };
         let mut text = serde_json::to_string_pretty(&data).map_err(StoreError::Json)?;
@@ -265,10 +284,8 @@ impl AccountStore {
     /// Removes an account (and clears it as active). Returns it if it existed.
     pub fn remove(&mut self, id: &str) -> Option<Account> {
         let index = self.entries.iter().position(|e| e.account.id == id)?;
-        for pointer in [&mut self.active, &mut self.active_google] {
-            if pointer.as_deref() == Some(id) {
-                *pointer = None;
-            }
+        if self.active.as_deref() == Some(id) {
+            self.active = None;
         }
         Some(self.entries.remove(index).account)
     }
@@ -282,7 +299,6 @@ impl AccountStore {
     pub fn active_for(&self, provider: Provider) -> Option<&Account> {
         let pointer = match provider {
             Provider::Anthropic => &self.active,
-            Provider::Google => &self.active_google,
         };
         pointer
             .as_deref()
@@ -297,7 +313,6 @@ impl AccountStore {
         };
         let pointer = match account.provider {
             Provider::Anthropic => &mut self.active,
-            Provider::Google => &mut self.active_google,
         };
         *pointer = Some(id.to_string());
         Ok(())
@@ -334,7 +349,6 @@ fn seal(account: &Account, secret: &Secret) -> Result<String, StoreError> {
                 AccountKind::ApiKey,
                 Secret::ApiKey { .. }
             )
-            | (Provider::Google, AccountKind::Own, Secret::Google { .. })
     );
     if !fits {
         return Err(StoreError::SecretKindMismatch(account.id.clone()));

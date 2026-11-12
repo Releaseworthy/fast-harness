@@ -1,9 +1,6 @@
 //! The provider summaries the Accounts page and panel open on (PLAN.md D32):
 //! per provider the account count and a status in words.
 
-use std::path::Path;
-
-use super::google::{self, GoogleError, GoogleStatus};
 use super::model::Account;
 use super::pool::AccountStatus;
 use super::usage::current_usage;
@@ -12,46 +9,21 @@ use super::usage::current_usage;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ProviderKey {
     Claude,
-    Google,
 }
 
 impl ProviderKey {
-    pub const ALL: [ProviderKey; 2] = [ProviderKey::Claude, ProviderKey::Google];
+    pub const ALL: [ProviderKey; 1] = [ProviderKey::Claude];
 
     /// The id the GUI routes on.
     pub fn id(self) -> &'static str {
         match self {
             ProviderKey::Claude => "claude",
-            ProviderKey::Google => "google",
         }
     }
 
     pub fn name(self) -> &'static str {
         match self {
             ProviderKey::Claude => "Claude",
-            ProviderKey::Google => "Google Antigravity",
-        }
-    }
-}
-
-/// Whether Google sign-in has an OAuth client (D25).
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum ClientState {
-    /// A client is set; its id (not a secret).
-    Ready(String),
-    /// No client anywhere: the provider needs setup.
-    Missing,
-    /// A client file that cannot be read; the reason carries no secret.
-    Broken(String),
-}
-
-impl ClientState {
-    /// Reads the client as Google sign-in would ([`google::load_client`]).
-    pub fn of(app_home: &Path) -> ClientState {
-        match google::load_client(app_home) {
-            Ok(client) => ClientState::Ready(client.id),
-            Err(GoogleError::NoClient) => ClientState::Missing,
-            Err(err) => ClientState::Broken(err.to_string()),
         }
     }
 }
@@ -63,7 +35,7 @@ pub enum Tone {
     Ready,
     /// Nothing to use yet (no account, none active).
     Empty,
-    /// Needs the user: setup missing, client unreadable, quota nearly out.
+    /// Needs the user: quota nearly out.
     Attention,
 }
 
@@ -74,7 +46,7 @@ pub struct ProviderSummary {
     pub count: usize,
     /// `No accounts`, `1 account`, `3 accounts`.
     pub count_text: String,
-    /// `Needs setup`, `Not set up`, `No account in use`, `Active: <label>`.
+    /// `Not set up`, `No account in use`, `Active: <label>`.
     pub status: String,
     pub tone: Tone,
     /// The lowest quota left of the active account, percent, when known.
@@ -84,42 +56,17 @@ pub struct ProviderSummary {
 /// Below this percent left the summary asks for attention.
 const LOW_LEFT: f64 = 10.0;
 
-/// The summaries of both providers, Claude first.
-pub fn summaries(
-    claude: &[AccountStatus],
-    google: &[GoogleStatus],
-    client: &ClientState,
-    now_ms: u64,
-) -> Vec<ProviderSummary> {
+/// The provider summaries (only Claude on this branch: Google Antigravity
+/// moved to branch `antigravity`, PLAN.md D53).
+pub fn summaries(claude: &[AccountStatus], now_ms: u64) -> Vec<ProviderSummary> {
     let active_claude = claude.iter().find(|s| s.active);
-    let active_google = google.iter().find(|s| s.active);
     let claude_left = active_claude.and_then(|s| claude_left(s, now_ms));
-    let google_left = active_google.and_then(|s| google_left(s, now_ms));
-    let mut google_card = summary(
-        ProviderKey::Google,
-        google.len(),
-        active_google.map(|s| &s.account),
-        google_left,
-    );
-    match client {
-        ClientState::Ready(_) => {}
-        ClientState::Missing => attention(&mut google_card, "Needs setup".into()),
-        ClientState::Broken(_) => attention(&mut google_card, "OAuth client unreadable".into()),
-    }
-    vec![
-        summary(
-            ProviderKey::Claude,
-            claude.len(),
-            active_claude.map(|s| &s.account),
-            claude_left,
-        ),
-        google_card,
-    ]
-}
-
-fn attention(card: &mut ProviderSummary, status: String) {
-    card.status = status;
-    card.tone = Tone::Attention;
+    vec![summary(
+        ProviderKey::Claude,
+        claude.len(),
+        active_claude.map(|s| &s.account),
+        claude_left,
+    )]
 }
 
 fn summary(
@@ -175,16 +122,6 @@ fn claude_left(status: &AccountStatus, now_ms: u64) -> Option<f64> {
         .chain(&usage.seven_day)
         .chain(&usage.extra);
     lowest(windows.map(|w| 100.0 - w.utilization))
-}
-
-/// The lowest percent left over the Google quota windows that are on.
-fn google_left(status: &GoogleStatus, now_ms: u64) -> Option<f64> {
-    let groups = &status.quota.as_ref()?.groups;
-    let windows = groups
-        .iter()
-        .flat_map(|g| g.five_hour.iter().chain(&g.weekly))
-        .filter(|w| !w.disabled);
-    lowest(windows.map(|w| (1.0 - w.used_at(now_ms)) * 100.0))
 }
 
 fn lowest(values: impl Iterator<Item = f64>) -> Option<f64> {

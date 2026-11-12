@@ -1,12 +1,12 @@
 //! Wiring shared by every front end (CLI print mode, TUI, GUI): settings,
 //! credentials, the providers, the transport and sessions. The model id picks
-//! the provider (PLAN.md D24): `antigravity/<id>` goes to Google Antigravity
-//! with the Google accounts, any other id to Claude.
+//! the provider (PLAN.md D24): `<provider id>/<id>` goes to that provider of
+//! `providers/*.json`, any other id to Claude. `antigravity/<id>` (moved to
+//! branch `antigravity`, D53) falls back to the default model with a note.
 
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
-use crate::accounts::google::GoogleAuth;
 use crate::accounts::pool::AccountPool;
 use crate::agent::{prompt, Agent, AgentParts, Context, Conversation, Router};
 use crate::auth::{AuthSource, StaticAuth};
@@ -14,8 +14,7 @@ use crate::config::layers::Layered;
 use crate::config::Config;
 use crate::http::Transport;
 use crate::llm::anthropic::Anthropic;
-use crate::llm::antigravity::Antigravity;
-use crate::llm::catalog::{provider_of, ANTIGRAVITY};
+use crate::llm::catalog;
 use crate::llm::custom::ProviderFile;
 use crate::llm::{Auth, Provider};
 use crate::net::UreqTransport;
@@ -28,14 +27,9 @@ pub struct Runtime {
     pub home: PathBuf,
     pub config: Config,
     pub pool: Arc<AccountPool>,
-    /// The Google accounts of the same pool (PLAN.md D23): the credential of
-    /// `antigravity/<id>` models.
-    pub google: Arc<GoogleAuth>,
     pub transport: Arc<UreqTransport>,
-    /// Claude, for every model id without the `antigravity/` prefix.
+    /// Claude, for every model id no `providers/*.json` provider claims.
     pub provider: Arc<Anthropic>,
-    /// Google Antigravity, for `antigravity/<id>` models.
-    pub antigravity: Arc<Antigravity>,
     /// Set by the TUI and the GUI: `cacheTtl: auto` then caches the
     /// messages for 1 hour (5 minutes in print mode), PLAN.md D36.
     pub interactive: bool,
@@ -57,9 +51,6 @@ pub struct Runtime {
 
 /// The provider and the credential source of one model.
 pub type Route = (Arc<dyn Provider>, Arc<dyn AuthSource>);
-
-/// Why an `antigravity/<id>` model cannot run: no Google account.
-pub const NO_GOOGLE_ACCOUNT: &str = "no Google account for Antigravity models: add one in Accounts > Add Google account, or run `fast-harness accounts login --google`";
 
 /// The account pool of `home`: `accounts.json` and `usage.json`.
 pub fn open_pool(home: &Path) -> Result<AccountPool, String> {
@@ -86,16 +77,13 @@ impl Runtime {
         let loaded = settings::load_settings(&home, None, &env_value)?;
         models::load_cache(&home);
         let pool = Arc::new(open_pool(&home)?);
-        let google = Arc::new(GoogleAuth::new(Arc::clone(&pool), &home));
         let mut runtime = Runtime {
             home,
             config: loaded.layered.config.clone(),
             layered: loaded.layered.clone(),
             pool,
-            google,
             transport: Arc::new(UreqTransport::new()),
             provider: Arc::new(Anthropic::default()),
-            antigravity: Arc::new(Antigravity::default()),
             interactive: false,
             custom: Vec::new(),
             extensions: Arc::default(),
@@ -127,21 +115,10 @@ impl Runtime {
         Ok(self.pool.clone())
     }
 
-    /// The Google accounts as a credential source; [`NO_GOOGLE_ACCOUNT`] when there is none.
-    pub fn google_auth(&self) -> Result<Arc<dyn AuthSource>, String> {
-        if self.google.status().is_empty() {
-            return Err(NO_GOOGLE_ACCOUNT.into());
-        }
-        Ok(self.google.clone())
-    }
-
     /// The provider and credential source of `model`.
     pub fn route(&self, model: &str) -> Result<Route, String> {
         if let Some(route) = self.custom_route(model) {
             return route;
-        }
-        if provider_of(model) == ANTIGRAVITY {
-            return Ok((self.antigravity.clone(), self.google_auth()?));
         }
         Ok((self.provider.clone(), self.auth()?))
     }
@@ -167,9 +144,9 @@ impl Runtime {
         system: String,
         config: &Config,
     ) -> Result<AgentParts, String> {
+        let mut config = self.usable(config);
         let (provider, auth) = self.route(&config.model)?;
         let transport: Arc<dyn Transport> = self.transport.clone();
-        let mut config = config.clone();
         config.interactive = self.interactive;
         Ok(AgentParts {
             provider,
@@ -199,6 +176,7 @@ impl Runtime {
         conv: &Conversation,
         config: &Config,
     ) -> Result<(Agent, Vec<String>), String> {
+        let config = &self.usable(config);
         let (mut context, read_notes) = Context::read(&self.home, cwd, &config.model);
         context.skills = self.extensions.skills_line();
         context.agents_bytes = config.agents_bytes.max(1024);
@@ -252,10 +230,6 @@ impl Runtime {
             let provider: Arc<dyn Provider> = self.provider.clone();
             (provider, auth)
         });
-        let google: Result<Route, String> = self.google_auth().map(|auth| {
-            let provider: Arc<dyn Provider> = self.antigravity.clone();
-            (provider, auth)
-        });
         let custom: Vec<(String, Result<Route, String>)> = (self.custom.iter())
             .map(|(_, file)| {
                 let model = format!("{}/", file.id);
@@ -269,10 +243,7 @@ impl Runtime {
             if let Some((_, route)) = custom.iter().find(|(p, _)| model.starts_with(p.as_str())) {
                 return route.clone();
             }
-            match provider_of(model) == ANTIGRAVITY {
-                true => google.clone(),
-                false => claude.clone(),
-            }
+            claude.clone()
         })
     }
     /// `resume` when given, else the newest session of `cwd` when
@@ -300,8 +271,7 @@ impl Runtime {
 }
 
 // Live model catalog: the caches and each provider's list (`app/models.rs`,
-// `app/ag_models.rs`).
-mod ag_models;
+// one module).
 mod host;
 mod models;
 mod plugins;
@@ -314,24 +284,46 @@ pub use slash::{expand_body, help, reflect_args, slash, Slash};
 
 pub use host::RuntimeHost;
 
-pub use ag_models::{read_ag_cache, write_ag_cache, AG_CACHE_FILE, AG_CACHE_VERSION};
 pub use models::{read_cache, write_cache, ModelSource, CACHE_FILE, CACHE_VERSION};
 
 impl Runtime {
-    /// The model catalog with the credentials `auth()` and `google_auth()`
+    /// The model catalog with the credential `auth()`
     /// pick now. Cheap: take a new one each time a picker opens, then call
     /// `fetch` off the UI thread.
     pub fn models(&self) -> ModelSource {
         let transport: Arc<dyn Transport> = self.transport.clone();
-        let source = ModelSource::new(
+        ModelSource::new(
             self.home.clone(),
             self.auth(),
             transport,
             self.provider.clone(),
-        );
-        match self.google_auth() {
-            Ok(google) => source.with_google(google, self.antigravity.hub.clone()),
-            Err(_) => source,
+        )
+    }
+}
+
+impl Runtime {
+    /// `config` with a retired `antigravity/<id>` model (D53) replaced by the
+    /// default model; the note says so once.
+    pub fn usable(&self, config: &Config) -> Config {
+        let mut config = config.clone();
+        let fallback = Config::default().model;
+        if let Some(note) = catalog::retired_note(&config.model, &fallback) {
+            self.note(note);
+            config.model = fallback;
+        }
+        config
+    }
+
+    /// Replaces a retired `config.model` (see [`Runtime::usable`]).
+    pub(crate) fn retire_model(&mut self) {
+        self.config = self.usable(&self.config);
+    }
+
+    /// Queues `note` for the next agent unless it is queued already.
+    fn note(&self, note: String) {
+        let mut notes = self.notes.lock().unwrap_or_else(|p| p.into_inner());
+        if !notes.contains(&note) {
+            notes.push(note);
         }
     }
 }

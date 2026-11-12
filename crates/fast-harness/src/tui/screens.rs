@@ -12,7 +12,6 @@ impl Ui {
         match (self.screen, self.account_provider) {
             (Screen::Accounts, None) => ProviderKey::ALL.len(),
             (Screen::Accounts, Some(ProviderKey::Claude)) => self.accounts.len(),
-            (Screen::Accounts, Some(ProviderKey::Google)) => self.google.len(),
             (Screen::Models, _) => self.models.len(),
             (Screen::Sessions, _) => self.sessions.len(),
             _ => 0,
@@ -111,7 +110,6 @@ impl Ui {
     fn selected_account(&self) -> Option<String> {
         let account = match self.account_provider? {
             ProviderKey::Claude => &self.accounts.get(self.selected)?.account,
-            ProviderKey::Google => &self.google.get(self.selected)?.account,
         };
         Some(account.id.clone())
     }
@@ -124,7 +122,6 @@ impl Ui {
         self.account_provider = Some(provider);
         let active = match provider {
             ProviderKey::Claude => self.accounts.iter().position(|s| s.active),
-            ProviderKey::Google => self.google.iter().position(|s| s.active),
         };
         self.selected = active.unwrap_or(0);
     }
@@ -140,7 +137,6 @@ impl Ui {
         match (action, id) {
             (None, Some(id)) if plain_enter => Action::UseAccount(id),
             (Some("account_sign_in"), _) => Action::Login,
-            (Some("account_google_sign_in"), _) => Action::LoginGoogle,
             (Some("account_add_key"), _) => {
                 self.dialog = Dialog::AddKey(Input::masked());
                 Action::None

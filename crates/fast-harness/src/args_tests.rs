@@ -85,15 +85,9 @@ fn parses_accounts() {
         }
     );
     assert_eq!(accounts("accounts usage").unwrap(), AccountsAction::Usage);
-    let google = accounts("accounts login --google --no-browser").unwrap();
-    assert_eq!(google, AccountsAction::LoginGoogle { browser: false });
-    let google = accounts("accounts login --google").unwrap();
-    assert_eq!(google, AccountsAction::LoginGoogle { browser: true });
-    let client = accounts("accounts google-client --id test-client.apps.example").unwrap();
-    let id = "test-client.apps.example".to_string();
-    assert_eq!(client, AccountsAction::GoogleClient { id });
-    assert!(accounts("accounts google-client").is_err());
-    assert!(accounts("accounts use u-1 --google").is_err());
+    // Google sign-in and its OAuth client moved to branch `antigravity` (D53).
+    assert!(accounts("accounts login --google").is_err());
+    assert!(accounts("accounts google-client --id test-client.apps.example").is_err());
     assert!(accounts("accounts list --id x").is_err());
     assert!(accounts("accounts use").is_err());
     assert!(accounts("accounts frob").is_err());

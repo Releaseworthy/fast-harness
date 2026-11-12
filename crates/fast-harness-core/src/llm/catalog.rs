@@ -1,25 +1,39 @@
-//! Per-model facts across both providers (PLAN.md D24): an `antigravity/<id>`
-//! model belongs to Google Antigravity, any other id to Claude. Front ends ask
-//! here instead of choosing a provider module themselves.
+//! Per-model facts across the providers (PLAN.md D24): a `<provider id>/<id>`
+//! model of `providers/*.json` belongs to that provider, any other id to
+//! Claude. Front ends ask here instead of choosing a provider module themselves.
+//! `antigravity/<id>` models moved to branch `antigravity` (PLAN.md D53): such
+//! a value falls back to the default model with a note ([`retired_note`]).
 
 use super::anthropic::{self, ModelInfo};
-use super::antigravity;
 use super::custom;
 
 /// Provider id of Claude models (the trace's `provider` field).
 pub const ANTHROPIC: &str = "anthropic";
-/// Provider id of `antigravity/<id>` models.
-pub const ANTIGRAVITY: &str = "antigravity";
 /// Providers in picker order.
-pub const PROVIDERS: [&str; 2] = [ANTHROPIC, ANTIGRAVITY];
+pub const PROVIDERS: [&str; 1] = [ANTHROPIC];
 
-/// The provider id that serves `model`: `antigravity/<id>`, a provider of
-/// `providers/*.json` by its prefix (PLAN.md D41), else Claude.
+/// The prefix of the Google Antigravity models that left this branch (D53).
+pub const RETIRED_PREFIX: &str = "antigravity/";
+
+/// The provider id that serves `model`: a provider of `providers/*.json` by
+/// its prefix (PLAN.md D41), else Claude.
 pub fn provider_of(model: &str) -> &'static str {
-    if antigravity::is_antigravity(model) {
-        return ANTIGRAVITY;
-    }
     custom::provider_of(model).map_or(ANTHROPIC, |(id, _)| id)
+}
+
+/// Whether `model` is an `antigravity/<id>` model, gone from this branch.
+pub fn is_retired(model: &str) -> bool {
+    model.starts_with(RETIRED_PREFIX)
+}
+
+/// The note shown when `model` is retired and `fallback` runs instead.
+pub fn retired_note(model: &str, fallback: &str) -> Option<String> {
+    is_retired(model).then(|| {
+        format!(
+            "{model} is not available: Google Antigravity moved to branch `antigravity` \
+             (PLAN.md D53); using {fallback}"
+        )
+    })
 }
 
 /// Every provider in picker order: the built-in ones, then the custom ones.
@@ -32,25 +46,15 @@ pub fn providers() -> Vec<&'static str> {
 /// The picker group title of a provider id.
 pub fn group_title(provider: &str) -> &'static str {
     match provider {
-        ANTIGRAVITY => "Google Antigravity",
         ANTHROPIC => "Claude",
         other => custom::title_of(other).unwrap_or("Claude"),
     }
 }
 
 /// The label of `model` named `name` where the provider is not otherwise
-/// shown (a closed picker, a status line): Antigravity models whose name does
-/// not say Gemini get " · Antigravity", so Claude through Google never reads
-/// like Claude through Anthropic.
-pub fn label(model: &str, name: &str) -> String {
-    let lower = name.to_ascii_lowercase();
-    // A name that is the id itself already says antigravity.
-    let plain = lower.starts_with("gemini") || lower.contains("antigravity");
-    if antigravity::is_antigravity(model) && !plain {
-        format!("{name} · Antigravity")
-    } else {
-        name.to_string()
-    }
+/// shown (a closed picker, a status line).
+pub fn label(_model: &str, name: &str) -> String {
+    name.to_string()
 }
 
 /// `models` split by provider, in [`PROVIDERS`] order, keeping the order
@@ -74,14 +78,10 @@ pub fn efforts(model: &str) -> Vec<String> {
     if custom::provider_of(model).is_some() {
         return custom::model(model).map(|m| m.efforts).unwrap_or_default();
     }
-    if antigravity::is_antigravity(model) {
-        antigravity::models::efforts(model)
-    } else {
-        anthropic::efforts(model)
-            .into_iter()
-            .map(String::from)
-            .collect()
-    }
+    anthropic::efforts(model)
+        .into_iter()
+        .map(String::from)
+        .collect()
 }
 
 /// The effort `model` takes for `effort` (see each provider's `fit_effort`).
@@ -92,11 +92,7 @@ pub fn fit_effort(model: &str, effort: Option<&str>) -> Option<String> {
             .filter(|e| known.iter().any(|k| k == e))
             .map(String::from);
     }
-    if antigravity::is_antigravity(model) {
-        antigravity::models::fit_effort(model, effort)
-    } else {
-        anthropic::fit_effort(model, effort)
-    }
+    anthropic::fit_effort(model, effort)
 }
 
 /// The context window of `model` in tokens from the remembered catalog or
@@ -104,11 +100,6 @@ pub fn fit_effort(model: &str, effort: Option<&str>) -> Option<String> {
 pub fn context_window(model: &str) -> u64 {
     if let Some(window) = custom::model(model).and_then(|m| m.context_window) {
         return window;
-    }
-    if antigravity::is_antigravity(model) {
-        return antigravity::models::lookup(model)
-            .map(|entry| antigravity::models::to_info(&entry).context_window)
-            .unwrap_or(0);
     }
     anthropic::context_window(model)
 }
@@ -119,11 +110,6 @@ pub fn display_name(model: &str) -> Option<String> {
     if custom::provider_of(model).is_some() {
         let entry = custom::model(model)?;
         return Some(entry.name.unwrap_or(entry.id));
-    }
-    if antigravity::is_antigravity(model) {
-        return antigravity::models::lookup(model)
-            .map(|entry| entry.display_name)
-            .filter(|name| !name.is_empty());
     }
     anthropic::builtin_models()
         .into_iter()
@@ -142,18 +128,9 @@ pub fn max_output_override(model: &str) -> Option<u64> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::llm::antigravity::models::{remember, CatalogEntry};
 
     #[test]
-    fn labels_tell_antigravity_claude_apart() {
-        assert_eq!(
-            label("antigravity/claude-sonnet-4-6", "Claude Sonnet 4.6"),
-            "Claude Sonnet 4.6 · Antigravity"
-        );
-        assert_eq!(
-            label("antigravity/gemini-3.8-flash-high", "Gemini 3.8 Flash"),
-            "Gemini 3.8 Flash"
-        );
+    fn labels_are_the_name() {
         assert_eq!(
             label("claude-sonnet-5-5", "Claude Sonnet 5.5"),
             "Claude Sonnet 5.5"
@@ -163,29 +140,23 @@ mod tests {
     #[test]
     fn dispatch_by_prefix() {
         assert_eq!(provider_of("claude-opus-5-5"), ANTHROPIC);
-        assert_eq!(provider_of("antigravity/claude-opus-5-5"), ANTIGRAVITY);
-        assert_eq!(group_title(ANTIGRAVITY), "Google Antigravity");
         assert_eq!(efforts("claude-opus-5-5").last().unwrap(), "max");
-        assert_eq!(efforts("antigravity/gemini-3-pro-catalog"), ["low", "high"]);
-        assert_eq!(
-            fit_effort("antigravity/gemini-3-pro-catalog", Some("max")).as_deref(),
-            Some("high")
-        );
         assert_eq!(
             fit_effort("claude-opus-4-5", Some("max")).as_deref(),
             Some("high")
         );
-        remember(&[CatalogEntry {
-            id: "gemini-catalog-name".into(),
-            display_name: "Gemini Catalog".into(),
-            ..CatalogEntry::default()
-        }]);
-        let name = display_name("antigravity/gemini-catalog-name");
-        assert_eq!(name.as_deref(), Some("Gemini Catalog"));
-        assert_eq!(display_name("antigravity/unknown"), None);
         assert_eq!(
             display_name("claude-opus-5-5").as_deref(),
             Some("Claude Opus 5.5")
         );
+    }
+
+    #[test]
+    fn antigravity_models_are_retired_with_a_note() {
+        assert!(is_retired("antigravity/gemini-3-flash"));
+        assert!(!is_retired("claude-opus-5-5"));
+        let note = retired_note("antigravity/gemini-3-flash", "claude-opus-5-5").unwrap();
+        assert!(note.contains("branch `antigravity`") && note.contains("claude-opus-5-5"));
+        assert_eq!(retired_note("claude-opus-5-5", "claude-opus-5-5"), None);
     }
 }

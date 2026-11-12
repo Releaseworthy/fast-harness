@@ -4,7 +4,6 @@
 //! paused, cancelled or crashed turn without a new user message.
 
 mod agent_support;
-mod antigravity_support;
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::Sender;
@@ -12,7 +11,6 @@ use std::sync::Arc;
 
 use agent_support::{echo_registry, env, events, key_auth, parts, text_reply, tool_reply, Env};
 use fast_harness_core::agent::{Agent, Conversation, Inbox, Input, MISSING_RESULT};
-use fast_harness_core::auth::StaticAuth;
 use fast_harness_core::events::{AgentEvent, TurnOutcome};
 use fast_harness_core::http::{ScriptedResponse, ScriptedTransport};
 use fast_harness_core::session::{self, Unfinished};
@@ -124,41 +122,6 @@ fn steer_lands_after_the_tool_results_on_claude() {
     // A resume replays the steer into the same message.
     let resumed = Conversation::resume(&env.home, &env.cwd, &conv.id).unwrap();
     assert_eq!(resumed.messages, conv.messages);
-}
-
-#[test]
-fn steer_lands_in_the_same_user_content_on_antigravity() {
-    use antigravity_support::{event, google, manifest, provider, sse, MODEL, PATH};
-    let env = env("steer-antigravity");
-    let call = json!([{"functionCall": {"name": "echo", "args": {"text": "hi"}}}]);
-    let text = json!([{"text": "ok"}]);
-    let replies = vec![
-        manifest(),
-        sse(&[event(call, Some("STOP"))]),
-        sse(&[event(text, Some("STOP"))]),
-    ];
-    let transport = Arc::new(ScriptedTransport::new(replies));
-    let mut agent_parts = parts(
-        &transport,
-        Arc::new(StaticAuth::new("g", "test", google())),
-        &env.cwd,
-    );
-    agent_parts.provider = Arc::new(provider());
-    agent_parts.config.model = MODEL.into();
-    let agent = Agent::new(agent_parts, echo_registry());
-    let mut conv = Conversation::create(&env.home, &env.cwd, None).unwrap();
-    let (outcome, _, _) = run_with(&agent, &mut conv, steer(), on_tool_call);
-    assert_eq!(outcome, TurnOutcome::Done);
-    let contents = &bodies(&transport, PATH)[1]["request"]["contents"];
-    let last = contents.as_array().unwrap().last().unwrap();
-    assert_eq!(last["role"], "user");
-    let parts = last["parts"].as_array().unwrap();
-    assert_eq!(parts.len(), 2, "{last}");
-    assert_eq!(
-        parts[0]["functionResponse"]["response"],
-        json!({"output": "hi"})
-    );
-    assert_eq!(parts[1], json!({"text": "also check the tests"}));
 }
 
 #[test]

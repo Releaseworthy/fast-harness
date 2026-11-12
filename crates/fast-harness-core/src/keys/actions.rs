@@ -221,13 +221,6 @@ pub const TUI_ACTIONS: &[ActionDef] = &[
         "Claude sign-in",
     ),
     act(
-        "account_google_sign_in",
-        "accounts",
-        Always,
-        &["g"],
-        "Google sign-in",
-    ),
-    act(
         "account_add_key",
         "accounts",
         Always,

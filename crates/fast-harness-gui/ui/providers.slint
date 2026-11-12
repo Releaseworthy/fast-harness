@@ -22,7 +22,7 @@ export component ProviderLogo inherits Rectangle {
         width: parent.width;
         height: parent.height;
         horizontal-alignment: center;
-        text: root.provider == "google" ? Icons.google : Icons.claude;
+        text: Icons.claude;
         font-size: root.size * 0.5;
         color: Theme.on-accent;
     }
@@ -106,7 +106,7 @@ export component ProviderTile inherits Rectangle {
         Mark {
             x: parent.width - 124px;
             y: parent.height - 110px;
-            text: root.info.id == "google" ? Icons.google : Icons.claude;
+            text: Icons.claude;
             font-size: 150px;
             color: Theme.accent2;
             opacity: root.lit ? 0.14 : 0.07;

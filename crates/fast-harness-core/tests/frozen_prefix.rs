@@ -13,7 +13,6 @@ use fast_harness_core::agent::{Agent, Context, Conversation};
 use fast_harness_core::config::{CacheTtl, Config};
 use fast_harness_core::events::TurnOutcome;
 use fast_harness_core::http::ScriptedTransport;
-use fast_harness_core::llm::antigravity::provider::session_id_of;
 use fast_harness_core::llm::ToolSpec;
 use fast_harness_core::tools::{Registry, Tool, ToolCtx, ToolOutput};
 use fast_harness_core::trace::kind;
@@ -206,14 +205,6 @@ fn cache_ttl_setting() {
         config(r#"{"cacheTtl":"2d"}"#).cache_setting(),
         CacheTtl::Auto
     );
-}
-
-#[test]
-fn antigravity_session_id_follows_the_conversation() {
-    let (a, b) = (session_id_of("20261112-1"), session_id_of("20261112-2"));
-    assert_ne!(a, b);
-    assert_eq!(a, session_id_of("20261112-1"));
-    assert!(a.starts_with('-') && a[1..].parse::<u64>().is_ok());
 }
 
 #[test]

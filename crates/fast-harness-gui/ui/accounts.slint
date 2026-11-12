@@ -1,7 +1,5 @@
 import { ScrollView } from "std-widgets.slint";
-import { AccountRow, GoogleRow, ProviderCard } from "types.slint";
-import { GoogleSection } from "google.slint";
-import { ClientForm } from "google_client.slint";
+import { AccountRow, ProviderCard } from "types.slint";
 import { ProviderGrid, ProviderHeader } from "providers.slint";
 import { Theme, UsageBar, Badge, Columns, Mark } from "parts.slint";
 import { Icons } from "icons.slint";
@@ -130,19 +128,10 @@ export component AccountsPage inherits Rectangle {
     callback remove(string);
     callback open-url(string);
     callback copy(string);
-    in property <[GoogleRow]> google-accounts;
-    callback google-sign-in();
-    callback google-use(string);
-    callback google-remove(string);
     in property <[ProviderCard]> providers;
-    // "" (the cards), "claude" or "google".
+    // "" (the cards) or "claude".
     in-out property <string> provider;
-    in property <bool> client-ready;
-    in property <string> client-id;
-    in property <string> client-note;
-    in property <bool> client-error;
-    callback save-client(string, string);
-    property <ProviderCard> current: root.providers[root.provider == "google" ? 1 : 0];
+    property <ProviderCard> current: root.providers[0];
     function open(id: string) {
         root.provider = id;
         fs.focus();
@@ -186,7 +175,6 @@ export component AccountsPage inherits Rectangle {
                 if root.provider == "claude": ActionButton { icon: Icons.sign-in; text: "Sign in"; variant: "primary"; enabled: root.login-url == ""; clicked => { root.sign-in(); } }
                 if root.provider == "claude": ActionButton { icon: Icons.key; text: "Add API key"; clicked => { root.adding-key = true; } }
                 if root.provider == "claude": ActionButton { icon: Icons.refresh; text: "Refresh usage"; enabled: !root.working; clicked => { root.refresh(); } }
-                if root.provider == "google": ActionButton { icon: Icons.sign-in; text: "Add Google account"; variant: "primary"; enabled: root.login-url == ""; clicked => { root.google-sign-in(); } }
             }
             if root.message != "": Text { text: root.message; wrap: word-wrap; color: Theme.dim; font-size: Theme.font-s; }
             if root.login-url != "": LoginWait {
@@ -220,19 +208,6 @@ export component AccountsPage inherits Rectangle {
                             use(id) => { root.use(id); }
                             remove(id) => { root.remove(id); }
                         }
-                    }
-                    if root.provider == "google": ClientForm {
-                        ready: root.client-ready;
-                        saved-id: root.client-id;
-                        note: root.client-note;
-                        error: root.client-error;
-                        save(id, secret) => { root.save-client(id, secret); }
-                    }
-                    if root.provider == "google": GoogleSection {
-                        accounts: root.google-accounts;
-                        use(id) => { root.google-use(id); }
-                        remove(id) => { root.google-remove(id); }
-                        open-url(u) => { root.open-url(u); }
                     }
                 }
             }

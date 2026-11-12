@@ -49,7 +49,7 @@ pub use conversation::{repair, Conversation, MISSING_RESULT, NOTHING_TO_RESUME};
 pub use inbox::{Inbox, Input, CONTEXT as CONTEXT_KIND, STEER as STEER_KIND};
 pub use subagent::{SubagentTool, NAME as SUBAGENT};
 
-/// The provider and credential source of a model id (`antigravity/<id>`
+/// The provider and credential source of a model id (`<provider id>/<id>`
 /// included); a subagent with another model than its parent uses it.
 pub type Router =
     Arc<dyn Fn(&str) -> Result<(Arc<dyn Provider>, Arc<dyn AuthSource>), String> + Send + Sync>;

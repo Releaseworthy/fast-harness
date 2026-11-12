@@ -325,8 +325,6 @@ fn accounts_screen_lists_providers_first() {
     let screen = rows(&render(&mut ui, &Transcript::new(), 110, 20));
     find(&screen, "Accounts: Enter opens a provider");
     find(&screen, "Claude");
-    find(&screen, "Google Antigravity");
-    find(&screen, "Needs setup");
     find(&screen, "Enter open provider");
     press(&mut ui, KeyCode::Enter, KeyModifiers::NONE);
     let screen = rows(&render(&mut ui, &Transcript::new(), 110, 20));

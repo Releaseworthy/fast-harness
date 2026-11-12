@@ -1,6 +1,6 @@
 //! The loopback side of the sign-in: one tiny HTTP/1.1 server that waits for
 //! `GET <path>?code=...&state=...`, as claude-switch's `handleCallback`. The
-//! Claude sign-in waits on `/callback`, the Google one on `/oauth-callback`.
+//! Claude sign-in waits on `/callback`.
 
 use super::OAuthError;
 use std::io::{self, Read, Write};

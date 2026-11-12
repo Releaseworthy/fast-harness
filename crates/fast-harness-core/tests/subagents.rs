@@ -178,14 +178,17 @@ fn model_and_effort_override_the_parent() {
     assert!(requests[4].body.contains(low));
     assert!(!requests[0].body.contains(low));
     assert!(two["tools"] == parent["tools"]);
-    // Without a router a model of another provider is an error result.
+    // A retired `antigravity/<id>` model (PLAN.md D53) is an error result.
     let last = conv
         .messages
         .iter()
         .rev()
         .find(|m| m.role == Role::Tool)
         .unwrap();
-    assert!(format!("{last:?}").contains("needs a provider"), "{last:?}");
+    assert!(
+        format!("{last:?}").contains("branch `antigravity`"),
+        "{last:?}"
+    );
 }
 
 #[test]

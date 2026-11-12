@@ -123,7 +123,6 @@ pub fn account_label(account: &Account) -> String {
 
 fn kind_word(account: &Account) -> &'static str {
     match (account.provider, account.kind) {
-        (fast_harness_core::accounts::model::Provider::Google, _) => "google",
         (_, AccountKind::Own) => "own",
         (_, AccountKind::ApiKey) => "key",
     }

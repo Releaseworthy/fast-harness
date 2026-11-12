@@ -67,7 +67,7 @@ pub struct Config {
     pub tool_output: BTreeMap<String, usize>,
     /// `compaction` (PLAN.md D38): the base layer of the compaction settings.
     pub compaction: compaction::CompactionPatch,
-    /// `models`: per provider (`"antigravity/*"`) or per model overrides.
+    /// `models`: per provider (`"<provider id>/*"`) or per model overrides.
     pub models: BTreeMap<String, compaction::ModelEntry>,
     /// `subagent` (PLAN.md D40): defaults of the subagent tool.
     pub subagent: SubagentConfig,

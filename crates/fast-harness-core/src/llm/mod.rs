@@ -1,9 +1,8 @@
 //! The model boundary: one streaming call in, one assembled message out.
-//! Providers: Claude (`anthropic`) and Google Antigravity (`antigravity`,
-//! models named `antigravity/<id>`) and the providers of `providers/*.json``n//! (`custom`, `openai`: models named `<provider id>/<id>`); `catalog` picks one by model id.
+//! Providers: Claude (`anthropic`) and the providers of `providers/*.json`
+//! (`custom`, `openai`: models named `<provider id>/<id>`); `catalog` picks one by model id.
 
 pub mod anthropic;
-pub mod antigravity;
 pub mod catalog;
 pub mod custom;
 pub mod find;
@@ -28,8 +27,6 @@ pub enum Auth {
     ApiKey(String),
     /// Claude subscription access token, sent as `Authorization: Bearer`.
     OAuth(String),
-    /// Google Antigravity access token and Cloud Code project (PLAN.md D23).
-    Google { access: String, project: String },
 }
 
 impl fmt::Debug for Auth {
@@ -38,7 +35,6 @@ impl fmt::Debug for Auth {
         match self {
             Auth::ApiKey(_) => f.write_str("ApiKey(<redacted>)"),
             Auth::OAuth(_) => f.write_str("OAuth(<redacted>)"),
-            Auth::Google { .. } => f.write_str("Google(<redacted>)"),
         }
     }
 }
@@ -64,7 +60,7 @@ pub struct ChatRequest<'a> {
     pub effort: Option<&'a str>,
     /// Lifetimes of the prompt cache breakpoints.
     pub cache: Cache,
-    /// The conversation id; Antigravity derives `request.sessionId` from it
+    /// The conversation id; a provider may derive a request session id from it
     /// (empty: the provider instance's own id).
     pub session: &'a str,
     /// Set from another thread to abort; the call then fails with `ErrorKind::Aborted`.
@@ -263,11 +259,6 @@ mod tests {
             format!("{:?}", Auth::OAuth("sk-secret".into())),
             "OAuth(<redacted>)"
         );
-        let google = Auth::Google {
-            access: "fake-access".into(),
-            project: "fake-project".into(),
-        };
-        assert_eq!(format!("{google:?}"), "Google(<redacted>)");
         let timing = Timing {
             ttfb_ms: 1,
             first_token_ms: 2,

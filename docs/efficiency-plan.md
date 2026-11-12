@@ -6,6 +6,8 @@ Owner's goal (2026-11-12): the smallest, lightest, fastest harness; context and 
 
 ## 1. Verdict on the current code
 
+Note (2026-11-12, PLAN.md D53): Google Antigravity left main for branch `antigravity` (commit a143cfa). The Antigravity rows below describe that branch; E1 needs it.
+
 | Area | State | Evidence |
 |---|---|---|
 | Harness overhead | Good | 1.7 to 2.7 ms per step (`docs/perf.md`); `fast-harness.exe` release 6,687,744 bytes (built 2026-11-12 09:33) |

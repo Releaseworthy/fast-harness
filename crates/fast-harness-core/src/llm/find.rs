@@ -2,7 +2,7 @@
 //! agent and both providers.
 //!
 //! When a request's tool list holds [`FIND_TOOLS`], every other tool is
-//! deferred: Claude gets it with `defer_loading: true` and Antigravity only
+//! deferred: Claude gets it with `defer_loading: true` and openai-chat only
 //! once it was found. A `find_tools` result that is not an error starts with
 //! the line `Loaded: a, b`; the names on that line are the found tools, so the
 //! found set is rebuilt from the conversation alone (resume needs nothing more).

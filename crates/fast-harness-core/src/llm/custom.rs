@@ -3,7 +3,7 @@
 //! `id` with an `api` (`anthropic-messages` or `openai-chat`), its `baseUrl`,
 //! the key (`keyEnv`: an environment variable name, or `account`), extra
 //! `headers` and `models`; its models are named `<id>/<model id>`. A file
-//! whose id is a built-in provider (`anthropic`, `antigravity`) only
+//! whose id is a built-in provider (`anthropic`; `antigravity` stays reserved for the branch of D53) only
 //! overrides that provider's model numbers (window, maxOutput, price,
 //! compaction). The process-wide registry ([`remember`]) is read by
 //! `catalog`, the pickers, the adapters and `stats`.

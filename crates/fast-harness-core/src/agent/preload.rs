@@ -2,7 +2,7 @@
 //! first step by a `find_tools` call and result written into the new
 //! session, the same synthetic pair a compaction writes (D38). The tool list
 //! stays the parent's (Claude: the same array with `defer_loading`, the
-//! result's `tool_reference` blocks load the tools; Antigravity: the found
+//! result's `tool_reference` blocks load the tools; openai-chat: the found
 //! tools are declared from the first request), and the found set comes from
 //! the history as always, so a resume needs nothing more.
 

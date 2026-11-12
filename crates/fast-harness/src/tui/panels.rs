@@ -2,16 +2,13 @@
 
 use fast_harness_core::accounts::model::AccountKind;
 use fast_harness_core::accounts::pool::AccountStatus;
-use fast_harness_core::accounts::providers::{
-    summaries, ClientState, ProviderKey, ProviderSummary,
-};
+use fast_harness_core::accounts::providers::{summaries, ProviderKey, ProviderSummary};
 use fast_harness_core::llm::catalog::{group_title, provider_of};
 use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Paragraph, Wrap};
 use ratatui::Frame;
 
-use super::google::google_row;
 use super::theme::Styles;
 use super::ui::{Dialog, Screen, Ui};
 use super::wrap::clip;
@@ -84,7 +81,7 @@ pub fn provider_row(summary: &ProviderSummary) -> String {
 fn account_rows(ui: &Ui, now_ms: u64, mark: &str) -> (String, Vec<String>, &'static str) {
     let now = i64::try_from(now_ms).unwrap_or(i64::MAX);
     let Some(provider) = ui.account_provider else {
-        let rows = summaries(&ui.accounts, &ui.google, &ui.google_client, now_ms)
+        let rows = summaries(&ui.accounts, now_ms)
             .iter()
             .map(provider_row)
             .collect();
@@ -97,24 +94,12 @@ fn account_rows(ui: &Ui, now_ms: u64, mark: &str) -> (String, Vec<String>, &'sta
             let empty = "No Claude account: l signs in, k adds an API key.";
             (title, rows.collect(), empty)
         }
-        ProviderKey::Google => {
-            let rows = ui.google.iter().map(|s| google_row(s, now_ms, mark));
-            let empty = match ui.google_client {
-                ClientState::Missing => "Needs setup: run `fast-harness accounts google-client --id <id>` (the secret from stdin), then g signs in.",
-                _ => "No Google account: g signs in through the browser.",
-            };
-            (title, rows.collect(), empty)
-        }
     }
 }
 
-/// Who a sign-in URL belongs to.
-fn login_target(url: &str) -> &'static str {
-    if url.starts_with("https://accounts.google.com/") {
-        "Google Antigravity"
-    } else {
-        "Claude"
-    }
+/// Who a sign-in URL belongs to (only Claude signs in on this branch).
+fn login_target(_url: &str) -> &'static str {
+    "Claude"
 }
 
 fn dialog_lines(dialog: &Dialog, st: &Styles) -> Option<Vec<Line<'static>>> {

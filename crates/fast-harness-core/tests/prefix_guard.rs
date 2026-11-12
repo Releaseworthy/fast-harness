@@ -1,24 +1,22 @@
 //! `prefix_guard` (docs/efficiency-plan.md phase 10): over a scripted
-//! multi-turn session on each provider, request N+1 repeats request N in
+//! multi-turn session on Claude, request N+1 repeats request N in
 //! `tools`, `system` and every earlier message once `cache_control` is
 //! removed, so the provider's prompt cache can hit.
 
 mod agent_support;
-mod antigravity_support;
 
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 
 use agent_support::{echo_registry, env, key_auth, text_reply, tool_reply};
 use fast_harness_core::agent::{Agent, AgentParts, Context, Conversation};
-use fast_harness_core::auth::{AuthSource, StaticAuth};
+use fast_harness_core::auth::AuthSource;
 use fast_harness_core::config::Config;
 use fast_harness_core::events::TurnOutcome;
 use fast_harness_core::http::{ScriptedResponse, ScriptedTransport};
 use fast_harness_core::llm::anthropic::Anthropic;
-use fast_harness_core::llm::antigravity::provider::session_id_of;
 use fast_harness_core::llm::Provider;
-use serde_json::{json, Value};
+use serde_json::Value;
 
 const TURNS: usize = 3;
 
@@ -59,27 +57,6 @@ fn claude() -> Case {
         system: "/system",
         tools: "/tools",
         messages: "/messages",
-        responses,
-    }
-}
-
-fn antigravity() -> Case {
-    use antigravity_support::{event, google, manifest, provider, sse, MODEL, PATH};
-    let call = json!([{"functionCall": {"name": "echo", "args": {"text": "hi"}}}]);
-    let mut responses = vec![manifest(), sse(&[event(call, Some("STOP"))])];
-    for turn in 0..TURNS {
-        let text = json!([{ "text": format!("answer {turn}") }]);
-        responses.push(sse(&[event(text, Some("STOP"))]));
-    }
-    Case {
-        name: "antigravity",
-        provider: Arc::new(provider()),
-        auth: Arc::new(StaticAuth::new("acct-g", "test", google())),
-        model: MODEL,
-        path: PATH,
-        system: "/request/systemInstruction",
-        tools: "/request/tools",
-        messages: "/request/contents",
         responses,
     }
 }
@@ -152,15 +129,8 @@ fn history<'a>(body: &'a Value, pointer: &str) -> &'a [Value] {
 
 fn check(case: Case, change: Change) {
     let (name, pointers) = (case.name, [case.system, case.tools, case.messages]);
-    let (bodies, id) = session(case, change);
+    let (bodies, _id) = session(case, change);
     assert_eq!(bodies.len(), TURNS + 1, "{name}: model calls");
-    if name == "antigravity" {
-        let want = json!(session_id_of(&id));
-        assert!(
-            bodies.iter().all(|b| b["request"]["sessionId"] == want),
-            "sessionId"
-        );
-    }
     let last = bodies
         .last()
         .unwrap()
@@ -199,17 +169,14 @@ fn check(case: Case, change: Change) {
 #[test]
 fn prefix_guard_holds_without_changes() {
     check(claude(), Change::Nothing);
-    check(antigravity(), Change::Nothing);
 }
 
 #[test]
 fn prefix_guard_holds_when_agents_md_changes() {
     check(claude(), Change::AgentsMd);
-    check(antigravity(), Change::AgentsMd);
 }
 
 #[test]
 fn prefix_guard_holds_across_midnight() {
     check(claude(), Change::Date);
-    check(antigravity(), Change::Date);
 }

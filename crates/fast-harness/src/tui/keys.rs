@@ -107,7 +107,6 @@ const IDLE: &[(&str, &str)] = &[
 
 const ACCOUNT: &[(&str, &str)] = &[
     ("account_sign_in", "Claude sign-in"),
-    ("account_google_sign_in", "Google sign-in"),
     ("account_add_key", "add key"),
     ("account_remove", "remove"),
     ("account_usage", "read usage"),

@@ -147,27 +147,13 @@ fn claude_rows() -> Vec<AccountRow> {
     ]
 }
 
-/// Two fake Google accounts (active with quota, held for verification).
-fn google_rows() -> Vec<crate::GoogleRow> {
-    let now = 1_800_000_000_000;
-    let list = crate::google_fixtures::statuses(now);
-    let project = |i| (i == 0).then(|| "proj-example-1".to_string());
-    list.iter()
-        .enumerate()
-        .map(|(i, s)| crate::google_rows::google_row(s, project(i), now))
-        .collect()
-}
-
-/// The Claude card as the three sample accounts make it, and the Google
-/// card of the fixtures without an OAuth client (Needs setup).
+/// The Claude card as the three sample accounts make it.
 fn provider_cards() -> Vec<crate::ProviderCard> {
-    use fast_harness_core::accounts::providers::{summaries, ClientState};
+    use fast_harness_core::accounts::providers::summaries;
     let now = 1_800_000_000_000;
-    let google = crate::google_fixtures::statuses(now);
-    let missing = ClientState::Missing;
-    let mut cards: Vec<_> = summaries(&[], &google, &missing, now)
+    let mut cards: Vec<_> = summaries(&[], now)
         .iter()
-        .map(|s| crate::providers::provider_card(s, &missing))
+        .map(crate::providers::provider_card)
         .collect();
     cards[0] = crate::ProviderCard {
         count: "3 accounts".into(),
@@ -181,31 +167,16 @@ fn provider_cards() -> Vec<crate::ProviderCard> {
     cards
 }
 
-/// Three Claude models, then three Antigravity ones (both picker groups in
-/// the eight rows the list shows).
+/// Six Claude models (the eight rows the list shows).
 fn catalog() -> Vec<fast_harness_core::llm::anthropic::ModelInfo> {
-    use fast_harness_core::llm::antigravity::models::{to_info, CatalogEntry};
     let mut list = fast_harness_core::llm::anthropic::builtin_models();
-    list.truncate(3);
-    for (id, name) in [
-        ("gemini-3-flash", "Gemini 3 Flash"),
-        ("gemini-3.1-pro", "Gemini 3.1 Pro"),
-        ("claude-sonnet-5-5", "Claude Sonnet 5.5"),
-    ] {
-        list.push(to_info(&CatalogEntry {
-            id: id.into(),
-            display_name: name.into(),
-            ..CatalogEntry::default()
-        }));
-    }
+    list.truncate(6);
     list
 }
-
 fn fill(ui: &MainWindow) {
     ui.set_messages(model(messages()));
     ui.set_side_rows(model(side_rows()));
     ui.set_accounts(model(claude_rows()));
-    ui.set_google_accounts(model(google_rows()));
     ui.set_providers(model(provider_cards()));
     let models = crate::pickers::model_list(&catalog(), "claude-opus-5-5");
     ui.set_models(model(models.iter().map(|(_, l)| l.into()).collect()));
@@ -288,11 +259,11 @@ fn shots() {
         theme::apply(&ui, core, 0);
         crate::appearance::fill(&ui, &core.id, 0);
         for shot in [
-            "chat", "accounts", "claude", "google", "settings", "about", "trace", "steps",
+            "chat", "accounts", "claude", "settings", "about", "trace", "steps",
         ] {
             let page = match shot {
                 "steps" => "trace",
-                "claude" | "google" => "accounts",
+                "claude" => "accounts",
                 _ => shot,
             };
             let provider = if page == "accounts" && shot != "accounts" {
@@ -325,7 +296,7 @@ fn shots() {
         std::fs::write(dir.join(format!("{}-composer.png", core.id)), png).expect("write png");
         key(&window, slint::platform::Key::Escape.into());
         ui.set_picker_note("".into());
-        // The composer's model dropdown: the Claude and Google Antigravity groups.
+        // The composer's model dropdown: the Claude group.
         click(&window, MODEL_X, EFFORT_Y);
         let png = shots_png::encode(WIDTH, HEIGHT, &render(&window));
         std::fs::write(dir.join(format!("{}-models.png", core.id)), png).expect("write png");

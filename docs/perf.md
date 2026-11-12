@@ -99,6 +99,8 @@ Question (a), Slint's `live-preview` feature reading a user folder: not by itsel
 The live variant costs about 79 MB more private memory at idle (the interpreter keeps the compiled document and its type loader) and 3 to 10 times the start time; idle CPU stays near zero (the 78 ms run is unexplained, one run). The precompiled exe now carries the 27 `.slint` sources for `--export-ui` (203,824 bytes of text). `cargo tree -p fast-harness-gui -e normal -i slint-interpreter` without the feature finds no such package: the default binaries never link it. GPU: both use the software renderer; not measured again.
 ## Experiments 2026-11-12 (phase 10, E1 to E6)
 
+Note (PLAN.md D53): the Antigravity measurements below were made on code that now lives on branch `antigravity` (a143cfa), not on main.
+
 Machine: Windows, `~/.fast-harness` with one Google Antigravity account and no Claude account. Release build at 340c916 plus the two measurement tests below.
 
 Live calls: 2 requests in total. The first `-p` run (`antigravity/gemini-3.8-flash-low`, `--cwd` a temp project with a 40,070-byte AGENTS.md, session `20261112-114901-645c`) got on both attempts:

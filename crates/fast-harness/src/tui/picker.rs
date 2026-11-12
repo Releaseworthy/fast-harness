@@ -36,8 +36,7 @@ pub struct Picker {
     pub note: Option<String>,
 }
 
-/// The display name of `model` (with " · Antigravity" for Claude and GPT
-/// through Google, `catalog::label`), else its id.
+/// The display name of `model` (`catalog::label`), else its id.
 pub fn model_name(model: &str) -> String {
     display_name(model)
         .map(|name| label(model, &name))
@@ -59,7 +58,7 @@ pub fn is_header(item: &(String, String)) -> bool {
 }
 
 /// The model rows of `catalog` grouped by provider (PLAN.md D24): a title row
-/// ("Claude", "Google Antigravity") before each non-empty group, and `model`
+/// ("Claude", a providers/*.json title) before each non-empty group, and `model`
 /// first in its group when it is not listed.
 fn model_items(catalog: &[ModelInfo], model: &str) -> Vec<(String, String)> {
     let mut items = Vec::new();

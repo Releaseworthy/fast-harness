@@ -81,15 +81,15 @@ fn thresholds_per_model_and_overrides() {
     assert_eq!(defaults.threshold(0, 32_000), 500_000);
     let models: BTreeMap<String, ModelEntry> = serde_json::from_value(json!({
         "claude-haiku-4-5": {"compaction": {"trigger": "70%"}},
-        "antigravity/*": {"compaction": {"maxTokens": 120000}},
+        "local/*": {"compaction": {"maxTokens": 120000}},
     }))
     .unwrap();
     config.models = models;
     config.model = "claude-haiku-4-5".into();
     let resolved = config.compaction_for("anthropic");
     assert_eq!(resolved.threshold(200_000, 32_000), 140_000);
-    config.model = "antigravity/gemini-3-pro".into();
-    let resolved = config.compaction_for("antigravity");
+    config.model = "local/gemma-4".into();
+    let resolved = config.compaction_for("local");
     assert_eq!(resolved.threshold(1_000_000, 32_000), 120_000);
     assert_eq!(parse_trigger("150k"), Some(Trigger::Tokens(150_000)));
     assert_eq!(parse_trigger("1.5M"), Some(Trigger::Tokens(1_500_000)));

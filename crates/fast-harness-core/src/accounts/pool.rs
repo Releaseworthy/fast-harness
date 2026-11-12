@@ -7,7 +7,6 @@ mod auth;
 mod poll;
 mod snapshot;
 
-use crate::accounts::google::{save_sign_in, GoogleError, SignIn};
 use crate::accounts::model::{now_unix_ms, Account, AccountKind, Provider, Secret};
 use crate::accounts::oauth::{self, LoginFlow, OAuthError};
 use crate::accounts::order::{Hold, Holds};
@@ -141,7 +140,7 @@ impl AccountPool {
     pub fn status(&self) -> Vec<AccountStatus> {
         let state = self.lock();
         let now = now_ms();
-        let active: Vec<String> = [Provider::Anthropic, Provider::Google]
+        let active: Vec<String> = [Provider::Anthropic]
             .into_iter()
             .filter_map(|p| state.store.active_for(p).map(|a| a.id.clone()))
             .collect();
@@ -267,56 +266,6 @@ impl AccountPool {
         Ok(account)
     }
 
-    /// The Cloud Code project stored with a Google account.
-    pub fn google_project(&self, id: &str) -> Option<String> {
-        match self.lock().store.secret(id) {
-            Ok(Some(Secret::Google { project_id, .. })) => project_id,
-            _ => None,
-        }
-    }
-
-    /// Stores a Google sign-in (see `google::save_sign_in`). This pool never
-    /// leases Google accounts; it only keeps one store for both providers.
-    pub fn add_google(&self, sign_in: SignIn) -> Result<Account, GoogleError> {
-        let mut state = self.lock();
-        save_sign_in(&mut state.store, sign_in)
-    }
-
-    /// The Google accounts, in store order (the Google pool's view).
-    pub fn google_accounts(&self) -> Vec<Account> {
-        let state = self.lock();
-        let list = state.store.list();
-        list.into_iter()
-            .filter(|a| a.provider == Provider::Google)
-            .cloned()
-            .collect()
-    }
-
-    /// The active Google account id.
-    pub fn active_google(&self) -> Option<String> {
-        let state = self.lock();
-        let active = state.store.active_for(Provider::Google);
-        active.map(|a| a.id.clone())
-    }
-
-    /// The decrypted `Secret::Google` of a Google account.
-    pub(crate) fn google_secret(&self, id: &str) -> Option<Secret> {
-        match self.lock().store.secret(id) {
-            Ok(Some(secret @ Secret::Google { .. })) => Some(secret),
-            _ => None,
-        }
-    }
-
-    /// Replaces the secret of Google account `id` (encrypted) and saves the store.
-    pub(crate) fn set_google_secret(&self, id: &str, secret: Secret) -> Result<(), StoreError> {
-        let mut state = self.lock();
-        if state.store.get(id).map(|a| a.provider) != Some(Provider::Google) {
-            return Err(StoreError::UnknownAccount(id.to_string()));
-        }
-        state.store.set_secret(id, secret)?;
-        state.store.save()
-    }
-
     /// Sets the pause between two usage-endpoint reads of [`AccountPool::poll_usage`].
     pub fn set_read_gap(&self, gap: Duration) {
         let ms = u64::try_from(gap.as_millis()).unwrap_or(u64::MAX);
@@ -370,10 +319,6 @@ impl State {
                 Provider::Anthropic,
                 AccountKind::ApiKey,
                 Ok(Some(Secret::ApiKey { .. }))
-            ) | (
-                Provider::Google,
-                AccountKind::Own,
-                Ok(Some(Secret::Google { .. }))
             )
         )
     }

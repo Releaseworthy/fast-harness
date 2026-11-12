@@ -1,7 +1,7 @@
 //! The Chat Completions request body: `messages` with the system first,
 //! tool calls as `tool_calls`, results as `role: tool` messages, and the
 //! tools as `functions`. With `find_tools` in the list only it and the tools
-//! a find result named are sent (PLAN.md D30, as on Antigravity).
+//! a find result named are sent (PLAN.md D30).
 
 use serde_json::{json, Map, Value};
 

@@ -77,10 +77,5 @@ mod tests {
         model.efforts.clear();
         model.deprecated = true;
         assert!(line(&model).ends_with("-  (deprecated)"));
-        model.id = "antigravity/gemini-cli".into();
-        assert!(line(&model).starts_with("antigravity  antigravity/gemini-cli"));
-        let json = entry(&model).unwrap();
-        assert_eq!(json["provider"], "antigravity");
-        assert_eq!(json["id"], "antigravity/gemini-cli");
     }
 }

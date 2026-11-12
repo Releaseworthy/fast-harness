@@ -1,5 +1,4 @@
 use super::*;
-use crate::accounts::google::{GoogleQuota, QuotaGroup, QuotaWindow};
 use crate::accounts::model::{AccountKind, Provider};
 use crate::accounts::usage::{Usage, Window};
 
@@ -38,48 +37,20 @@ fn claude(id: &str, active: bool, used: &[f64]) -> AccountStatus {
     }
 }
 
-fn google(id: &str, active: bool, used: Option<f64>) -> GoogleStatus {
-    let window = |used| QuotaWindow {
-        used,
-        resets_at: None,
-        disabled: false,
-    };
-    let quota = used.map(|u| GoogleQuota {
-        groups: vec![QuotaGroup {
-            name: "Gemini Models".into(),
-            five_hour: Some(window(u)),
-            weekly: Some(QuotaWindow {
-                disabled: true,
-                ..window(1.0)
-            }),
-        }],
-    });
-    GoogleStatus {
-        account: account(id, Provider::Google),
-        active,
-        hold: None,
-        quota,
-        read_at: None,
-        last_error: None,
-    }
-}
-
 #[test]
 fn empty_providers_say_no_accounts() {
-    let cards = summaries(&[], &[], &ClientState::Ready("id".into()), NOW);
-    assert_eq!(cards.len(), 2);
+    let cards = summaries(&[], NOW);
+    assert_eq!(cards.len(), 1);
     assert_eq!(cards[0].key, ProviderKey::Claude);
     assert_eq!(cards[0].status, "Not set up");
     assert_eq!(cards[0].count_text, "No accounts");
     assert_eq!(cards[0].tone, Tone::Empty);
-    assert_eq!(cards[1].key.name(), "Google Antigravity");
-    assert_eq!(cards[1].left, None);
 }
 
 /// Bug: an empty card said `No accounts` twice, in the count line and the status.
 #[test]
 fn empty_card_says_no_accounts_once() {
-    for card in summaries(&[], &[], &ClientState::Ready("id".into()), NOW) {
+    for card in summaries(&[], NOW) {
         assert_ne!(card.status, card.count_text, "{:?}", card.key);
         assert!(!card.status.is_empty(), "the status stays in words");
     }
@@ -91,7 +62,7 @@ fn active_account_and_lowest_left() {
         claude("work", true, &[42.0, 70.0]),
         claude("home", false, &[99.0]),
     ];
-    let card = &summaries(&list, &[], &ClientState::Ready("id".into()), NOW)[0];
+    let card = &summaries(&list, NOW)[0];
     assert_eq!(card.count, 2);
     assert_eq!(card.count_text, "2 accounts");
     assert_eq!(card.status, "Active: work@example.com");
@@ -99,65 +70,12 @@ fn active_account_and_lowest_left() {
     // 7d at 70% used is the lowest left; the idle account does not count.
     assert_eq!(card.left, Some(30.0));
     let low = [claude("work", true, &[95.0])];
-    assert_eq!(
-        summaries(&low, &[], &ClientState::Ready("id".into()), NOW)[0].tone,
-        Tone::Attention
-    );
+    assert_eq!(summaries(&low, NOW)[0].tone, Tone::Attention);
     let idle = [claude("work", false, &[])];
-    let card = &summaries(&idle, &[], &ClientState::Ready("id".into()), NOW)[0];
+    let card = &summaries(&idle, NOW)[0];
     assert_eq!(
         (card.status.as_str(), card.left),
         ("No account in use", None)
     );
     assert_eq!(card.count_text, "1 account");
-}
-
-#[test]
-fn google_quota_skips_disabled_windows() {
-    let list = [google("ana", true, Some(0.25)), google("bo", false, None)];
-    let card = &summaries(&[], &list, &ClientState::Ready("id".into()), NOW)[1];
-    assert_eq!(card.status, "Active: ana@example.com");
-    assert_eq!(card.left, Some(75.0));
-    assert_eq!(card.count, 2);
-}
-
-#[test]
-fn google_without_client_needs_setup() {
-    let list = [google("ana", true, Some(0.25))];
-    let card = &summaries(&[], &list, &ClientState::Missing, NOW)[1];
-    assert_eq!(
-        (card.status.as_str(), card.tone),
-        ("Needs setup", Tone::Attention)
-    );
-    let broken = ClientState::Broken("google-client.json is not valid".into());
-    let card = &summaries(&[], &[], &broken, NOW)[1];
-    assert_eq!(card.status, "OAuth client unreadable");
-    assert_eq!(card.count_text, "No accounts");
-}
-
-#[test]
-#[cfg_attr(
-    not(windows),
-    ignore = "secrets are encrypted with DPAPI, which only Windows has"
-)]
-fn client_state_reads_the_home() {
-    let home = std::env::temp_dir().join(format!("fh-providers-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&home);
-    std::fs::create_dir_all(&home).unwrap();
-    let env_set = std::env::var("FAST_HARNESS_GOOGLE_CLIENT_ID").is_ok();
-    if !env_set {
-        assert_eq!(ClientState::of(&home), ClientState::Missing);
-    }
-    google::save_client(&home, "client-id", "not-a-real-secret").unwrap();
-    if !env_set {
-        assert_eq!(
-            ClientState::of(&home),
-            ClientState::Ready("client-id".into())
-        );
-    }
-    std::fs::write(home.join("google-client.json"), "{").unwrap();
-    if !env_set {
-        assert!(matches!(ClientState::of(&home), ClientState::Broken(_)));
-    }
-    std::fs::remove_dir_all(&home).unwrap();
 }

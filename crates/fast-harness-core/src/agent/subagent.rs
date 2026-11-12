@@ -66,7 +66,7 @@ impl Tool for SubagentTool {
             name: NAME.into(),
             description: "Run a self-contained task in a fresh agent with its own context; \
                 it returns its final answer. Give it everything it needs in `prompt`. \
-                Optional: `model` (a model id, `antigravity/<id>` for Google models) and \
+                Optional: `model` (a model id, `<provider id>/<id>` for providers/*.json models) and \
                 `effort`; `tools` (tool names it may call at once, without find_tools); \
                 `background: true` returns `{id}` at once and the answer arrives later as a \
                 `[subagent <id> finished]` message (agent_send steers it, agent_stop stops \
