@@ -11,7 +11,7 @@ use fast_harness_core::config::Config;
 use fast_harness_core::http::{HttpHead, ScriptedResponse, ScriptedTransport, Transport};
 use fast_harness_core::llm::anthropic::Anthropic;
 use fast_harness_core::llm::{Auth, LlmError, ToolSpec};
-use fast_harness_core::tools::{Registry, Tool, ToolCtx, ToolOutput};
+use fast_harness_core::tools::{Effect, Registry, Tool, ToolCtx, ToolOutput};
 use fast_harness_core::trace::{self, TraceEvent};
 use serde_json::{json, Value};
 
@@ -138,6 +138,11 @@ impl Tool for Echo {
             description: "Echo text".into(),
             schema: json!({"type": "object"}),
         }
+    }
+
+    /// Read: the agent tests run several echo calls of one step at once.
+    fn effect(&self) -> Effect {
+        Effect::Read
     }
 
     fn run(&self, args: &Value, _ctx: &ToolCtx<'_>) -> ToolOutput {

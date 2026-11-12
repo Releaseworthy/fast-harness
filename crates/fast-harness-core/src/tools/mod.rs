@@ -15,6 +15,7 @@ pub use command::CommandTool;
 pub use ext::Extensions;
 
 mod args;
+mod atomic;
 pub mod budget;
 pub(crate) mod command;
 mod edit;
@@ -91,12 +92,50 @@ impl ToolOutput {
     }
 }
 
+/// What a tool call may change; decides how the calls of one step run
+/// (PLAN.md D54): parallel calls run together, the others one at a time in
+/// call order, after everything before them.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum Effect {
+    /// Changes nothing outside the conversation (reads files, searches).
+    Read,
+    /// Changes files.
+    Write,
+    /// May do anything (runs programs); the default.
+    Run,
+}
+
+impl Effect {
+    /// `read`, `write` or `run` (the `effect` key of a tool file).
+    pub fn from_word(word: &str) -> Option<Effect> {
+        match word {
+            "read" => Some(Effect::Read),
+            "write" => Some(Effect::Write),
+            "run" => Some(Effect::Run),
+            _ => None,
+        }
+    }
+}
+
 pub trait Tool: Send + Sync {
     fn spec(&self) -> ToolSpec;
 
     /// `args` is the parsed arguments object. Invalid arguments produce an
     /// error output that tells the model what to fix.
     fn run(&self, args: &Value, ctx: &ToolCtx<'_>) -> ToolOutput;
+
+    /// What a call may change (PLAN.md D54); `Run` unless the tool says so.
+    fn effect(&self) -> Effect {
+        Effect::Run
+    }
+
+    /// May a call run alongside the other calls of its step? True for
+    /// `Effect::Read`; a tool that is safe to run at once anyway (the
+    /// subagent tool) says true itself.
+    fn parallel(&self) -> bool {
+        self.effect() == Effect::Read
+    }
 }
 
 #[derive(Default)]
@@ -189,6 +228,34 @@ impl Registry {
     /// `find_tools` first when the registry finds.
     pub fn specs(&self) -> &[ToolSpec] {
         &self.specs
+    }
+
+    /// The tool named `name`; `None` for `find_tools` and unknown names.
+    fn tool(&self, name: &str) -> Option<&dyn Tool> {
+        let index = self.specs.iter().position(|spec| spec.name == name)?;
+        let index = match self.find {
+            true => index.checked_sub(1)?,
+            false => index,
+        };
+        self.tools.get(index).map(|tool| &**tool)
+    }
+
+    /// The effect of tool `name`: `Read` for `find_tools`, `None` when unknown.
+    pub fn effect(&self, name: &str) -> Option<Effect> {
+        match self.tool(name) {
+            Some(tool) => Some(tool.effect()),
+            None if self.find && self.specs.first().is_some_and(|s| s.name == name) => {
+                Some(Effect::Read)
+            }
+            None => None,
+        }
+    }
+
+    /// May a call of `name` run alongside the other calls of its step
+    /// (PLAN.md D54)? True for `find_tools` and for an unknown name (it only
+    /// returns an error).
+    pub fn parallel(&self, name: &str) -> bool {
+        self.tool(name).is_none_or(|tool| tool.parallel())
     }
 
     /// Runs tool `name` with the raw JSON arguments text from the model.

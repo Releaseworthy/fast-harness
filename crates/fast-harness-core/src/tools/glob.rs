@@ -7,7 +7,7 @@ use serde_json::{json, Value};
 
 use super::args::{display_rel, object_schema, opt_str, req_str, resolve};
 use super::walk::files;
-use super::{Tool, ToolCtx, ToolOutput};
+use super::{Effect, Tool, ToolCtx, ToolOutput};
 use crate::llm::ToolSpec;
 
 const MAX_FILES: usize = 100;
@@ -15,6 +15,10 @@ const MAX_FILES: usize = 100;
 pub(crate) struct GlobTool;
 
 impl Tool for GlobTool {
+    fn effect(&self) -> Effect {
+        Effect::Read
+    }
+
     fn spec(&self) -> ToolSpec {
         ToolSpec {
             name: "glob".into(),

@@ -12,7 +12,7 @@ use agent_support::*;
 use fast_harness_core::app::Runtime;
 use fast_harness_core::config::index::{ExtIndex, INDEX_FILE};
 use fast_harness_core::config::layers::Layers;
-use fast_harness_core::tools::{Extensions, ToolCtx};
+use fast_harness_core::tools::{Effect, Extensions, ToolCtx};
 use serde_json::json;
 
 fn put(path: &Path, text: &str) {
@@ -177,4 +177,37 @@ fn an_untrusted_project_loads_no_tool_files() {
     assert!(!names(&rt).contains(&"proj_tool".to_string()));
     rt.trust_project(&env.cwd).unwrap();
     assert!(names(&rt).contains(&"proj_tool".to_string()));
+}
+
+/// A tool file's `effect` (PLAN.md D54): `read` makes its calls parallel,
+/// none keeps them serial (`Run`), an unknown word skips the file.
+#[test]
+fn a_tool_file_declares_its_effect() {
+    let env = env("ext-effect");
+    let tools = env.home.join("tools");
+    let tool = |effect: &str| {
+        let effect = match effect {
+            "" => String::new(),
+            word => format!(r#","effect":{word}"#),
+        };
+        format!(r#"{{"description":"A tool","command":"x"{effect}}}"#)
+    };
+    put(&tools.join("looker.json"), &tool(r#""read""#));
+    put(&tools.join("plain.json"), &tool(""));
+    put(&tools.join("writer.json"), &tool(r#""write""#));
+    put(&tools.join("bad.json"), &tool(r#""fast""#));
+    let index = ExtIndex::build(&Layers::user_only(&env.home));
+    let skipped: Vec<&str> = index.skipped.iter().map(|s| s.reason.as_str()).collect();
+    assert!(
+        skipped.iter().any(|reason| reason.contains("bad `effect`")),
+        "{skipped:?}"
+    );
+    let ext = Extensions::new(index);
+    let registry = ext.registry();
+    assert!(registry.parallel("looker"));
+    assert!(!registry.parallel("plain") && !registry.parallel("writer"));
+    assert_eq!(registry.effect("writer"), Some(Effect::Write));
+    assert_eq!(registry.effect("plain"), Some(Effect::Run));
+    assert_eq!(registry.effect("bad"), None, "a skipped file is no tool");
+    assert!(registry.parallel("find_tools") && registry.parallel("no_such_tool"));
 }

@@ -9,7 +9,7 @@ use serde_json::{json, Value};
 use super::children::Children;
 use crate::agent::Input;
 use crate::llm::ToolSpec;
-use crate::tools::{Tool, ToolCtx, ToolOutput};
+use crate::tools::{Effect, Tool, ToolCtx, ToolOutput};
 
 pub const SEND: &str = "agent_send";
 pub const STOP: &str = "agent_stop";
@@ -49,6 +49,14 @@ fn id_schema(extra: Value) -> Value {
 }
 
 impl Tool for ChildTool {
+    /// \gent_output\ only reads (or waits); send and stop act on a child.
+    fn effect(&self) -> Effect {
+        match self.kind {
+            Kind::Output => Effect::Read,
+            Kind::Send | Kind::Stop => Effect::Run,
+        }
+    }
+
     fn spec(&self) -> ToolSpec {
         let (name, description, schema) = match self.kind {
             Kind::Send => (

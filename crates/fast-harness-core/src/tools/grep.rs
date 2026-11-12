@@ -11,7 +11,7 @@ use super::args::{
     resolve,
 };
 use super::walk::files;
-use super::{Tool, ToolCtx, ToolOutput};
+use super::{Effect, Tool, ToolCtx, ToolOutput};
 use crate::llm::ToolSpec;
 
 const DEFAULT_MAX_RESULTS: u64 = 50;
@@ -20,6 +20,10 @@ const MAX_LINE_CHARS: usize = 300;
 pub(crate) struct GrepTool;
 
 impl Tool for GrepTool {
+    fn effect(&self) -> Effect {
+        Effect::Read
+    }
+
     fn spec(&self) -> ToolSpec {
         ToolSpec {
             name: "grep".into(),

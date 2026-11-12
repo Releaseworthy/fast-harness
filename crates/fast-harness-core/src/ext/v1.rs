@@ -9,7 +9,7 @@ pub use crate::llm::custom::{ModelFile, ProviderFile};
 pub use crate::llm::{Auth, ChatRequest, Completion, Delta, LlmError, Provider, ToolSpec};
 pub use crate::panels::{Host, Incoming, NativePanel as Panel, Place};
 pub use crate::tools::hooks::{Answer, HookEvent, NativeHook as Hook};
-pub use crate::tools::{Tool, ToolCtx, ToolOutput};
+pub use crate::tools::{Effect, Tool, ToolCtx, ToolOutput};
 
 /// What the plugins of a build registered. Filled once at start by
 /// `fast_harness_plugins::register_all`, then read by every settings load

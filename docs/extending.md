@@ -148,6 +148,7 @@ A file with a `command` is a new tool. The arguments go in on stdin as one JSON 
 - `command`: a program on `PATH`, an absolute path, or a path with a `/` or `\` relative to the tool file's folder (`./bin/tool.exe`). `args` follow it as given (no shell).
 - `stdin`: `json` (default) or `none`. The process runs in the session's working directory with `FAST_HARNESS_TOOL_DIR` set to the tool file's folder.
 - `timeoutMs`: default 120000. `outputBytes`: this tool's result budget (a `toolOutput` entry in `config.json` wins).
+- `effect` (PLAN.md D54): `run` (default), `write` or `read`. The calls of one step run by effect: consecutive `read` calls run at once, every other call runs alone, in call order, after the calls before it. Say `read` only for a tool that changes nothing (no files, no processes left behind). Any other word skips the file with a reason (`fast-harness doctor`).
 
 ### Overriding a built-in tool
 

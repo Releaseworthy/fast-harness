@@ -61,6 +61,12 @@ pub(super) struct Spec {
 }
 
 impl Tool for SubagentTool {
+    /// Effect \Run\, but the children of one step run at once by design,
+    /// bounded by \subagent.maxParallel\ (PLAN.md D40, D54).
+    fn parallel(&self) -> bool {
+        true
+    }
+
     fn spec(&self) -> ToolSpec {
         ToolSpec {
             name: NAME.into(),

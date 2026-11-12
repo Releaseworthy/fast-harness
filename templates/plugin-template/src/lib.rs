@@ -18,6 +18,8 @@ pub fn register(ext: &mut Ext) {
 /// `word_count`: counts the words of a text.
 struct WordCount;
 
+// A tool that only reads can add `fn effect(&self) -> Effect { Effect::Read }`
+// (`ext::v1::Effect`) so its calls run in parallel with other reads.
 impl Tool for WordCount {
     fn spec(&self) -> ToolSpec {
         ToolSpec {

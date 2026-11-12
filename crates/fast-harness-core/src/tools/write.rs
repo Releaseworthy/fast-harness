@@ -3,12 +3,16 @@
 use serde_json::{json, Value};
 
 use super::args::{object_schema, req_str, resolve};
-use super::{Tool, ToolCtx, ToolOutput};
+use super::{Effect, Tool, ToolCtx, ToolOutput};
 use crate::llm::ToolSpec;
 
 pub(crate) struct WriteTool;
 
 impl Tool for WriteTool {
+    fn effect(&self) -> Effect {
+        Effect::Write
+    }
+
     fn spec(&self) -> ToolSpec {
         ToolSpec {
             name: "write".into(),
@@ -47,7 +51,7 @@ fn write(args: &Value, ctx: &ToolCtx<'_>) -> Result<String, String> {
     }
     // A file that cannot be read counts as new.
     let old = std::fs::read(&path).ok();
-    std::fs::write(&path, content.as_bytes())
+    super::atomic::replace(&path, content.as_bytes())
         .map_err(|err| format!("cannot write {path_arg}: {err}"))?;
     let lines = line_count(content);
     let bytes = content.len();

@@ -16,7 +16,8 @@ use super::layers::{kind_files, skill_files, LayerFile, Layers, Skipped, Source}
 
 /// The cache file in the user folder.
 pub const INDEX_FILE: &str = "index.json";
-const VERSION: u32 = 1;
+/// 2: `Entry::effect` (PLAN.md D54).
+const VERSION: u32 = 2;
 pub const TOOLS: &str = "tools";
 pub const AGENTS: &str = "agents";
 pub const COMMANDS: &str = "commands";
@@ -40,7 +41,13 @@ pub struct Entry {
     pub output_bytes: Option<usize>,
     #[serde(skip_serializing_if = "is_false")]
     pub disabled: bool,
+    /// A tool file's `effect`: `read`, `write` or `run` (PLAN.md D54).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub effect: Option<String>,
 }
+
+/// The words a tool file's `effect` may hold (`tools::Effect`).
+const EFFECTS: [&str; 3] = ["read", "write", "run"];
 
 fn is_false(value: &bool) -> bool {
     !value
@@ -216,12 +223,18 @@ fn parse_tool(text: &str, stem: &str) -> Result<Entry, String> {
         return Err("a command tool needs a `description`".into());
     }
     let output_bytes = object.get("outputBytes").and_then(Value::as_u64);
+    let effect = match object.get("effect") {
+        None => None,
+        Some(Value::String(word)) if EFFECTS.contains(&word.as_str()) => Some(word.clone()),
+        Some(other) => return Err(format!("bad `effect` {other}: use read, write or run")),
+    };
     Ok(Entry {
         name: name.to_string(),
         description: description.to_string(),
         command,
         output_bytes: output_bytes.map(|bytes| bytes as usize),
         disabled: object.get("disabled").and_then(Value::as_bool) == Some(true),
+        effect,
     })
 }
 

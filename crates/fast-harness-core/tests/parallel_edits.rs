@@ -1,8 +1,9 @@
-//! Several `edit` calls of one step on one file (docs/architecture-plan.md,
-//! A1). The calls of a step run at once on scoped threads and `edit` reads
-//! and writes the whole file without a lock, so today every call reports
-//! success and only one edit stays in the file. Ignored until A1 lands; run
-//! by hand: `cargo test -p fast-harness-core --test parallel_edits -- --ignored`.
+//! Calls of one step that change a file (PLAN.md D54, finding A1). Before
+//! D54 every call of a step ran at once and `edit` reads and writes the
+//! whole file without a lock: 8 edits of one file all reported success and
+//! 1 stayed (20 of 20 rounds, 2026-11-12). Now `edit` and `write` declare
+//! `Effect::Write` and run one at a time in call order, and `shell` (`Run`)
+//! starts only after them.
 
 mod agent_support;
 
@@ -13,6 +14,7 @@ use agent_support::*;
 use fast_harness_core::agent::{Agent, Conversation};
 use fast_harness_core::http::ScriptedTransport;
 use fast_harness_core::tools;
+use fast_harness_core::types::{Block, Role};
 
 const EDITS: usize = 8;
 const ROUNDS: usize = 20;
@@ -47,7 +49,6 @@ fn edit_all_markers_in_one_step(round: usize) -> String {
 }
 
 #[test]
-#[ignore = "fails until docs/architecture-plan.md A1: 2026-11-12, 20 of 20 rounds kept 1 of 8 edits"]
 fn every_edit_of_one_step_lands_in_the_file() {
     for round in 0..ROUNDS {
         let after = edit_all_markers_in_one_step(round);
@@ -56,4 +57,43 @@ fn every_edit_of_one_step_lands_in_the_file() {
             .count();
         assert_eq!(landed, EDITS, "round {round}: the file holds\n{after}");
     }
+}
+
+/// One step: `write` a file, then `shell` prints it. The shell starts after
+/// the write ended, so it prints the new content.
+#[test]
+fn shell_after_write_in_one_step_sees_the_file() {
+    let env = env("writeshell");
+    let write = r#"{"path":"b.txt","content":"fresh content 42"}"#;
+    let transport = Arc::new(ScriptedTransport::new(vec![
+        tool_reply(&[("toolu_f", "find_tools", r#"{"names":["write","shell"]}"#)]),
+        tool_reply(&[
+            ("toolu_w", "write", write),
+            ("toolu_s", "shell", r#"{"command":"cat b.txt"}"#),
+        ]),
+        text_reply("done"),
+    ]));
+    let parts = parts(&transport, key_auth(), &env.cwd);
+    let agent = Agent::new(parts, Arc::new(tools::builtin()));
+    let mut conv = Conversation::create(&env.home, &env.cwd, None).unwrap();
+    agent.run_turn(&mut conv, "go", &AtomicBool::new(false), &mut |_| {});
+    let results = tool_results(&conv);
+    assert!(results[0].contains("Wrote 16 bytes"), "{results:?}");
+    assert!(results[1].contains("fresh content 42"), "{results:?}");
+}
+
+/// The texts of the last tool message, in call order.
+fn tool_results(conv: &Conversation) -> Vec<String> {
+    let message = conv
+        .messages
+        .iter()
+        .rev()
+        .find(|m| m.role == Role::Tool)
+        .unwrap();
+    (message.content.iter())
+        .map(|block| match block {
+            Block::ToolResult { content, .. } => content.clone(),
+            _ => String::new(),
+        })
+        .collect()
 }

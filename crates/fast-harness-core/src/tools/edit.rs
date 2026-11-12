@@ -3,12 +3,16 @@
 use serde_json::{json, Value};
 
 use super::args::{object_schema, opt_bool, req_str, resolve};
-use super::{Tool, ToolCtx, ToolOutput};
+use super::{Effect, Tool, ToolCtx, ToolOutput};
 use crate::llm::ToolSpec;
 
 pub(crate) struct EditTool;
 
 impl Tool for EditTool {
+    fn effect(&self) -> Effect {
+        Effect::Write
+    }
+
     fn spec(&self) -> ToolSpec {
         ToolSpec {
             name: "edit".into(),
@@ -67,7 +71,7 @@ fn edit(args: &Value, ctx: &ToolCtx<'_>) -> Result<String, String> {
     } else {
         (content.replacen(old.as_str(), &new, 1), 1)
     };
-    std::fs::write(&path, updated.as_bytes())
+    super::atomic::replace(&path, updated.as_bytes())
         .map_err(|err| format!("cannot write {path_arg}: {err}"))?;
     let lines = match_lines(&content, &old, replaced);
     Ok(if replaced == 1 {

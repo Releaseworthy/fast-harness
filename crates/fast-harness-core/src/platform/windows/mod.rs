@@ -1,5 +1,6 @@
 //! Windows backend (windows-sys). Each feature lives in its own file.
 
+mod file;
 mod folder;
 mod interrupt;
 mod liveness;
@@ -9,6 +10,7 @@ mod random;
 mod secret;
 mod window;
 
+pub use file::copy_permissions;
 pub use folder::pick_folder;
 pub use interrupt::on_interrupt;
 pub use liveness::{process_start, spawn_detached};

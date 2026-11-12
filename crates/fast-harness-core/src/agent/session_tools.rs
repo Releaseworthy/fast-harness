@@ -12,7 +12,7 @@ use crate::llm::ToolSpec;
 use crate::session::coord::{self, Command};
 use crate::session::lock::{self, Lock};
 use crate::session::{self as sessions};
-use crate::tools::{Tool, ToolCtx, ToolOutput};
+use crate::tools::{Effect, Tool, ToolCtx, ToolOutput};
 use crate::types::Role;
 
 pub const LIST: &str = "sessions_list";
@@ -62,6 +62,15 @@ fn id_prop() -> Value {
 }
 
 impl Tool for SessionTool {
+    /// Listing and reading only read lock and session files; start, send
+    /// and stop act on other sessions.
+    fn effect(&self) -> Effect {
+        match self.kind {
+            Kind::List | Kind::Read => Effect::Read,
+            Kind::Start | Kind::Send | Kind::Stop => Effect::Run,
+        }
+    }
+
     fn spec(&self) -> ToolSpec {
         let (name, description, schema) = match self.kind {
             Kind::List => (LIST, "Running Fast Harness sessions (any directory) and the recent sessions of the working directory.", schema(json!({}), &[])),

@@ -7,6 +7,8 @@
 //!   `/dev/urandom` on other Unix-like systems).
 //! - `open`: `open_url(&str) -> Result<()>` (the default browser),
 //!   `open_folder(&Path) -> Result<()>` (Explorer).
+//! - `file`: `copy_permissions(from, to) -> io::Result<()>` (Unix mode bits of a replaced file;
+//!   a no-op on Windows).
 //! - `process`: `ProcessGroup` (a process and every process it starts, killed together).
 //! - `window`: `set_big_window_icon() -> Result<usize>` (the taskbar icon from the exe's icon
 //!   group 1 on the calling thread's visible windows; a no-op returning 0 elsewhere) and

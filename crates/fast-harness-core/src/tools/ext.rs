@@ -11,7 +11,7 @@ use super::hooks::{HookEvent, Hooks, NativeHook};
 use super::mcp::wire::{self, CallTool, DescribeTool, McpTool};
 use super::mcp::McpServers;
 use super::skills::{skills_line, Skill};
-use super::{builtin_tools, Registry, Tool, ToolCtx, ToolOutput};
+use super::{builtin_tools, Effect, Registry, Tool, ToolCtx, ToolOutput};
 use crate::config::index::{Entry, ExtIndex, Item};
 use crate::llm::ToolSpec;
 
@@ -36,7 +36,12 @@ impl Extensions {
     pub fn new(index: ExtIndex) -> Extensions {
         let commands = (index.tools.iter())
             .filter(|item| item.entry.command && !item.entry.disabled)
-            .map(|item| CommandTool::new(&item.entry.name, &item.entry.description, &item.path))
+            .map(|item| {
+                let entry = &item.entry;
+                let effect = entry.effect.as_deref().and_then(Effect::from_word);
+                let effect = effect.unwrap_or(Effect::Run);
+                CommandTool::with_effect(&entry.name, &entry.description, &item.path, effect)
+            })
             .collect();
         Extensions {
             index,
@@ -260,6 +265,13 @@ struct Described {
 }
 
 impl Tool for Described {
+    fn effect(&self) -> Effect {
+        self.tool.effect()
+    }
+
+    fn parallel(&self) -> bool {
+        self.tool.parallel()
+    }
     fn spec(&self) -> ToolSpec {
         let mut spec = self.tool.spec();
         spec.description.clone_from(&self.description);
@@ -275,6 +287,13 @@ impl Tool for Described {
 struct Shared(Arc<dyn Tool>);
 
 impl Tool for Shared {
+    fn effect(&self) -> Effect {
+        self.0.effect()
+    }
+
+    fn parallel(&self) -> bool {
+        self.0.parallel()
+    }
     fn spec(&self) -> ToolSpec {
         self.0.spec()
     }

@@ -2,6 +2,7 @@
 //! except `random_fill`, which reads `/dev/urandom` on Unix. `protect` and `unprotect` stay
 //! `Unsupported` on purpose: secrets are never stored in plaintext (PLAN.md D9).
 
+mod file;
 mod folder;
 mod interrupt;
 mod liveness;
@@ -11,6 +12,7 @@ mod random;
 mod secret;
 mod window;
 
+pub use file::copy_permissions;
 pub use folder::pick_folder;
 pub use interrupt::on_interrupt;
 pub use liveness::{process_start, spawn_detached};

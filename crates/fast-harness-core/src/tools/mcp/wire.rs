@@ -11,7 +11,7 @@ use serde_json::{json, Value};
 
 use super::{IndexTool, McpServers};
 use crate::llm::ToolSpec;
-use crate::tools::{Tool, ToolCtx, ToolOutput};
+use crate::tools::{Effect, Tool, ToolCtx, ToolOutput};
 
 pub const CAP_TOOLS: usize = 64;
 pub const CAP_BYTES: usize = 64 * 1024;
@@ -96,6 +96,10 @@ fn unknown(name: &str) -> ToolOutput {
 }
 
 impl Tool for DescribeTool {
+    fn effect(&self) -> Effect {
+        Effect::Read
+    }
+
     fn spec(&self) -> ToolSpec {
         ToolSpec {
             name: DESCRIBE.into(),

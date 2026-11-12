@@ -4,7 +4,7 @@ use serde_json::{json, Value};
 
 use super::args::{cut_chars, looks_binary, object_schema, opt_positive, req_str, resolve};
 use super::budget::ReadKey;
-use super::{Tool, ToolCtx, ToolOutput};
+use super::{Effect, Tool, ToolCtx, ToolOutput};
 use crate::llm::ToolSpec;
 
 const DEFAULT_LIMIT: u64 = 2000;
@@ -13,6 +13,10 @@ const MAX_LINE_CHARS: usize = 2000;
 pub(crate) struct ReadTool;
 
 impl Tool for ReadTool {
+    fn effect(&self) -> Effect {
+        Effect::Read
+    }
+
     fn spec(&self) -> ToolSpec {
         ToolSpec {
             name: "read".into(),

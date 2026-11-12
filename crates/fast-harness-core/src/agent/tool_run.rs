@@ -1,7 +1,8 @@
-//! The tool calls of one step, run in parallel on scoped threads.
+//! The tool calls of one step, run by effect on scoped threads (PLAN.md D54).
 
+use std::ops::Range;
 use std::panic::{self, AssertUnwindSafe};
-use std::sync::atomic::AtomicBool;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, RecvTimeoutError};
 use std::time::Instant;
 
@@ -40,21 +41,7 @@ impl Turn<'_> {
     /// `tool/call` first, then every `tool/result` in call order, and adds
     /// one tool message holding all results.
     pub(super) fn run_tools(&mut self, step: u32) -> Res<()> {
-        let calls: Vec<Call> = self
-            .conv
-            .messages
-            .last()
-            .map(|message| {
-                let calls = message.tool_calls();
-                calls
-                    .map(|(id, name, arguments)| Call {
-                        id: id.into(),
-                        name: name.into(),
-                        arguments: arguments.into(),
-                    })
-                    .collect()
-            })
-            .unwrap_or_default();
+        let calls = last_calls(&self.conv.messages);
         for call in &calls {
             let trace = &mut self.conv.trace;
             traced(trace.tool_call(self.turn, step, &call.id, &call.name, &call.arguments))?;
@@ -82,6 +69,18 @@ impl Turn<'_> {
         let args: Vec<&str> = calls.iter().map(|call| call.arguments.as_str()).collect();
         let cwd = &self.agent.parts.cwd;
         nested::attach(&self.conv.messages, cwd, &args, &mut outputs);
+        self.push_results(step, &calls, outputs, durations)
+    }
+
+    /// Traces every `tool/result` in call order and adds one tool message
+    /// holding all results.
+    fn push_results(
+        &mut self,
+        step: u32,
+        calls: &[Call],
+        outputs: Vec<ToolOutput>,
+        durations: Vec<u64>,
+    ) -> Res<()> {
         let results = outputs.into_iter().zip(durations);
         let mut blocks = Vec::with_capacity(calls.len());
         for (call, (output, duration_ms)) in calls.iter().zip(results) {
@@ -114,8 +113,28 @@ impl Turn<'_> {
     }
 }
 
+/// The output of a call that a cancel kept from starting (PLAN.md D54).
+pub(crate) const CANCELLED: &str = "cancelled before it ran";
+
+/// The tool calls of the last message, in call order.
+fn last_calls(messages: &[Message]) -> Vec<Call> {
+    let Some(message) = messages.last() else {
+        return Vec::new();
+    };
+    (message.tool_calls())
+        .map(|(id, name, arguments)| Call {
+            id: id.into(),
+            name: name.into(),
+            arguments: arguments.into(),
+        })
+        .collect()
+}
+
 /// Outputs and durations in call order. Events go out on this thread:
 /// `ToolCall` for every call before any starts, `ToolResult` as each ends.
+/// The calls run by effect (PLAN.md D54): a maximal run of consecutive
+/// parallel calls is one batch started together; any other call runs alone,
+/// after everything before it has finished.
 fn execute(run: &Run<'_>, calls: &[Call], sink: &mut dyn FnMut(AgentEvent)) -> Vec<Done> {
     for call in calls {
         sink(AgentEvent::ToolCall {
@@ -125,41 +144,12 @@ fn execute(run: &Run<'_>, calls: &[Call], sink: &mut dyn FnMut(AgentEvent)) -> V
         });
     }
     let mut results: Vec<Option<Done>> = vec![None; calls.len()];
-    std::thread::scope(|scope| {
-        let (tx, rx) = mpsc::channel();
-        for (index, call) in calls.iter().enumerate() {
-            let tx = tx.clone();
-            scope.spawn(move || {
-                let started = Instant::now();
-                let (output, records, context) = match not_loaded(run.agent, &call.name, run.loaded)
-                {
-                    Some(error) => (error, Vec::new(), Vec::new()),
-                    None => run_one(run, call),
-                };
-                let _ = tx.send((index, output, ms(started), records, context));
-            });
-        }
-        drop(tx);
-        loop {
-            // Subagents' events reach the sink while their tool call runs.
-            let (index, output, duration_ms, records, context) = match rx.recv_timeout(TICK) {
-                Ok(done) => done,
-                Err(RecvTimeoutError::Timeout) => {
-                    run.agent.forward_events(sink);
-                    continue;
-                }
-                Err(RecvTimeoutError::Disconnected) => break,
-            };
-            run.agent.forward_events(sink);
-            sink(AgentEvent::ToolResult {
-                id: calls[index].id.clone(),
-                content: output.content.clone(),
-                is_error: output.is_error,
-                duration_ms,
-            });
-            results[index] = Some((output, duration_ms, records, context));
-        }
-    });
+    let mut start = 0;
+    while start < calls.len() {
+        let end = batch_end(run, calls, start);
+        run_batch(run, calls, start..end, &mut results, sink);
+        start = end;
+    }
     let missing = || {
         (
             ToolOutput::err("the tool gave no result"),
@@ -171,6 +161,93 @@ fn execute(run: &Run<'_>, calls: &[Call], sink: &mut dyn FnMut(AgentEvent)) -> V
     (results.into_iter())
         .map(|result| result.unwrap_or_else(missing))
         .collect()
+}
+
+/// The end of the batch starting at `start`: past the parallel calls that
+/// follow it, or just past `start` when that call is not parallel.
+fn batch_end(run: &Run<'_>, calls: &[Call], start: usize) -> usize {
+    let parallel = |call: &Call| run.agent.tools.parallel(&call.name);
+    if !calls.get(start).is_some_and(parallel) {
+        return start + 1;
+    }
+    let rest = calls[start..].iter().position(|call| !parallel(call));
+    rest.map_or(calls.len(), |count| start + count)
+}
+
+/// Runs the calls in `range` together on scoped threads, or none of them
+/// when the turn is cancelled (each gets [`CANCELLED`]).
+fn run_batch(
+    run: &Run<'_>,
+    calls: &[Call],
+    range: Range<usize>,
+    results: &mut [Option<Done>],
+    sink: &mut dyn FnMut(AgentEvent),
+) {
+    if run.cancel.load(Ordering::Relaxed) {
+        for index in range {
+            let done = (ToolOutput::err(CANCELLED), 0, Vec::new(), Vec::new());
+            finish(calls, index, done, results, sink);
+        }
+        return;
+    }
+    std::thread::scope(|scope| {
+        let (tx, rx) = mpsc::channel();
+        for index in range {
+            let (tx, call) = (tx.clone(), &calls[index]);
+            scope.spawn(move || {
+                let started = Instant::now();
+                let (output, records, context) = match not_loaded(run.agent, &call.name, run.loaded)
+                {
+                    Some(error) => (error, Vec::new(), Vec::new()),
+                    None => run_one(run, call),
+                };
+                let _ = tx.send((index, (output, ms(started), records, context)));
+            });
+        }
+        drop(tx);
+        collect(run, calls, &rx, results, sink);
+    });
+}
+
+/// Takes the results of one batch as they end, forwarding subagent events
+/// every `TICK` while its calls run.
+fn collect(
+    run: &Run<'_>,
+    calls: &[Call],
+    rx: &mpsc::Receiver<(usize, Done)>,
+    results: &mut [Option<Done>],
+    sink: &mut dyn FnMut(AgentEvent),
+) {
+    loop {
+        // Subagents' events reach the sink while their tool call runs.
+        let (index, done) = match rx.recv_timeout(TICK) {
+            Ok(done) => done,
+            Err(RecvTimeoutError::Timeout) => {
+                run.agent.forward_events(sink);
+                continue;
+            }
+            Err(RecvTimeoutError::Disconnected) => break,
+        };
+        run.agent.forward_events(sink);
+        finish(calls, index, done, results, sink);
+    }
+}
+
+/// Sends `ToolResult` for call `index` and keeps its result.
+fn finish(
+    calls: &[Call],
+    index: usize,
+    done: Done,
+    results: &mut [Option<Done>],
+    sink: &mut dyn FnMut(AgentEvent),
+) {
+    sink(AgentEvent::ToolResult {
+        id: calls[index].id.clone(),
+        content: done.0.content.clone(),
+        is_error: done.0.is_error,
+        duration_ms: done.1,
+    });
+    results[index] = Some(done);
 }
 
 /// The error for a known tool that no find has loaded yet (`loaded` is

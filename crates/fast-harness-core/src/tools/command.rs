@@ -16,7 +16,7 @@ use serde::Deserialize;
 use serde_json::{json, Value};
 
 use super::shell::{drain, pump, supervise, Capture, Ending};
-use super::{Tool, ToolCtx, ToolOutput};
+use super::{Effect, Tool, ToolCtx, ToolOutput};
 use crate::llm::ToolSpec;
 use crate::platform::ProcessGroup;
 
@@ -32,6 +32,8 @@ struct Inner {
     name: String,
     description: String,
     path: PathBuf,
+    /// The file's `effect` (PLAN.md D54), `Run` without one.
+    effect: Effect,
     file: OnceLock<Result<CommandFile, String>>,
 }
 
@@ -53,10 +55,16 @@ struct CommandFile {
 impl CommandTool {
     /// The tool of file `path` with the name and description of the index.
     pub fn new(name: &str, description: &str, path: &Path) -> CommandTool {
+        CommandTool::with_effect(name, description, path, Effect::Run)
+    }
+
+    /// [`CommandTool::new`] whose calls have `effect` (the file's `effect`).
+    pub fn with_effect(name: &str, description: &str, path: &Path, effect: Effect) -> CommandTool {
         CommandTool(Arc::new(Inner {
             name: name.to_string(),
             description: description.to_string(),
             path: path.to_path_buf(),
+            effect,
             file: OnceLock::new(),
         }))
     }
@@ -71,6 +79,10 @@ impl CommandTool {
 }
 
 impl Tool for CommandTool {
+    fn effect(&self) -> Effect {
+        self.0.effect
+    }
+
     fn spec(&self) -> ToolSpec {
         let schema = match self.file() {
             Ok(file) => file.schema.clone(),
