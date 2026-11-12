@@ -89,8 +89,13 @@ pub(crate) fn edit(detail: &mut ToolDetail, call: &Call<'_>) {
         old = old.map(|n| n + u64::from(kind != LineKind::Added));
         new = new.map(|n| n + u64::from(kind != LineKind::Removed));
     }
-    detail.chip(format!("+{added}"), Tone::Success);
-    detail.chip(format!("{MINUS}{removed}"), Tone::Error);
+    // A count of zero says nothing: a pure insert shows only "+n".
+    if added > 0 {
+        detail.chip(format!("+{added}"), Tone::Success);
+    }
+    if removed > 0 {
+        detail.chip(format!("{MINUS}{removed}"), Tone::Error);
+    }
     edit_result(detail, out, at);
 }
 

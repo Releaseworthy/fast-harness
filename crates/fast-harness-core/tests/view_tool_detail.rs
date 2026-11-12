@@ -196,6 +196,23 @@ fn edit_shows_a_numbered_diff() {
 }
 
 #[test]
+fn edit_counts_of_zero_get_no_chip() {
+    let insert = json!({"path": "f.rs", "old_string": "a\n", "new_string": "a\nb\n"});
+    let out = "Replaced 1 occurrence in f.rs at line 4";
+    let only_added = card("edit", insert, Some(out), false);
+    assert_eq!(
+        chips(&only_added),
+        [("+1", Tone::Success), ("line 4", Tone::Plain)]
+    );
+    let delete = json!({"path": "f.rs", "old_string": "a\nb\n", "new_string": "a\n"});
+    let only_removed = card("edit", delete, Some(out), false);
+    assert_eq!(
+        chips(&only_removed),
+        [("\u{2212}1", Tone::Error), ("line 4", Tone::Plain)]
+    );
+}
+
+#[test]
 fn edit_with_replace_all_names_every_line() {
     let args = json!({"path": "f.rs", "old_string": "x", "new_string": "y", "replace_all": true});
     let out = "Replaced 12 occurrences in f.rs at lines 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, ...";

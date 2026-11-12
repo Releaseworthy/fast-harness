@@ -62,11 +62,9 @@ component GoogleCard inherits Rectangle {
             icon: Icons.debug-pause;
             tint: Theme.warning;
             text: info.hold;
-            if info.verify-url != "": ActionButton {
-                icon: Icons.link-external;
-                text: "Verify";
-                clicked => { root.open-url(info.verify-url); }
-            }
+            action: info.verify-url != "" ? "Verify" : "";
+            action-icon: Icons.link-external;
+            action-clicked => { root.open-url(info.verify-url); }
         }
         if info.error != "": MarkLine { icon: Icons.error; tint: Theme.error; text: info.error; }
         Text { text: info.read; color: Theme.dim; font-size: Theme.font-s; }

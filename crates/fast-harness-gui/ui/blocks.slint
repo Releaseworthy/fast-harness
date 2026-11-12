@@ -5,8 +5,9 @@
 // (https://github.com/slint-ui/slint/issues/13655, fixed after 1.18.1). A
 // component as the root keeps the real width: every `if` or `for` that holds
 // wrapped text uses one of these, or another component
-// (src/layout_guard_tests.rs checks the .slint files).
+// (src/layout_tests.rs checks the .slint files).
 import { Theme, Mark } from "parts.slint";
+import { ActionButton } from "widgets.slint";
 
 // Thinking: a gradient bar and the dim italic text.
 export component ThinkingQuote inherits Rectangle {
@@ -49,13 +50,18 @@ export component CodeBox inherits Rectangle {
     }
 }
 
-// A mark and a wrapped line (hold, error and note lines); children go after
-// the text (a Verify button).
+// A mark and a wrapped line (hold, error and note lines), and an optional
+// button after the text (`action`, e.g. Verify). The button is built in:
+// children passed through `@children` made the wrapped text of a component
+// measure as one line in Slint 1.18.1.
 export component MarkLine inherits Rectangle {
     in property <string> icon;
     in property <color> tint;
     in property <string> text;
     in property <color> text-color: root.tint;
+    in property <string> action;
+    in property <string> action-icon;
+    callback action-clicked();
     HorizontalLayout {
         spacing: Theme.space-s;
         Mark {
@@ -71,6 +77,10 @@ export component MarkLine inherits Rectangle {
             vertical-alignment: center;
             horizontal-stretch: 1;
         }
-        @children
+        if root.action != "": ActionButton {
+            icon: root.action-icon;
+            text: root.action;
+            clicked => { root.action-clicked(); }
+        }
     }
 }

@@ -248,12 +248,49 @@ fn plain_roots_with_wrapped_text(name: &str, source: &str) -> Vec<String> {
             continue;
         };
         let body = block(&lines[i..]);
-        let wraps = body
-            .iter()
-            .any(|l| l.contains("wrap: word-wrap") || l.contains("wrap: char-wrap"));
+        let wraps = body.iter().any(|l| is_wrapped(l));
         let scrolled = body.iter().any(|l| l.contains("Flickable"));
         if PLAIN_ROOTS.contains(&root) && wraps && !scrolled {
             found.push(format!("{name}:{}", i + 1));
+        }
+    }
+    found
+}
+
+fn is_wrapped(line: &str) -> bool {
+    line.contains("wrap: word-wrap") || line.contains("wrap: char-wrap")
+}
+
+/// `file:line` of each component that places `@children` and lays out
+/// wrapped text: Slint 1.18.1 measured such a component's wrapped text as
+/// one line (the tool card, 2026-11-12), so its extra parts are built in.
+fn children_next_to_wrapped_text(name: &str, source: &str) -> Vec<String> {
+    let lines: Vec<&str> = source.lines().collect();
+    let mut found = Vec::new();
+    for (i, line) in lines.iter().enumerate() {
+        let text = line.trim_start();
+        if !(text.starts_with("component ") || text.starts_with("export component ")) {
+            continue;
+        }
+        let body = block(&lines[i..]);
+        let children = body.iter().any(|l| l.trim() == "@children");
+        if children && body.iter().any(|l| is_wrapped(l)) {
+            found.push(format!("{name}:{}", i + 1));
+        }
+    }
+    found
+}
+
+/// Every .slint file of the GUI through `check`.
+fn scan_ui(check: fn(&str, &str) -> Vec<String>) -> Vec<String> {
+    let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("ui");
+    let mut found = Vec::new();
+    for entry in std::fs::read_dir(&dir).expect("ui folder") {
+        let path = entry.expect("ui entry").path();
+        if path.extension().is_some_and(|e| e == "slint") {
+            let source = std::fs::read_to_string(&path).expect("slint source");
+            let name = path.file_name().unwrap_or_default().to_string_lossy();
+            found.extend(check(&name, &source));
         }
     }
     found
@@ -277,18 +314,24 @@ fn the_guard_finds_a_plain_root_with_wrapped_text() {
 
 #[test]
 fn wrapped_text_under_if_and_for_sits_in_a_component() {
-    let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("ui");
-    let mut found = Vec::new();
-    for entry in std::fs::read_dir(&dir).expect("ui folder") {
-        let path = entry.expect("ui entry").path();
-        if path.extension().is_some_and(|e| e == "slint") {
-            let source = std::fs::read_to_string(&path).expect("slint source");
-            let name = path.file_name().unwrap_or_default().to_string_lossy();
-            found.extend(plain_roots_with_wrapped_text(&name, &source));
-        }
-    }
+    let found = scan_ui(plain_roots_with_wrapped_text);
     assert!(
         found.is_empty(),
         "wrap these in a component (ui/blocks.slint): {found:?}"
+    );
+}
+
+#[test]
+fn the_guard_finds_children_next_to_wrapped_text() {
+    let bad = "component Line {\n    HorizontalLayout {\n        Text { wrap: word-wrap; }\n        @children\n    }\n}\ncomponent Card {\n    @children\n}";
+    assert_eq!(children_next_to_wrapped_text("x.slint", bad), ["x.slint:1"]);
+}
+
+#[test]
+fn components_with_children_have_no_wrapped_text() {
+    let found = scan_ui(children_next_to_wrapped_text);
+    assert!(
+        found.is_empty(),
+        "build the extra parts in instead of @children: {found:?}"
     );
 }
