@@ -137,7 +137,10 @@ fn save(app: &App, ui: &MainWindow) {
     show(
         app,
         ui,
-        &outcome(done, "Saved. Applies from the next turn."),
+        &outcome(
+            done,
+            "Saved. Applies to new sessions; running sessions get a note.",
+        ),
     );
 }
 

@@ -7,7 +7,7 @@ use crate::agent::turn::{ms, traced, Res, Turn};
 use crate::auth::{Failover, Lease};
 use crate::events::{AgentEvent, TurnOutcome};
 use crate::http::Transport;
-use crate::llm::{ChatRequest, Completion, Delta, ErrorKind, LlmError, Timing};
+use crate::llm::{Cache, ChatRequest, Completion, Delta, ErrorKind, LlmError, Timing};
 use crate::trace::wire::WireCapture;
 use crate::trace::RequestContext;
 
@@ -91,7 +91,7 @@ impl Turn<'_> {
             let trace = &mut self.conv.trace;
             traced(trace.assistant_attempt(self.turn, step, state.attempt, &text, &timing))?;
             if let Next::End(outcome) = self.on_error(step, &mut state, &lease, &err)? {
-                if outcome == TurnOutcome::Failed {
+                if matches!(outcome, TurnOutcome::Failed | TurnOutcome::ContextOverflow) {
                     (self.sink)(AgentEvent::Error(text));
                 }
                 return Ok(Err(outcome));
@@ -153,14 +153,21 @@ impl Turn<'_> {
             Some(capture) => capture,
             None => &*parts.transport,
         };
+        let (system_1h, messages_1h) = parts.config.cache_hours();
+        // The session's frozen system and tools (PLAN.md D36).
+        let conv = &*self.conv;
         let req = ChatRequest {
             model: &parts.config.model,
-            system: &parts.system,
-            messages: &self.conv.messages,
-            tools: agent.tools.specs(),
+            system: conv.system.as_deref().unwrap_or(&parts.system),
+            messages: &conv.messages,
+            tools: conv.tools.as_deref().unwrap_or(agent.tools.specs()),
             max_tokens: parts.config.max_tokens,
             effort: parts.config.effort.as_deref(),
-            cache_long: parts.config.cache_long,
+            cache: Cache {
+                system_1h,
+                messages_1h,
+            },
+            session: &conv.id,
             cancel: self.cancel,
         };
         let sink = &mut *self.sink;
@@ -184,6 +191,7 @@ impl Turn<'_> {
             return Ok(Next::End(TurnOutcome::Cancelled));
         }
         match err.kind {
+            ErrorKind::ContextOverflow => Ok(Next::End(TurnOutcome::ContextOverflow)),
             ErrorKind::RateLimit | ErrorKind::Auth => self.failover(step, state, lease, err),
             _ if err.retryable() && state.retries < config.retries => {
                 let delay = err

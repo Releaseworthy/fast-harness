@@ -61,7 +61,11 @@ impl Tool for SubagentTool {
                     return ToolOutput::err(format!("cannot start a subagent session: {err}"))
                 }
             };
-        let agent = Agent::new(self.parts.clone(), Arc::new(tools::builtin()));
+        // A subagent session is short: `cacheTtl: auto` gives its messages
+        // the 5 minute cache (PLAN.md D36).
+        let mut parts = self.parts.clone();
+        parts.config.interactive = false;
+        let agent = Agent::new(parts, Arc::new(tools::builtin()));
         let mut errors: Vec<String> = Vec::new();
         let mut stats = ChildStats::default();
         let outcome = agent.run_turn(&mut conv, prompt, ctx.cancel, &mut |event| {

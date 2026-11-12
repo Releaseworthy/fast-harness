@@ -198,7 +198,8 @@ fn build_bench(count: usize) {
         tools: &specs,
         max_tokens: 32_000,
         effort: None,
-        cache_long: false,
+        cache: Default::default(),
+        session: "",
         cancel: &cancel,
     };
     let started = Instant::now();

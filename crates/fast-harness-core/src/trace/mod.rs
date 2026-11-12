@@ -10,7 +10,7 @@ pub mod report;
 pub mod wire;
 pub mod writer;
 
-pub use events::{kind, prefix_binding_mismatches, RequestContext};
+pub use events::{header_data, kind, prefix_binding_mismatches, RequestContext};
 pub use reader::read;
 pub use writer::TraceWriter;
 
@@ -22,7 +22,10 @@ use serde_json::Value;
 /// Version 3: assistant messages carry `model`; `tool_call` blocks may carry
 /// `signature`. Version 4: `assistant/message` has `context` and `window`,
 /// usage may have `cacheWrite1hTokens`, and `request/transformations` exists.
-pub const VERSION: u32 = 4;
+/// Version 5: `request/header` may carry `context` (the context stamp of
+/// PLAN.md D36) and is the frozen system and tools replayed on resume; a
+/// user message may start with a `[context update]` text block.
+pub const VERSION: u32 = 5;
 
 /// The oldest version the reader accepts; a resumed log keeps its own header.
 pub const MIN_VERSION: u32 = 1;

@@ -55,6 +55,8 @@ fn map_stop(reason: &str) -> StopReason {
         "tool_use" => StopReason::ToolUse,
         "max_tokens" => StopReason::MaxTokens,
         "refusal" => StopReason::Refusal,
+        "pause_turn" => StopReason::PauseTurn,
+        "model_context_window_exceeded" => StopReason::ContextWindow,
         _ => StopReason::Other,
     }
 }

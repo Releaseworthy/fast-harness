@@ -20,7 +20,8 @@ fn envelope(messages: &[Message], tools: &[ToolSpec]) -> Envelope {
         tools,
         max_tokens: 8000,
         effort: None,
-        cache_long: false,
+        cache: Default::default(),
+        session: "",
         cancel: &cancel,
     };
     build(&req, "gemini-3.1-pro-preview", "proj-1", "sess-1").expect("envelope")

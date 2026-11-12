@@ -75,7 +75,8 @@ fn call(
         tools,
         max_tokens: 1000,
         effort: None,
-        cache_long: false,
+        cache: Default::default(),
+        session: "",
         cancel: &cancel,
     };
     let mut seen = Vec::new();
@@ -285,7 +286,9 @@ fn redacted_thinking_and_other_stop_reasons() {
         ("refusal", StopReason::Refusal),
         ("max_tokens", StopReason::MaxTokens),
         ("stop_sequence", StopReason::End),
-        ("pause_turn", StopReason::Other),
+        ("pause_turn", StopReason::PauseTurn),
+        ("model_context_window_exceeded", StopReason::ContextWindow),
+        ("something_new", StopReason::Other),
     ] {
         let mut events = vec![
             start(json!({"input_tokens": 1})),
@@ -432,7 +435,8 @@ fn transport_failure_is_network() {
         tools: &[],
         max_tokens: 10,
         effort: None,
-        cache_long: false,
+        cache: Default::default(),
+        session: "",
         cancel: &cancel,
     };
     let err = Anthropic::default()

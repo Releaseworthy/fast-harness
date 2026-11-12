@@ -56,7 +56,8 @@ const TICK: Duration = Duration::from_millis(100);
 const IDLE: Duration = Duration::from_secs(5);
 
 pub fn run(args: TuiArgs) -> Result<ExitCode, String> {
-    let rt = runtime()?;
+    let mut rt = runtime()?;
+    rt.interactive = true;
     let cwd = crate::work_dir(args.cwd.clone())?;
     let conv = rt.open_conversation(&cwd, args.resume.as_deref(), args.continue_latest)?;
     let (tx, rx) = mpsc::channel();

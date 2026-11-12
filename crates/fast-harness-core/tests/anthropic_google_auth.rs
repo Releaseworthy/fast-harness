@@ -18,7 +18,8 @@ fn google_credential_is_an_auth_error_and_no_request() {
         tools: &[],
         max_tokens: 1000,
         effort: None,
-        cache_long: false,
+        cache: Default::default(),
+        session: "",
         cancel: &cancel,
     };
     let auth = Auth::Google {

@@ -157,6 +157,12 @@ fn outcome_word(outcome: TurnOutcome) -> Option<&'static str> {
         TurnOutcome::Cancelled => Some("cancelled"),
         TurnOutcome::Failed => Some("failed"),
         TurnOutcome::StepLimit => Some("step limit"),
+        TurnOutcome::Truncated => Some(
+            "truncated: the answer hit the output token limit (maxTokens); send continue to go on",
+        ),
+        TurnOutcome::ContextOverflow => {
+            Some("context overflow: the conversation no longer fits the context window")
+        }
     }
 }
 

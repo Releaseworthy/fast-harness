@@ -7,6 +7,7 @@
 //! written before the matching [`AgentEvent`] is sent.
 
 mod call;
+pub mod context;
 mod conversation;
 pub mod prompt;
 pub mod prompt_store;
@@ -25,6 +26,7 @@ use crate::http::Transport;
 use crate::llm::Provider;
 use crate::tools::{self, Registry};
 
+pub use context::Context;
 pub use conversation::{repair, Conversation, MISSING_RESULT};
 pub use subagent::{ChildStats, SubagentTool};
 
@@ -38,17 +40,32 @@ pub struct AgentParts {
     pub config: Config,
     /// Working directory of the tools.
     pub cwd: PathBuf,
+    /// The system prompt of a new session; a session that has one keeps
+    /// its own (PLAN.md D36).
     pub system: String,
 }
 
 pub struct Agent {
     pub parts: AgentParts,
     pub tools: Arc<Registry>,
+    /// The prompt sources read when this agent was built; a session whose
+    /// stamp differs gets a context update. `None`: no updates.
+    pub context: Option<Context>,
 }
 
 impl Agent {
     pub fn new(parts: AgentParts, tools: Arc<Registry>) -> Agent {
-        Agent { parts, tools }
+        Agent {
+            parts,
+            tools,
+            context: None,
+        }
+    }
+
+    /// This agent comparing `context` with each session's stamp.
+    pub fn with_context(mut self, context: Context) -> Agent {
+        self.context = Some(context);
+        self
     }
 
     /// The built-in tools plus `subagent`, whose child sessions name

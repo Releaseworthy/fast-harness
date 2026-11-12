@@ -8,7 +8,7 @@ use std::sync::Arc;
 
 use crate::accounts::google::GoogleAuth;
 use crate::accounts::pool::AccountPool;
-use crate::agent::{prompt, Agent, AgentParts, Conversation};
+use crate::agent::{prompt, Agent, AgentParts, Context, Conversation};
 use crate::auth::{AuthSource, StaticAuth};
 use crate::config::Config;
 use crate::http::Transport;
@@ -33,6 +33,9 @@ pub struct Runtime {
     pub provider: Arc<Anthropic>,
     /// Google Antigravity, for `antigravity/<id>` models.
     pub antigravity: Arc<Antigravity>,
+    /// Set by the TUI and the GUI: `cacheTtl: auto` then caches the
+    /// messages for 1 hour (5 minutes in print mode), PLAN.md D36.
+    pub interactive: bool,
 }
 
 /// The provider and the credential source of one model.
@@ -75,6 +78,7 @@ impl Runtime {
             transport: Arc::new(UreqTransport::new()),
             provider: Arc::new(Anthropic::default()),
             antigravity: Arc::new(Antigravity::default()),
+            interactive: false,
         })
     }
 
@@ -124,31 +128,36 @@ impl Runtime {
     /// credential follow `config.model` ([`Runtime::route`]). Subagents get a
     /// copy of these parts.
     pub fn parts(&self, cwd: &Path) -> Result<AgentParts, String> {
-        Ok(self.parts_noted(cwd)?.0)
+        self.parts_with(cwd, self.prompt(cwd).text)
     }
 
-    /// [`Runtime::parts`] and the notes of the prompt files skipped.
-    fn parts_noted(&self, cwd: &Path) -> Result<(AgentParts, Vec<String>), String> {
+    /// [`Runtime::parts`] with `system` as the system prompt.
+    fn parts_with(&self, cwd: &Path, system: String) -> Result<AgentParts, String> {
         let (provider, auth) = self.route(&self.config.model)?;
         let transport: Arc<dyn Transport> = self.transport.clone();
-        let prompt = self.prompt(cwd);
-        let parts = AgentParts {
+        let mut config = self.config.clone();
+        config.interactive = self.interactive;
+        Ok(AgentParts {
             provider,
             transport,
             auth,
-            config: self.config.clone(),
-            system: prompt.text,
+            config,
+            system,
             cwd: cwd.to_path_buf(),
-        };
-        Ok((parts, prompt.notes))
+        })
     }
 
     /// An agent with the built-in tools plus the subagent tool for `conv`,
     /// and the notes of the prompt files skipped (an unreadable file). Front
-    /// ends build one per turn, so a prompt edit applies from the next turn.
+    /// ends build one per turn. The system prompt is rendered from the prompt
+    /// sources only for a new session; a session keeps the one it froze, and
+    /// a later change of the sources reaches it as a context update (D36).
     pub fn agent(&self, cwd: &Path, conv: &Conversation) -> Result<(Agent, Vec<String>), String> {
-        let (parts, notes) = self.parts_noted(cwd)?;
-        Ok((Agent::with_subagent(parts, &self.home, &conv.id), notes))
+        let (context, notes) = Context::read(&self.home, cwd, &self.config.model);
+        let system = conv.system.clone().unwrap_or_else(|| context.system());
+        let parts = self.parts_with(cwd, system)?;
+        let agent = Agent::with_subagent(parts, &self.home, &conv.id).with_context(context);
+        Ok((agent, notes))
     }
     /// `resume` when given, else the newest session of `cwd` when
     /// `continue_latest` (a new one when there is none), else a new session.

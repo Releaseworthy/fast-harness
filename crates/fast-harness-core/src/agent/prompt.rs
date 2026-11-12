@@ -42,8 +42,12 @@ pub fn render(home: &Path, cwd: &Path, model: &str) -> Rendered {
 
 /// `template` filled for `cwd` and `model`, with the AGENTS.md section after it.
 pub fn preview(template: &str, cwd: &Path, model: &str) -> String {
-    let mut out = fill(template, cwd, model);
-    let agents = agents_section(cwd);
+    compose(fill(template, cwd, model), &agents_files(cwd))
+}
+
+/// A filled template with the AGENTS.md section of `files` after it.
+pub fn compose(mut out: String, files: &[(PathBuf, String)]) -> String {
+    let agents = agents_section(files);
     if !agents.is_empty() {
         if !out.ends_with('\n') {
             out.push('\n');
@@ -120,15 +124,15 @@ pub fn agents_files(cwd: &Path) -> Vec<(PathBuf, String)> {
         .collect()
 }
 
-fn agents_section(cwd: &Path) -> String {
+fn agents_section(files: &[(PathBuf, String)]) -> String {
     let mut out = String::new();
-    for (path, text) in agents_files(cwd) {
+    for (path, text) in files {
         out.push_str(&format!("## {}\n\n{}\n\n", path.display(), text.trim_end()));
     }
     cap(out, MAX_AGENTS_BYTES)
 }
 
-fn cap(mut text: String, max: usize) -> String {
+pub(crate) fn cap(mut text: String, max: usize) -> String {
     if text.len() <= max {
         return text;
     }
@@ -141,7 +145,7 @@ fn cap(mut text: String, max: usize) -> String {
     text
 }
 
-fn os_name() -> &'static str {
+pub(crate) fn os_name() -> &'static str {
     match std::env::consts::OS {
         "windows" => "Windows",
         "macos" => "macOS",
@@ -153,7 +157,7 @@ fn os_name() -> &'static str {
 }
 
 /// `yyyy-mm-dd` in UTC.
-fn today() -> String {
+pub(crate) fn today() -> String {
     let stamp = session::utc_stamp(trace::now_ms() / 1000);
     format!("{}-{}-{}", &stamp[0..4], &stamp[4..6], &stamp[6..8])
 }

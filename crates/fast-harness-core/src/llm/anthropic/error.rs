@@ -49,8 +49,13 @@ pub(crate) fn from_http(head: HttpHead, body: &[u8]) -> LlmError {
                 text.chars().take(MAX_QUOTE).collect()
             }
         });
+    let overflow = matches!(head.status, 400 | 413)
+        && message.to_ascii_lowercase().contains("prompt is too long");
     LlmError {
-        kind: kind_for_status(head.status),
+        kind: match overflow {
+            true => ErrorKind::ContextOverflow,
+            false => kind_for_status(head.status),
+        },
         status: Some(head.status),
         message,
         head: Some(head),

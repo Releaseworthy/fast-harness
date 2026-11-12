@@ -3,8 +3,9 @@
 use std::io;
 use std::path::{Path, PathBuf};
 
-use serde_json::{json, Value};
+use serde_json::Value;
 
+use super::context::Context;
 use crate::llm::ToolSpec;
 use crate::session;
 use crate::trace::{self, SessionHeader, TraceWriter};
@@ -23,6 +24,13 @@ pub struct Conversation {
     pub(crate) trace: TraceWriter,
     /// Data of the last `request/header` written in this log.
     pub(crate) last_header: Option<Value>,
+    /// The frozen system prompt (PLAN.md D36): set by the first turn of a
+    /// new session, read from the last `request/header` on resume.
+    pub system: Option<String>,
+    /// The frozen tool list, set and restored the same way.
+    pub tools: Option<Vec<ToolSpec>>,
+    /// The context stamp of the prompt sources ([`super::context::Context::stamp`]).
+    pub context: Option<Value>,
 }
 
 impl Conversation {
@@ -40,6 +48,9 @@ impl Conversation {
             log_path,
             trace,
             last_header: None,
+            system: None,
+            tools: None,
+            context: None,
         })
     }
 
@@ -62,6 +73,7 @@ impl Conversation {
             .max_by_key(|e| e.seq)
             .map(|e| e.data.clone());
         let trace = TraceWriter::open_append(&log_path)?;
+        let header = last_header.as_ref();
         Ok(Conversation {
             id: id.to_string(),
             messages,
@@ -69,29 +81,60 @@ impl Conversation {
             wire_dir: session::wire_dir(app_home, cwd, id),
             log_path,
             trace,
+            system: header
+                .and_then(|h| h["system"].as_str())
+                .map(str::to_string),
+            tools: header.map(|h| saved_tools(&h["tools"])),
+            context: header.and_then(|h| h.get("context")).cloned(),
             last_header,
         })
     }
 
-    /// Writes `request/header` when `system` or `tools` differ from the last one.
-    pub(crate) fn header_if_changed(&mut self, system: &str, tools: &[ToolSpec]) -> io::Result<()> {
-        let data = header_data(system, tools);
+    /// Freezes the system prompt and the tool list on the first turn (a
+    /// resumed session keeps the logged ones) and moves the context stamp to
+    /// `stamp`; returns the context update when the sources changed.
+    pub(crate) fn freeze(
+        &mut self,
+        system: &str,
+        tools: &[ToolSpec],
+        current: Option<&Context>,
+    ) -> Option<String> {
+        self.system.get_or_insert_with(|| system.to_string());
+        self.tools.get_or_insert_with(|| tools.to_vec());
+        let current = current?;
+        let note = self.context.as_ref().and_then(|old| current.update(old));
+        self.context = Some(current.stamp());
+        note
+    }
+
+    /// Writes `request/header` when the frozen system, tools or context
+    /// stamp differ from the last one written.
+    pub(crate) fn header_if_changed(&mut self) -> io::Result<()> {
+        let (Some(system), Some(tools)) = (&self.system, &self.tools) else {
+            return Ok(());
+        };
+        let data = trace::header_data(system, tools, self.context.as_ref());
         if self.last_header.as_ref() == Some(&data) {
             return Ok(());
         }
-        self.trace.request_header(system, tools)?;
+        self.trace.request_header_data(data.clone())?;
         self.last_header = Some(data);
         Ok(())
     }
 }
 
-/// The data `TraceWriter::request_header` writes, for comparison.
-fn header_data(system: &str, tools: &[ToolSpec]) -> Value {
-    let tools: Vec<Value> = tools
-        .iter()
-        .map(|t| json!({ "name": t.name, "description": t.description, "schema": t.schema }))
-        .collect();
-    json!({ "system": system, "tools": tools })
+/// The tools of a `request/header` (`[{name, description, schema}]`).
+fn saved_tools(tools: &Value) -> Vec<ToolSpec> {
+    let list = tools.as_array().map(Vec::as_slice).unwrap_or_default();
+    list.iter()
+        .filter_map(|tool| {
+            Some(ToolSpec {
+                name: tool["name"].as_str()?.to_string(),
+                description: tool["description"].as_str().unwrap_or_default().to_string(),
+                schema: tool.get("schema").cloned().unwrap_or(Value::Null),
+            })
+        })
+        .collect()
 }
 
 /// Makes a replayed history valid for the model: consecutive tool messages

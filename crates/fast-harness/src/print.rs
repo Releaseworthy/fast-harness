@@ -52,13 +52,19 @@ pub fn run(args: PrintArgs) -> Result<ExitCode, String> {
     let outcome = agent.run_turn(&mut conv, &args.prompt, &CANCEL, &mut |event| {
         printer.event(event)
     });
+    if outcome == TurnOutcome::Truncated {
+        eprintln!("[note] the answer was cut at the output token limit (maxTokens); `--continue` with \"continue\" goes on");
+    }
     Ok(exit_code(outcome))
 }
 
 fn exit_code(outcome: TurnOutcome) -> ExitCode {
     match outcome {
         TurnOutcome::Done => ExitCode::SUCCESS,
-        TurnOutcome::Failed | TurnOutcome::StepLimit => ExitCode::FAILURE,
+        TurnOutcome::Failed
+        | TurnOutcome::StepLimit
+        | TurnOutcome::Truncated
+        | TurnOutcome::ContextOverflow => ExitCode::FAILURE,
         TurnOutcome::Cancelled => ExitCode::from(130),
     }
 }

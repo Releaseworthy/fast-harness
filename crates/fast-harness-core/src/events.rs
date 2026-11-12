@@ -14,6 +14,10 @@ pub enum TurnOutcome {
     Failed,
     /// The step limit of one turn was reached.
     StepLimit,
+    /// The output token limit cut the answer (`max_tokens`).
+    Truncated,
+    /// The prompt no longer fits the model's context window.
+    ContextOverflow,
 }
 
 #[derive(Clone, Debug, PartialEq)]

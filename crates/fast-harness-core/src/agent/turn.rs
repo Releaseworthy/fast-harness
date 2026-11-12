@@ -9,7 +9,10 @@ use crate::auth::Lease;
 use crate::events::{AgentEvent, TurnOutcome};
 use crate::llm::catalog::context_window;
 use crate::llm::Completion;
-use crate::types::{Message, StopReason, Usage};
+use crate::types::{Block, Message, StopReason, Usage};
+
+/// The error shown when the prompt no longer fits the context window.
+pub const OVERFLOW_NOTE: &str = "the conversation no longer fits the model's context window: start a new session (automatic compaction is not available yet)";
 
 /// Turn-internal result: `Err` is a session log failure that ends the turn.
 pub(super) type Res<T> = Result<T, String>;
@@ -30,6 +33,8 @@ pub(super) struct Turn<'a> {
     pub turn: u32,
     pub steps: u32,
     pub usage: Usage,
+    /// The one automatic continuation after a tool call cut at max_tokens was used.
+    pub continued: bool,
 }
 
 pub(super) fn run(
@@ -49,6 +54,7 @@ pub(super) fn run(
         sink,
         steps: 0,
         usage: Usage::default(),
+        continued: false,
     };
     let outcome = turn.run(text).unwrap_or_else(|message| {
         (turn.sink)(AgentEvent::Error(message));
@@ -63,6 +69,8 @@ pub(super) fn outcome_word(outcome: TurnOutcome) -> &'static str {
         TurnOutcome::Cancelled => "cancelled",
         TurnOutcome::Failed => "failed",
         TurnOutcome::StepLimit => "step_limit",
+        TurnOutcome::Truncated => "truncated",
+        TurnOutcome::ContextOverflow => "context_overflow",
     }
 }
 
@@ -71,7 +79,10 @@ impl Turn<'_> {
         traced(self.conv.trace.turn_start(self.turn))?;
         (self.sink)(AgentEvent::TurnStart { turn: self.turn });
         repair(&mut self.conv.messages);
-        let message = Message::user(text);
+        let agent = self.agent;
+        let specs = agent.tools.specs();
+        let note = (self.conv).freeze(&agent.parts.system, specs, agent.context.as_ref());
+        let message = user_message(note, text);
         traced(self.conv.trace.user_message(self.turn, &message))?;
         self.conv.messages.push(message);
         loop {
@@ -90,12 +101,10 @@ impl Turn<'_> {
 
     /// One model call and its tools; `Some` ends the turn.
     fn step(&mut self) -> Res<Option<TurnOutcome>> {
-        let agent = self.agent;
         let (turn, step, started) = (self.turn, self.steps, Instant::now());
         traced(self.conv.trace.step_start(turn, step))?;
         (self.sink)(AgentEvent::StepStart { turn, step });
-        let specs = agent.tools.specs();
-        traced(self.conv.header_if_changed(&agent.parts.system, specs))?;
+        traced(self.conv.header_if_changed())?;
         let outcome = match self.call_model(step)? {
             Ok((completion, lease)) => self.finish_step(step, completion, &lease)?,
             Err(outcome) => Some(outcome),
@@ -119,12 +128,25 @@ impl Turn<'_> {
         });
         self.record(turn, step, &done, &lease.account)?;
         let has_calls = done.message.tool_calls().next().is_some();
+        let cut = done.stop == StopReason::MaxTokens && has_cut_call(&done.message);
         self.conv.messages.push(done.message);
-        if done.stop == StopReason::ToolUse && has_calls {
-            self.run_tools(step)?;
-            return Ok(None);
+        match done.stop {
+            StopReason::ToolUse | StopReason::PauseTurn if has_calls => self.run_tools(step)?,
+            // Once per turn: the cut call gets an error result and the model
+            // sends it again (PLAN.md D36).
+            StopReason::MaxTokens if cut && !self.continued => {
+                self.continued = true;
+                self.run_tools(step)?;
+            }
+            StopReason::MaxTokens => return Ok(Some(TurnOutcome::Truncated)),
+            StopReason::PauseTurn => {}
+            StopReason::ContextWindow => {
+                (self.sink)(AgentEvent::Error(OVERFLOW_NOTE.into()));
+                return Ok(Some(TurnOutcome::ContextOverflow));
+            }
+            _ => return Ok(Some(TurnOutcome::Done)),
         }
-        Ok(Some(TurnOutcome::Done))
+        Ok(None)
     }
 
     /// Traces the answer (and the server's input transformations), adds its
@@ -176,4 +198,21 @@ impl Turn<'_> {
         });
         outcome
     }
+}
+
+/// The user message of a turn: the context update first when there is one.
+fn user_message(note: Option<String>, text: &str) -> Message {
+    let mut message = Message::user(text);
+    if let Some(note) = note {
+        let text = format!("{note}\n\n");
+        message.content.insert(0, Block::Text { text });
+    }
+    message
+}
+
+/// True when a tool call of message holds arguments that are not complete JSON.
+fn has_cut_call(message: &Message) -> bool {
+    message
+        .tool_calls()
+        .any(|(_, _, args)| serde_json::from_str::<serde_json::Value>(args).is_err())
 }

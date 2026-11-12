@@ -77,6 +77,20 @@ pub fn prefix_binding_mismatches(transformations: &Value) -> u64 {
     }
 }
 
+/// The data of a `request/header`: `{system, tools, context?}`, `context`
+/// left out when `None`.
+pub fn header_data(system: &str, tools: &[ToolSpec], context: Option<&Value>) -> Value {
+    let tools: Vec<Value> = tools
+        .iter()
+        .map(|t| json!({ "name": t.name, "description": t.description, "schema": t.schema }))
+        .collect();
+    let mut data = json!({ "system": system, "tools": tools });
+    if let Some(context) = context {
+        data["context"] = context.clone();
+    }
+    data
+}
+
 impl TraceWriter {
     pub fn turn_start(&mut self, turn: u32) -> io::Result<u64> {
         self.emit(kind::TURN_START, json!({ "turn": turn }))
@@ -93,14 +107,13 @@ impl TraceWriter {
 
     /// Written only when the system prompt or the tool list changes.
     pub fn request_header(&mut self, system: &str, tools: &[ToolSpec]) -> io::Result<u64> {
-        let tools: Vec<Value> = tools
-            .iter()
-            .map(|t| json!({ "name": t.name, "description": t.description, "schema": t.schema }))
-            .collect();
-        self.emit(
-            kind::REQUEST_HEADER,
-            json!({ "system": system, "tools": tools }),
-        )
+        self.emit(kind::REQUEST_HEADER, header_data(system, tools, None))
+    }
+
+    /// `request/header` with the session's context stamp (PLAN.md D36), the
+    /// `data` of [`header_data`].
+    pub fn request_header_data(&mut self, data: Value) -> io::Result<u64> {
+        self.emit(kind::REQUEST_HEADER, data)
     }
 
     pub fn request_context(&mut self, context: &RequestContext<'_>) -> io::Result<u64> {

@@ -5,7 +5,7 @@ use std::sync::atomic::AtomicBool;
 
 use fast_harness_core::http::{RecordedRequest, ScriptedResponse, ScriptedTransport};
 use fast_harness_core::llm::anthropic::{builtin_models, list_models, Anthropic};
-use fast_harness_core::llm::{Auth, ChatRequest, Provider, ToolSpec};
+use fast_harness_core::llm::{Auth, Cache, ChatRequest, Provider, ToolSpec};
 use fast_harness_core::types::{Block, Message, Role};
 use serde_json::{json, Value};
 
@@ -85,6 +85,19 @@ fn send(
     effort: Option<&str>,
     cache_long: bool,
 ) -> (RecordedRequest, Value) {
+    let cache = Cache {
+        system_1h: cache_long,
+        messages_1h: cache_long,
+    };
+    send_cache(model, auth, effort, cache)
+}
+
+fn send_cache(
+    model: &str,
+    auth: &Auth,
+    effort: Option<&str>,
+    cache: Cache,
+) -> (RecordedRequest, Value) {
     let transport = ScriptedTransport::new(vec![ScriptedResponse::new(200, DONE, 5)]);
     let cancel = AtomicBool::new(false);
     let (messages, tools) = (history(), tools());
@@ -95,7 +108,8 @@ fn send(
         tools: &tools,
         max_tokens: 4096,
         effort,
-        cache_long,
+        cache,
+        session: "",
         cancel: &cancel,
     };
     Anthropic::new("https://example.test/")
@@ -371,7 +385,8 @@ fn thinking_goes_back_only_to_anthropic_models() {
         tools: &tools(),
         max_tokens: 4096,
         effort: None,
-        cache_long: false,
+        cache: Default::default(),
+        session: "",
         cancel: &cancel,
     };
     let auth = Auth::ApiKey("k".into());
@@ -393,4 +408,20 @@ fn thinking_goes_back_only_to_anthropic_models() {
         json!({"type": "thinking", "thinking": "plan", "signature": "sig-c1"})
     );
     assert_eq!(claude[1]["type"], "tool_use");
+}
+
+/// `cacheTtl: auto` in print mode (PLAN.md D36): tools and system 1 hour,
+/// the last message 5 minutes, so the 1 hour breakpoints come first.
+#[test]
+fn system_long_messages_short_cache() {
+    let cache = Cache {
+        system_1h: true,
+        messages_1h: false,
+    };
+    let (_, body) = send_cache("claude-opus-4-7", &Auth::ApiKey("k".into()), None, cache);
+    let long = json!({"type": "ephemeral", "ttl": "1h"});
+    let short = json!({"type": "ephemeral"});
+    assert_eq!(body["system"][0]["cache_control"], long);
+    assert_eq!(body["tools"], expected_tools(&long, "read"));
+    assert_eq!(body["messages"], expected_messages(&short, "read"));
 }

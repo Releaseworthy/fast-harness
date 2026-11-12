@@ -10,16 +10,27 @@ use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 
 use agent_support::{echo_registry, env, key_auth, text_reply, tool_reply};
-use fast_harness_core::agent::{prompt, Agent, AgentParts, Conversation};
+use fast_harness_core::agent::{Agent, AgentParts, Context, Conversation};
 use fast_harness_core::auth::{AuthSource, StaticAuth};
 use fast_harness_core::config::Config;
 use fast_harness_core::events::TurnOutcome;
 use fast_harness_core::http::{ScriptedResponse, ScriptedTransport};
 use fast_harness_core::llm::anthropic::Anthropic;
+use fast_harness_core::llm::antigravity::provider::session_id_of;
 use fast_harness_core::llm::Provider;
 use serde_json::{json, Value};
 
 const TURNS: usize = 3;
+
+/// What changes between turns (docs/efficiency-plan.md phase 11).
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum Change {
+    Nothing,
+    /// A new AGENTS.md text before every later turn.
+    AgentsMd,
+    /// The date passes midnight before every later turn.
+    Date,
+}
 
 struct Case {
     name: &'static str,
@@ -88,17 +99,22 @@ fn strip(value: &Value) -> Value {
 }
 
 /// Runs [`TURNS`] turns, building the agent per turn as the front ends do
-/// (the system prompt rendered from the files each time); `change` writes a
-/// new AGENTS.md before every later turn. Returns the model call bodies.
-fn session(case: Case, change: bool) -> Vec<Value> {
-    let env = env(&format!("prefix-{}-{change}", case.name));
+/// (`Runtime::agent`: the sources read each time, the session's frozen
+/// system kept). Returns the model call bodies and the session id.
+fn session(case: Case, change: Change) -> (Vec<Value>, String) {
+    let env = env(&format!("prefix-{}-{change:?}", case.name));
     let transport = Arc::new(ScriptedTransport::new(case.responses));
     let mut conv = Conversation::create(&env.home, &env.cwd, None).unwrap();
     let cancel = AtomicBool::new(false);
     for turn in 0..TURNS {
-        if change && turn > 0 {
+        if change == Change::AgentsMd && turn > 0 {
             std::fs::write(env.cwd.join("AGENTS.md"), format!("Rule {turn}.\n")).unwrap();
         }
+        let date = match change {
+            Change::Date => format!("2026-11-{}", 12 + turn),
+            _ => "2026-11-12".to_string(),
+        };
+        let (context, _) = Context::read_at(&env.home, &env.cwd, case.model, &date);
         let parts = AgentParts {
             provider: case.provider.clone(),
             transport: transport.clone(),
@@ -108,18 +124,19 @@ fn session(case: Case, change: bool) -> Vec<Value> {
                 ..Config::default()
             },
             cwd: env.cwd.clone(),
-            system: prompt::render(&env.home, &env.cwd, case.model).text,
+            system: conv.system.clone().unwrap_or_else(|| context.system()),
         };
-        let agent = Agent::new(parts, echo_registry());
+        let agent = Agent::new(parts, echo_registry()).with_context(context);
         let outcome = agent.run_turn(&mut conv, &format!("turn {turn}"), &cancel, &mut |_| {});
         assert_eq!(outcome, TurnOutcome::Done, "{} turn {turn}", case.name);
     }
-    transport
+    let bodies = transport
         .requests()
         .into_iter()
         .filter(|request| request.url.contains(case.path))
         .map(|request| strip(&serde_json::from_str(&request.body).unwrap()))
-        .collect()
+        .collect();
+    (bodies, conv.id)
 }
 
 /// The messages at `pointer` without the trailing Claude effort entry
@@ -132,10 +149,35 @@ fn history<'a>(body: &'a Value, pointer: &str) -> &'a [Value] {
     }
 }
 
-fn check(case: Case, change: bool) {
+fn check(case: Case, change: Change) {
     let (name, pointers) = (case.name, [case.system, case.tools, case.messages]);
-    let bodies = session(case, change);
+    let (bodies, id) = session(case, change);
     assert_eq!(bodies.len(), TURNS + 1, "{name}: model calls");
+    if name == "antigravity" {
+        let want = json!(session_id_of(&id));
+        assert!(
+            bodies.iter().all(|b| b["request"]["sessionId"] == want),
+            "sessionId"
+        );
+    }
+    let last = bodies
+        .last()
+        .unwrap()
+        .pointer(pointers[2])
+        .unwrap()
+        .to_string();
+    let updates = last.matches("[context update]").count();
+    let want = match change {
+        Change::Nothing => 0,
+        _ => TURNS - 1,
+    };
+    assert_eq!(updates, want, "{name}: one context update per change");
+    if change == Change::Date {
+        assert!(
+            last.contains("[context update] Today is 2026-11-14."),
+            "{name}"
+        );
+    }
     for (n, pair) in bodies.windows(2).enumerate() {
         let (before, after) = (&pair[0], &pair[1]);
         for pointer in &pointers[..2] {
@@ -155,13 +197,18 @@ fn check(case: Case, change: bool) {
 
 #[test]
 fn prefix_guard_holds_without_changes() {
-    check(claude(), false);
-    check(antigravity(), false);
+    check(claude(), Change::Nothing);
+    check(antigravity(), Change::Nothing);
 }
 
 #[test]
-#[ignore = "passes after phase 11 frozen prefix"]
 fn prefix_guard_holds_when_agents_md_changes() {
-    check(claude(), true);
-    check(antigravity(), true);
+    check(claude(), Change::AgentsMd);
+    check(antigravity(), Change::AgentsMd);
+}
+
+#[test]
+fn prefix_guard_holds_across_midnight() {
+    check(claude(), Change::Date);
+    check(antigravity(), Change::Date);
 }

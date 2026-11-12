@@ -94,9 +94,12 @@ pub(crate) fn build(
     spec: Option<&ModelSpec>,
     oauth: bool,
 ) -> (Value, Vec<&'static str>) {
-    let cache = cache_control(req.cache_long);
+    // Tools and system share one lifetime and come first, so a 1 hour
+    // breakpoint never follows a 5 minute one (PLAN.md D36).
+    let cache = cache_control(req.cache.system_1h || req.cache.messages_1h);
+    let tail = cache_control(req.cache.messages_1h);
     let plan = thinking::plan_model(req.model, spec, req.effort, req.max_tokens);
-    let mut messages = convert_messages(req.messages, req.tools, oauth, &cache);
+    let mut messages = convert_messages(req.messages, req.tools, oauth, &tail);
     if let Some(effort) = &plan.trailing_effort {
         messages
             .push(json!({"role": "system", "content": [], "output_config": {"effort": effort}}));

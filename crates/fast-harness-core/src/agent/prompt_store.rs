@@ -1,7 +1,8 @@
 //! Where the system prompt template comes from (PLAN.md D31): the
 //! workspace's `prompts/<cwd slug>.md`, else the global `system-prompt.md`,
-//! else the built-in default. Files are read on every call, so an edit
-//! applies from the next turn; an unreadable file is skipped with a note.
+//! else the built-in default. Files are read on every call; a new session
+//! renders its prompt from them, a running one gets a context update (D36);
+//! an unreadable file is skipped with a note.
 
 use std::fmt;
 use std::io::{ErrorKind, Write};

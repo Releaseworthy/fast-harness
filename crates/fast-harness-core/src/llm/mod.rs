@@ -60,10 +60,22 @@ pub struct ChatRequest<'a> {
     /// Reasoning effort (`low`, `medium`, `high`, `max`), `off` to disable
     /// thinking, `None` for the model's default.
     pub effort: Option<&'a str>,
-    /// Ask for the 1 hour prompt cache instead of the 5 minute one.
-    pub cache_long: bool,
+    /// Lifetimes of the prompt cache breakpoints.
+    pub cache: Cache,
+    /// The conversation id; Antigravity derives `request.sessionId` from it
+    /// (empty: the provider instance's own id).
+    pub session: &'a str,
     /// Set from another thread to abort; the call then fails with `ErrorKind::Aborted`.
     pub cancel: &'a AtomicBool,
+}
+
+/// Prompt cache lifetimes (PLAN.md D36): `true` asks for 1 hour, `false` for
+/// 5 minutes. The tools and system breakpoints share `system_1h`; a 1 hour
+/// breakpoint must come before 5 minute ones, so `messages_1h` implies it.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Cache {
+    pub system_1h: bool,
+    pub messages_1h: bool,
 }
 
 /// Incremental output, delivered on the calling thread in arrival order.
@@ -133,6 +145,9 @@ pub enum ErrorKind {
     Aborted,
     /// The stream ended early or carried data that cannot be interpreted.
     Protocol,
+    /// A 400 or 413 "prompt is too long": the request does not fit the
+    /// model's context window (the turn ends `ContextOverflow`).
+    ContextOverflow,
 }
 
 #[derive(Clone, Debug, PartialEq)]

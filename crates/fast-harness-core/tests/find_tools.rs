@@ -132,7 +132,11 @@ fn check_claude_bodies(transport: &ScriptedTransport) {
     assert_eq!(first["tools"], third["tools"]);
     let tools = first["tools"].as_array().unwrap();
     assert_eq!(tools[0]["name"], "find_tools");
-    assert_eq!(tools[0]["cache_control"], json!({"type": "ephemeral"}));
+    // `cacheTtl: auto` caches the tools and system for 1 hour (PLAN.md D36).
+    assert_eq!(
+        tools[0]["cache_control"],
+        json!({"type": "ephemeral", "ttl": "1h"})
+    );
     assert!(tools[0].get("defer_loading").is_none());
     for tool in &tools[1..] {
         assert_eq!(tool["defer_loading"], json!(true), "{tool}");

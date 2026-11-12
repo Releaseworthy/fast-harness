@@ -65,7 +65,8 @@ fn envelope(model: &str, messages: &[Message], tools: &[ToolSpec]) -> Envelope {
         tools,
         max_tokens: 8000,
         effort: None,
-        cache_long: false,
+        cache: Default::default(),
+        session: "",
         cancel: &cancel,
     };
     let bare = model.trim_start_matches("antigravity/");
@@ -292,7 +293,8 @@ fn empty_history_is_an_error() {
         tools: &[],
         max_tokens: 100,
         effort: None,
-        cache_long: false,
+        cache: Default::default(),
+        session: "",
         cancel: &cancel,
     };
     assert!(build(&req, "gemini-3.1-pro-preview", "", "s").is_err());

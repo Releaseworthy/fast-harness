@@ -67,6 +67,15 @@ fn new_session_id() -> String {
     format!("-{}", u64::from_le_bytes(bytes) % 9_000_000_000_000_000_000)
 }
 
+/// The `request.sessionId` of conversation `id` (PLAN.md D36): the same
+/// `-<decimal>` form, stable per session and distinct per subagent session.
+pub fn session_id_of(id: &str) -> String {
+    format!(
+        "-{}",
+        crate::types::stable_hash(id) % 9_000_000_000_000_000_000
+    )
+}
+
 pub(crate) fn aborted() -> LlmError {
     LlmError::new(ErrorKind::Aborted, "cancelled")
 }
@@ -94,7 +103,11 @@ impl Provider for Antigravity {
             let message = format!("{} is not an Antigravity model id", req.model);
             LlmError::new(ErrorKind::BadRequest, message)
         })?;
-        let envelope = request::build(req, model, project, &self.session_id)?;
+        let session = match req.session {
+            "" => self.session_id.clone(),
+            id => session_id_of(id),
+        };
+        let envelope = request::build(req, model, project, &session)?;
         let body = envelope.body.to_string();
         let bearer = format!("Bearer {access}");
         let user_agent = self.hub.user_agent(http);

@@ -99,7 +99,8 @@ pub fn call_with(responses: Vec<ScriptedResponse>, auth: &Auth, cancel_on_text: 
         tools: &[],
         max_tokens: 1024,
         effort: None,
-        cache_long: false,
+        cache: Default::default(),
+        session: "",
         cancel: &cancel,
     };
     let mut deltas = Vec::new();

@@ -81,7 +81,8 @@ fn main() {
     ui.set_version(env!("CARGO_PKG_VERSION").into());
     let stop = Arc::new(AtomicBool::new(false));
     match Runtime::load() {
-        Ok(rt) => {
+        Ok(mut rt) => {
+            rt.interactive = true;
             let notes = theme::load(&rt.home);
             theme::apply_config(&ui, &rt.config);
             if let Some(note) = notes.first() {

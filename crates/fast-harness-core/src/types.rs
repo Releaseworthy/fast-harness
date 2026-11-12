@@ -150,9 +150,22 @@ pub enum StopReason {
     End,
     /// The model asked for tool calls: the loop runs them and takes another step.
     ToolUse,
+    /// The output token limit cut the message (PLAN.md D36: outcome `Truncated`).
     MaxTokens,
     Refusal,
+    /// Claude `pause_turn`: the turn goes on with the paused message sent back.
+    PauseTurn,
+    /// Claude `model_context_window_exceeded`: the prompt fills the window.
+    ContextWindow,
     Other,
+}
+
+/// FNV-1a 64 of `text`: a stable hash (same value in every process and
+/// version) for the context stamp of a session and derived ids.
+pub fn stable_hash(text: &str) -> u64 {
+    text.bytes().fold(0xcbf2_9ce4_8422_2325, |hash, byte| {
+        (hash ^ u64::from(byte)).wrapping_mul(0x0000_0100_0000_01b3)
+    })
 }
 
 #[cfg(test)]

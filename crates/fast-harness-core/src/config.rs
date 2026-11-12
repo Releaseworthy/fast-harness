@@ -20,8 +20,17 @@ pub struct Config {
     /// Reasoning effort; `None` (JSON `null`) uses the model's default.
     pub effort: Option<String>,
     pub max_tokens: u32,
-    /// Ask for the 1 hour prompt cache instead of the 5 minute one.
+    /// `cacheTtl` (PLAN.md D36): `"5m"`, `"1h"` or `"auto"`; `None` when the
+    /// file has no valid value (then `cacheLong` decides, else `auto`).
+    #[serde(deserialize_with = "ttl_word")]
+    pub cache_ttl: Option<CacheTtl>,
+    /// The older `cacheLong` key, still read: `true` means `cacheTtl: "1h"`.
     pub cache_long: bool,
+    /// Set by the TUI and the GUI (never read from the file): under `auto`
+    /// the message breakpoint gets 1 hour there, 5 minutes in print mode
+    /// and subagents.
+    #[serde(skip)]
+    pub interactive: bool,
     /// Model calls allowed in one turn.
     pub max_steps: u32,
     /// Longest failover wait (milliseconds) the agent accepts before failing.
@@ -50,7 +59,9 @@ impl Default for Config {
             model: "claude-opus-5-5".into(),
             effort: Some("high".into()),
             max_tokens: 32_000,
+            cache_ttl: None,
             cache_long: false,
+            interactive: false,
             max_steps: 200,
             max_wait_ms: 3_600_000,
             retries: 8,
@@ -126,6 +137,46 @@ impl Config {
         let effort = effort.trim();
         self.effort = (effort != "default").then(|| effort.to_string());
     }
+
+    /// The cache TTL in effect: `cacheTtl`, else `"1h"` for `cacheLong: true`, else `auto`.
+    pub fn cache_setting(&self) -> CacheTtl {
+        self.cache_ttl.unwrap_or(match self.cache_long {
+            true => CacheTtl::Long,
+            false => CacheTtl::Auto,
+        })
+    }
+
+    /// `(system 1h, messages 1h)`: the tools and system breakpoints, then the
+    /// last message. `auto` gives the system 1 hour always (every session of
+    /// the workspace shares it) and the messages 1 hour only when `interactive`.
+    pub fn cache_hours(&self) -> (bool, bool) {
+        match self.cache_setting() {
+            CacheTtl::Short => (false, false),
+            CacheTtl::Long => (true, true),
+            CacheTtl::Auto => (true, self.interactive),
+        }
+    }
+}
+
+/// The `cacheTtl` setting.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum CacheTtl {
+    Auto,
+    /// `"5m"`.
+    Short,
+    /// `"1h"`.
+    Long,
+}
+
+/// `"5m"`, `"1h"` or `"auto"`; anything else reads as absent.
+fn ttl_word<'de, D: Deserializer<'de>>(de: D) -> Result<Option<CacheTtl>, D::Error> {
+    let value = Value::deserialize(de)?;
+    Ok(match value.as_str().map(str::trim) {
+        Some("5m") => Some(CacheTtl::Short),
+        Some("1h") => Some(CacheTtl::Long),
+        Some("auto") => Some(CacheTtl::Auto),
+        _ => None,
+    })
 }
 
 /// The `greyscale` key: a JSON number rounded and clamped to 0..=100;

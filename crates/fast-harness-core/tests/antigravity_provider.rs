@@ -217,7 +217,8 @@ fn a_model_without_the_prefix_is_a_bad_request() {
         tools: &[],
         max_tokens: 16,
         effort: None,
-        cache_long: false,
+        cache: Default::default(),
+        session: "",
         cancel: &cancel,
     };
     let err = provider()
