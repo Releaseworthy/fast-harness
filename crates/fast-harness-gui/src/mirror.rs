@@ -91,6 +91,10 @@ pub fn toggle(model: &VecModel<MsgRow>, index: usize) {
 }
 
 #[cfg(test)]
+#[path = "mirror_bench.rs"]
+mod bench;
+
+#[cfg(test)]
 mod tests {
     use super::*;
     use fast_harness_core::events::AgentEvent;

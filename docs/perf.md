@@ -97,3 +97,29 @@ Question (a), Slint's `live-preview` feature reading a user folder: not by itsel
 | CPU time over 30 s idle | 0 ms (2 of 2) | 0 and 15.6 ms | 15.6 and 78.1 ms |
 
 The live variant costs about 79 MB more private memory at idle (the interpreter keeps the compiled document and its type loader) and 3 to 10 times the start time; idle CPU stays near zero (the 78 ms run is unexplained, one run). The precompiled exe now carries the 27 `.slint` sources for `--export-ui` (203,824 bytes of text). `cargo tree -p fast-harness-gui -e normal -i slint-interpreter` without the feature finds no such package: the default binaries never link it. GPU: both use the software renderer; not measured again.
+## Experiments 2026-11-12 (phase 10, E1 to E6)
+
+Machine: Windows, `~/.fast-harness` with one Google Antigravity account and no Claude account. Release build at 340c916 plus the two measurement tests below.
+
+Live calls: 2 requests in total. The first `-p` run (`antigravity/gemini-3.8-flash-low`, `--cwd` a temp project with a 40,070-byte AGENTS.md, session `20261112-114901-645c`) got on both attempts:
+
+`Auth (HTTP 403): PERMISSION_DENIED (TOS_VIOLATION): This service has been disabled in this account for violation of Terms of Service. Please submit an appeal to continue using this product.`
+
+No further live call was made. Side finding: after the second 403 the Google pool holds the only account (`pool_failover.rs` `on_auth`: one forced refresh, then `GOOGLE_BROKEN_HOLD_MS`) and the turn logs `llm/retry` with `delayMs` 3600000, so `fast-harness -p` waits one hour instead of failing; a `TOS_VIOLATION` refusal is permanent and should end the turn with the message.
+
+- E1, Antigravity `cachedContentTokenCount` (8K+ prompt, 4 turns, after a find, Claude and Gemini models, per-conversation `sessionId` of D36): unmeasured, the account is disabled (above). Whether Antigravity caches implicitly stays unverified.
+- E2, Anthropic betas on a subscription account: unverified, no Claude account on this machine.
+- E3, steps and tokens of 5 equal tasks with `tools.preload: []` vs `["read","grep"]`: unmeasured, account disabled.
+- E4, `shell` time for `echo 1`: `crates/fast-harness-core/tests/shell_echo_timing.rs` (ignored; `cargo test --release -p fast-harness-core --test shell_echo_timing -- --ignored --nocapture`), 10 runs each, `pwsh.exe` 7 on PATH:
+
+| Run | min | median | max |
+|---|---|---|---|
+| `shell` tool `echo 1` (registry `run`) | 307 to 309 ms | 314 ms | 333 to 341 ms |
+| bare `pwsh -NoLogo -NoProfile -NonInteractive -Command "echo 1"` | 205 to 215 ms | 219 to 220 ms | 227 to 230 ms |
+| bare pwsh with the tool's UTF-8 prelude | 227 ms | 238 ms | 249 ms |
+
+  Conclusion: about 220 ms is PowerShell start, about 20 ms the prelude (`[Console]::OutputEncoding` and friends), and about 75 ms the tool's own supervision: `supervise` polls every 50 ms (`POLL`) and, once both pipes have closed, sleeps another 50 ms before `try_wait`; the job object and `drain` add the rest (not split further). The 513 ms seen once is not reproduced (cold pwsh start or a loaded machine, unverified). Saving: wait on the child (or a pipe-close signal) instead of the fixed sleep, about 50 ms per call; a long-lived pwsh would save the 220 ms start.
+- E5, GUI time per text delta at 500 transcript items: `crates/fast-harness-gui/src/mirror_bench.rs` (ignored; `cargo test --release -p fast-harness-gui delta_time -- --ignored --nocapture`) applies 200 deltas of 24 bytes through `Transcript::apply` and `Mirror::sync` into a `VecModel<MsgRow>` (the work `turn::deliver` does per event, without `refresh_status`, the Slint layout and the paint): 501 items, new turn (`turn_from` at the last user item): mean 10.2 us, median 10.7 us, p95 16.1 us, max 20.0 us; all 501 items in one turn (`from` 0, every item compared): mean 16.7 us, median 16.7 us, p95 23.2 us, max 30.2 us. Conclusion: the model side is far below a frame (16.7 ms) at 500 items; `sync_rows` per event needs no batching. Render cost per delta: unmeasured (needs a window).
+- E6, the synthetic `find_tools` pair (compaction D38, subagent preload D40) on Antigravity Claude with thinking: unmeasured, account disabled. Offline tests only.
+
+No PLAN.md fact was added near D36: E1 did not run, so "Antigravity caches nothing" is not shown.
