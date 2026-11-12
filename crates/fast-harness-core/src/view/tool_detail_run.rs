@@ -4,10 +4,16 @@ use super::tool_detail::{count, value_text, Call, Tone, ToolDetail};
 use super::tool_summary;
 use crate::llm::find::call_label;
 
+/// A shell command whose first line is longer than this also gets the
+/// "command" field.
+pub const SHELL_TARGET_CHARS: usize = 48;
+
 pub(crate) fn shell(detail: &mut ToolDetail, call: &Call<'_>) {
     let command = call.str("command").unwrap_or_default();
     detail.target = first_line(command);
-    if command.trim().lines().count() > 1 {
+    // The header elides a long line: the field shows the whole command.
+    let long = detail.target.chars().count() > SHELL_TARGET_CHARS;
+    if long || command.trim().lines().count() > 1 {
         detail.field("command", command);
     }
     if let Some(ms) = call.text("timeout_ms") {

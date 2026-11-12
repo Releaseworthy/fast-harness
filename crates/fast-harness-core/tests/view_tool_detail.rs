@@ -284,6 +284,17 @@ fn glob_lists_files_and_what_it_hid() {
     assert_eq!(chips(&one), [("1 file", Tone::Info)]);
 }
 #[test]
+fn a_long_shell_command_gets_its_field() {
+    let long = "Remove-Item -Recurse -Force F:\\work\\out\\fh-shots\\old-run";
+    let card_long = card("shell", json!({"command": long}), None, false);
+    assert_eq!(card_long.target, long);
+    assert_eq!(fields(&card_long), [("command", long)]);
+    let edge = "x".repeat(48);
+    let card_edge = card("shell", json!({"command": edge}), None, false);
+    assert!(card_edge.fields.is_empty());
+}
+
+#[test]
 fn shell_reads_its_bracket_lines() {
     let args = json!({"command": "\ncargo test\necho done", "timeout_ms": 5000});
     let ok = card("shell", args, Some("ok\n[exit code: 0]"), false);
@@ -317,7 +328,7 @@ fn shell_reads_its_bracket_lines() {
         ("partial", want.to_vec())
     );
     let out = "(no output)\n[cancelled; process tree killed]\n[exit code: none]";
-    let stopped = card("shell", args, Some(out), true);
+    let stopped = card("shell", args.clone(), Some(out), true);
     let want = [
         ("no output", Tone::Plain),
         ("cancelled", Tone::Warning),

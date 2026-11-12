@@ -100,8 +100,9 @@ pub fn running_grep() -> MsgRow {
 
 fn shell() -> MsgRow {
     let out = "   Compiling fast-harness-gui v0.1.0\n    Finished `test` profile in 14.2s\n     Running unittests src/main.rs\ntest result: ok. 68 passed; 0 failed; 1 ignored\n[exit code: 0]";
-    let args =
-        serde_json::json!({ "command": "cargo test -p fast-harness-gui", "timeout_ms": 600000 });
+    // Longer than 48 characters: the header elides it, the field shows it.
+    let command = "cargo test -p fast-harness-gui --all-targets -- --include-ignored shots";
+    let args = serde_json::json!({ "command": command, "timeout_ms": 600000 });
     tool("shell", args, Some(out), false)
 }
 

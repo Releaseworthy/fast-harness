@@ -22,6 +22,14 @@ export component CodeRow inherits Rectangle {
     // The diff tints are `theme::DIFF_ALPHA` (0.12): the theme tests check
     // text and dim on code blended with success and error at that alpha.
     background: line.kind == "added" ? Theme.success.with-alpha(0.12) : line.kind == "removed" ? Theme.error.with-alpha(0.12) : root.header ? Theme.raised : transparent;
+    // A 3px bar on the left edge of an added (success) or removed (error)
+    // row, so the rows read green and red in every theme; a graphic only,
+    // the "+" and "−" marks carry the meaning.
+    Rectangle {
+        x: 0;
+        width: 3px;
+        background: line.kind == "added" ? Theme.success : line.kind == "removed" ? Theme.error : transparent;
+    }
     HorizontalLayout {
         padding-left: Theme.space-s;
         padding-right: Theme.space-m;

@@ -118,6 +118,57 @@ fn trace_tool_cards_grow_with_their_wrapped_text() {
         "a wrapped tool result grows its row: {short} px short, {long} px long"
     );
 }
+/// A header-only card: the 30 px tile and the 12 px padding above and below.
+const HEADER_CARD: f32 = 30.0 + 2.0 * 12.0;
+
+/// A trace call through the real mapping.
+fn tool_call(name: &str, arguments: &str) -> TraceRow {
+    use fast_harness_core::trace::detail::{Entry, EntryKind, EntryTool};
+    let entry = Entry {
+        kind: EntryKind::ToolCall,
+        turn: 1,
+        step: 1,
+        title: format!("Tool call {name}"),
+        body: arguments.into(),
+        is_error: false,
+        tool: Some(EntryTool {
+            name: name.into(),
+            arguments: arguments.into(),
+            output: None,
+            duration_ms: None,
+        }),
+    };
+    crate::trace_rows::entry_row(&entry)
+}
+
+#[test]
+fn a_card_with_only_a_header_is_only_that_tall() {
+    let (window, ui) = window();
+    ui.set_page("chat".into());
+    let none = chat_height(&ui, &window, MsgRow::default());
+    let mut running = tool("read", r#"{"path":"src/a.rs"}"#, None);
+    running.running = true;
+    // A tool row's bottom padding is 8 px more than an empty row's.
+    let none = none + 8.0;
+    let card = chat_height(&ui, &window, running) - none;
+    let code = chat_height(&ui, &window, code_lines("short")) - none;
+    assert!(card <= HEADER_CARD + 1.0, "a running read is {card} px");
+    assert!(
+        code > card + 20.0,
+        "a code view adds its rows: {card} px, {code} px"
+    );
+    ui.set_trace_mode("timeline".into());
+    ui.set_page("trace".into());
+    let none = trace_height(&ui, &window, trace_row("end", ""));
+    for (name, args) in [
+        ("read", r#"{"path":"src/a.rs"}"#),
+        ("shell", r#"{"command":"ls"}"#),
+    ] {
+        let call = trace_height(&ui, &window, tool_call(name, args)) - none;
+        assert!(call <= HEADER_CARD + 1.0, "a {name} call is {call} px");
+    }
+}
+
 fn chat_height(ui: &MainWindow, window: &MinimalSoftwareWindow, row: MsgRow) -> f32 {
     ui.set_messages(ModelRc::new(VecModel::from(vec![row])));
     frames(window);

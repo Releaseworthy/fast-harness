@@ -139,6 +139,20 @@ fn glob_lists_files_without_numbers_and_shell_keeps_its_text() {
 }
 
 #[test]
+fn a_long_shell_command_shows_whole_in_its_field() {
+    use slint::Model as _;
+    let command = "Remove-Item -Recurse -Force F:\\work\\out\\fh-shots\\an-old-run";
+    let args = serde_json::json!({ "command": command }).to_string();
+    let v = view("shell", &args, None, false);
+    let field = v.fields.row_data(0).expect("the command field");
+    assert_eq!(field.label.as_str(), "command");
+    assert_eq!(
+        (field.value.as_str(), field.preview.as_str()),
+        (command, command)
+    );
+}
+
+#[test]
 fn a_running_tool_has_its_arguments_only() {
     let v = tool_view(
         "grep",

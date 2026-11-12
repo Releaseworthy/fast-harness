@@ -47,6 +47,11 @@ export global ToolStyle {
     pure public function mono-kind(kind: string) -> bool {
         return kind == "shell" || kind == "grep" || kind == "glob";
     }
+    // Whether the card shows anything under its header.
+    pure public function has-body(tool: ToolView, expanded: bool, link: bool) -> bool {
+        return tool.chip-rows.length > 0 || tool.fields.length > 0 || tool.lines.length > 0
+            || tool.text != "" || (link && tool.more) || (expanded && tool.lines-note != "");
+    }
 }
 
 // The status of a tool: a spinner while it runs, then a mark and a word,
@@ -391,7 +396,9 @@ export component ToolFrame inherits Rectangle {
             copy-link: root.copy-link;
             copy => { root.copy(); }
         }
-        ToolBody {
+        // A card with no chips, fields, lines, text or link is only its
+        // header: an empty body still took the layout's spacing.
+        if ToolStyle.has-body(root.tool, root.expanded, root.show-link): ToolBody {
             tool: root.tool;
             expanded: root.expanded;
             show-link: root.show-link;
