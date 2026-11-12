@@ -101,6 +101,17 @@ Checked and left alone: per-delta model work in the GUI (10 to 17 microseconds a
 
 Each gate: the options, what each costs, and a recommendation. The recommendation is not a decision.
 
+Owner decisions (2026-11-12, chosen from the options below):
+
+| Gate | Decision | His choice |
+|---|---|---|
+| G5 | b: tool calls run by effect | "By effect" |
+| G6 | a: one `store` module with a lock, no format change | "One store module with a lock" |
+| G9 | b and c: harden the plugin API now and call it unstable for 0.x (phase 24) | "Harden now and call it unstable for 0.x" |
+| Start | phases 22 and 23, one fresh session each | "Phases 22 and 23" |
+
+G7, G8 and G10 to G14 are still open.
+
 **G5. How the tool calls of one step run (A1, A2).**
 - a. A lock per path inside `write` and `edit`. Smallest change; edits all land, but `write` then `shell` still race and plugins' tools are not covered.
 - b. Each tool declares its effect (`Read`, `Write`, `Run`). Calls with `Read` run in parallel; the others run one at a time in call order, after the reads before them. Costs a `Tool` method (default `Run`, so an unknown tool is safe) and a rewrite of `execute`.
