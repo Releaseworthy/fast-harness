@@ -315,3 +315,32 @@ fn child_take() {
         Err(err) => println!("TAKE={:?}", err.kind()),
     }
 }
+
+/// Before the fix the error cost the whole wait and read "held by an unknown
+/// process": `create_dir_all` failing (the parent is a file) counted as busy.
+#[test]
+fn a_lock_whose_parent_is_a_file_fails_at_once_with_its_cause() {
+    let dir = TempDir::new("parent-file");
+    let file = dir.0.join("config.json");
+    fs::write(&file, "{}").unwrap();
+    let path = file.join("accounts.json");
+    let started = std::time::Instant::now();
+    let err = store::locked(&path, LONG, || ()).unwrap_err();
+    assert!(started.elapsed() < Duration::from_secs(1), "{err}");
+    assert!(!err.to_string().contains("held by"), "{err}");
+    let started = std::time::Instant::now();
+    let err = store::update(&path, LONG, |_| Ok((b"x".to_vec(), ()))).unwrap_err();
+    assert!(started.elapsed() < Duration::from_secs(1), "{err}");
+    assert!(!err.to_string().contains("held by"), "{err}");
+}
+
+/// A lock without a start time (`started` 0, a platform that cannot tell)
+/// is held for 10 minutes, then stale whoever has the pid now: before, a
+/// reused live pid kept it for ever (Linux) and Windows took it at once.
+#[test]
+fn a_lock_without_a_start_time_is_stale_after_ten_minutes() {
+    let me = std::process::id();
+    assert!(!store::stale(Some((me, 0)), Duration::from_secs(5)));
+    assert!(!store::stale(Some((me, 0)), Duration::from_secs(590)));
+    assert!(store::stale(Some((me, 0)), Duration::from_secs(610)));
+}

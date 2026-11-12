@@ -19,6 +19,9 @@ const UNREADABLE_STALE: Duration = Duration::from_secs(10);
 /// Without a liveness backend a lock of another process is held this long.
 const BLIND_STALE: Duration = Duration::from_secs(600);
 const RETRY: Duration = Duration::from_millis(15);
+/// `PermissionDenied` on the lock's name lasting this long is a real error,
+/// not the short delete-pending state of a lock just removed (Windows).
+const DENIED_RETRY: Duration = Duration::from_millis(250);
 
 #[derive(Deserialize)]
 struct Holder {
@@ -37,13 +40,14 @@ pub fn lock_path(path: &Path) -> PathBuf {
 /// unreadable) and last changed `age` ago is stale: its holder is gone (no
 /// process with that pid and start time), or the content is unreadable and
 /// older than 10 seconds. Where `platform::process_start` has no backend (it
-/// returns `None` even for this process) a lock younger than 10 minutes
-/// counts as held and an older one as stale.
+/// returns `None` even for this process), or the lock records no start time
+/// (`started` 0: a reused pid would look alive for ever), a lock younger than
+/// 10 minutes counts as held and an older one as stale.
 pub fn stale(holder: Option<(u32, u64)>, age: Duration) -> bool {
     let Some((pid, started)) = holder else {
         return age > UNREADABLE_STALE;
     };
-    if platform::process_start(std::process::id()).is_none() {
+    if started == 0 || platform::process_start(std::process::id()).is_none() {
         return age > BLIND_STALE;
     }
     platform::process_start(pid) != Some(started)
@@ -68,20 +72,32 @@ impl Drop for Guard {
     }
 }
 
+/// Waits for the lock while it exists. Any other error comes back at once
+/// with its cause (a folder that cannot be made, a parent that is a file);
+/// `PermissionDenied` is retried only while it lasts under [`DENIED_RETRY`].
 fn acquire(lock: &Path, wait: Duration) -> io::Result<Guard> {
+    if let Some(dir) = lock.parent().filter(|d| !d.as_os_str().is_empty()) {
+        fs::create_dir_all(dir).map_err(|err| cause(lock, err))?;
+    }
     let start = Instant::now();
+    let mut denied: Option<Instant> = None;
     loop {
         let failed = match create(lock) {
             Ok(guard) => return Ok(guard),
             Err(err) => err,
         };
-        let busy = match failed.kind() {
-            io::ErrorKind::AlreadyExists => true,
+        match failed.kind() {
+            io::ErrorKind::AlreadyExists => denied = None,
             // Windows: the name of a file being deleted is not free yet.
-            io::ErrorKind::PermissionDenied => false,
-            _ => return Err(failed),
-        };
-        if busy && remove_if_stale(lock) {
+            io::ErrorKind::PermissionDenied => {
+                let since = *denied.get_or_insert_with(Instant::now);
+                if since.elapsed() >= DENIED_RETRY {
+                    return Err(cause(lock, failed));
+                }
+            }
+            _ => return Err(cause(lock, failed)),
+        }
+        if denied.is_none() && remove_if_stale(lock) {
             continue;
         }
         if start.elapsed() >= wait {
@@ -91,11 +107,13 @@ fn acquire(lock: &Path, wait: Duration) -> io::Result<Guard> {
     }
 }
 
+/// `err` with the lock's path in front, its kind kept.
+fn cause(lock: &Path, err: io::Error) -> io::Error {
+    io::Error::new(err.kind(), format!("{}: {err}", lock.display()))
+}
+
 /// Makes `lock` with `create_new` and writes this process into it.
 fn create(lock: &Path) -> io::Result<Guard> {
-    if let Some(dir) = lock.parent().filter(|d| !d.as_os_str().is_empty()) {
-        fs::create_dir_all(dir)?;
-    }
     let mut file = OpenOptions::new().write(true).create_new(true).open(lock)?;
     let guard = Guard(lock.to_path_buf());
     let pid = std::process::id();
