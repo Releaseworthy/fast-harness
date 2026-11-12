@@ -142,6 +142,12 @@ fn step_end(event: &AgentEvent) -> Value {
             stop,
         } => json!({"type": "step_end", "turn": turn, "step": step, "usage": usage,
             "context": context, "window": window, "timing": timing, "stop": stop}),
+        AgentEvent::ApprovalRequest(r) => json!({"type": "approval_request", "id": r.id,
+            "callId": r.call_id, "tool": r.tool, "effect": super::approve::effect_word(r.effect),
+            "summary": r.summary, "arguments": r.arguments, "agent": r.agent}),
+        AgentEvent::ApprovalDone { id, answer } => {
+            json!({"type": "approval_done", "id": id, "answer": answer})
+        }
         // Every variant is matched above; a new one shows up as `unknown`
         // until it gets its own line here (the schema test lists them all).
         _ => json!({"type": "unknown"}),

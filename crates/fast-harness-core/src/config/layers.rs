@@ -280,7 +280,10 @@ pub fn load(layers: Layers, env: &dyn Fn(&str) -> Option<String>) -> Result<Laye
         let path = dir.join(FILE_NAME);
         match read_layer(&path) {
             Ok(None) => {}
-            Ok(Some(object)) => {
+            Ok(Some(mut object)) => {
+                if source == Source::Project {
+                    project_rule(&mut object);
+                }
                 leaves(&object, "", source, &mut sources);
                 merge(&mut merged, object);
                 report.loaded.push(LayerFile { path, source });
@@ -335,6 +338,19 @@ fn read_layer(path: &Path) -> Result<Option<Value>, String> {
     super::ext_file::check_version(object.remove("version").as_ref())?;
     serde_json::from_value::<Config>(value.clone()).map_err(|err| err.to_string())?;
     Ok(Some(value))
+}
+
+/// A trusted project may set `approvals` to `ask` but never to anything
+/// else, and its `allow` is dropped (PLAN.md D64): only the user layer
+/// weakens the gate.
+fn project_rule(object: &mut Value) {
+    let Some(map) = object.as_object_mut() else {
+        return;
+    };
+    map.remove("allow");
+    if map.get("approvals").is_some_and(|value| value != "ask") {
+        map.remove("approvals");
+    }
 }
 
 /// Records `source` for every leaf key of `value` under `prefix`.

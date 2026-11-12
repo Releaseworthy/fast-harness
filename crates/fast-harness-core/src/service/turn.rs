@@ -10,7 +10,7 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use super::{busy, queue, Host, Service, ServiceError, Session};
-use crate::agent::{Conversation, Inbox};
+use crate::agent::{Approver, Conversation, Inbox};
 use crate::config::Config;
 use crate::events::{AgentEvent, TurnOutcome};
 use crate::types::Usage;
@@ -83,6 +83,7 @@ impl Service {
         state.inbox = Some(tx);
         state.cancel = Arc::clone(&cancel);
         queue::begun(&mut state);
+        session.gate().reset();
         if let Some(old) = state.worker.take() {
             // A thread that is still ending is left to end (dropped handle).
             if old.is_finished() {
@@ -142,7 +143,7 @@ impl Job {
 
     fn turn(&mut self, start: Start, tally: &mut Tally) -> TurnOutcome {
         let built = self.host.agent(&self.session.cwd, &self.conv, &self.config);
-        let agent = match built {
+        let mut agent = match built {
             Ok((agent, notes)) => {
                 tally.notes = notes;
                 agent
@@ -152,6 +153,7 @@ impl Job {
                 return TurnOutcome::Failed;
             }
         };
+        agent.set_approver(Approver::new(self.session.gate()));
         let mut seen = |event: AgentEvent| tally.see(event);
         let (conv, cancel, inbox) = (&mut self.conv, &self.cancel, &mut self.inbox);
         match start {

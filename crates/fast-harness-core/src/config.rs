@@ -3,6 +3,7 @@
 //! are ignored. `FAST_HARNESS_MODEL`, `FAST_HARNESS_EFFORT`, `FAST_HARNESS_THEME`, `FAST_HARNESS_GREYSCALE`, `FAST_HARNESS_ICONS` and `FAST_HARNESS_WIRE` override
 //! the file. [`save_setting`] writes one key back for the front ends.
 
+pub mod approvals;
 pub mod compaction;
 pub mod ext_file;
 pub mod index;
@@ -84,6 +85,10 @@ pub struct Config {
     pub self_improve: String,
     /// `reflect` (PLAN.md D50): `model` of the reflect subagent.
     pub reflect: ReflectConfig,
+    /// `approvals` (PLAN.md D64): `off` (default) or `ask`.
+    pub approvals: approvals::Approvals,
+    /// `allow` (PLAN.md D64): what `ask` lets run without a question.
+    pub allow: approvals::Allow,
 }
 
 /// The `reflect` settings; a `null` model picks the cheapest priced one.
@@ -156,6 +161,8 @@ impl Default for Config {
             memory: true,
             self_improve: "ask".into(),
             reflect: ReflectConfig::default(),
+            approvals: approvals::Approvals::Off,
+            allow: approvals::Allow::default(),
         }
     }
 }

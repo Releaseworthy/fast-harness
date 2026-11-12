@@ -13,6 +13,10 @@ use crate::llm::catalog;
 /// JSON when the key does not hold a string (`"40"` for a number). An
 /// unknown key or a value of the wrong type is an error and changes nothing.
 pub fn set_key(config: &Config, key: &str, value: &Value) -> Result<Config, String> {
+    // Only the user's config.json weakens the approval gate (PLAN.md D64).
+    if key == "approvals" || key == "allow" || key.starts_with("allow.") {
+        return Err(format!("{key}: set it in ~/.fast-harness/config.json"));
+    }
     if key == "effort" {
         let word = value.as_str().ok_or("effort: expected a string")?;
         let mut next = config.clone();

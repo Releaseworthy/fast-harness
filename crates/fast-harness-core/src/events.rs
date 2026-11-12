@@ -3,6 +3,7 @@
 //! tracing is written to the session log before it is sent.
 
 use crate::llm::Timing;
+use crate::tools::Effect;
 use crate::types::{StopReason, Usage};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -129,4 +130,33 @@ pub enum AgentEvent {
         outcome: TurnOutcome,
     },
     Error(String),
+    /// A `Write` or `Run` call waits for the user's answer (PLAN.md D64),
+    /// after its PreToolUse hooks; answer with `service::Session::answer`.
+    /// Live only: never traced.
+    ApprovalRequest(ApprovalRequest),
+    /// Request `id` ended: `once`, `session`, `declined`, `cancelled`,
+    /// `paused` or `refused` (nobody can answer). Live only.
+    ApprovalDone {
+        id: String,
+        answer: String,
+    },
+}
+
+/// One question to the user before a call runs (PLAN.md D64).
+#[derive(Clone, Debug, PartialEq, Eq)]
+#[non_exhaustive]
+pub struct ApprovalRequest {
+    /// Unique in the session: what an answer names.
+    pub id: String,
+    /// The model's tool call id.
+    pub call_id: String,
+    pub tool: String,
+    pub effect: Effect,
+    /// One line: the command, or the kind of change and the path.
+    pub summary: String,
+    /// The final arguments (after the hooks).
+    pub arguments: String,
+    /// The subagent that asks (`label (session id)`); `None` for the
+    /// session itself.
+    pub agent: Option<String>,
 }

@@ -92,6 +92,17 @@ cancelled and the process exits once their last updates are written.
 | `_fh/continue` | `sessionId`, `_meta.fh/wait` | goes on with a paused, cancelled or cut turn |
 | `_fh/compact` | `sessionId`, `instructions`, `_meta.fh/wait` | runs `/compact [instructions]` (D38) |
 | `_fh/stats` | `sessionId` | the numbers of `fast-harness stats --json` |
+| `_fh/approve` | `sessionId`, `requestId`, `answer` (`once`, `session`, `no`), `reason` | `{}`; -32602 for an unknown or answered request (D64) |
+
+Approvals (D64, `"approvals": "ask"`): a call that would ask sends the client an ACP
+`session/request_permission` request (id `fh-approval/<session>/<request id>`, options
+`allow-once`, `allow-session`, `reject-once`, `_meta` with `fh/requestId`, `fh/effect`,
+`fh/agent`); the response answers it, a `cancelled` or unknown outcome declines. `_fh/approve`
+answers the same request. `approvals` and `allow` cannot be set with `session/set_config_option`.
+`-p --json` prints `{"type":"approval_request","id","callId","tool","effect","summary","arguments","agent"}`
+and `{"type":"approval_done","id","answer"}`; print mode answers nothing, so `answer` is `refused`.
+In process, `Session::approvals()`, `Session::answer(id, Answer)`, `Session::set_answering(bool)`
+and `Status::waiting` are the front end's API.
 
 `prompt` blocks: `text`, `resource_link` (sent as a Markdown link) and `resource` with
 `text` (sent after its URI); others are refused with -32602. `/help` and the user's

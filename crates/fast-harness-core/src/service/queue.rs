@@ -6,7 +6,7 @@
 use super::{Session, State};
 use crate::agent::Input;
 use crate::config::Config as Settings;
-use crate::events::TurnOutcome;
+use crate::events::{ApprovalRequest, TurnOutcome};
 use crate::session::Unfinished;
 
 /// One look at a session, as a view shows it (state words, chips).
@@ -23,6 +23,9 @@ pub struct Status {
     pub queued: Vec<String>,
     /// How the last turn stopped when it can be resumed.
     pub unfinished: Option<Unfinished>,
+    /// Approval requests waiting for an answer (PLAN.md D64), of the turn
+    /// or of a background subagent: the view marks the session waiting.
+    pub waiting: Vec<ApprovalRequest>,
 }
 
 impl Session {
@@ -35,6 +38,7 @@ impl Session {
             steering: state.steering.clone(),
             queued: state.follow_ups.clone(),
             unfinished: state.unfinished,
+            waiting: self.gate.pending(),
         }
     }
 
@@ -81,6 +85,9 @@ impl Session {
     pub fn pause(&self) -> bool {
         let mut state = self.lock();
         let sent = (state.inbox.as_ref()).is_some_and(|tx| tx.send(Input::Pause).is_ok());
+        if sent {
+            self.gate.pause();
+        }
         state.pausing |= sent;
         sent
     }

@@ -20,7 +20,8 @@ use crate::session::{self, SessionSummary};
 pub const PROTOCOL_VERSION: u32 = 2;
 
 /// Our methods, advertised in `initialize`.
-pub const EXTENSIONS: [&str; 6] = [
+pub const EXTENSIONS: [&str; 7] = [
+    "_fh/approve",
     "_fh/steer",
     "_fh/follow_up",
     "_fh/pause",
@@ -40,6 +41,7 @@ pub(super) fn call(server: &Arc<Server>, method: &str, params: Value, id: Option
         "session/set_config_option" => set_option(server, &params),
         "_fh/pause" => pause(server, &params),
         "_fh/stats" => stats(server, &params),
+        "_fh/approve" => super::approve::method(server, &params),
         "session/prompt" | "_fh/steer" | "_fh/follow_up" | "_fh/compact" | "_fh/continue" => {
             return prompt::call(server, method, &params, id)
         }
@@ -96,6 +98,7 @@ fn new_session(server: &Server, params: &Value) -> Result<Value, RpcError> {
     let cwd = cwd_param(params)?;
     no_mcp(params)?;
     let session = server.service.create(&cwd)?;
+    session.set_answering(true);
     Ok(json!({"sessionId": session.id, "configOptions": options(server, &session)}))
 }
 
@@ -108,6 +111,7 @@ fn resume(server: &Server, params: &Value) -> Result<Value, RpcError> {
         Some(_) => return Err(RpcError::params("replayFrom: only {\"type\": \"start\"}")),
     };
     let session = server.service.resume(&cwd, id)?;
+    session.set_answering(true);
     if replay {
         for update in session.with_conv(|conv| acp::replay(&conv.messages))? {
             server.notify(id, update);

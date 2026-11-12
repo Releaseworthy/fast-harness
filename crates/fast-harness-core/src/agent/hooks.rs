@@ -217,12 +217,9 @@ pub(super) fn run_tool(
     agent: &Agent,
     (session, name, raw): (&str, &str, &str),
     ctx: &ToolCtx<'_>,
+    gate: &dyn Fn(&str) -> Option<ToolOutput>,
 ) -> (ToolOutput, Vec<Record>, Vec<String>) {
-    let args: Value = match raw.trim() {
-        "" => json!({}),
-        text => serde_json::from_str(text).unwrap_or_else(|_| json!(text)),
-    };
-    let data = json!({"toolName": name, "arguments": args});
+    let data = json!({"toolName": name, "arguments": parse_args(raw)});
     let pre = fire(
         agent,
         session,
@@ -237,6 +234,10 @@ pub(super) fn run_tool(
     let raw = pre
         .arguments
         .map_or_else(|| raw.to_string(), |args| args.to_string());
+    // The approval sees the final arguments (PLAN.md D64).
+    if let Some(output) = gate(&raw) {
+        return (output, records, context);
+    }
     if !agent.parts.extensions.has_post_tool(name) {
         return (agent.tools.run(name, &raw, ctx), records, context);
     }
@@ -259,6 +260,15 @@ pub(super) fn run_tool(
         }
     });
     (output, records, context)
+}
+
+/// The model's arguments text as JSON: `{}` when empty, a string when not
+/// JSON.
+fn parse_args(raw: &str) -> Value {
+    match raw.trim() {
+        "" => json!({}),
+        text => serde_json::from_str(text).unwrap_or_else(|_| json!(text)),
+    }
 }
 
 fn blocked(reason: &str) -> ToolOutput {

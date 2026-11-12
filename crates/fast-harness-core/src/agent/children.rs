@@ -37,6 +37,9 @@ struct State {
     /// The session's frozen system prompt, set at each turn start: a child
     /// takes it (a resumed session keeps its own, not a fresh render).
     system: Option<String>,
+    /// The session's approval gate, set at each turn start (PLAN.md D64):
+    /// a child asks through it.
+    approver: Option<super::approval::Approver>,
 }
 
 #[derive(Default)]
@@ -71,6 +74,15 @@ pub(super) struct KidView {
 }
 
 impl Children {
+    /// Remembers the session's approval gate for its children.
+    pub(super) fn set_approver(&self, approver: super::approval::Approver) {
+        self.lock().approver = Some(approver);
+    }
+
+    pub(super) fn approver(&self) -> Option<super::approval::Approver> {
+        self.lock().approver.clone()
+    }
+
     /// Remembers the parent session's frozen system prompt.
     pub fn set_system(&self, system: &str) {
         self.lock().system = Some(system.to_string());

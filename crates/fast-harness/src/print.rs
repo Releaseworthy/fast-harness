@@ -91,7 +91,9 @@ fn json_turn(agent: &Agent, conv: &mut Conversation, prompt: &str, cwd: &Path) -
     line(&events::session_line(&conv.id, &cwd.to_string_lossy()));
     let started = Instant::now();
     let mut usage = Usage::default();
+    let mut told = false;
     let outcome = agent.run_turn(conv, prompt, &CANCEL, &mut |event| {
+        refused_note(&event, &mut told);
         if let AgentEvent::TurnEnd { usage: one, .. } = &event {
             usage.add(one);
         }
@@ -100,6 +102,16 @@ fn json_turn(agent: &Agent, conv: &mut Conversation, prompt: &str, cwd: &Path) -
     let ms = started.elapsed().as_millis() as u64;
     line(&events::result_line(&conv.id, outcome, &usage, ms));
     outcome
+}
+
+/// Print mode cannot answer approvals (PLAN.md D64): the first refused call
+/// says once on stderr how to allow it.
+fn refused_note(event: &AgentEvent, told: &mut bool) {
+    if *told || !matches!(event, AgentEvent::ApprovalDone { answer, .. } if answer == "refused") {
+        return;
+    }
+    *told = true;
+    eprintln!("[approvals] a call was refused: \"approvals\": \"ask\" and print mode cannot answer; allow it in the \"allow\" list of ~/.fast-harness/config.json (\"commands\": command prefixes, \"paths\": path prefixes, \"tools\": tool names) or set \"approvals\": \"off\"");
 }
 
 fn exit_code(outcome: TurnOutcome) -> ExitCode {
@@ -130,10 +142,12 @@ struct Printer {
     mid_line: bool,
     session: String,
     names: Vec<(String, String)>,
+    told: bool,
 }
 
 impl Printer {
     fn event(&mut self, event: AgentEvent) {
+        refused_note(&event, &mut self.told);
         if let AgentEvent::TextDelta(text) = &event {
             let mut out = std::io::stdout().lock();
             let _ = out.write_all(text.as_bytes()).and_then(|_| out.flush());

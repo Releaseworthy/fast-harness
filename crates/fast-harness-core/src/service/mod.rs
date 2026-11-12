@@ -5,6 +5,7 @@
 //! process (PLAN.md D59: one turn runner, its panic guard, the queue).
 
 pub mod acp;
+pub mod approve;
 pub mod config;
 pub mod json;
 mod methods;
@@ -23,8 +24,9 @@ use std::thread::JoinHandle;
 
 use serde_json::Value;
 
-use crate::agent::{Agent, Conversation, Input};
+use crate::agent::{Agent, Answer, Conversation, Gate, Input};
 use crate::config::Config as Settings;
+use crate::events::ApprovalRequest;
 use crate::events::TurnOutcome;
 use crate::session::{self, SessionSummary, Unfinished};
 use crate::stats::{self, Stats};
@@ -86,6 +88,8 @@ pub struct Session {
     state: Mutex<State>,
     /// Ids of prompts queued while a turn runs (see [`acp::Queued`]).
     pub queued: acp::Queued,
+    /// Approval requests and answers (PLAN.md D64).
+    gate: Arc<Gate>,
 }
 
 struct State {
@@ -126,6 +130,7 @@ impl Session {
                 pausing: false,
             }),
             queued: Arc::default(),
+            gate: Arc::default(),
         }
     }
 
@@ -150,6 +155,9 @@ impl Session {
     /// Hands `input` to the running turn; false when no turn runs.
     pub fn send(&self, input: Input) -> bool {
         let state = self.lock();
+        if input == Input::Pause && state.inbox.is_some() {
+            self.gate.pause();
+        }
         match &state.inbox {
             Some(tx) => tx.send(input).is_ok(),
             None => false,
@@ -166,7 +174,28 @@ impl Session {
             .cancel
             .store(true, std::sync::atomic::Ordering::SeqCst);
         state.stopping = true;
+        self.gate.cancel();
         true
+    }
+
+    /// The approval requests waiting for an answer, oldest first (D64).
+    pub fn approvals(&self) -> Vec<ApprovalRequest> {
+        self.gate.pending()
+    }
+
+    /// Answers approval request id; false when none such waits.
+    pub fn answer(&self, id: &str, answer: Answer) -> bool {
+        self.gate.answer(id, answer)
+    }
+
+    /// A front end that shows approval requests and answers them says so;
+    /// until then pprovals: ask refuses at once (D64).
+    pub fn set_answering(&self, on: bool) {
+        self.gate.set_answering(on);
+    }
+
+    pub(super) fn gate(&self) -> Arc<Gate> {
+        Arc::clone(&self.gate)
     }
 
     /// Waits for the turn thread, if any, to end.

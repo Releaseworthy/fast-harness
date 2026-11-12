@@ -43,6 +43,27 @@ Untrusted, the front ends say so once: a note in the TUI and the GUI with the fi
 
 An untrusted project supplies nothing (D62), and that includes its `AGENTS.md` files: the ones from the repository root down to the working folder stay out of the system prompt and nested ones are never attached. The note lists their paths. For `AGENTS.md` the project of a folder is its `.fast-harness` project, else its repository root (the nearest folder with `.git`), else the folder itself; `/trust` trusts that folder. A file above a trusted `.fast-harness` project (between it and the repository root) loads only when the repository root is trusted too. After `/trust` a new session has the files in its system prompt; a running session gets them once as a `[context update]` note at its next message. Your own home files (`system-prompt.md`, `prompts/`) are not project files and always load.
 
+## Approvals: `approvals` and `allow`
+
+Off by default. With `"approvals": "ask"` every `write`, `edit`, `shell`, MCP or plugin call with effect `write` or `run` waits for your yes (D64); reads never ask. The allow list lets some run without a question:
+
+```json
+{
+  "approvals": "ask",
+  "allow": {
+    "commands": ["git status", "git diff", "cargo test", "cargo check"],
+    "paths": ["src", "F:\\work\\my-project\\docs"],
+    "tools": ["mcp__github__list_issues"]
+  }
+}
+```
+
+- `commands`: a `shell` command runs when its first words equal a prefix (`cargo test -p core` matches `cargo test`, `cargo testx` does not) and it is one simple command: anything with `;`, `&`, `|`, `(`, `)`, `{`, `}`, `<`, `>`, a backtick, a line break or a non-ASCII character asks.
+- `paths`: a `write` or `edit` path runs when it lies under a prefix after `..`, links and (on Windows) case are resolved. A relative prefix is relative to the working folder.
+- `tools`: these tools run whatever their arguments.
+
+Only `~/.fast-harness/config.json` may set `allow` or turn `approvals` off: a trusted project may only turn it on. An answer "for this session" covers the same command, the same path or the same arguments until the session closes; nothing is written to the settings. Print mode (`-p`) cannot answer: a call that would ask is refused and the model is told so. Approvals do not guard reads, hooks, MCP server processes or plugin code, and an allowed prefix such as `git` can run more than it looks (`git -c core.pager=...`): keep prefixes narrow.
+
 ## `version`, `enabled` and `ext list`
 
 Every extension file shares three rules (`config/ext_file.rs`):

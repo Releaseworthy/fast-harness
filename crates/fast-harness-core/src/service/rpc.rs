@@ -113,8 +113,12 @@ impl Server {
         let method = message.get("method").and_then(Value::as_str);
         let valid_id = matches!(id, None | Some(Value::String(_) | Value::Number(_)));
         let Some(method) = method.filter(|_| message["jsonrpc"] == "2.0" && valid_id) else {
-            // A response to a request of ours (we send none yet): ignored.
+            // A response to a request of ours: a permission answer (D64),
+            // anything else is ignored.
             if message.get("result").is_some() || message.get("error").is_some() {
+                if let Some(Value::String(id)) = &id {
+                    super::approve::response(self, id, &message);
+                }
                 return;
             }
             let err = RpcError::new(INVALID_REQUEST, "not a JSON-RPC 2.0 request");

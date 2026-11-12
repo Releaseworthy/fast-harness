@@ -6,6 +6,7 @@
 //! calls [`Agent::run_turn`] writes the session log, and every traced event is
 //! written before the matching [`AgentEvent`] is sent.
 
+pub mod approval;
 mod call;
 mod child_run;
 mod child_tools;
@@ -40,6 +41,7 @@ use crate::http::Transport;
 use crate::llm::Provider;
 use crate::session::lock;
 use crate::tools::{self, Registry};
+pub use approval::{Answer, Approver, Gate};
 pub use child_run::ChildStats;
 pub use child_tools::{OUTPUT as AGENT_OUTPUT, SEND as AGENT_SEND, STOP as AGENT_STOP};
 pub use children::Children;
@@ -96,6 +98,9 @@ pub struct Agent {
     pub preload: Vec<String>,
     /// The subagents of this agent's session; `None` without the tool.
     pub children: Option<Arc<Children>>,
+    /// The approval gate of the session (PLAN.md D64), set by the service;
+    /// `None` refuses what `approvals: ask` would ask.
+    pub approver: Option<Approver>,
 }
 
 impl Agent {
@@ -106,6 +111,7 @@ impl Agent {
             context: None,
             preload: Vec::new(),
             children: None,
+            approver: None,
         }
     }
 

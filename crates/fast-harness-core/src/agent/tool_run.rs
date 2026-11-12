@@ -6,6 +6,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, RecvTimeoutError};
 use std::time::Instant;
 
+use crate::agent::approval;
 use crate::agent::children::TICK;
 use crate::agent::hooks::{self, Record};
 use crate::agent::nested;
@@ -202,10 +203,13 @@ fn run_batch(
                 let progress = |text: &str| {
                     let _ = tx.send(Msg::Progress(index, text.to_string()));
                 };
+                let emit = |event: AgentEvent| {
+                    let _ = tx.send(Msg::Event(event));
+                };
                 let (output, records, context) = match not_loaded(run.agent, &call.name, run.loaded)
                 {
                     Some(error) => (error, Vec::new(), Vec::new()),
-                    None => run_one(run, call, &progress),
+                    None => run_one(run, call, &progress, &emit),
                 };
                 let done = (output, ms(started), records, context);
                 let _ = tx.send(Msg::Done(index, done));
@@ -220,6 +224,8 @@ fn run_batch(
 /// a call's progress is sent before its result (PLAN.md D58).
 enum Msg {
     Progress(usize, String),
+    /// An approval request or its end (PLAN.md D64).
+    Event(AgentEvent),
     Done(usize, Done),
 }
 
@@ -240,6 +246,7 @@ fn collect(
                 sink(AgentEvent::ToolProgress { id, chunk });
             }
             Ok(Msg::Progress(..)) => {}
+            Ok(Msg::Event(event)) => sink(event),
             Ok(Msg::Done(index, done)) => {
                 run.agent.forward_events(sink);
                 finish(calls, index, done, results, sink);
@@ -283,11 +290,13 @@ fn not_loaded(agent: &Agent, name: &str, loaded: Option<&[String]>) -> Option<To
 
 /// A panicking tool becomes an error result instead of ending the turn.
 /// The budget of each call comes from `Config::tool_budget` (PLAN.md D37);
-/// PreToolUse and PostToolUse hooks wrap it (D44).
+/// PreToolUse and PostToolUse hooks wrap it (D44), and the approval gate
+/// sees the arguments the PreToolUse hooks leave (D64).
 fn run_one(
     run: &Run<'_>,
     call: &Call,
     progress: &Progress<'_>,
+    emit: &dyn Fn(AgentEvent),
 ) -> (ToolOutput, Vec<Record>, Vec<String>) {
     let agent = run.agent;
     let ctx = ToolCtx::new(&agent.parts.cwd, run.cancel)
@@ -295,15 +304,16 @@ fn run_one(
         .with_call_id(&call.id)
         .with_session(run.session)
         .with_progress(progress);
+    let gate = |raw: &str| approval::check(agent, (&call.id, &call.name, raw), run.cancel, emit);
     let go = || match !agent.parts.extensions.has_hooks() {
-        true => (
-            agent.tools.run(&call.name, &call.arguments, &ctx),
-            Vec::new(),
-            Vec::new(),
-        ),
+        true => {
+            let output = gate(&call.arguments)
+                .unwrap_or_else(|| agent.tools.run(&call.name, &call.arguments, &ctx));
+            (output, Vec::new(), Vec::new())
+        }
         false => {
             let names = (run.session_id, call.name.as_str(), call.arguments.as_str());
-            hooks::run_tool(agent, names, &ctx)
+            hooks::run_tool(agent, names, &ctx, &gate)
         }
     };
     panic::catch_unwind(AssertUnwindSafe(go)).unwrap_or_else(|_| {

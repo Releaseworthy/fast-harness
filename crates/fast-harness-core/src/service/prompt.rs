@@ -16,6 +16,7 @@ use super::rpc::{response, send, Reply, RpcError, Server};
 use super::turn::{Done, Finished, Sink};
 use super::{acp, json as events, Expanded, Session, Start};
 use crate::agent::{Input, COMPACT_COMMAND};
+use crate::events::AgentEvent;
 
 pub(super) fn call(server: &Arc<Server>, method: &str, params: &Value, id: Option<Value>) -> Reply {
     match run(server, method, params, id) {
@@ -148,6 +149,9 @@ fn start(
     let (sid, events_to) = (session.id.clone(), Arc::clone(server));
     let mut updates = acp::Updates::new(Arc::clone(&session.queued));
     let sink: Sink = Box::new(move |event| {
+        if let AgentEvent::ApprovalRequest(request) = &event {
+            send(&events_to.out, &super::approve::permission(&sid, request));
+        }
         if let Some(update) = updates.map(&event) {
             events_to.notify(&sid, update);
         }

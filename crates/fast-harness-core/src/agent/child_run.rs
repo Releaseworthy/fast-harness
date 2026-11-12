@@ -82,6 +82,10 @@ fn build(tool: &SubagentTool, spec: &Spec) -> Result<(Agent, Conversation), Stri
         }
     };
     agent.preload = spec.tools.clone();
+    // The child asks through the session's gate, named (PLAN.md D64).
+    if let Some(parent) = tool.children.approver() {
+        agent.set_approver(parent.child(&spec.label, &conv.id));
+    }
     Ok((agent, conv))
 }
 
@@ -227,7 +231,10 @@ impl Forward {
     /// steps and tool calls become a progress line, at most every 500 ms.
     fn event(&mut self, event: AgentEvent) {
         match &event {
-            AgentEvent::Subagent { .. } | AgentEvent::SubagentProgress { .. } => {
+            AgentEvent::Subagent { .. }
+            | AgentEvent::SubagentProgress { .. }
+            | AgentEvent::ApprovalRequest(_)
+            | AgentEvent::ApprovalDone { .. } => {
                 return self.parent.push_event(event);
             }
             AgentEvent::StepStart { step, .. } => (self.step, self.tool) = (*step, None),
