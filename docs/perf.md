@@ -112,6 +112,17 @@ Method of phase 21A: `cargo build --release -p fast-harness-gui` at 6aae0c9 (bef
 
 The flood costs about the same (the runs overlap; the shell sends at most 10 chunks a second and the tail keeps 8 lines of 256 bytes, so the work per event is bounded). Before the change the GUI ignored the progress events.
 
+## Phase 25B: the GUI on `service::Service` (2026-11-13)
+
+Method of phase 21A: `cargo build --release -p fast-harness-gui` at e5aa0bb (before) and with the GUI turns in the service (after), copies run alternately twice each on a fresh empty `FAST_HARNESS_HOME`, private working set after 10 s idle, then CPU time over 30 s. Not measured: a finished turn in the transcript, GPU.
+
+| | before | after |
+|---|---|---|
+| Private working set after 10 s idle | 18.2 and 18.1 MB | 18.1 and 18.1 MB |
+| CPU time over 30 s idle | 15.6 and 31.2 ms | 0 and 0 ms |
+
+The service adds no thread or timer at idle: a turn thread exists only while a turn runs, and events reach the UI thread with `slint::invoke_from_event_loop` as before.
+
 ## Experiments 2026-11-12 (phase 10, E1 to E6)
 
 Note (PLAN.md D53): the Antigravity measurements below were made on code that now lives on branch `antigravity` (a143cfa), not on main.
