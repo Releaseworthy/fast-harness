@@ -19,9 +19,9 @@ A coding agent harness in native Rust: an agent loop with tools, model providers
 
 From `crates/fast-harness-core/src/lib.rs`, a module never imports a higher one:
 
-`types` -> `http` / `sse` / `platform` -> `store` -> `llm` / `tools` / `auth` -> `trace` / `session` -> `workspaces` / `accounts` -> `agent` -> `view` / `panels` / `stats` -> `reflect` -> `service` -> `ext` -> `app`.
+`types` / `theme` -> `http` / `sse` / `platform` -> `store` / `net` -> `llm` / `tools` / `auth` / `config` -> `trace` / `session` / `events` / `keys` -> `workspaces` / `accounts` -> `agent` -> `view` / `panels` / `stats` -> `reflect` -> `service` -> `ext` -> `app`.
 
-In no layer of that list: `config`, `events`, `keys`, `net`, `theme`. `net` is the real transport (`ureq`, `rustls`, the OS certificate store). OS specific code lives only under `platform/` (`windows/`, and `unsupported/` for every other OS).
+The test `crates/fast-harness-core/tests/guard_rails.rs` holds this list and fails on an import of a higher layer, so the three must say the same. `net` is the real transport (`ureq`, `rustls`, the OS certificate store). OS specific code lives only under `platform/` (`windows/`, and `unsupported/` for every other OS).
 
 ## Threads
 

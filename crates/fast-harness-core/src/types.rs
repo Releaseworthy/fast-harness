@@ -226,6 +226,17 @@ pub fn stable_hash(text: &str) -> u64 {
     })
 }
 
+/// Unix time in milliseconds; 0 if the clock is before 1970.
+/// Here, in the bottom layer, because `tools` and `trace` both need it and
+/// `tools` may not import `trace` (the layering test of PLAN.md phase 30);
+/// `trace` re-exports it.
+pub fn now_ms() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|elapsed| elapsed.as_millis() as u64)
+        .unwrap_or(0)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

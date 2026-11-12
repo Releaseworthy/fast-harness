@@ -25,6 +25,7 @@ pub use config::{Endpoint, ServerSpec};
 
 use crate::http::Transport;
 use crate::tools::{ToolCtx, ToolOutput};
+use crate::types::now_ms;
 use config::process_env;
 use rpc::Era;
 
@@ -77,10 +78,6 @@ fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
     mutex
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner())
-}
-
-fn now_ms() -> u64 {
-    crate::trace::now_ms()
 }
 
 impl McpServers {

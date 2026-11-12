@@ -99,9 +99,7 @@ pub struct TraceEvent {
 }
 
 /// Unix time in milliseconds; 0 if the clock is before 1970.
-pub fn now_ms() -> u64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|elapsed| elapsed.as_millis() as u64)
-        .unwrap_or(0)
-}
+/// The clock itself is [`crate::types::now_ms`] (the bottom layer), so `tools`
+/// reads it without importing this higher module; this re-export keeps
+/// `trace::now_ms` for every caller.
+pub use crate::types::now_ms;

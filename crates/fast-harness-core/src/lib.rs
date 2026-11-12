@@ -1,7 +1,8 @@
 //! Portable core of fast-harness.
 //!
 //! Layering (a module never imports a higher one):
-//! `types` -> `http` / `sse` / `platform` -> `store` -> `llm` / `tools` / `auth` -> `trace` / `session`
+//! `types` / `theme` -> `http` / `sse` / `platform` -> `store` / `net`
+//! -> `llm` / `tools` / `auth` / `config` -> `trace` / `session` / `events` / `keys`
 //! -> `workspaces` / `accounts` -> `agent` -> `view` / `panels` / `stats` -> `reflect`
 //! -> `service` -> `ext` -> `app`.
 //! `ext` is the native plugin API (PLAN.md D52); the generated
