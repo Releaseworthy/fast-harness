@@ -11,11 +11,11 @@ pub mod patch;
 use std::collections::BTreeMap;
 use std::fmt::Write;
 
-use serde_json::Value;
-
 use crate::config::Config;
 use crate::llm::custom;
-use crate::trace::{kind, TraceEvent};
+use crate::trace::record::ToolCall;
+use crate::trace::{Record, TraceEvent};
+use crate::types::{Block, Message};
 
 /// The system prompt of the reflect subagent.
 pub const SYSTEM: &str = "You review how a coding agent harness session went and propose small, \
@@ -93,23 +93,14 @@ pub fn digest(events: &[TraceEvent]) -> String {
     let mut names: BTreeMap<String, String> = BTreeMap::new();
     let mut compactions = 0;
     for event in events {
-        let data = &event.data;
-        let turn = data["turn"].as_u64().unwrap_or(0);
-        match event.kind.as_str() {
-            kind::STEP_START => turns.entry(turn).or_default().steps += 1,
-            kind::TOOL_CALL => {
-                let name = data["name"].as_str().unwrap_or("?").to_string();
-                turns
-                    .entry(turn)
-                    .or_default()
-                    .tools
-                    .entry(name.clone())
-                    .or_default()
-                    .0 += 1;
-                names.insert(data["callId"].as_str().unwrap_or("").into(), name);
+        match event.record() {
+            Record::StepStart(start) => turns.entry(u64::from(start.turn)).or_default().steps += 1,
+            Record::ToolCall(call) => add_call(&mut turns, &mut names, &call),
+            Record::ToolResult(result) => {
+                let digest = turns.entry(u64::from(result.turn)).or_default();
+                add_result(digest, &result.message, &names);
             }
-            kind::TOOL_RESULT => result(turns.entry(turn).or_default(), data, &names),
-            kind::COMPACTION => compactions += 1,
+            Record::Compaction(_) => compactions += 1,
             _ => {}
         }
     }
@@ -121,15 +112,31 @@ pub fn digest(events: &[TraceEvent]) -> String {
     out
 }
 
-fn result(digest: &mut TurnDigest, data: &Value, names: &BTreeMap<String, String>) {
-    let blocks = data["message"]["content"].as_array().map(Vec::as_slice);
-    for block in blocks.unwrap_or_default() {
-        let id = block["callId"].as_str().unwrap_or("");
-        let name = names.get(id).map_or("?", String::as_str);
-        let content = block["content"].as_str().unwrap_or("");
+/// Counts one `tool/call` in its turn and remembers the call id's tool name.
+fn add_call(
+    turns: &mut BTreeMap<u64, TurnDigest>,
+    names: &mut BTreeMap<String, String>,
+    call: &ToolCall,
+) {
+    let tools = &mut turns.entry(u64::from(call.turn)).or_default().tools;
+    tools.entry(call.name.clone()).or_default().0 += 1;
+    names.insert(call.call_id.clone(), call.name.clone());
+}
+
+fn add_result(digest: &mut TurnDigest, message: &Message, names: &BTreeMap<String, String>) {
+    for block in &message.content {
+        let Block::ToolResult {
+            call_id,
+            content,
+            is_error,
+        } = block
+        else {
+            continue;
+        };
+        let name = names.get(call_id).map_or("?", String::as_str);
         let entry = digest.tools.entry(name.to_string()).or_default();
         entry.1 += content.len() as u64;
-        if block["isError"].as_bool().unwrap_or(false) {
+        if *is_error {
             entry.2 += 1;
             let line: String = content
                 .lines()

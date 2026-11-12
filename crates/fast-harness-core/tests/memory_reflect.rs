@@ -185,7 +185,7 @@ fn event(seq: u64, kind: &str, data: Value) -> TraceEvent {
 }
 
 fn result(id: &str, content: &str, error: bool) -> Value {
-    json!({"turn": 1, "step": 1, "message": {"role": "tool", "content": [
+    json!({"turn": 1, "step": 1, "durationMs": 0, "message": {"role": "tool", "content": [
         {"type": "tool_result", "callId": id, "content": content, "isError": error}]}})
 }
 
@@ -194,7 +194,8 @@ fn call(id: &str, name: &str, args: Value) -> Value {
 }
 
 fn answer(read: u64, write: u64) -> Value {
-    json!({"turn": 1, "message": {"role": "assistant", "content": [{"type": "text", "text": "SECRET ANSWER"}]},
+    json!({"turn": 1, "step": 1, "stop": "toolUse", "timing": {},
+        "message": {"role": "assistant", "content": [{"type": "text", "text": "SECRET ANSWER"}]},
         "usage": {"cacheReadTokens": read, "cacheWriteTokens": write}})
 }
 
