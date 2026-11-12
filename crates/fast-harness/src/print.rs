@@ -1,11 +1,16 @@
 //! Print mode: one turn, text deltas on stdout, one-line notes on stderr.
 
 use std::io::Write;
+use std::path::Path;
 use std::process::ExitCode;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::Instant;
 
+use fast_harness_core::agent::{Agent, Conversation};
 use fast_harness_core::app::Slash;
 use fast_harness_core::events::{AgentEvent, TurnOutcome};
+use fast_harness_core::service::json as events;
+use fast_harness_core::types::Usage;
 use fast_harness_core::{platform, session};
 
 use crate::args::PrintArgs;
@@ -57,17 +62,44 @@ pub fn run(args: PrintArgs) -> Result<ExitCode, String> {
     if let Err(err) = platform::on_interrupt(on_ctrl_c) {
         eprintln!("[note] Ctrl+C will not cancel cleanly: {err}");
     }
-    let mut printer = Printer {
-        session: conv.id.clone(),
-        ..Printer::default()
+    let outcome = match args.json {
+        true => json_turn(&agent, &mut conv, &prompt, &cwd),
+        false => text_turn(&agent, &mut conv, &prompt),
     };
-    let outcome = agent.run_turn(&mut conv, &prompt, &CANCEL, &mut |event| {
-        printer.event(event)
-    });
     if outcome == TurnOutcome::Truncated {
         eprintln!("[note] the answer was cut at the output token limit (maxTokens); `--continue` with \"continue\" goes on");
     }
     Ok(exit_code(outcome))
+}
+
+fn text_turn(agent: &Agent, conv: &mut Conversation, prompt: &str) -> TurnOutcome {
+    let mut printer = Printer {
+        session: conv.id.clone(),
+        ..Printer::default()
+    };
+    agent.run_turn(conv, prompt, &CANCEL, &mut |event| printer.event(event))
+}
+
+fn line(value: &serde_json::Value) {
+    let mut out = std::io::stdout().lock();
+    let _ = writeln!(out, "{value}").and_then(|_| out.flush());
+}
+
+/// `--json` (PLAN.md D48): a `session` line, one line per event, then the
+/// `result` line with the usage of every turn (schema in docs/service.md).
+fn json_turn(agent: &Agent, conv: &mut Conversation, prompt: &str, cwd: &Path) -> TurnOutcome {
+    line(&events::session_line(&conv.id, &cwd.to_string_lossy()));
+    let started = Instant::now();
+    let mut usage = Usage::default();
+    let outcome = agent.run_turn(conv, prompt, &CANCEL, &mut |event| {
+        if let AgentEvent::TurnEnd { usage: one, .. } = &event {
+            usage.add(one);
+        }
+        line(&events::event(&event));
+    });
+    let ms = started.elapsed().as_millis() as u64;
+    line(&events::result_line(&conv.id, outcome, &usage, ms));
+    outcome
 }
 
 fn exit_code(outcome: TurnOutcome) -> ExitCode {

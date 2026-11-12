@@ -156,14 +156,20 @@ impl Runtime {
     /// credential follow `config.model` ([`Runtime::route`]). Subagents get a
     /// copy of these parts.
     pub fn parts(&self, cwd: &Path) -> Result<AgentParts, String> {
-        self.parts_with(cwd, self.prompt(cwd).text)
+        self.parts_with(cwd, self.prompt(cwd).text, &self.config)
     }
 
-    /// [`Runtime::parts`] with `system` as the system prompt.
-    fn parts_with(&self, cwd: &Path, system: String) -> Result<AgentParts, String> {
-        let (provider, auth) = self.route(&self.config.model)?;
+    /// [`Runtime::parts`] with `system` as the system prompt and `config`
+    /// as the settings.
+    fn parts_with(
+        &self,
+        cwd: &Path,
+        system: String,
+        config: &Config,
+    ) -> Result<AgentParts, String> {
+        let (provider, auth) = self.route(&config.model)?;
         let transport: Arc<dyn Transport> = self.transport.clone();
-        let mut config = self.config.clone();
+        let mut config = config.clone();
         config.interactive = self.interactive;
         Ok(AgentParts {
             provider,
@@ -182,25 +188,42 @@ impl Runtime {
     /// sources only for a new session; a session keeps the one it froze, and
     /// a later change of the sources reaches it as a context update (D36).
     pub fn agent(&self, cwd: &Path, conv: &Conversation) -> Result<(Agent, Vec<String>), String> {
-        let (mut context, read_notes) = Context::read(&self.home, cwd, &self.config.model);
+        self.agent_with(cwd, conv, &self.config)
+    }
+
+    /// [`Runtime::agent`] with `config` as the settings: a served session
+    /// keeps its own (PLAN.md D48).
+    pub fn agent_with(
+        &self,
+        cwd: &Path,
+        conv: &Conversation,
+        config: &Config,
+    ) -> Result<(Agent, Vec<String>), String> {
+        let (mut context, read_notes) = Context::read(&self.home, cwd, &config.model);
         context.skills = self.extensions.skills_line();
-        context.agents_bytes = self.config.agents_bytes.max(1024);
+        context.agents_bytes = config.agents_bytes.max(1024);
         let mut notes = self.take_notes();
         notes.extend(read_notes);
         let system = conv.system.clone().unwrap_or_else(|| context.system());
-        let parts = self.parts_with(cwd, system)?;
+        let parts = self.parts_with(cwd, system, config)?;
         let router = Some(self.router());
         let mut agent =
             Agent::with_subagents(parts, &self.home, &conv.id, 0, router).with_context(context);
-        agent.preload = self.preload(&agent, conv, &mut notes);
+        agent.preload = self.preload(&agent, conv, config, &mut notes);
         Ok((agent, notes))
     }
 
     /// `tools.preload` (PLAN.md D42) for a top-level session: the names its
     /// tool list has; on a new session an unknown name is a note.
-    fn preload(&self, agent: &Agent, conv: &Conversation, notes: &mut Vec<String>) -> Vec<String> {
+    fn preload(
+        &self,
+        agent: &Agent,
+        conv: &Conversation,
+        config: &Config,
+        notes: &mut Vec<String>,
+    ) -> Vec<String> {
         let specs = agent.tools.specs();
-        let (mut known, unknown): (Vec<String>, Vec<String>) = (self.config.tools.preload.iter())
+        let (mut known, unknown): (Vec<String>, Vec<String>) = (config.tools.preload.iter())
             .cloned()
             .partition(|name| specs.iter().skip(1).any(|spec| &spec.name == name));
         // The tools of `alwaysLoad` MCP servers (D47).
@@ -276,12 +299,15 @@ impl Runtime {
 // Live model catalog: the caches and each provider's list (`app/models.rs`,
 // `app/ag_models.rs`).
 mod ag_models;
+mod host;
 mod models;
 mod settings;
 mod slash;
 
 pub use settings::{doctor, load_settings, mcp_lines, provider_for, Settings};
 pub use slash::{expand_body, help, slash, Slash};
+
+pub use host::RuntimeHost;
 
 pub use ag_models::{read_ag_cache, write_ag_cache, AG_CACHE_FILE, AG_CACHE_VERSION};
 pub use models::{read_cache, write_cache, ModelSource, CACHE_FILE, CACHE_VERSION};

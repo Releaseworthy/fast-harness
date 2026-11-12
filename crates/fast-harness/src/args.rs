@@ -6,10 +6,14 @@ pub const USAGE: &str = "\
 Fast Harness: a coding agent harness
 
 Usage:
-  fast-harness -p <prompt> [--model M] [--effort E] [-c|--continue] [--resume ID] [--cwd DIR]
+  fast-harness -p <prompt> [--json] [--model M] [--effort E] [-c|--continue] [--resume ID] [--cwd DIR]
       Run one turn in print mode: the answer on stdout, notes on stderr.
       -c continues the newest session of the directory, --resume a given one.
+      --json writes every event as a JSON line, the result last (docs/service.md).
       Exit code: 0 done, 1 failed or step limit, 130 cancelled (Ctrl+C).
+  fast-harness serve --stdio [--model M] [--effort E]
+      JSON-RPC 2.0 on stdin/stdout: Agent Client Protocol v2 with _fh/ extensions
+      (docs/service.md); several sessions at once. Logs go to stderr.
   fast-harness [tui] [-c|--resume ID] [--cwd DIR]
       The full-screen chat (`fast-harness` alone on a terminal). F2 accounts, F3 trace, F4 model.
   fast-harness sessions [--cwd DIR]          List the sessions of the directory, newest first.
@@ -111,6 +115,8 @@ pub struct PrintArgs {
     pub continue_latest: bool,
     pub resume: Option<String>,
     pub cwd: Option<PathBuf>,
+    /// `--json`: the events as JSON lines (PLAN.md D48).
+    pub json: bool,
 }
 
 #[derive(Debug, Default, PartialEq)]
@@ -166,6 +172,11 @@ pub enum Command {
         server: Option<String>,
         cwd: Option<PathBuf>,
     },
+    /// `serve --stdio` (PLAN.md D48).
+    Serve {
+        model: Option<String>,
+        effort: Option<String>,
+    },
     Version,
     Help,
 }
@@ -207,6 +218,7 @@ struct Opts {
     no_browser: bool,
     google: bool,
     project: bool,
+    stdio: bool,
     id: Option<String>,
     help: bool,
     version: bool,
@@ -234,6 +246,7 @@ fn read_opts(args: Vec<String>) -> Result<Opts, String> {
             "--no-browser" => opts.no_browser = true,
             "--google" => opts.google = true,
             "--project" => opts.project = true,
+            "--stdio" => opts.stdio = true,
             "--id" => opts.id = Some(value(&mut args, &arg)?),
             "-h" | "--help" => opts.help = true,
             "-V" | "--version" => opts.version = true,
@@ -300,6 +313,13 @@ pub fn parse(args: Vec<String>) -> Result<Command, String> {
         }
         Some("doctor") if opts.positional.len() == 1 => return Ok(Command::Doctor { cwd }),
         Some("mcp") => return mcp_command(&opts.positional[1..], cwd),
+        Some("serve") if opts.positional.len() == 1 => {
+            if !opts.stdio {
+                return Err("usage: fast-harness serve --stdio (the only transport)".into());
+            }
+            let (model, effort) = (opts.print.model, opts.print.effort);
+            return Ok(Command::Serve { model, effort });
+        }
         Some("keys") if opts.positional.len() == 1 => {
             return Ok(Command::Keys {
                 json: opts.json,
@@ -354,6 +374,7 @@ pub fn parse(args: Vec<String>) -> Result<Command, String> {
                 return Err("use either --continue or --resume, not both".into());
             }
             opts.print.prompt = prompt;
+            opts.print.json = opts.json;
             Ok(Command::Print(opts.print))
         }
         Some(_) => Err("the prompt is empty".into()),
@@ -362,128 +383,5 @@ pub fn parse(args: Vec<String>) -> Result<Command, String> {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn parse_str(line: &str) -> Result<Command, String> {
-        parse(line.split_whitespace().map(String::from).collect())
-    }
-
-    #[test]
-    fn parses_commands() {
-        let Command::Print(print) = parse_str("-p hi --model m --effort low -c --cwd x").unwrap()
-        else {
-            panic!("not print mode");
-        };
-        assert_eq!(print.prompt, "hi");
-        assert_eq!(print.model.as_deref(), Some("m"));
-        assert_eq!(print.effort.as_deref(), Some("low"));
-        assert!(print.continue_latest);
-        assert_eq!(print.cwd, Some(PathBuf::from("x")));
-        assert_eq!(parse_str("--version").unwrap(), Command::Version);
-        assert_eq!(parse_str("help").unwrap(), Command::Help);
-        assert_eq!(parse_str("").unwrap(), Command::Help);
-        assert_eq!(
-            parse_str("sessions").unwrap(),
-            Command::Sessions { cwd: None }
-        );
-        let trace = parse_str("trace latest --json").unwrap();
-        let id = Some("latest".to_string());
-        assert_eq!(
-            trace,
-            Command::Trace {
-                id,
-                steps: false,
-                json: true,
-                cwd: None
-            }
-        );
-        assert_eq!(
-            parse_str("trace --steps --cwd d").unwrap(),
-            Command::Trace {
-                id: None,
-                steps: true,
-                json: false,
-                cwd: Some(PathBuf::from("d"))
-            }
-        );
-        assert!(parse_str("trace a b").is_err());
-        assert!(parse_str("-p").is_err());
-        assert!(parse_str("--bogus").is_err());
-        assert!(parse_str("frob").is_err());
-        assert!(parse_str("-p x -c --resume y").is_err());
-        let tui = parse_str("tui -c --cwd d").unwrap();
-        let expected = TuiArgs {
-            continue_latest: true,
-            resume: None,
-            cwd: Some(PathBuf::from("d")),
-        };
-        assert_eq!(tui, Command::Tui(expected));
-        assert!(parse_str("tui -c --resume x").is_err());
-        assert!(parse_str("tui -p hi").is_err());
-        assert!(parse_str("tui extra").is_err());
-    }
-
-    #[test]
-    fn parses_accounts() {
-        let accounts = |line: &str| match parse_str(line) {
-            Ok(Command::Accounts(action)) => Ok(action),
-            Ok(other) => panic!("not accounts: {other:?}"),
-            Err(err) => Err(err),
-        };
-        assert_eq!(accounts("accounts").unwrap(), AccountsAction::List);
-        assert_eq!(accounts("accounts list").unwrap(), AccountsAction::List);
-        let login = accounts("accounts login --no-browser").unwrap();
-        assert_eq!(login, AccountsAction::Login { browser: false });
-        assert_eq!(
-            accounts("accounts use u-1").unwrap(),
-            AccountsAction::Use("u-1".into())
-        );
-        let remove = accounts("accounts remove a@b.c").unwrap();
-        assert_eq!(remove, AccountsAction::Remove("a@b.c".into()));
-        let key = accounts("accounts add-key work").unwrap();
-        assert_eq!(
-            key,
-            AccountsAction::AddKey {
-                label: Some("work".into())
-            }
-        );
-        assert_eq!(accounts("accounts usage").unwrap(), AccountsAction::Usage);
-        let google = accounts("accounts login --google --no-browser").unwrap();
-        assert_eq!(google, AccountsAction::LoginGoogle { browser: false });
-        let google = accounts("accounts login --google").unwrap();
-        assert_eq!(google, AccountsAction::LoginGoogle { browser: true });
-        let client = accounts("accounts google-client --id test-client.apps.example").unwrap();
-        let id = "test-client.apps.example".to_string();
-        assert_eq!(client, AccountsAction::GoogleClient { id });
-        assert!(accounts("accounts google-client").is_err());
-        assert!(accounts("accounts use u-1 --google").is_err());
-        assert!(accounts("accounts list --id x").is_err());
-        assert!(accounts("accounts use").is_err());
-        assert!(accounts("accounts frob").is_err());
-        assert!(accounts("accounts use a b").is_err());
-    }
-
-    #[test]
-    fn parses_models() {
-        assert_eq!(
-            parse_str("models").unwrap(),
-            Command::Models { json: false }
-        );
-        let json = parse_str("models --json").unwrap();
-        assert_eq!(json, Command::Models { json: true });
-        assert!(parse_str("models extra").is_err());
-    }
-
-    #[test]
-    fn parses_prompt() {
-        let cwd = Some(PathBuf::from("d"));
-        assert_eq!(parse_str("prompt").unwrap(), Command::Prompt { cwd: None });
-        assert_eq!(
-            parse_str("prompt --cwd d").unwrap(),
-            Command::Prompt { cwd }
-        );
-        assert!(parse_str("prompt extra").is_err());
-        assert!(USAGE.contains("fast-harness prompt [--cwd DIR]"));
-    }
-}
+#[path = "args_tests.rs"]
+mod tests;

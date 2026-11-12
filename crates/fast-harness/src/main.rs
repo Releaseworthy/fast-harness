@@ -7,6 +7,7 @@ mod config_cmd;
 mod info;
 mod models_cmd;
 mod print;
+mod serve_cmd;
 mod stats_cmd;
 mod tui;
 
@@ -61,6 +62,7 @@ fn main() -> ExitCode {
         } => config_cmd::mcp(refresh, server, cwd),
         Command::Keys { json, cwd } => config_cmd::keys(json, cwd),
         Command::Print(print_args) => print::run(print_args),
+        Command::Serve { model, effort } => serve_cmd::run(model, effort),
         Command::Tui(tui_args) => tui::run(tui_args),
     };
     result.unwrap_or_else(|message| {
