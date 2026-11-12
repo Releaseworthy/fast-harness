@@ -5,10 +5,9 @@ use super::{
     Transcript,
 };
 use crate::llm::Timing;
-use crate::trace::{kind, TraceEvent};
+use crate::trace::record::{AssistantMessage, Compaction, TurnEnd, UserMessage};
+use crate::trace::{Record, TraceEvent};
 use crate::types::{Block, Message, Role, StopReason, Usage};
-use serde::de::DeserializeOwned;
-use serde_json::Value;
 
 impl Transcript {
     /// User text, assistant text and reasoning, and tool calls joined with
@@ -128,12 +127,18 @@ struct Replay {
 
 impl Replay {
     fn event(&mut self, event: &TraceEvent) {
-        let data = &event.data;
-        match event.kind.as_str() {
-            kind::ASSISTANT_ATTEMPT => self.attempt_error = Some(text(data, "error")),
-            kind::LLM_RETRY | kind::ACCOUNT_SWITCH => {
+        match event.record() {
+            Record::AssistantAttempt(failure) => self.attempt_error = Some(failure.error),
+            Record::LlmRetry(retry) => {
                 self.attempt_error = None;
-                self.note(&event.kind, data);
+                let note = retry_text(retry.attempt, retry.delay_ms, &retry.error);
+                self.view.note(NoteKind::Retry, note);
+            }
+            Record::AccountSwitch(switch) => {
+                self.attempt_error = None;
+                let note = switch_text(&switch.from, &switch.to, &switch.reason);
+                self.view.note(NoteKind::AccountSwitch, note);
+                self.view.account = switch.to;
             }
             _ => {
                 if let Some(error) = self.attempt_error.take() {
@@ -145,113 +150,88 @@ impl Replay {
     }
 
     fn event_after_attempt(&mut self, event: &TraceEvent) {
-        let data = &event.data;
-        match event.kind.as_str() {
-            kind::TURN_START => {
+        match event.record() {
+            Record::TurnStart(start) => {
                 self.flush();
                 self.view.turn_usage = Usage::default();
-                self.awaiting_user = data.get("resume").is_none();
+                self.awaiting_user = !start.resume;
             }
-            kind::USER_MESSAGE => self.user_message(data),
-            kind::STEP_START => {
+            Record::UserMessage(user) => self.user_message(&user),
+            Record::StepStart(start) => {
                 self.flush();
-                self.view.turn = int(data, "turn");
-                self.view.step = int(data, "step");
+                self.view.turn = start.turn;
+                self.view.step = start.step;
             }
-            kind::REQUEST_CONTEXT => {
-                self.view.model = text(data, "model");
-                self.view.account = text(data, "account");
+            Record::RequestContext(request) => {
+                self.view.model = request.model;
+                self.view.account = request.account;
             }
-            kind::ASSISTANT_MESSAGE => self.assistant(data),
-            kind::TOOL_CALL => {
-                let id = text(data, "callId");
-                if self.view.tool_mut(&id).is_none() {
-                    let tool = new_tool(&id, &text(data, "name"), text(data, "arguments"));
+            Record::AssistantMessage(answer) => self.assistant(&answer),
+            Record::ToolCall(call) => {
+                if self.view.tool_mut(&call.call_id).is_none() {
+                    let tool = new_tool(&call.call_id, &call.name, call.arguments);
                     self.view.items.push(tool);
                 }
             }
-            kind::TOOL_RESULT => {
-                if let Some(message) = parse::<Message>(data, "message") {
-                    let duration = data.get("durationMs").and_then(Value::as_u64);
-                    self.view.add_results(&message, duration);
-                }
+            Record::ToolResult(result) => {
+                self.view
+                    .add_results(&result.message, Some(result.duration_ms));
             }
-            kind::COMPACTION => self.compaction(data),
-            kind::STEP_END => self.flush(),
-            kind::TURN_END => self.turn_end(data),
+            Record::Compaction(compaction) => self.compaction(&compaction),
+            Record::StepEnd(_) => self.flush(),
+            Record::TurnEnd(end) => self.turn_end(&end),
             _ => {}
         }
     }
 
-    fn user_message(&mut self, data: &Value) {
+    fn user_message(&mut self, user: &UserMessage) {
         self.flush();
-        self.view.turn = int(data, "turn");
-        if let Some(message) = parse::<Message>(data, "message") {
-            self.view.add_user(&message);
-            self.view.add_results(&message, None);
-        }
+        self.view.turn = user.turn;
+        self.view.add_user(&user.message);
+        self.view.add_results(&user.message, None);
         self.awaiting_user = false;
         if let Some(note) = self.held_note.take() {
             self.view.note(NoteKind::Info, note);
         }
     }
 
-    fn compaction(&mut self, data: &Value) {
+    fn compaction(&mut self, compaction: &Compaction) {
         self.flush();
-        let auto = data["auto"].as_bool().unwrap_or(true);
-        let text = compaction_text(auto, num(data, "before"), num(data, "after"));
+        let auto = compaction.auto.unwrap_or(true);
+        let before = compaction.before.unwrap_or(0);
+        let after = compaction.after.unwrap_or(0);
+        let text = compaction_text(auto, before, after);
         match self.awaiting_user {
             true => self.held_note = Some(text),
             false => self.view.note(NoteKind::Info, text),
         }
-        self.view.context = num(data, "after");
+        self.view.context = after;
     }
 
-    /// A retry or account switch note.
-    fn note(&mut self, event_kind: &str, data: &Value) {
-        if event_kind == kind::LLM_RETRY {
-            let note = retry_text(
-                int(data, "attempt"),
-                num(data, "delayMs"),
-                &text(data, "error"),
-            );
-            self.view.note(NoteKind::Retry, note);
-        } else {
-            let to = text(data, "to");
-            let note = switch_text(&text(data, "from"), &to, &text(data, "reason"));
-            self.view.note(NoteKind::AccountSwitch, note);
-            self.view.account = to;
-        }
-    }
-
-    fn assistant(&mut self, data: &Value) {
+    fn assistant(&mut self, answer: &AssistantMessage) {
         self.flush();
-        let (turn, step) = (int(data, "turn"), int(data, "step"));
-        if let Some(message) = parse::<Message>(data, "message") {
-            self.view.add_assistant(turn, step, &message);
-        }
-        let usage: Usage = parse(data, "usage").unwrap_or_default();
-        self.view.turn_usage.add(&usage);
+        let (turn, step) = (answer.turn, answer.step);
+        self.view.add_assistant(turn, step, &answer.message);
+        self.view.turn_usage.add(&answer.usage);
         // Trace version 4 keys; older logs leave the window unknown.
-        self.view.context = data["context"].as_u64().unwrap_or(usage.context());
-        self.view.window = data["window"].as_u64().unwrap_or(0);
-        let timing = parse(data, "timing").unwrap_or_default();
-        let stop = parse(data, "stop").unwrap_or(StopReason::Other);
-        let account = match data.get("account").and_then(Value::as_str) {
-            Some(account) => account.to_string(),
+        self.view.context = answer.context.unwrap_or(answer.usage.context());
+        self.view.window = answer.window.unwrap_or(0);
+        let stop = answer.stop_reason();
+        let account = match &answer.account {
+            Some(account) => account.clone(),
             None => self.view.account.clone(),
         };
-        self.footer = Some((turn, step, usage, timing, stop, account));
+        self.footer = Some((turn, step, answer.usage, answer.timing, stop, account));
     }
 
-    fn turn_end(&mut self, data: &Value) {
+    fn turn_end(&mut self, end: &TurnEnd) {
         self.flush();
         // A `/compact` turn has no user message.
         if let Some(note) = self.held_note.take() {
             self.view.note(NoteKind::Info, note);
         }
         self.awaiting_user = false;
-        if let Some(text) = logged_outcome_text(&text(data, "outcome")) {
+        if let Some(text) = logged_outcome_text(&end.outcome) {
             self.view.note(NoteKind::Info, text);
         }
     }
@@ -272,24 +252,4 @@ impl Replay {
             self.view.account = live_account;
         }
     }
-}
-
-fn parse<T: DeserializeOwned>(data: &Value, key: &str) -> Option<T> {
-    data.get(key)
-        .and_then(|value| serde_json::from_value(value.clone()).ok())
-}
-
-fn num(data: &Value, key: &str) -> u64 {
-    data.get(key).and_then(Value::as_u64).unwrap_or(0)
-}
-
-fn int(data: &Value, key: &str) -> u32 {
-    u32::try_from(num(data, key)).unwrap_or(u32::MAX)
-}
-
-fn text(data: &Value, key: &str) -> String {
-    data.get(key)
-        .and_then(Value::as_str)
-        .unwrap_or_default()
-        .to_string()
 }

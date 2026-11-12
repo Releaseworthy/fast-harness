@@ -188,8 +188,11 @@ fn from_trace_adds_footers_notes_and_durations() {
     assert_eq!(view.totals, totals);
 }
 
+/// A line whose data is not the shape this build reads is `Record::Raw`
+/// (PLAN.md D61) and skipped like a type it does not know; a stop word it does
+/// not know is still `Other`.
 #[test]
-fn from_trace_survives_malformed_data() {
+fn from_trace_skips_unreadable_lines_and_keeps_an_unknown_stop_word() {
     let events = vec![
         event(0, "user/message", json!("nope")),
         event(
@@ -200,21 +203,25 @@ fn from_trace_survives_malformed_data() {
         event(2, "tool/result", json!({"message":{"role":"tool"}})),
         event(3, "llm/retry", json!(null)),
         event(4, "turn/end", json!({"outcome":5})),
+        event(
+            5,
+            "assistant/message",
+            json!({"turn":2,"step":1,"message":final_answer(),"usage":usage(),
+            "stop":"future_reason","timing":{}}),
+        ),
     ];
     let view = Transcript::from_trace(&events);
     assert_eq!(view.items.len(), 2);
     assert!(matches!(
         &view.items[0],
-        Item::Note {
-            kind: NoteKind::Retry,
-            ..
-        }
+        Item::Assistant { text, .. } if text == "Done"
     ));
     assert!(matches!(
         &view.items[1],
         Item::StepFooter {
             stop: StopReason::Other,
-            turn: 0,
+            turn: 2,
+            step: 1,
             ..
         }
     ));
