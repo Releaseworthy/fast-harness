@@ -215,12 +215,13 @@ impl Turn<'_> {
     ) -> Res<()> {
         let loaded = find::found(&self.conv.messages);
         let call_id = format!("compact_{}_{}", self.turn, self.steps);
-        let history = compacted::history(&summary.text, &loaded, &call_id, mid);
+        let kept = super::nested::instruction_lines(&self.conv.messages);
+        let history = compacted::history(&summary.text, &loaded, &kept, &call_id, mid);
         let before = self.conv.last_context;
         let after = estimate(self.conv, &history);
         let usage = serde_json::to_value(summary.usage).unwrap_or_default();
         let data = json!({ "turn": self.turn, "step": self.steps, "summary": summary.text,
-            "facts": facts(&summary.text), "loaded": loaded, "callId": call_id, "mid": mid,
+            "facts": facts(&summary.text), "loaded": loaded, "kept": kept, "callId": call_id, "mid": mid,
             "before": before, "after": after, "usage": usage, "auto": auto,
             "model": summary.model, "instructions": instructions });
         traced(self.conv.trace.compaction(data))?;

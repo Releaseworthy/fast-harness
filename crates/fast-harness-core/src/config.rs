@@ -73,7 +73,13 @@ pub struct Config {
     pub subagent: SubagentConfig,
     /// `tools` (PLAN.md D42): `preload`, tools loaded from the start.
     pub tools: ToolsConfig,
+    /// `agentsBytes` (PLAN.md D43): the cap of the AGENTS.md section of a
+    /// new session's system prompt (root to working directory).
+    pub agents_bytes: usize,
 }
+
+/// Default `agentsBytes`.
+pub const DEFAULT_AGENTS_BYTES: usize = 32 * 1024;
 
 /// The `tools` settings. `preload` names tools a top-level session finds
 /// before its first step (empty by default, D30 and G1).
@@ -131,6 +137,7 @@ impl Default for Config {
             models: BTreeMap::new(),
             subagent: SubagentConfig::default(),
             tools: ToolsConfig::default(),
+            agents_bytes: DEFAULT_AGENTS_BYTES,
         }
     }
 }

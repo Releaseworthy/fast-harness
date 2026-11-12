@@ -46,8 +46,26 @@ pub fn preview(template: &str, cwd: &Path, model: &str) -> String {
 }
 
 /// A filled template with the AGENTS.md section of `files` after it.
-pub fn compose(mut out: String, files: &[(PathBuf, String)]) -> String {
-    let agents = agents_section(files);
+pub fn compose(out: String, files: &[(PathBuf, String)]) -> String {
+    compose_with(out, "", files, MAX_AGENTS_BYTES)
+}
+
+/// [`compose`] with the skills line (D43) after the template and the
+/// AGENTS.md section cut at `agents_bytes` (`agentsBytes`).
+pub fn compose_with(
+    mut out: String,
+    skills: &str,
+    files: &[(PathBuf, String)],
+    agents_bytes: usize,
+) -> String {
+    if !skills.is_empty() {
+        if !out.ends_with('\n') {
+            out.push('\n');
+        }
+        out.push_str(skills);
+        out.push('\n');
+    }
+    let agents = cap(agents_section(files), agents_bytes);
     if !agents.is_empty() {
         if !out.ends_with('\n') {
             out.push('\n');
@@ -129,7 +147,7 @@ fn agents_section(files: &[(PathBuf, String)]) -> String {
     for (path, text) in files {
         out.push_str(&format!("## {}\n\n{}\n\n", path.display(), text.trim_end()));
     }
-    cap(out, MAX_AGENTS_BYTES)
+    out
 }
 
 pub(crate) fn cap(mut text: String, max: usize) -> String {
@@ -141,7 +159,11 @@ pub(crate) fn cap(mut text: String, max: usize) -> String {
         end -= 1;
     }
     text.truncate(end);
-    text.push_str("\n[AGENTS.md text cut at 32 KB]\n");
+    let size = match max % 1024 {
+        0 => format!("{} KB", max / 1024),
+        _ => format!("{max} bytes"),
+    };
+    text.push_str(&format!("\n[AGENTS.md text cut at {size}]\n"));
     text
 }
 

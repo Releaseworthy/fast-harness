@@ -256,10 +256,11 @@ pub fn doctor(settings: &Settings) -> String {
 /// The `tools`, `agents` and `commands` sections of `doctor`.
 fn extension_lines(out: &mut String, index: &ExtIndex) {
     use std::fmt::Write;
-    let sections: [(&str, &[Item]); 3] = [
+    let sections: [(&str, &[Item]); 4] = [
         ("tools", &index.tools),
         ("agents", &index.agents),
         ("commands", &index.commands),
+        ("skills", &index.skills),
     ];
     for (kind, items) in sections {
         let _ = writeln!(out, "{kind}:");

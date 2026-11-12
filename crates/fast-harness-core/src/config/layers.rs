@@ -160,6 +160,25 @@ pub fn kind_files(layers: &Layers, kind: &str, ext: &str) -> Vec<LayerFile> {
     out
 }
 
+/// `<dir>/skills/<name>/SKILL.md` of every layer folder (Agent Skills,
+/// PLAN.md D43), user first, each folder sorted by skill folder name.
+pub fn skill_files(layers: &Layers) -> Vec<LayerFile> {
+    let mut out = Vec::new();
+    for (dir, source) in layers.dirs() {
+        let Ok(entries) = std::fs::read_dir(dir.join("skills")) else {
+            continue;
+        };
+        let mut paths: Vec<PathBuf> = entries
+            .filter_map(Result::ok)
+            .map(|entry| entry.path().join("SKILL.md"))
+            .filter(|path| path.is_file())
+            .collect();
+        paths.sort();
+        out.extend(paths.into_iter().map(|path| LayerFile { path, source }));
+    }
+    out
+}
+
 /// The resolved settings with the source of every key.
 #[derive(Clone, Debug)]
 pub struct Layered {

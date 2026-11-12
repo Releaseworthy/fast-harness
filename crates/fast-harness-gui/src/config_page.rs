@@ -37,10 +37,11 @@ pub fn files(rt: &Runtime) -> String {
             .join(", "),
     };
     format!(
-        "Tool files: {}. Agent types: {}. Commands: {}.",
+        "Tool files: {}. Agent types: {}. Commands: {}. Skills: {}.",
         names(&index.tools),
         names(&index.agents),
-        names(&index.commands)
+        names(&index.commands),
+        names(&index.skills)
     )
 }
 

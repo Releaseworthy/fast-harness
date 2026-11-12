@@ -6,6 +6,7 @@ use std::sync::mpsc::{self, RecvTimeoutError};
 use std::time::Instant;
 
 use crate::agent::children::TICK;
+use crate::agent::nested;
 use crate::agent::turn::{ms, traced, Res, Turn};
 use crate::agent::Agent;
 use crate::events::AgentEvent;
@@ -62,7 +63,12 @@ impl Turn<'_> {
             cancel: self.cancel,
             session: shared,
         };
-        let results = execute(&run, &calls, &mut *self.sink);
+        let (mut outputs, durations): (Vec<ToolOutput>, Vec<u64>) =
+            execute(&run, &calls, &mut *self.sink).into_iter().unzip();
+        let args: Vec<&str> = calls.iter().map(|call| call.arguments.as_str()).collect();
+        let cwd = &self.agent.parts.cwd;
+        nested::attach(&self.conv.messages, cwd, &args, &mut outputs);
+        let results = outputs.into_iter().zip(durations);
         let mut blocks = Vec::with_capacity(calls.len());
         for (call, (output, duration_ms)) in calls.iter().zip(results) {
             let block = Block::ToolResult {

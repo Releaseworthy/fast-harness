@@ -12,7 +12,7 @@ use std::time::UNIX_EPOCH;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use super::layers::{kind_files, LayerFile, Layers, Skipped, Source};
+use super::layers::{kind_files, skill_files, LayerFile, Layers, Skipped, Source};
 
 /// The cache file in the user folder.
 pub const INDEX_FILE: &str = "index.json";
@@ -20,6 +20,10 @@ const VERSION: u32 = 1;
 pub const TOOLS: &str = "tools";
 pub const AGENTS: &str = "agents";
 pub const COMMANDS: &str = "commands";
+/// `skills/<name>/SKILL.md` (Agent Skills, PLAN.md D43).
+pub const SKILLS: &str = "skills";
+/// Longest skill description kept (the Agent Skills limit).
+pub const SKILL_DESCRIPTION_CHARS: usize = 1024;
 const KINDS: [(&str, &str); 3] = [(TOOLS, "json"), (AGENTS, "md"), (COMMANDS, "md")];
 
 /// What the index keeps of one file.
@@ -57,6 +61,8 @@ pub struct ExtIndex {
     pub tools: Vec<Item>,
     pub agents: Vec<Item>,
     pub commands: Vec<Item>,
+    /// Skills; `path` is the `SKILL.md` file.
+    pub skills: Vec<Item>,
     pub skipped: Vec<Skipped>,
     /// Files read to fill the index (cache misses).
     pub reads: usize,
@@ -83,10 +89,11 @@ impl ExtIndex {
     /// has no entry with its size and modified time, and rewrites the cache
     /// only when it changed.
     pub fn build(layers: &Layers) -> ExtIndex {
-        let lists: Vec<(&str, Vec<LayerFile>)> = KINDS
+        let mut lists: Vec<(&str, Vec<LayerFile>)> = KINDS
             .iter()
             .map(|(kind, ext)| (*kind, kind_files(layers, kind, ext)))
             .collect();
+        lists.push((SKILLS, skill_files(layers)));
         let mut index = ExtIndex::default();
         if lists.iter().all(|(_, files)| files.is_empty()) {
             return index;
@@ -140,6 +147,7 @@ impl ExtIndex {
         let list = match kind {
             TOOLS => &mut self.tools,
             AGENTS => &mut self.agents,
+            SKILLS => &mut self.skills,
             _ => &mut self.commands,
         };
         list.retain(|item| item.entry.name != entry.name);
@@ -182,6 +190,7 @@ fn parse(kind: &str, path: &Path) -> Result<Entry, String> {
     let stem = path.file_stem().unwrap_or_default().to_string_lossy();
     match kind {
         TOOLS => parse_tool(&text, &stem),
+        SKILLS => parse_skill(&text, path),
         _ => {
             let (meta, _) = front_matter(&text);
             let name = meta.get("name").map_or(&*stem, String::as_str);
@@ -213,6 +222,29 @@ fn parse_tool(text: &str, stem: &str) -> Result<Entry, String> {
         command,
         output_bytes: output_bytes.map(|bytes| bytes as usize),
         disabled: object.get("disabled").and_then(Value::as_bool) == Some(true),
+    })
+}
+
+/// A `SKILL.md`: `name` (else the folder name) and a `description` (needed,
+/// cut at [`SKILL_DESCRIPTION_CHARS`]); the body is read on use.
+fn parse_skill(text: &str, path: &Path) -> Result<Entry, String> {
+    let folder = path.parent().and_then(Path::file_name).unwrap_or_default();
+    let folder = folder.to_string_lossy();
+    let (meta, _) = front_matter(text);
+    let name = meta
+        .get("name")
+        .map(String::as_str)
+        .filter(|name| !name.is_empty())
+        .unwrap_or(&folder);
+    check_name(name)?;
+    let description = meta.get("description").map_or("", |d| d.trim());
+    if description.is_empty() {
+        return Err("a skill needs a `description`".into());
+    }
+    Ok(Entry {
+        name: name.to_string(),
+        description: description.chars().take(SKILL_DESCRIPTION_CHARS).collect(),
+        ..Entry::default()
     })
 }
 

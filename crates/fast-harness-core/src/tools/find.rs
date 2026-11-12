@@ -6,6 +6,7 @@ use serde_json::{json, Value};
 
 use crate::llm::find::{loaded_line, FIND_TOOLS};
 use crate::llm::ToolSpec;
+use crate::tools::skills::{self, Skill, MAX_SKILLS};
 use crate::tools::ToolOutput;
 
 /// Tools one call loads unless it passes `limit`.
@@ -49,6 +50,12 @@ pub fn spec_noted(others: &[ToolSpec], note: &str) -> ToolSpec {
 
 /// Runs a find over `others` (every tool but `find_tools`).
 pub fn run(args: &Value, others: &[ToolSpec]) -> ToolOutput {
+    run_with(args, others, &[])
+}
+
+/// [`run`] that also matches `skills` (PLAN.md D43): a name or the best
+/// query match returns the skill body as text after the tool lines.
+pub fn run_with(args: &Value, others: &[ToolSpec], skills: &[Skill]) -> ToolOutput {
     let names: Vec<&str> = args
         .get("names")
         .and_then(Value::as_array)
@@ -60,16 +67,28 @@ pub fn run(args: &Value, others: &[ToolSpec]) -> ToolOutput {
     }
     let mut picked: Vec<usize> = Vec::new();
     let mut unknown: Vec<&str> = Vec::new();
+    let mut skilled: Vec<usize> = Vec::new();
     for name in &names {
-        match others
+        let tool = others
             .iter()
-            .position(|t| t.name.eq_ignore_ascii_case(name))
-        {
-            Some(index) if !picked.contains(&index) => picked.push(index),
-            Some(_) => {}
-            None => unknown.push(name),
+            .position(|t| t.name.eq_ignore_ascii_case(name));
+        let skill = skills
+            .iter()
+            .position(|s| s.name.eq_ignore_ascii_case(name));
+        match (tool, skill) {
+            (Some(index), _) if !picked.contains(&index) => picked.push(index),
+            (Some(_), _) => {}
+            (None, Some(index)) if !skilled.contains(&index) => skilled.push(index),
+            (None, Some(_)) => {}
+            (None, None) => unknown.push(name),
         }
     }
+    if let Some(best) = best_skill(query, skills) {
+        if !skilled.contains(&best) {
+            skilled.push(best);
+        }
+    }
+    skilled.truncate(MAX_SKILLS);
     for index in search(query, others) {
         if !picked.contains(&index) {
             picked.push(index);
@@ -80,13 +99,42 @@ pub fn run(args: &Value, others: &[ToolSpec]) -> ToolOutput {
         .and_then(Value::as_u64)
         .unwrap_or(MAX_RESULTS as u64);
     picked.truncate((limit as usize).clamp(1, MAX_LIMIT));
-    ToolOutput::ok(answer(&picked, &unknown, others))
+    let mut text = answer(&picked, &unknown, others, !skilled.is_empty());
+    for index in skilled {
+        text.push_str("\n\n");
+        text.push_str(&skills::body(&skills[index]));
+    }
+    ToolOutput::ok(text)
 }
 
-fn answer(picked: &[usize], unknown: &[&str], others: &[ToolSpec]) -> String {
+/// The skill matching `query` best, when it scores at least 2 (a name hit
+/// or two description words).
+fn best_skill(query: &str, skills: &[Skill]) -> Option<usize> {
+    if query.trim().is_empty() || skills.is_empty() {
+        return None;
+    }
+    let specs: Vec<ToolSpec> = (skills.iter())
+        .map(|skill| ToolSpec {
+            name: skill.name.clone(),
+            description: skill.description.clone(),
+            schema: json!({}),
+        })
+        .collect();
+    let lower = query.to_lowercase();
+    let words: Vec<&str> = lower
+        .split(|c: char| !c.is_alphanumeric())
+        .filter(|word| word.chars().count() >= 2)
+        .collect();
+    let best = search(query, &specs).into_iter().next()?;
+    (score(&words, &specs[best]) >= 2).then_some(best)
+}
+
+fn answer(picked: &[usize], unknown: &[&str], others: &[ToolSpec], skills: bool) -> String {
     let all: Vec<&str> = others.iter().map(|tool| tool.name.as_str()).collect();
     let mut lines = Vec::new();
-    if picked.is_empty() {
+    if picked.is_empty() && skills {
+        lines.push("Skill instructions below (no tool loaded).".to_string());
+    } else if picked.is_empty() {
         lines.push(format!("No tool matched. Tools: {}.", all.join(", ")));
     } else {
         let found: Vec<&str> = picked.iter().map(|&i| others[i].name.as_str()).collect();

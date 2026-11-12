@@ -32,6 +32,12 @@ pub struct Context {
     pub agents: Vec<(PathBuf, String)>,
     /// Hash key of the template: its source and its text filled with `{date}` kept.
     prompt_key: String,
+    /// `Skills: a, b (load one with find_tools)` (D43); empty without skills.
+    /// Part of a new session's frozen system only: a skill added later gets
+    /// no context update (`find_tools` still matches it).
+    pub skills: String,
+    /// `agentsBytes`: the cap of the AGENTS.md section.
+    pub agents_bytes: usize,
 }
 
 impl Context {
@@ -60,13 +66,20 @@ impl Context {
             prompt_key: format!("{}\n{keyed}", template.source),
             source: template.source,
             agents: prompt::agents_files(cwd),
+            skills: String::new(),
+            agents_bytes: MAX_AGENTS_BYTES,
         };
         (context, template.notes)
     }
 
     /// The system prompt of a new session: the prompt, then the AGENTS.md section.
     pub fn system(&self) -> String {
-        prompt::compose(self.prompt.clone(), &self.agents)
+        prompt::compose_with(
+            self.prompt.clone(),
+            &self.skills,
+            &self.agents,
+            self.agents_bytes,
+        )
     }
 
     /// `{date, prompt, agents: {path: hash}}`, kept in `request/header`.
@@ -98,7 +111,7 @@ impl Context {
         if lines.is_empty() {
             return None;
         }
-        Some(prompt::cap(lines.join("\n\n"), 2 * MAX_AGENTS_BYTES))
+        Some(prompt::cap(lines.join("\n\n"), 2 * self.agents_bytes))
     }
 
     fn agents_lines(&self, old: &Value, lines: &mut Vec<String>) {

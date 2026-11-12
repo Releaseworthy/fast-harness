@@ -14,6 +14,7 @@ mod compact;
 pub mod context;
 mod conversation;
 mod inbox;
+pub mod nested;
 mod preload;
 pub mod prompt;
 pub mod prompt_store;

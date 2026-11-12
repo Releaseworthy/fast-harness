@@ -176,7 +176,9 @@ impl Runtime {
     /// sources only for a new session; a session keeps the one it froze, and
     /// a later change of the sources reaches it as a context update (D36).
     pub fn agent(&self, cwd: &Path, conv: &Conversation) -> Result<(Agent, Vec<String>), String> {
-        let (context, read_notes) = Context::read(&self.home, cwd, &self.config.model);
+        let (mut context, read_notes) = Context::read(&self.home, cwd, &self.config.model);
+        context.skills = self.extensions.skills_line();
+        context.agents_bytes = self.config.agents_bytes.max(1024);
         let mut notes = self.take_notes();
         notes.extend(read_notes);
         let system = conv.system.clone().unwrap_or_else(|| context.system());

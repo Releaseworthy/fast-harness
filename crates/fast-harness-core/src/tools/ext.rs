@@ -5,6 +5,7 @@
 //! tool list a session freezes is builtins plus the index.
 
 use super::command::CommandTool;
+use super::skills::{skills_line, Skill};
 use super::{builtin_tools, Registry, Tool, ToolCtx, ToolOutput};
 use crate::config::index::{Entry, ExtIndex, Item};
 use crate::llm::ToolSpec;
@@ -65,7 +66,28 @@ impl Extensions {
         for tool in builtin_tools() {
             self.add(&mut registry, tool);
         }
+        registry.set_skills(self.skills());
         registry
+    }
+
+    /// The indexed skills (D43), later layers replacing earlier ones.
+    pub fn skills(&self) -> Vec<Skill> {
+        (self.index.skills.iter())
+            .map(|item| Skill {
+                name: item.entry.name.clone(),
+                description: item.entry.description.clone(),
+                path: item.path.clone(),
+            })
+            .collect()
+    }
+
+    /// `Skills: a, b (load one with find_tools)` for the system prompt of a
+    /// new session; empty without skills.
+    pub fn skills_line(&self) -> String {
+        let names: Vec<&str> = (self.index.skills.iter())
+            .map(|item| item.entry.name.as_str())
+            .collect();
+        skills_line(&names)
     }
 
     /// [`Extensions::builtin`] plus the command tools.

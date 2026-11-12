@@ -194,10 +194,31 @@ description: Explain a file
 Read $ARGUMENTS and explain what it does in five lines.
 ```
 
+## Skills: `skills/<name>/SKILL.md`
+
+A skill is a folder in the [Agent Skills](https://agentskills.io/specification) format: `SKILL.md` with front matter `name` (1 to 64 letters, digits, `-` or `_`; the folder name when missing) and `description` (needed, cut at 1024 characters), then the instructions. Other files of the folder (`scripts/`, `references/`, `assets/`) are read by the model with the normal tools when the instructions point to them. Other front matter keys (`license`, `compatibility`, `metadata`, `allowed-tools`) are ignored.
+
+```markdown
+---
+name: pdf-tools
+description: Extract text from PDF files and fill PDF forms. Use when a task mentions PDFs.
+---
+Run `pdftotext -layout file.pdf -` and read the result; forms: see references/forms.md.
+```
+
+- The system prompt of a new session gets one line, `Skills: a, b, c (load one with find_tools)`: names only, at most 1 KB of names, then `and n more`. The line is part of the frozen system prompt: a skill added or removed later does not change a running session's prompt and sends no context update, but `find_tools` matches it as soon as the settings are reloaded.
+- `find_tools` matches skills by exact name in `names` and by `query` (the best match scoring a name hit or two description words). The result keeps its `Loaded: ...` line for tools and adds, per skill (at most 3 per call), a block starting `[skill <name>: <folder>]` with the body after the front matter, cut at 20 KB. On Claude the body is text next to the `tool_reference` blocks. This result is not cut by `toolOutputBytes`.
+- Skills loaded so far are rebuilt from the session log (the `[skill ...]` lines), and a compaction summary lists them.
+- Untrusted projects load no skills; a project skill replaces a user skill of the same name.
+
+## Nested AGENTS.md
+
+The AGENTS.md files from the repository root down to the working directory are in the system prompt, at most `agentsBytes` (default 32768) together. A folder below the working directory with its own `AGENTS.md` has it appended, at most 6 KB, to the first tool result whose `path` argument (read, write, edit, grep, glob, and any command tool with a `path`) lies inside it, once per session. The shell has no working-directory argument, so its calls load nothing. The text joins the result after the `toolOutputBytes` cut (outside the budget) and before the result is sent or logged, under a line `[nested AGENTS.md <path>]`; the loaded set is rebuilt from the log on resume, and a compaction summary lists those lines so the files are not appended again.
+
 ## The index and preloading
 
-At session creation the `tools`, `agents` and `commands` folders of the user folder and of a trusted project are listed; only names and descriptions are read, and kept in `~/.fast-harness/index.json` by path, size and modified time, so an unchanged file is not read again. Bodies are read on use: a command tool's file when the session's tool list is first rendered (the list is then frozen in the session log), an agent or command body when it is called. Without any of these folders nothing is read. A project file with the same name as a user file replaces it.
+At session creation the `tools`, `agents`, `commands` and `skills` folders of the user folder and of a trusted project are listed; only names and descriptions are read, and kept in `~/.fast-harness/index.json` by path, size and modified time, so an unchanged file is not read again. Bodies are read on use: a command tool's file when the session's tool list is first rendered (the list is then frozen in the session log), an agent or command body when it is called. Without any of these folders nothing is read. A project file with the same name as a user file replaces it.
 
 `"tools": {"preload": ["read", "grep"]}` in `config.json` loads tools from the start of a top-level session (a synthetic `find_tools` call before the first step), so the first call needs no find. Empty by default.
 
-`fast-harness doctor` lists the tool, agent and command files that loaded, their layer, and the files skipped with the reason. The GUI's Settings page lists every key with its value and source, and opens the config folder.
+`fast-harness doctor` lists the tool, agent, command and skill files that loaded, their layer, and the files skipped with the reason. The GUI's Settings page lists every key with its value and source, and opens the config folder.

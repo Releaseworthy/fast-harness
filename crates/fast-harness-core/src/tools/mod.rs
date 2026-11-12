@@ -24,8 +24,13 @@ mod glob;
 mod grep;
 mod read;
 mod shell;
+pub mod skills;
 mod walk;
 mod write;
+
+/// The end of `find_tools`' description when skills exist (D43).
+const SKILLS_NOTE: &str = "`names` and `query` also match the skills named in the system \
+prompt: a matched skill's instructions come back as text with its folder.";
 
 pub struct ToolCtx<'a> {
     /// Relative paths in tool arguments resolve against this directory.
@@ -99,6 +104,8 @@ pub struct Registry {
     find: bool,
     /// Added to `find_tools`' description (the agent types, D42).
     note: String,
+    /// Skills `find_tools` matches besides tools (D43).
+    skills: Vec<skills::Skill>,
 }
 
 impl Registry {
@@ -121,7 +128,24 @@ impl Registry {
             specs: vec![find::spec_noted(&[], &note)],
             find: true,
             note,
+            skills: Vec::new(),
         }
+    }
+
+    /// Lets `find_tools` match `skills` too; with any, its description says so.
+    pub fn set_skills(&mut self, skills: Vec<skills::Skill>) {
+        if !skills.is_empty() && self.find {
+            if !self.note.is_empty() {
+                self.note.push(' ');
+            }
+            self.note.push_str(SKILLS_NOTE);
+            self.specs[0] = find::spec_noted(&self.specs[1..], &self.note);
+        }
+        self.skills = skills;
+    }
+
+    pub fn skills(&self) -> &[skills::Skill] {
+        &self.skills
     }
 
     pub fn add(&mut self, tool: Box<dyn Tool>) {
@@ -162,6 +186,11 @@ impl Registry {
             }
         };
         let output = match (self.find, index) {
+            // Not budgeted: the tool lines are short and each skill body is
+            // already cut at `skills::SKILL_BYTES` (at most MAX_SKILLS).
+            (true, 0) if !self.skills.is_empty() => {
+                return find::run_with(&args, &self.specs[1..], &self.skills)
+            }
             (true, 0) => find::run(&args, &self.specs[1..]),
             (true, index) => self.tools[index - 1].run(&args, ctx),
             (false, index) => self.tools[index].run(&args, ctx),
