@@ -120,7 +120,7 @@ pub fn draw(frame: &mut Frame, ui: &mut Ui, view: &mut View<'_>, now_ms: u64) {
     frame.render_widget(Block::default().style(st.base()), area);
     let width = usize::from(area.width);
     let (rows, cursor) = ui.input.layout(width.saturating_sub(2));
-    let chat = ui.screen == Screen::Chat;
+    let chat = ui.screen == Screen::Chat && ui.panel.is_none();
     let input_height = if chat {
         rows.len().min(INPUT_ROWS) as u16 + 2
     } else {
@@ -140,6 +140,11 @@ pub fn draw(frame: &mut Frame, ui: &mut Ui, view: &mut View<'_>, now_ms: u64) {
     frame.render_widget(Paragraph::new(header).style(st.bar()), head);
     frame.render_widget(Paragraph::new(tab_line(ui, &st)).style(st.base()), tabs);
     match ui.screen {
+        _ if ui.panel.is_some() => {
+            if let Some(panel) = &ui.panel {
+                panel.draw(frame, &st, body);
+            }
+        }
         Screen::Chat => {
             draw_transcript(frame, ui, view, body);
             let lines: Vec<Line> = (queue_rows.iter())

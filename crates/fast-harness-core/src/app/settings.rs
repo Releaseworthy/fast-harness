@@ -28,6 +28,8 @@ pub struct Settings {
     pub hooks: Hooks,
     /// `keys.json` of the same folders (D45).
     pub keys: crate::keys::Keys,
+    /// `panels/*.json` of the same folders (D46); no process starts here.
+    pub panels: Vec<crate::panels::PanelFile>,
 }
 
 /// Every layer for `cwd` (the user layer only without one), then the
@@ -56,12 +58,16 @@ pub fn load_settings(
     let (keys, skipped) = crate::keys::load(&layered.layers);
     layered.report.loaded.extend(keys.files.iter().cloned());
     layered.report.skipped.extend(skipped);
+    let (panels, loaded, skipped) = crate::panels::load(&layered.layers);
+    layered.report.loaded.extend(loaded);
+    layered.report.skipped.extend(skipped);
     Ok(Settings {
         layered,
         providers,
         index,
         hooks,
         keys,
+        panels,
     })
 }
 
@@ -158,7 +164,9 @@ impl Runtime {
             index,
             hooks,
             keys,
+            panels,
         } = settings;
+        self.panels = panels;
         let extensions = Extensions::new(index).with_hooks(hooks);
         // A tool file's `outputBytes` unless `toolOutput` names the tool.
         for (name, bytes) in extensions.output_bytes() {

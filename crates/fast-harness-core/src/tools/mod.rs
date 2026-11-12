@@ -16,7 +16,7 @@ pub use ext::Extensions;
 
 mod args;
 pub mod budget;
-mod command;
+pub(crate) mod command;
 mod edit;
 pub mod ext;
 pub mod find;

@@ -1,0 +1,109 @@
+// Panels (PLAN.md D46, docs/panels.md): the rows of a panel process's view
+// tree drawn with the theme's roles. Size budget (150 KB of exe for all of
+// 21A): every repeated or conditional element and every component is a
+// generated sub-component of tens of KB and every binding costs code, so
+// there is one `for` (in main.slint) over this one row component with no
+// `if`, no std widget, and the text, look and actions decided in Rust
+// (src/panels.rs).
+import { Theme } from "parts.slint";
+
+// One widget as drawn. `look`: 0 text, 1 framed control (button, select),
+// 2 input, 3 progress, 4 note (warning colour and a "!" mark), 5 bold
+// (a table header). `text` is the final text with its marks ("[x] ", "• ",
+// "! ", the percent); `click` makes the row clickable.
+export struct PanelRow {
+    depth: int,
+    look: int,
+    text: string,
+    value: string,
+    hint: string,
+    click: bool,
+    progress: float,
+}
+
+export global PanelUi {
+    // The open panel: tab and sidebar panels both show on the "panel" page.
+    in property <string> id;
+    in property <string> title;
+    in property <string> icon;
+    in property <[PanelRow]> rows;
+    // A notify text, or why the process ended (with "!" when `ended`).
+    in property <string> status;
+    in property <bool> ended;
+    // A click on row `index`; Rust sends click or change.
+    callback activate(int);
+    // Enter in the input of row `index`.
+    callback submit(int, string);
+}
+
+export component PanelLine inherits Rectangle {
+    in property <PanelRow> item;
+    in property <int> index;
+    property <int> look: root.item.look;
+    property <bool> boxed: look == 1 || look == 2;
+    property <length> indent: root.item.depth * Theme.space-l;
+    height: (root.boxed || look == 3 ? 30px : body.preferred-height) + Theme.space-s;
+    accessible-role: text;
+    accessible-label: root.item.text;
+    frame := Rectangle {
+        visible: root.boxed;
+        x: root.indent;
+        y: 0;
+        height: 30px;
+        width: look == 2 ? parent.width - root.indent : min(parent.width - root.indent, body.preferred-width + 2 * Theme.space-m);
+        border-radius: Theme.radius-m;
+        border-width: 1px;
+        border-color: field.has-focus ? Theme.accent : Theme.border;
+        background: ta.has-hover ? Theme.hover : Theme.raised;
+    }
+    Rectangle {
+        visible: look == 3;
+        x: root.indent;
+        y: 24px;
+        height: 6px;
+        width: parent.width - root.indent;
+        background: Theme.raised;
+        Rectangle { x: 0; width: parent.width * root.item.progress; background: Theme.accent; }
+    }
+    body := Text {
+        visible: look != 2;
+        x: root.indent + (look == 1 ? Theme.space-m : 0px);
+        y: look == 1 ? (30px - self.height) / 2 : 0px;
+        width: look == 1 ? frame.width - 2 * Theme.space-m : parent.width - root.indent;
+        text: root.item.text;
+        color: look == 4 ? Theme.warning : Theme.text;
+        font-size: Theme.font-s;
+        font-weight: look == 5 ? 700 : 400;
+        wrap: look == 1 ? no-wrap : word-wrap;
+    }
+    field := TextInput {
+        visible: look == 2;
+        x: root.indent + Theme.space-s;
+        y: 0;
+        height: 30px;
+        width: parent.width - root.indent - 2 * Theme.space-s;
+        text: root.item.value;
+        single-line: true;
+        vertical-alignment: center;
+        color: Theme.text;
+        font-size: Theme.font-s;
+        selection-background-color: Theme.selection;
+        selection-foreground-color: Theme.text;
+        accessible-label: root.item.hint;
+        accepted => { PanelUi.submit(root.index, self.text); }
+    }
+    Text {
+        visible: look == 2 && field.text == "";
+        x: root.indent + Theme.space-s;
+        height: 30px;
+        vertical-alignment: center;
+        text: root.item.hint;
+        color: Theme.dim;
+        font-size: Theme.font-s;
+    }
+    ta := TouchArea {
+        visible: root.item.click;
+        mouse-cursor: pointer;
+        clicked => { PanelUi.activate(root.index); }
+    }
+}

@@ -11,6 +11,8 @@ import { SettingsPage, AboutPage } from "pages.slint";
 export { PromptUi } from "prompt_settings.slint";
 export { AppearanceUi, ThemeCard } from "appearance.slint";
 export { ConfigUi, ConfigRow } from "config_settings.slint";
+import { PanelLine, PanelUi } from "panel_view.slint";
+export { PanelUi, PanelRow } from "panel_view.slint";
 import { TracePage } from "trace.slint";
 export { TraceProbe } from "trace.slint";
 import { TitleBar } from "titlebar.slint";
@@ -388,6 +390,34 @@ export component MainWindow inherits Window {
                             effort-picked(i) => { root.effort-picked(i); }
                             pickers-opened => { root.pickers-opened(); }
                             refreshing: root.models-refreshing;
+                        }
+                        // The one panel view (PLAN.md D46): Settings > Configuration
+                        // or /panel opens it; the status line says "process ended"
+                        // with a "!" mark when the process died.
+                        Rectangle {
+                            visible: root.page == "panel";
+                            panel-scroll := Flickable {
+                                x: Theme.space-l;
+                                y: Theme.space-m;
+                                width: parent.width - 2 * Theme.space-l;
+                                height: parent.height - Theme.space-m - panel-note.height;
+                                content-height: panel-column.preferred-height;
+                                panel-column := VerticalLayout {
+                                    width: parent.width;
+                                    alignment: start;
+                                    for row[i] in PanelUi.rows: PanelLine { item: row; index: i; }
+                                }
+                            }
+                            panel-note := Text {
+                                x: Theme.space-l;
+                                y: parent.height - self.height - Theme.space-s;
+                                width: parent.width - 2 * Theme.space-l;
+                                height: PanelUi.status == "" ? 0px : self.preferred-height;
+                                text: (PanelUi.ended ? "! " : "") + PanelUi.status;
+                                color: PanelUi.ended ? Theme.warning : Theme.dim;
+                                font-size: Theme.font-xs;
+                                wrap: word-wrap;
+                            }
                         }
                         if root.page == "about": AboutPage {
                             width: parent.width;

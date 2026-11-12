@@ -32,6 +32,8 @@ pub struct App {
     pub models_fetching: bool,
     /// The sidebar's workspaces.
     pub side: crate::workspaces::Side,
+    /// The panels of `panels/*.json` (PLAN.md D46); a process starts on open.
+    pub panels: fast_harness_core::panels::Panels,
 }
 
 thread_local! {
@@ -72,6 +74,7 @@ impl App {
         }
         App {
             ui: ui.as_weak(),
+            panels: fast_harness_core::panels::Panels::new(&rt.panels),
             rt,
             runs: Runs::new(cwd.clone()),
             cwd,

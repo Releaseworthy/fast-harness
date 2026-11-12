@@ -49,6 +49,8 @@ pub struct Runtime {
     pub extensions: Arc<Extensions>,
     /// The TUI and GUI key bindings of `keys.json` (PLAN.md D45).
     pub keys: Arc<crate::keys::Keys>,
+    /// The `panels/*.json` files (PLAN.md D46): indexed only, no process.
+    pub panels: Vec<crate::panels::PanelFile>,
     /// Notes handed out once with the next agent (an untrusted project).
     notes: Mutex<Vec<String>>,
 }
@@ -98,6 +100,7 @@ impl Runtime {
             custom: Vec::new(),
             extensions: Arc::default(),
             keys: Arc::default(),
+            panels: Vec::new(),
             notes: Mutex::default(),
         };
         runtime.apply(loaded);
