@@ -93,18 +93,8 @@ fn notes_and_footers() {
         step: 3,
         model: "claude-opus-5-5".into(),
         account: "a@b.c".into(),
-        usage: Usage {
-            input: 1200,
-            output: 300,
-            cache_read: 10_000,
-            cache_write: 0,
-            cache_write_1h: 0,
-        },
-        timing: Timing {
-            ttfb_ms: 850,
-            total_ms: 3240,
-            ..Timing::default()
-        },
+        usage: Usage::new(1200, 300, 10_000, 0),
+        timing: Timing::new(850, 0, 3240),
         stop: StopReason::End,
     };
     let row = msg_row(&footer);

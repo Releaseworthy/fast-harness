@@ -8,6 +8,7 @@ use crate::events::AgentEvent;
 
 /// One line from the panel process.
 #[derive(Clone, Debug, PartialEq)]
+#[non_exhaustive]
 pub enum Incoming {
     /// `{"type":"view","root":<node>}`: the whole tree.
     View(Value),

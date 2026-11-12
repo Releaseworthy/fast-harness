@@ -52,6 +52,41 @@ fn bad_lists_name_the_line_or_plugin() {
 }
 
 #[test]
+fn api_key_is_checked_against_the_supported_version() {
+    let entry = |api: &str| format!("[[plugin]]\nname = \"x\"\npath = \"p\"\n{api}");
+    assert_eq!(parse(&entry("")).unwrap()[0].api, None);
+    assert_eq!(parse(&entry("api = 1")).unwrap()[0].api, Some(1));
+    assert_eq!(
+        parse(&entry("api = \"1\" # quoted")).unwrap()[0].api,
+        Some(1)
+    );
+    let err = parse(&entry("api = 2")).unwrap_err();
+    assert!(
+        err.contains("plugin `x` targets plugin API 2") && err.contains("supports API 1"),
+        "{err}"
+    );
+    assert!(parse(&entry("api = one"))
+        .unwrap_err()
+        .contains("whole number"));
+}
+
+/// The plugin API number has three copies: the core's, `gen::API` (the
+/// build script cannot use the core) and `scripts/apply-plugins.ts`.
+#[test]
+fn api_version_copies_agree() {
+    assert_eq!(super::gen::API, fast_harness_core::ext::API_VERSION);
+    let script = include_str!("../../../scripts/apply-plugins.ts");
+    let line = format!(
+        "const API_VERSION = {};",
+        fast_harness_core::ext::API_VERSION
+    );
+    assert!(
+        script.contains(&line),
+        "scripts/apply-plugins.ts lacks `{line}`"
+    );
+}
+
+#[test]
 fn deps_between_markers_must_match_the_list() {
     let plugins = parse("[[plugin]]\nname = \"one\"\npath = \"p\"\n").unwrap();
     let with = "[dependencies]\n# BEGIN PLUGINS\none = { path = \"../../p\" }\n# END PLUGINS\n";

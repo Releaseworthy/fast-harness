@@ -6,6 +6,7 @@ use crate::llm::Timing;
 use crate::types::{StopReason, Usage};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum TurnOutcome {
     /// The model finished its answer.
     Done,
@@ -24,6 +25,7 @@ pub enum TurnOutcome {
 }
 
 #[derive(Clone, Debug, PartialEq)]
+#[non_exhaustive]
 pub enum AgentEvent {
     /// A steer or follow-up text the turn took from its inbox (the first
     /// text of `run_turn` is the caller's and has no event).

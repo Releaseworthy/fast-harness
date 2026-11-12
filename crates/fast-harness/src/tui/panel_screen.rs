@@ -231,11 +231,7 @@ impl Tui {
         let wake: panels::Wake = Arc::new(move || {
             let _ = tx.send(Msg::Panel);
         });
-        let host = Host {
-            cwd: &self.cwd,
-            session: &self.session,
-            dark: self.ui.theme.dark,
-        };
+        let host = Host::new(&self.cwd, &self.session, self.ui.theme.dark);
         if let Some(panel) = self.panels.get_mut(id) {
             panel.open(host, wake);
             let mut screen = PanelScreen {

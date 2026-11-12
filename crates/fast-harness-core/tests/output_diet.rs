@@ -24,11 +24,7 @@ struct Big;
 
 impl Tool for Big {
     fn spec(&self) -> ToolSpec {
-        ToolSpec {
-            name: "big".into(),
-            description: "Big output".into(),
-            schema: json!({"type": "object"}),
-        }
+        ToolSpec::new("big", "Big output", json!({"type": "object"}))
     }
 
     fn run(&self, args: &Value, _ctx: &ToolCtx<'_>) -> ToolOutput {
@@ -45,10 +41,7 @@ fn lines(count: usize) -> String {
 /// Runs a built-in tool outside a session with `budget`.
 fn run_tool(cwd: &Path, name: &str, args: Value, budget: usize) -> ToolOutput {
     let cancel = AtomicBool::new(false);
-    let ctx = ToolCtx {
-        budget,
-        ..ToolCtx::new(cwd, &cancel)
-    };
+    let ctx = ToolCtx::new(cwd, &cancel).with_budget(budget);
     builtin().run(name, &args.to_string(), &ctx)
 }
 
@@ -58,11 +51,9 @@ fn session_ctx<'a>(
     session: &'a ToolSession,
     call_id: &'a str,
 ) -> ToolCtx<'a> {
-    ToolCtx {
-        call_id,
-        session: Some(session),
-        ..ToolCtx::new(cwd, cancel)
-    }
+    ToolCtx::new(cwd, cancel)
+        .with_call_id(call_id)
+        .with_session(session)
 }
 
 #[test]
@@ -232,11 +223,7 @@ fn budgets_come_from_config_with_a_per_tool_override() {
 
 #[test]
 fn find_tools_takes_a_limit() {
-    let spec = |name: &str| ToolSpec {
-        name: name.into(),
-        description: "d".into(),
-        schema: json!({}),
-    };
+    let spec = |name: &str| ToolSpec::new(name, "d", json!({}));
     let others: Vec<ToolSpec> = ["alpha", "beta", "gamma"].iter().map(|n| spec(n)).collect();
     let names = json!(["alpha", "beta", "gamma"]);
     let out = find::run(&json!({"names": names, "limit": 2}), &others);

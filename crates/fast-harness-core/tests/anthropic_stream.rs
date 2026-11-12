@@ -68,17 +68,7 @@ fn call(
     let transport = ScriptedTransport::new(vec![response]);
     let cancel = AtomicBool::new(false);
     let messages = [Message::user("hi")];
-    let req = ChatRequest {
-        model: "claude-opus-4-7",
-        system: "sys",
-        messages: &messages,
-        tools,
-        max_tokens: 1000,
-        effort: None,
-        cache: Default::default(),
-        session: "",
-        cancel: &cancel,
-    };
+    let req = ChatRequest::new("claude-opus-4-7", "sys", &messages, tools, 1000, &cancel);
     let mut seen = Vec::new();
     let result = Anthropic::default().stream(&transport, auth, &req, &mut |d| {
         use fast_harness_core::llm::Delta;
@@ -87,6 +77,7 @@ fn call(
             Delta::Thinking(t) => Seen::Thinking(t.into()),
             Delta::ToolStart { index, id, name } => Seen::ToolStart(index, id.into(), name.into()),
             Delta::ToolArgs { index, chunk } => Seen::ToolArgs(index, chunk.into()),
+            _ => return,
         });
         if cancel_after.is_some_and(|n| seen.len() >= n) {
             cancel.store(true, Ordering::Relaxed);
@@ -126,13 +117,7 @@ fn text_only_stream() {
             out.seen,
             vec![Seen::Text("Hel".into()), Seen::Text("lo é😀".into())]
         );
-        let usage = Usage {
-            input: 25,
-            output: 15,
-            cache_read: 100,
-            cache_write: 20,
-            cache_write_1h: 0,
-        };
+        let usage = Usage::new(25, 15, 100, 20);
         assert_eq!(done.usage, usage);
         assert_eq!(done.stop, StopReason::End);
         assert_eq!(done.timing.bytes, body.len() as u64);
@@ -240,16 +225,8 @@ fn expected_tool_blocks() -> Vec<Block> {
 #[test]
 fn thinking_signature_and_tool_use_with_oauth_names() {
     let tools = [
-        ToolSpec {
-            name: "read".into(),
-            description: "r".into(),
-            schema: json!({}),
-        },
-        ToolSpec {
-            name: "shell".into(),
-            description: "s".into(),
-            schema: json!({}),
-        },
+        ToolSpec::new("read", "r", json!({})),
+        ToolSpec::new("shell", "s", json!({})),
     ];
     let body = tool_stream();
     for chunk in CHUNKS {
@@ -428,17 +405,7 @@ fn cancel_stops_the_stream() {
 fn transport_failure_is_network() {
     let transport = ScriptedTransport::new(vec![]);
     let cancel = AtomicBool::new(false);
-    let req = ChatRequest {
-        model: "claude-opus-4-7",
-        system: "",
-        messages: &[],
-        tools: &[],
-        max_tokens: 10,
-        effort: None,
-        cache: Default::default(),
-        session: "",
-        cancel: &cancel,
-    };
+    let req = ChatRequest::new("claude-opus-4-7", "", &[], &[], 10, &cancel);
     let err = Anthropic::default()
         .stream(&transport, &key(), &req, &mut |_| {})
         .unwrap_err();

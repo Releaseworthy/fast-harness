@@ -22,6 +22,7 @@ use crate::types::{Message, StopReason, Usage};
 /// Credential for one call. Passed per call: the account layer may switch
 /// accounts between two steps, or between two attempts of one step.
 #[derive(Clone, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum Auth {
     /// Sent as `x-api-key`.
     ApiKey(String),
@@ -40,6 +41,7 @@ impl fmt::Debug for Auth {
 }
 
 #[derive(Clone, Debug, PartialEq)]
+#[non_exhaustive]
 pub struct ToolSpec {
     pub name: String,
     pub description: String,
@@ -47,6 +49,17 @@ pub struct ToolSpec {
     pub schema: Value,
 }
 
+impl ToolSpec {
+    pub fn new(name: impl Into<String>, description: impl Into<String>, schema: Value) -> ToolSpec {
+        ToolSpec {
+            name: name.into(),
+            description: description.into(),
+            schema,
+        }
+    }
+}
+
+#[non_exhaustive]
 pub struct ChatRequest<'a> {
     pub model: &'a str,
     pub system: &'a str,
@@ -67,13 +80,63 @@ pub struct ChatRequest<'a> {
     pub cancel: &'a AtomicBool,
 }
 
+impl<'a> ChatRequest<'a> {
+    /// A request with the model's default effort, 5 minute cache
+    /// breakpoints and the provider's own session id.
+    pub fn new(
+        model: &'a str,
+        system: &'a str,
+        messages: &'a [Message],
+        tools: &'a [ToolSpec],
+        max_tokens: u32,
+        cancel: &'a AtomicBool,
+    ) -> ChatRequest<'a> {
+        ChatRequest {
+            model,
+            system,
+            messages,
+            tools,
+            max_tokens,
+            effort: None,
+            cache: Cache::default(),
+            session: "",
+            cancel,
+        }
+    }
+
+    pub fn with_effort(mut self, effort: Option<&'a str>) -> ChatRequest<'a> {
+        self.effort = effort;
+        self
+    }
+
+    pub fn with_cache(mut self, cache: Cache) -> ChatRequest<'a> {
+        self.cache = cache;
+        self
+    }
+
+    pub fn with_session(mut self, session: &'a str) -> ChatRequest<'a> {
+        self.session = session;
+        self
+    }
+}
+
 /// Prompt cache lifetimes (PLAN.md D36): `true` asks for 1 hour, `false` for
 /// 5 minutes. The tools and system breakpoints share `system_1h`; a 1 hour
 /// breakpoint must come before 5 minute ones, so `messages_1h` implies it.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[non_exhaustive]
 pub struct Cache {
     pub system_1h: bool,
     pub messages_1h: bool,
+}
+
+impl Cache {
+    pub fn new(system_1h: bool, messages_1h: bool) -> Cache {
+        Cache {
+            system_1h,
+            messages_1h,
+        }
+    }
 }
 
 /// The first and last line of the memory index block (PLAN.md D50).
@@ -94,6 +157,7 @@ pub fn split_memory(system: &str) -> (&str, Option<&str>) {
 
 /// Incremental output, delivered on the calling thread in arrival order.
 #[derive(Clone, Copy, Debug, PartialEq)]
+#[non_exhaustive]
 pub enum Delta<'a> {
     Text(&'a str),
     Thinking(&'a str),
@@ -114,6 +178,7 @@ pub enum Delta<'a> {
 /// moment the request was handed to the transport.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
+#[non_exhaustive]
 pub struct Timing {
     /// Until the first response body byte.
     #[serde(rename = "ttfbMs")]
@@ -129,7 +194,21 @@ pub struct Timing {
     pub bytes: u64,
 }
 
+impl Timing {
+    /// The three times in milliseconds; `chunks` and `bytes` are 0.
+    pub fn new(ttfb_ms: u64, first_token_ms: u64, total_ms: u64) -> Timing {
+        Timing {
+            ttfb_ms,
+            first_token_ms,
+            total_ms,
+            chunks: 0,
+            bytes: 0,
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq)]
+#[non_exhaustive]
 pub struct Completion {
     pub message: Message,
     pub usage: Usage,
@@ -142,7 +221,23 @@ pub struct Completion {
     pub transformations: Option<Value>,
 }
 
+impl Completion {
+    /// A completion with zero timing, an empty head (status 0) and no
+    /// transformations; set those fields afterwards when known.
+    pub fn new(message: Message, usage: Usage, stop: StopReason) -> Completion {
+        Completion {
+            message,
+            usage,
+            stop,
+            timing: Timing::default(),
+            head: HttpHead::default(),
+            transformations: None,
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[non_exhaustive]
 pub enum ErrorKind {
     /// 401 or 403: the credential is wrong, expired or not allowed.
     Auth,
@@ -165,6 +260,7 @@ pub enum ErrorKind {
 }
 
 #[derive(Clone, Debug, PartialEq)]
+#[non_exhaustive]
 pub struct LlmError {
     pub kind: ErrorKind,
     pub status: Option<u16>,
@@ -180,6 +276,16 @@ impl LlmError {
             message: message.into(),
             head: None,
         }
+    }
+
+    pub fn with_status(mut self, status: u16) -> LlmError {
+        self.status = Some(status);
+        self
+    }
+
+    pub fn with_head(mut self, head: HttpHead) -> LlmError {
+        self.head = Some(head);
+        self
     }
 
     /// True when sending the same request again with the same credential can succeed.

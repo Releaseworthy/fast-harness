@@ -8,13 +8,7 @@ use fast_harness_core::types::{StopReason, Usage};
 use serde_json::{json, Value};
 
 fn usage() -> Usage {
-    Usage {
-        input: 10,
-        output: 5,
-        cache_read: 2,
-        cache_write: 1,
-        cache_write_1h: 0,
-    }
+    Usage::new(10, 5, 2, 1)
 }
 
 fn every_event() -> Vec<AgentEvent> {

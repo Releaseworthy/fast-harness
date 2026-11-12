@@ -25,15 +25,10 @@ fn call(id: &str) -> Block {
 }
 
 fn result_message(id: &str) -> Message {
-    Message {
-        role: Role::Tool,
-        content: vec![Block::ToolResult {
-            call_id: id.into(),
-            content: format!("result {id}"),
-            is_error: false,
-        }],
-        model: None,
-    }
+    Message::new(
+        Role::Tool,
+        vec![Block::tool_result(id, format!("result {id}"), false)],
+    )
 }
 
 /// A log whose turn crashed after two of three tool results.
@@ -43,11 +38,10 @@ fn write_crashed_log(env: &Env, id: &str) {
     let mut writer = TraceWriter::create(&path, &header).unwrap();
     writer.turn_start(1).unwrap();
     writer.user_message(1, &Message::user("go")).unwrap();
-    let assistant = Message {
-        role: Role::Assistant,
-        content: vec![call("toolu_1"), call("toolu_2"), call("toolu_3")],
-        model: None,
-    };
+    let assistant = Message::new(
+        Role::Assistant,
+        vec![call("toolu_1"), call("toolu_2"), call("toolu_3")],
+    );
     let usage = Usage::default();
     let timing = Timing::default();
     writer

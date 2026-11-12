@@ -5,16 +5,14 @@ use fast_harness_core::view::{Item, NoteKind, State, Transcript};
 use serde_json::json;
 
 fn assistant() -> Message {
-    Message {
-        role: Role::Assistant,
-        content: vec![
+    Message::new(
+        Role::Assistant,
+        vec![
             Block::Thinking {
                 text: "hmm".into(),
                 signature: Some("sig".into()),
             },
-            Block::Text {
-                text: "Look".into(),
-            },
+            Block::text("Look"),
             Block::ToolCall {
                 id: "c1".into(),
                 name: "glob".into(),
@@ -22,30 +20,15 @@ fn assistant() -> Message {
                 signature: None,
             },
         ],
-        model: None,
-    }
+    )
 }
 
 fn results() -> Message {
-    Message {
-        role: Role::Tool,
-        content: vec![Block::ToolResult {
-            call_id: "c1".into(),
-            content: "a.rs".into(),
-            is_error: false,
-        }],
-        model: None,
-    }
+    Message::new(Role::Tool, vec![Block::tool_result("c1", "a.rs", false)])
 }
 
 fn final_answer() -> Message {
-    Message {
-        role: Role::Assistant,
-        content: vec![Block::Text {
-            text: "Done".into(),
-        }],
-        model: None,
-    }
+    Message::assistant("Done")
 }
 
 fn items(duration_ms: Option<u64>) -> Vec<Item> {
@@ -95,13 +78,7 @@ fn event(seq: u64, kind: &str, data: serde_json::Value) -> TraceEvent {
 }
 
 fn usage() -> Usage {
-    Usage {
-        input: 4,
-        output: 9,
-        cache_read: 100,
-        cache_write: 20,
-        cache_write_1h: 0,
-    }
+    Usage::new(4, 9, 100, 20)
 }
 
 fn log() -> Vec<TraceEvent> {
@@ -171,12 +148,10 @@ fn footer(step: u32, stop: StopReason) -> Item {
         model: "m1".into(),
         account: "a2".into(),
         usage: usage(),
-        timing: Timing {
-            ttfb_ms: 5,
-            first_token_ms: 6,
-            total_ms: 70,
-            chunks: 3,
-            bytes: 99,
+        timing: {
+            let mut timing = Timing::new(5, 6, 70);
+            (timing.chunks, timing.bytes) = (3, 99);
+            timing
         },
         stop,
     }

@@ -30,13 +30,7 @@ struct Probe {
 
 impl Tool for Probe {
     fn spec(&self) -> ToolSpec {
-        let schema = json!({"type": "object"});
-        let description = "probe".to_string();
-        ToolSpec {
-            name: self.name.into(),
-            description,
-            schema,
-        }
+        ToolSpec::new(self.name, "probe", json!({"type": "object"}))
     }
 
     fn effect(&self) -> Effect {

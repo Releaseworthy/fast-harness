@@ -37,13 +37,8 @@ fn send(capture: &WireCapture<'_>, body: &[u8]) -> (u16, Vec<u8>) {
         ("cookie", SECRET),
         ("anthropic-version", "2023-06-01"),
     ];
-    let req = HttpRequest {
-        method: "POST",
-        url: "https://api.anthropic.com/v1/messages",
-        headers: &headers,
-        body,
-        timeout_ms: 0,
-    };
+    let url = "https://api.anthropic.com/v1/messages";
+    let req = HttpRequest::new("POST", url, &headers, body);
     let mut seen = Vec::new();
     let head = capture
         .send(&req, &mut |_, chunk| {
@@ -133,13 +128,7 @@ fn transport_errors_pass_through() {
     let tmp = TempDir::new("wire-err");
     let inner = ScriptedTransport::new(Vec::new());
     let capture = WireCapture::new(&inner, &tmp.0, "t1-s1-a2");
-    let req = HttpRequest {
-        method: "GET",
-        url: "http://x",
-        headers: &[],
-        body: b"",
-        timeout_ms: 0,
-    };
+    let req = HttpRequest::new("GET", "http://x", &[], b"");
     assert!(capture.send(&req, &mut |_, _| Flow::Continue).is_err());
     assert!(tmp.0.join("t1-s1-a2.request.json").is_file());
     assert!(!tmp.0.join("t1-s1-a2.head.json").exists());

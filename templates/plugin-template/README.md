@@ -24,6 +24,8 @@ Most extensions need no build at all: tools, providers, hooks, panels, themes an
 
 `fast_harness_core::ext_api!(1)` and the `ext::v1` path state the plugin API version your code targets. A Fast Harness with another major version fails to compile your plugin with a clear message instead of misbehaving at run time.
 
+The plugin API is unstable for every 0.x release of Fast Harness (its `docs/plugins.md`, "Stability"): pin the Fast Harness revision you build against. The `v1` types are `#[non_exhaustive]`, so later fields and variants do not break your code as long as you build structs with their constructors (`ToolSpec::new(name, description, schema)`, `Answer::default().with_output(text)`, `ProviderFile::new(models)`), never with struct literals, and give every `match` on a `v1` enum a `_` arm. A plugin list entry may say `api = 1`; a build that supports another version stops with a message.
+
 ## Safety
 
 A native plugin runs inside the Fast Harness process with your user account's rights: it can read and write your files and reach the network like any program you run. Build only plugins whose source you have read. The workflow builds only what your repository lists, and a `git` plugin must be pinned by `rev`.

@@ -133,11 +133,7 @@ pub struct Echo;
 
 impl Tool for Echo {
     fn spec(&self) -> ToolSpec {
-        ToolSpec {
-            name: "echo".into(),
-            description: "Echo text".into(),
-            schema: json!({"type": "object"}),
-        }
+        ToolSpec::new("echo", "Echo text", json!({"type": "object"}))
     }
 
     /// Read: the agent tests run several echo calls of one step at once.

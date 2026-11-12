@@ -12,11 +12,7 @@ use fast_harness_core::trace::SessionHeader;
 use fast_harness_core::types::{Block, Message, Role, StopReason, Usage};
 
 fn assistant(content: Vec<Block>) -> Message {
-    Message {
-        role: Role::Assistant,
-        content,
-        model: Some("claude-opus-4-5".into()),
-    }
+    Message::new(Role::Assistant, content).with_model("claude-opus-4-5")
 }
 
 fn tool_step(log: &mut TraceWriter, turn: u32, output: &str) -> std::io::Result<()> {
@@ -45,15 +41,10 @@ fn tool_step(log: &mut TraceWriter, turn: u32, output: &str) -> std::io::Result<
         "bash",
         r#"{"command":"cat big.txt"}"#,
     )?;
-    let result = Message {
-        role: Role::Tool,
-        content: vec![Block::ToolResult {
-            call_id: format!("c{turn}"),
-            content: output.into(),
-            is_error: false,
-        }],
-        model: None,
-    };
+    let result = Message::new(
+        Role::Tool,
+        vec![Block::tool_result(format!("c{turn}"), output, false)],
+    );
     log.tool_result(turn, 1, &result, 5)?;
     log.step_end(turn, 1, 5)?;
     Ok(())

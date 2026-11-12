@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
+#[non_exhaustive]
 pub enum Role {
     User,
     Assistant,
@@ -18,6 +19,7 @@ pub enum Role {
     rename_all = "snake_case",
     rename_all_fields = "camelCase"
 )]
+#[non_exhaustive]
 pub enum Block {
     Text {
         text: String,
@@ -50,7 +52,28 @@ pub enum Block {
     },
 }
 
+impl Block {
+    /// A text block.
+    pub fn text(text: impl Into<String>) -> Block {
+        Block::Text { text: text.into() }
+    }
+
+    /// A tool result block.
+    pub fn tool_result(
+        call_id: impl Into<String>,
+        content: impl Into<String>,
+        is_error: bool,
+    ) -> Block {
+        Block::ToolResult {
+            call_id: call_id.into(),
+            content: content.into(),
+            is_error,
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[non_exhaustive]
 pub struct Message {
     pub role: Role,
     pub content: Vec<Block>,
@@ -62,12 +85,28 @@ pub struct Message {
 }
 
 impl Message {
-    pub fn user(text: impl Into<String>) -> Message {
+    /// A message without a model id (set it with [`Message::with_model`]).
+    pub fn new(role: Role, content: Vec<Block>) -> Message {
         Message {
-            role: Role::User,
-            content: vec![Block::Text { text: text.into() }],
+            role,
+            content,
             model: None,
         }
+    }
+
+    pub fn user(text: impl Into<String>) -> Message {
+        Message::new(Role::User, vec![Block::text(text)])
+    }
+
+    /// An assistant message of one text block.
+    pub fn assistant(text: impl Into<String>) -> Message {
+        Message::new(Role::Assistant, vec![Block::text(text)])
+    }
+
+    /// The model id that produced this (assistant) message.
+    pub fn with_model(mut self, model: impl Into<String>) -> Message {
+        self.model = Some(model.into());
+        self
     }
 
     /// All text blocks joined, without reasoning or tool blocks.
@@ -101,6 +140,7 @@ impl Message {
 /// `usage.cache_creation.ephemeral_1h_input_tokens`; 0 for other providers).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
+#[non_exhaustive]
 pub struct Usage {
     #[serde(rename = "inputTokens")]
     pub input: u64,
@@ -119,6 +159,23 @@ fn is_zero(value: &u64) -> bool {
 }
 
 impl Usage {
+    /// The four disjoint counts; `cache_write_1h` is 0.
+    pub fn new(input: u64, output: u64, cache_read: u64, cache_write: u64) -> Usage {
+        Usage {
+            input,
+            output,
+            cache_read,
+            cache_write,
+            cache_write_1h: 0,
+        }
+    }
+
+    /// The part of `cache_write` written with the 1 hour lifetime.
+    pub fn with_cache_write_1h(mut self, tokens: u64) -> Usage {
+        self.cache_write_1h = tokens;
+        self
+    }
+
     pub fn add(&mut self, other: &Usage) {
         self.input += other.input;
         self.output += other.output;
@@ -145,6 +202,7 @@ impl Usage {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+#[non_exhaustive]
 pub enum StopReason {
     /// The model finished its answer.
     End,

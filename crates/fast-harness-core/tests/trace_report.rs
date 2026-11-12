@@ -26,33 +26,15 @@ fn context<'a>(step: u32, attempt: u32, account: &'a str) -> RequestContext<'a> 
 }
 
 fn result(call_id: &str) -> Message {
-    Message {
-        role: Role::Tool,
-        content: vec![Block::ToolResult {
-            call_id: call_id.into(),
-            content: "ok".into(),
-            is_error: false,
-        }],
-        model: None,
-    }
+    Message::new(Role::Tool, vec![Block::tool_result(call_id, "ok", false)])
 }
 
 fn timing(ttfb_ms: u64, total_ms: u64) -> Timing {
-    Timing {
-        ttfb_ms,
-        total_ms,
-        ..Timing::default()
-    }
+    Timing::new(ttfb_ms, 0, total_ms)
 }
 
 fn usage(input: u64, output: u64, cache_read: u64, cache_write: u64) -> Usage {
-    Usage {
-        input,
-        output,
-        cache_read,
-        cache_write,
-        cache_write_1h: 0,
-    }
+    Usage::new(input, output, cache_read, cache_write)
 }
 
 fn write_session(path: &Path) {

@@ -33,10 +33,17 @@ pub type Wake = Arc<dyn Fn() + Send + Sync>;
 
 /// What a panel's `init` message says about the host.
 #[derive(Clone, Copy, Debug)]
+#[non_exhaustive]
 pub struct Host<'a> {
     pub cwd: &'a Path,
     pub session: &'a str,
     pub dark: bool,
+}
+
+impl<'a> Host<'a> {
+    pub fn new(cwd: &'a Path, session: &'a str, dark: bool) -> Host<'a> {
+        Host { cwd, session, dark }
+    }
 }
 
 /// One panel: its file, its process once opened and its current view.

@@ -17,6 +17,7 @@ pub const DEFAULT_EFFORT: &str = "low";
 /// One layer of settings; `None` keeps the value of the layer below.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(default, rename_all = "camelCase")]
+#[non_exhaustive]
 pub struct CompactionPatch {
     pub auto: Option<bool>,
     /// `"50%"`, `"150k"`, `"1.2m"` or a number of tokens.

@@ -17,16 +17,8 @@ fn tools() -> Vec<ToolSpec> {
     let schema = json!({"type": "object", "properties": {"path": {"type": "string"}},
         "required": ["path"], "additionalProperties": false});
     vec![
-        ToolSpec {
-            name: "read".into(),
-            description: "Read a file".into(),
-            schema,
-        },
-        ToolSpec {
-            name: "shell".into(),
-            description: "Run".into(),
-            schema: json!({}),
-        },
+        ToolSpec::new("read", "Read a file", schema),
+        ToolSpec::new("shell", "Run", json!({})),
     ]
 }
 
@@ -57,23 +49,13 @@ fn history() -> Vec<Message> {
             signature: None,
         },
     ];
-    let result = |id: &str, content: &str, is_error| Message {
-        role: Role::Tool,
-        content: vec![Block::ToolResult {
-            call_id: id.into(),
-            content: content.into(),
-            is_error,
-        }],
-        model: None,
+    let result = |id: &str, content: &str, is_error| {
+        Message::new(Role::Tool, vec![Block::tool_result(id, content, is_error)])
     };
     vec![
         Message::user("hello"),
         Message::user(" "),
-        Message {
-            role: Role::Assistant,
-            content: assistant,
-            model: None,
-        },
+        Message::new(Role::Assistant, assistant),
         result("call.1", "text of a", false),
         result("c2", "boom", true),
     ]
@@ -85,11 +67,7 @@ fn send(
     effort: Option<&str>,
     cache_long: bool,
 ) -> (RecordedRequest, Value) {
-    let cache = Cache {
-        system_1h: cache_long,
-        messages_1h: cache_long,
-    };
-    send_cache(model, auth, effort, cache)
+    send_cache(model, auth, effort, Cache::new(cache_long, cache_long))
 }
 
 fn send_cache(
@@ -101,17 +79,9 @@ fn send_cache(
     let transport = ScriptedTransport::new(vec![ScriptedResponse::new(200, DONE, 5)]);
     let cancel = AtomicBool::new(false);
     let (messages, tools) = (history(), tools());
-    let req = ChatRequest {
-        model,
-        system: "Be brief.",
-        messages: &messages,
-        tools: &tools,
-        max_tokens: 4096,
-        effort,
-        cache,
-        session: "",
-        cancel: &cancel,
-    };
+    let req = ChatRequest::new(model, "Be brief.", &messages, &tools, 4096, &cancel)
+        .with_effort(effort)
+        .with_cache(cache);
     Anthropic::new("https://example.test/")
         .stream(&transport, auth, &req, &mut |_| {})
         .unwrap();
@@ -341,9 +311,9 @@ fn live_models_list() {
 }
 
 fn signed_turn(model: &str, call_id: &str) -> Vec<Message> {
-    let assistant = Message {
-        role: Role::Assistant,
-        content: vec![
+    let assistant = Message::new(
+        Role::Assistant,
+        vec![
             Block::Thinking {
                 text: "plan".into(),
                 signature: Some(format!("sig-{call_id}")),
@@ -355,17 +325,9 @@ fn signed_turn(model: &str, call_id: &str) -> Vec<Message> {
                 signature: Some("gemini-sig".into()),
             },
         ],
-        model: Some(model.into()),
-    };
-    let result = Message {
-        role: Role::Tool,
-        content: vec![Block::ToolResult {
-            call_id: call_id.into(),
-            content: "ok".into(),
-            is_error: false,
-        }],
-        model: None,
-    };
+    )
+    .with_model(model);
+    let result = Message::new(Role::Tool, vec![Block::tool_result(call_id, "ok", false)]);
     vec![assistant, result]
 }
 
@@ -378,17 +340,15 @@ fn thinking_goes_back_only_to_anthropic_models() {
     messages.push(Message::user("again"));
     let transport = ScriptedTransport::new(vec![ScriptedResponse::new(200, DONE, 5)]);
     let cancel = AtomicBool::new(false);
-    let req = ChatRequest {
-        model: "claude-opus-5-5",
-        system: "Be brief.",
-        messages: &messages,
-        tools: &tools(),
-        max_tokens: 4096,
-        effort: None,
-        cache: Default::default(),
-        session: "",
-        cancel: &cancel,
-    };
+    let tools = tools();
+    let req = ChatRequest::new(
+        "claude-opus-5-5",
+        "Be brief.",
+        &messages,
+        &tools,
+        4096,
+        &cancel,
+    );
     let auth = Auth::ApiKey("k".into());
     let provider = Anthropic::new("https://example.test/");
     provider
@@ -414,10 +374,7 @@ fn thinking_goes_back_only_to_anthropic_models() {
 /// the last message 5 minutes, so the 1 hour breakpoints come first.
 #[test]
 fn system_long_messages_short_cache() {
-    let cache = Cache {
-        system_1h: true,
-        messages_1h: false,
-    };
+    let cache = Cache::new(true, false);
     let (_, body) = send_cache("claude-opus-4-7", &Auth::ApiKey("k".into()), None, cache);
     let long = json!({"type": "ephemeral", "ttl": "1h"});
     let short = json!({"type": "ephemeral"});

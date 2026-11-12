@@ -98,34 +98,11 @@ fn emit_round_trips_and_lines_have_key_order() {
 }
 
 fn fixtures() -> (Usage, Timing, ToolSpec, Message) {
-    let usage = Usage {
-        input: 4,
-        output: 363,
-        cache_read: 0,
-        cache_write: 24114,
-        cache_write_1h: 0,
-    };
-    let timing = Timing {
-        ttfb_ms: 812,
-        first_token_ms: 1190,
-        total_ms: 5100,
-        chunks: 96,
-        bytes: 18233,
-    };
-    let tool = ToolSpec {
-        name: "read".into(),
-        description: "Read a file".into(),
-        schema: json!({"type": "object"}),
-    };
-    let result = Message {
-        role: Role::Tool,
-        content: vec![Block::ToolResult {
-            call_id: "c1".into(),
-            content: "ok".into(),
-            is_error: false,
-        }],
-        model: None,
-    };
+    let usage = Usage::new(4, 363, 0, 24114);
+    let mut timing = Timing::new(812, 1190, 5100);
+    (timing.chunks, timing.bytes) = (96, 18233);
+    let tool = ToolSpec::new("read", "Read a file", json!({"type": "object"}));
+    let result = Message::new(Role::Tool, vec![Block::tool_result("c1", "ok", false)]);
     (usage, timing, tool, result)
 }
 

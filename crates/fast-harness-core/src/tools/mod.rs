@@ -36,6 +36,7 @@ mod write;
 const SKILLS_NOTE: &str = "`names` and `query` also match the skills named in the system \
 prompt: a matched skill's instructions come back as text with its folder.";
 
+#[non_exhaustive]
 pub struct ToolCtx<'a> {
     /// Relative paths in tool arguments resolve against this directory.
     pub cwd: &'a Path,
@@ -60,9 +61,25 @@ impl<'a> ToolCtx<'a> {
             session: None,
         }
     }
+
+    pub fn with_budget(mut self, budget: usize) -> ToolCtx<'a> {
+        self.budget = budget;
+        self
+    }
+
+    pub fn with_call_id(mut self, call_id: &'a str) -> ToolCtx<'a> {
+        self.call_id = call_id;
+        self
+    }
+
+    pub fn with_session(mut self, session: &'a ToolSession) -> ToolCtx<'a> {
+        self.session = Some(session);
+        self
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
+#[non_exhaustive]
 pub struct ToolOutput {
     pub content: String,
     pub is_error: bool,

@@ -55,11 +55,7 @@ fn wake() -> Wake {
 }
 
 fn host(dir: &Path) -> Host<'_> {
-    Host {
-        cwd: dir,
-        session: "s1",
-        dark: true,
-    }
+    Host::new(dir, "s1", true)
 }
 
 /// Polls `panel` until `done` holds (10 s at most).

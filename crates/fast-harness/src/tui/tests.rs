@@ -51,18 +51,8 @@ fn sample() -> Transcript {
             step: 1,
             model: "claude-x".into(),
             account: "me@x.y".into(),
-            usage: Usage {
-                input: 1200,
-                output: 30,
-                cache_read: 7,
-                cache_write: 9,
-                cache_write_1h: 0,
-            },
-            timing: Timing {
-                ttfb_ms: 1500,
-                total_ms: 4200,
-                ..Timing::default()
-            },
+            usage: Usage::new(1200, 30, 7, 9),
+            timing: Timing::new(1500, 0, 4200),
             stop: StopReason::End,
         },
     ];

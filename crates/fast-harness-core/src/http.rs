@@ -5,6 +5,7 @@ use std::collections::VecDeque;
 use std::fmt;
 use std::sync::Mutex;
 
+#[non_exhaustive]
 pub struct HttpRequest<'a> {
     /// `GET` or `POST`.
     pub method: &'a str,
@@ -16,14 +17,42 @@ pub struct HttpRequest<'a> {
     pub timeout_ms: u32,
 }
 
+impl<'a> HttpRequest<'a> {
+    /// A request with the transport's default timeout.
+    pub fn new(
+        method: &'a str,
+        url: &'a str,
+        headers: &'a [(&'a str, &'a str)],
+        body: &'a [u8],
+    ) -> HttpRequest<'a> {
+        HttpRequest {
+            method,
+            url,
+            headers,
+            body,
+            timeout_ms: 0,
+        }
+    }
+
+    pub fn with_timeout_ms(mut self, timeout_ms: u32) -> HttpRequest<'a> {
+        self.timeout_ms = timeout_ms;
+        self
+    }
+}
+
 /// Status and response headers. Header names are lowercase.
 #[derive(Clone, Debug, Default, PartialEq)]
+#[non_exhaustive]
 pub struct HttpHead {
     pub status: u16,
     pub headers: Vec<(String, String)>,
 }
 
 impl HttpHead {
+    pub fn new(status: u16, headers: Vec<(String, String)>) -> HttpHead {
+        HttpHead { status, headers }
+    }
+
     /// First header with this lowercase name.
     pub fn header(&self, name: &str) -> Option<&str> {
         self.headers
@@ -34,6 +63,7 @@ impl HttpHead {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum HttpErrorKind {
     /// Name resolution, connect or TLS failure: nothing was sent.
     Connect,
@@ -44,9 +74,19 @@ pub enum HttpErrorKind {
 }
 
 #[derive(Clone, Debug, PartialEq)]
+#[non_exhaustive]
 pub struct HttpError {
     pub kind: HttpErrorKind,
     pub message: String,
+}
+
+impl HttpError {
+    pub fn new(kind: HttpErrorKind, message: impl Into<String>) -> HttpError {
+        HttpError {
+            kind,
+            message: message.into(),
+        }
+    }
 }
 
 impl fmt::Display for HttpError {
@@ -59,6 +99,7 @@ impl std::error::Error for HttpError {}
 
 /// Returned by the body callback to keep reading or end the transfer early.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum Flow {
     Continue,
     Stop,

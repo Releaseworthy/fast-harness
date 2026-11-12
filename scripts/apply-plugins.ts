@@ -15,12 +15,14 @@
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { isAbsolute, join, resolve } from "node:path";
 
-type Plugin = { name: string; git?: string; path?: string; rev?: string };
+type Plugin = { name: string; git?: string; path?: string; rev?: string; api?: string | number };
 
 const root = resolve(import.meta.dir, "..");
 const crateToml = join(root, "crates", "fast-harness-plugins", "Cargo.toml");
 const BEGIN = "# BEGIN PLUGINS";
 const END = "# END PLUGINS";
+// fast_harness_core::ext::API_VERSION; crates/fast-harness-plugins/src/tests.rs checks the copy.
+const API_VERSION = 1;
 
 function arg(name: string): string | undefined {
   const at = process.argv.indexOf(name);
@@ -33,12 +35,17 @@ function parseToml(text: string): Plugin[] {
     const line = raw.replace(/#[^"]*$/, "").trim();
     if (!line) return;
     if (line === "[[plugin]]") return void plugins.push({ name: "" });
-    const match = /^([a-z]+)\s*=\s*"([^"\\]*)"$/.exec(line);
+    // A quoted string, or a bare whole number (`api = 1`).
+    const match = /^([a-z]+)\s*=\s*(?:"([^"\\]*)"|([0-9]+))$/.exec(line);
     const last = plugins[plugins.length - 1];
     if (!match || !last) throw new Error(`plugins line ${index + 1}: cannot read \`${raw}\``);
-    const [, key, value] = match;
-    if (!["name", "git", "path", "rev"].includes(key)) {
-      throw new Error(`plugins line ${index + 1}: unknown key \`${key}\` (name, git, path, rev)`);
+    const [, key, quoted, bare] = match;
+    const value = quoted ?? bare;
+    if (!["name", "git", "path", "rev", "api"].includes(key)) {
+      throw new Error(`plugins line ${index + 1}: unknown key \`${key}\` (name, git, path, rev, api)`);
+    }
+    if (bare !== undefined && key !== "api") {
+      throw new Error(`plugins line ${index + 1}: \`${key}\` needs a plain quoted string`);
     }
     (last as Record<string, string>)[key] = value;
   });
@@ -52,7 +59,7 @@ function parseList(text: string): Plugin[] {
   }
   const value = JSON.parse(trimmed);
   const list = Array.isArray(value) ? value : (value.plugin ?? value.plugins ?? []);
-  return list.map((p: Plugin) => ({ name: p.name, git: p.git, path: p.path, rev: p.rev }));
+  return list.map((p: Plugin) => ({ name: p.name, git: p.git, path: p.path, rev: p.rev, api: p.api }));
 }
 
 function check(plugins: Plugin[]): void {
@@ -64,6 +71,16 @@ function check(plugins: Plugin[]): void {
     seen.add(id);
     if (!!p.git === !!p.path) throw new Error(`plugin \`${p.name}\`: set exactly one of git or path`);
     if (p.git && !p.rev) throw new Error(`plugin \`${p.name}\`: a git plugin needs rev (pinned builds)`);
+    // Absent reads as 1, like crates/fast-harness-plugins/src/gen.rs.
+    const api = p.api === undefined ? 1 : Number(p.api);
+    if (!Number.isInteger(api) || String(p.api ?? 1).trim() === "") {
+      throw new Error(`plugin \`${p.name}\`: \`api\` needs a whole number, got \`${p.api}\``);
+    }
+    if (api !== API_VERSION) {
+      throw new Error(
+        `plugin \`${p.name}\` targets plugin API ${api}, this Fast Harness supports API ${API_VERSION} (fast_harness_core::ext::API_VERSION)`,
+      );
+    }
   }
 }
 
@@ -75,6 +92,7 @@ function toToml(plugins: Plugin[]): string {
     if (p.git) lines.push(`git = ${q(p.git)}`);
     if (p.path) lines.push(`path = ${q(p.path)}`);
     if (p.rev) lines.push(`rev = ${q(p.rev)}`);
+    if (p.api !== undefined) lines.push(`api = ${Number(p.api)}`);
     return lines.join("\n");
   });
   return `# Native plugins of this build (docs/plugins.md); written by scripts/apply-plugins.ts.\n${blocks.join("\n\n")}\n`;

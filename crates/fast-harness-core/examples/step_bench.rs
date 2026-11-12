@@ -176,11 +176,7 @@ fn history(count: usize) -> Vec<Message> {
             (Role::Tool, result)
         };
         let content = vec![block];
-        messages.push(Message {
-            role,
-            content,
-            model: None,
-        });
+        messages.push(Message::new(role, content));
     }
     messages
 }
@@ -192,17 +188,14 @@ fn build_bench(count: usize) {
     let messages = history(count);
     let specs = tools::builtin().specs().to_vec();
     let cancel = AtomicBool::new(false);
-    let req = ChatRequest {
-        model: "claude-opus-5-5",
-        system: "You are a benchmark.",
-        messages: &messages,
-        tools: &specs,
-        max_tokens: 32_000,
-        effort: None,
-        cache: Default::default(),
-        session: "",
-        cancel: &cancel,
-    };
+    let req = ChatRequest::new(
+        "claude-opus-5-5",
+        "You are a benchmark.",
+        &messages,
+        &specs,
+        32_000,
+        &cancel,
+    );
     let started = Instant::now();
     let mut bytes = 0;
     for _ in 0..RUNS {

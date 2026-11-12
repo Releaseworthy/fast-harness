@@ -75,25 +75,16 @@ fn header(id: &str, created_at: u64) -> SessionHeader {
 }
 
 fn tool_turn(w: &mut TraceWriter) {
-    let call = Message {
-        role: Role::Assistant,
-        content: vec![Block::ToolCall {
+    let call = Message::new(
+        Role::Assistant,
+        vec![Block::ToolCall {
             id: "c1".into(),
             name: "read".into(),
             arguments: "{}".into(),
             signature: None,
         }],
-        model: None,
-    };
-    let result = Message {
-        role: Role::Tool,
-        content: vec![Block::ToolResult {
-            call_id: "c1".into(),
-            content: "ok".into(),
-            is_error: false,
-        }],
-        model: None,
-    };
+    );
+    let result = Message::new(Role::Tool, vec![Block::tool_result("c1", "ok", false)]);
     let (usage, timing) = (Usage::default(), Timing::default());
     w.assistant_message(1, 1, &call, &usage, StopReason::ToolUse, &timing, "a", 0)
         .unwrap();

@@ -87,13 +87,7 @@ pub fn steps() -> Vec<ModelRc<SharedString>> {
         account: "work@example.com".into(),
         ttfb_ms: 850 * step,
         total_ms: 3200 + 1000 * step,
-        usage: Usage {
-            input: 1200,
-            output: 300,
-            cache_read: 80_000,
-            cache_write: 4000,
-            cache_write_1h: 0,
-        },
+        usage: Usage::new(1200, 300, 80_000, 4000),
         tools,
         retries,
     };

@@ -90,31 +90,27 @@ fn seven_day_head(seven: f64, reset_hours: u64) -> HttpHead {
         ),
         (format!("{p}status"), "allowed".to_string()),
     ];
-    HttpHead {
-        status: 200,
-        headers,
-    }
+    HttpHead::new(200, headers)
 }
 
 fn rate_limit(head: Option<HttpHead>) -> LlmError {
-    LlmError {
-        kind: ErrorKind::RateLimit,
-        status: Some(429),
-        message: "rate limited".into(),
-        head,
+    let error = LlmError::new(ErrorKind::RateLimit, "rate limited").with_status(429);
+    match head {
+        Some(head) => error.with_head(head),
+        None => error,
     }
 }
 
 fn rejected_head(reset_in_s: u64) -> HttpHead {
     let reset = (now_unix_ms() / 1000 + reset_in_s).to_string();
     let p = "anthropic-ratelimit-unified-";
-    HttpHead {
-        status: 429,
-        headers: vec![
+    HttpHead::new(
+        429,
+        vec![
             (format!("{p}status"), "rejected".to_string()),
             (format!("{p}reset"), reset),
         ],
-    }
+    )
 }
 
 /// Leases and reports a rate limit without usage headers.

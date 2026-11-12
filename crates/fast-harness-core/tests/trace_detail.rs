@@ -37,11 +37,7 @@ fn ev(seq: u64, kind: &str, data: Value) -> TraceEvent {
 }
 
 fn spec(name: &str) -> ToolSpec {
-    ToolSpec {
-        name: name.into(),
-        description: format!("{name} tool"),
-        schema: json!({"type": "object"}),
-    }
+    ToolSpec::new(name, format!("{name} tool"), json!({"type": "object"}))
 }
 
 fn context<'a>(
@@ -63,27 +59,17 @@ fn context<'a>(
 }
 
 fn usage(input: u64, output: u64, read: u64, write: u64) -> Usage {
-    Usage {
-        input,
-        output,
-        cache_read: read,
-        cache_write: write,
-        cache_write_1h: 0,
-    }
+    Usage::new(input, output, read, write)
 }
 
 fn timing(ttfb_ms: u64, total_ms: u64) -> Timing {
-    Timing {
-        ttfb_ms,
-        total_ms,
-        ..Timing::default()
-    }
+    Timing::new(ttfb_ms, 0, total_ms)
 }
 
 fn thinking_answer() -> Message {
-    Message {
-        role: Role::Assistant,
-        content: vec![
+    Message::new(
+        Role::Assistant,
+        vec![
             Block::Thinking {
                 text: "I should read a.txt".into(),
                 signature: Some("sig".into()),
@@ -102,27 +88,17 @@ fn thinking_answer() -> Message {
                 signature: None,
             },
         ],
-        model: None,
-    }
+    )
 }
 
 fn tool_results() -> Message {
-    Message {
-        role: Role::Tool,
-        content: vec![
-            Block::ToolResult {
-                call_id: "c1".into(),
-                content: "line one".into(),
-                is_error: false,
-            },
-            Block::ToolResult {
-                call_id: "c7".into(),
-                content: "no such call".into(),
-                is_error: true,
-            },
+    Message::new(
+        Role::Tool,
+        vec![
+            Block::tool_result("c1", "line one", false),
+            Block::tool_result("c7", "no such call", true),
         ],
-        model: None,
-    }
+    )
 }
 
 fn first_step(w: &mut TraceWriter) {
@@ -170,13 +146,7 @@ fn write_turn(path: &Path) -> Vec<TraceEvent> {
     w.step_start(1, 2).unwrap();
     w.request_context(&context(2, 1, Some("high"), None))
         .unwrap();
-    let done = Message {
-        role: Role::Assistant,
-        content: vec![Block::Text {
-            text: "It says line one.".into(),
-        }],
-        model: None,
-    };
+    let done = Message::assistant("It says line one.");
     w.assistant_message(
         1,
         2,

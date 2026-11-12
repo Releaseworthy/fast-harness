@@ -29,14 +29,7 @@ mod plugin {
 
     pub fn register(ext: &mut Ext) {
         ext.add_tool(Box::new(Shout));
-        let models = vec![ModelFile {
-            id: "m1".into(),
-            ..ModelFile::default()
-        }];
-        let file = ProviderFile {
-            models,
-            ..ProviderFile::default()
-        };
+        let file = ProviderFile::new(vec![ModelFile::new("m1")]);
         ext.add_provider(Arc::new(Plug), file);
         ext.add_hook(Box::new(Checked));
         ext.add_panel(Box::new(Clicks::default()));
@@ -46,11 +39,7 @@ mod plugin {
 
     impl Tool for Shout {
         fn spec(&self) -> ToolSpec {
-            ToolSpec {
-                name: "shout".into(),
-                description: "Upper-case a text".into(),
-                schema: json!({"type": "object"}),
-            }
+            ToolSpec::new("shout", "Upper-case a text", json!({"type": "object"}))
         }
 
         fn run(&self, args: &Value, _ctx: &ToolCtx<'_>) -> ToolOutput {
@@ -90,10 +79,7 @@ mod plugin {
 
         fn run(&self, _event: HookEvent, input: &Value) -> Result<Answer, String> {
             let output = input["output"].as_str().unwrap_or("");
-            Ok(Answer {
-                output: Some(format!("{output} [checked]")),
-                ..Answer::default()
-            })
+            Ok(Answer::default().with_output(format!("{output} [checked]")))
         }
     }
 
@@ -146,6 +132,78 @@ fn api_version_is_one() {
     assert!(fast_harness_core::ext::Ext::new().is_empty());
 }
 
+/// Every constructible v1 type is built through `ext::v1` alone (PLAN.md
+/// D57): no struct literal, so a later field does not break this code.
+mod constructible {
+    use std::path::Path;
+    use std::sync::atomic::AtomicBool;
+
+    use fast_harness_core::ext::v1::*;
+    use serde_json::json;
+
+    #[test]
+    fn every_v1_type_builds_without_a_literal() {
+        let spec = ToolSpec::new("t", "a tool", json!({"type": "object"}));
+        let messages = [
+            Message::user("hi"),
+            Message::new(Role::Tool, vec![Block::tool_result("c1", "ok", false)]),
+            Message::assistant("done").with_model("p/m"),
+        ];
+        let cancel = AtomicBool::new(false);
+        let tools = [spec.clone()];
+        let req = ChatRequest::new("p/m", "system", &messages, &tools, 1000, &cancel)
+            .with_effort(Some("low"))
+            .with_cache(Cache::new(true, false))
+            .with_session("s1");
+        assert_eq!((req.max_tokens, req.session), (1000, "s1"));
+        let usage = Usage::new(1, 2, 3, 4).with_cache_write_1h(1);
+        let mut done = Completion::new(messages[2].clone(), usage, StopReason::End);
+        done.timing = Timing::new(1, 2, 3);
+        done.head = HttpHead::new(200, vec![("retry-after".into(), "1".into())]);
+        let error = LlmError::new(ErrorKind::RateLimit, "slow down")
+            .with_status(429)
+            .with_head(done.head.clone());
+        assert_eq!(error.retry_after_ms(), Some(1000));
+        let _ = HttpRequest::new("GET", "http://x", &[], b"").with_timeout_ms(5);
+        let _ = HttpError::new(HttpErrorKind::Timeout, "late");
+        let mut model = ModelFile::new("m1");
+        (model.context_window, model.price) = (Some(1000), Some(Price::new(1.0, 2.0)));
+        model.compaction = CompactionPatch::default();
+        let mut file = ProviderFile::new(vec![model]);
+        file.key_env = Some("KEY".into());
+        let answer = Answer::default()
+            .with_block("no")
+            .with_arguments(json!({}))
+            .with_output("out")
+            .with_context("ctx")
+            .with_cont("more");
+        assert_eq!(answer.cont.as_deref(), Some("more"));
+        let session = ToolSession::new(None);
+        let ctx = ToolCtx::new(Path::new("."), &cancel)
+            .with_budget(100)
+            .with_call_id("c1")
+            .with_session(&session);
+        assert_eq!((ctx.budget, ctx.call_id), (100, "c1"));
+        let _ = (
+            ToolOutput::ok("a"),
+            ToolOutput::err("b"),
+            ToolOutput::new("c", true),
+        );
+        let _ = (
+            Host::new(Path::new("."), "s1", true),
+            Place::Tab,
+            Effect::Read,
+        );
+        let _ = (Auth::ApiKey("k".into()), Delta::Text("x"), Flow::Continue);
+        let _ = (
+            Incoming::Notify("n".into()),
+            HookEvent::Stop,
+            TurnOutcome::Done,
+        );
+        let _ = AgentEvent::TurnStart { turn: 1 };
+    }
+}
+
 #[test]
 fn tool_and_hook_reach_a_session() {
     install();
@@ -185,12 +243,7 @@ fn provider_and_panel_are_listed() {
         .get_mut("clicks")
         .expect("the plugin panel is listed");
     assert!(!panel.started());
-    let host = Host {
-        cwd: &env.cwd,
-        session: "s",
-        dark: true,
-    };
-    panel.open(host, Arc::new(|| {}));
+    panel.open(Host::new(&env.cwd, "s", true), Arc::new(|| {}));
     assert!(panel.poll());
     let text = |panel: &fast_harness_core::panels::Panel| format!("{:?}", panel.rows);
     assert!(text(panel).contains("clicked 0"), "{}", text(panel));

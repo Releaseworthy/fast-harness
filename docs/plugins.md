@@ -30,6 +30,16 @@ pub fn register(ext: &mut Ext) {
 
 The API's major version is part of the path: `fast_harness_core::ext::v1`, `ext::API_VERSION == 1`. A breaking change adds `ext::v2` and removes `v1`, so a plugin written for another major version names a module that does not exist and does not compile. `ext_api!(1)` states the version in the plugin and turns a mismatch into a compile error with a readable message (doc tests with `compile_fail` in `ext/mod.rs` check both). Additions that break no plugin stay in `v1`.
 
+### Stability
+
+The plugin API is unstable for every 0.x release (owner decision G9, PLAN.md D57): a 0.x release may change `v1`, each change is listed below, and a plugin pins the Fast Harness `rev` it builds against. What keeps most changes from breaking a plugin:
+
+- Every struct with public fields and every enum that `ext::v1` re-exports is `#[non_exhaustive]`, so a field or a variant can be added later. A plugin builds a struct through its constructor (`ToolSpec::new(name, description, schema)`, `Completion::new(message, usage, stop)`, `Answer::default().with_output(text)`, `ProviderFile::new(models)`, `ModelFile::new(id)`, `Usage::new(...)`, `ChatRequest::new(...)`, `Host::new(cwd, session, dark)`), may set public fields on a value it holds, and matches an enum (`AgentEvent`, `HookEvent`, `Block`, `Delta`, `StopReason`, ...) with a wildcard arm. A struct literal or a match without `_` does not compile (doc tests with `compile_fail` in `ext/v1.rs`).
+- A method added to `Tool`, `Provider`, `Hook`, `Panel` or `Transport` always has a default body.
+- Each `[[plugin]]` entry may say `api = 1` (below): the build fails when it is not `ext::API_VERSION`.
+
+Changes to `v1`: 2026-11-13 (D57) the types became `#[non_exhaustive]`, with constructors, and `v1` re-exports every type its items reach (`Message`, `Block`, `Role`, `Usage`, `StopReason`, `Timing`, `Cache`, `ErrorKind`, `HttpHead`, `HttpRequest`, `HttpError`, `HttpErrorKind`, `Flow`, `Price`, `CompactionPatch`, `TurnOutcome`, `ToolSession`).
+
 ## The plugin list
 
 `plugins.toml` at the workspace root (absent in this repository):
@@ -39,13 +49,16 @@ The API's major version is part of the path: `fast_harness_core::ext::v1`, `ext:
 name = "my-plugin"                       # the package name, also the dependency key
 git = "https://github.com/me/my-plugin"
 rev = "0123abcd"                         # required with git: builds are pinned
+api = 1                                  # optional: the plugin API it targets
 
 [[plugin]]
 name = "local-thing"
 path = "plugins/local-thing"             # relative to the workspace root (or --base)
 ```
 
-The file is a small TOML subset (`[[plugin]]`, `key = "plain string"`, `#` comments) read by hand in `crates/fast-harness-plugins/src/gen.rs`: the `toml` crate is in `Cargo.lock` only as a dependency of `slint-build`, and naming it would add a crate to `[workspace.dependencies]` (D1).
+`api` (a bare whole number or a quoted one; `"api": 1` in the JSON form) is optional and reads as 1 when absent. A value other than `fast_harness_core::ext::API_VERSION` fails `build.rs` and `apply-plugins.ts` with a message naming the plugin, its value and the supported version. The number has three copies (the core, `gen::API`, the script); a test in `crates/fast-harness-plugins/src/tests.rs` checks they agree.
+
+The file is a small TOML subset (`[[plugin]]`, `key = "plain string"`, `api = 1`, `#` comments) read by hand in `crates/fast-harness-plugins/src/gen.rs`: the `toml` crate is in `Cargo.lock` only as a dependency of `slint-build`, and naming it would add a crate to `[workspace.dependencies]` (D1).
 
 Cargo cannot add dependencies from a build script, so two steps turn the list into code:
 
@@ -54,7 +67,7 @@ Cargo cannot add dependencies from a build script, so two steps turn the list in
 
 The binaries call `fast_harness_plugins::install()` at start (CLI `main`, GUI `start_runtime`): it runs `register_all` and installs the result with `ext::install` when it is not empty. The core never depends on the plugins crate; `Runtime::apply` reads `ext::installed()` on every settings load.
 
-Restore the official state with an empty list: `bun scripts/apply-plugins.ts --from <empty file>`, then delete `plugins.toml`.
+Restore the official state with an empty list: `bun scripts/apply-plugins.ts --from <empty file>`, then delete `plugins.toml`. The next cargo command (`cargo metadata` is enough) drops the plugin from `Cargo.lock`.
 
 ## The workflows
 

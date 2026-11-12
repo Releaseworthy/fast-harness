@@ -111,6 +111,8 @@ fn exit_code(outcome: TurnOutcome) -> ExitCode {
         | TurnOutcome::ContextOverflow
         | TurnOutcome::Paused => ExitCode::FAILURE,
         TurnOutcome::Cancelled => ExitCode::from(130),
+        // An outcome added later is not a success.
+        _ => ExitCode::FAILURE,
     }
 }
 

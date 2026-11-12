@@ -22,12 +22,10 @@ struct WordCount;
 // (`ext::v1::Effect`) so its calls run in parallel with other reads.
 impl Tool for WordCount {
     fn spec(&self) -> ToolSpec {
-        ToolSpec {
-            name: "word_count".into(),
-            description: "Count the words of a text.".into(),
-            schema: json!({"type": "object", "properties": {"text": {"type": "string"}},
-                "required": ["text"]}),
-        }
+        // v1 structs are `#[non_exhaustive]`: build them with constructors.
+        let schema = json!({"type": "object", "properties": {"text": {"type": "string"}},
+            "required": ["text"]});
+        ToolSpec::new("word_count", "Count the words of a text.", schema)
     }
 
     fn run(&self, args: &Value, _ctx: &ToolCtx<'_>) -> ToolOutput {

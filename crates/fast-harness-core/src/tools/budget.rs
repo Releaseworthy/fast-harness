@@ -19,6 +19,7 @@ const SHELL_HEAD_SHARE: usize = 4;
 /// What the tools of one session share: where spill files go and the read
 /// ranges already returned. A resumed session starts with no ranges.
 #[derive(Debug, Default)]
+#[non_exhaustive]
 pub struct ToolSession {
     /// `<session>.out`; `None` keeps nothing on disk.
     pub out_dir: Option<PathBuf>,

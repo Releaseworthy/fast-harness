@@ -172,11 +172,8 @@ fn stats_prices_steps_of_models_with_a_price() {
     assert_eq!((s.cost_micro_usd, s.priced_steps), (2_500_000, 1));
     assert!(stats::format_text(&s).contains("cost $2.5000 (1 of 1 steps priced)"));
     let price: custom::Price = serde_json::from_str(r#"{"input": 1, "output": 0}"#).unwrap();
-    let usage = fast_harness_core::types::Usage {
-        cache_write: 3_000_000,
-        cache_write_1h: 1_000_000,
-        ..Default::default()
-    };
+    let usage =
+        fast_harness_core::types::Usage::new(0, 0, 0, 3_000_000).with_cache_write_1h(1_000_000);
     // 2M 5 minute writes at the input price, 1M 1 hour writes at twice it.
     assert!((price.cost(&usage) - 4.0).abs() < 1e-9);
 }

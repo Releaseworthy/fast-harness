@@ -68,12 +68,7 @@ pub fn open(app: &mut App, ui: &MainWindow, id: &str) -> Result<(), String> {
     let Some(panel) = app.panels.get_mut(id) else {
         return Err(format!("no panel {id}"));
     };
-    let host = Host {
-        cwd: &app.cwd,
-        session: &session,
-        dark,
-    };
-    panel.open(host, wake());
+    panel.open(Host::new(&app.cwd, &session, dark), wake());
     let g = ui.global::<PanelUi>();
     g.set_id(id.into());
     g.set_title(panel.file.title.as_str().into());

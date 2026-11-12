@@ -37,25 +37,10 @@ fn write_index(home: &Path, cwd: &Path, text: &str) {
 fn body(system: &str, oauth: bool) -> Value {
     let cancel = AtomicBool::new(false);
     let messages = vec![Message::user("hi")];
-    let tools = vec![ToolSpec {
-        name: "read".into(),
-        description: "Read a file".into(),
-        schema: json!({"type": "object", "properties": {}}),
-    }];
-    let req = ChatRequest {
-        model: "claude-opus-5-5",
-        system,
-        messages: &messages,
-        tools: &tools,
-        max_tokens: 4096,
-        effort: None,
-        cache: Cache {
-            system_1h: true,
-            messages_1h: false,
-        },
-        session: "",
-        cancel: &cancel,
-    };
+    let schema = json!({"type": "object", "properties": {}});
+    let tools = vec![ToolSpec::new("read", "Read a file", schema)];
+    let req = ChatRequest::new("claude-opus-5-5", system, &messages, &tools, 4096, &cancel)
+        .with_cache(Cache::new(true, false));
     serde_json::from_str(&request_body(&req, oauth)).unwrap()
 }
 

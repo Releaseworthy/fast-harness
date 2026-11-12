@@ -11,6 +11,7 @@ use crate::config::layers::{kind_files, LayerFile, Layers, Skipped, Source};
 
 /// Where a panel opens.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum Place {
     /// A closable tab, like Settings.
     Tab,

@@ -9,7 +9,13 @@
 //! git = "https://github.com/me/my-plugin"
 //! rev = "0123abcd"            # needed with git: builds are pinned
 //! # or: path = "plugins/my-plugin" (relative to the workspace root)
+//! api = 1                     # optional: the plugin API it targets (1 or "1")
 //! ```
+
+/// The plugin API version this build accepts in `api`. A copy of
+/// `fast_harness_core::ext::API_VERSION` (a build script cannot use the
+/// core); `tests.rs` checks that both, and `scripts/apply-plugins.ts`, agree.
+pub const API: u32 = 1;
 
 /// One `[[plugin]]` entry.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -18,6 +24,8 @@ pub struct Plugin {
     pub git: Option<String>,
     pub path: Option<String>,
     pub rev: Option<String>,
+    /// `api`; absent reads as 1.
+    pub api: Option<u32>,
 }
 
 impl Plugin {
@@ -45,18 +53,26 @@ pub fn parse(text: &str) -> Result<Vec<Plugin>, String> {
             plugins.push(Plugin::default());
             continue;
         }
-        let (key, value) = key_value(line).map_err(at)?;
+        let (key, raw) = key_value(line).map_err(at)?;
         let Some(plugin) = plugins.last_mut() else {
             return Err(at("a key before the first [[plugin]]".into()));
         };
+        if key == "api" {
+            plugin.api = Some(api_value(raw).map_err(at)?);
+            continue;
+        }
         let slot = match key {
             "name" => &mut plugin.name,
             "git" => plugin.git.get_or_insert_with(String::new),
             "path" => plugin.path.get_or_insert_with(String::new),
             "rev" => plugin.rev.get_or_insert_with(String::new),
-            other => return Err(at(format!("unknown key `{other}` (name, git, path, rev)"))),
+            other => {
+                return Err(at(format!(
+                    "unknown key `{other}` (name, git, path, rev, api)"
+                )))
+            }
         };
-        *slot = value;
+        *slot = plain(key, raw).map_err(at)?;
     }
     for plugin in &plugins {
         check(plugin, &plugins)?;
@@ -77,16 +93,26 @@ fn strip_comment(line: &str) -> &str {
     line
 }
 
-/// `key = "value"` with a basic string without escapes.
-fn key_value(line: &str) -> Result<(&str, String), String> {
+/// `key = value`, both trimmed.
+fn key_value(line: &str) -> Result<(&str, &str), String> {
     let (key, value) = line
         .split_once('=')
         .ok_or_else(|| format!("expected `key = \"value\"`, got `{line}`"))?;
-    let value = value.trim();
+    Ok((key.trim(), value.trim()))
+}
+
+/// The inside of a basic string without escapes.
+fn plain(key: &str, value: &str) -> Result<String, String> {
     let inner = (value.strip_prefix('"').and_then(|v| v.strip_suffix('"')))
         .filter(|inner| !inner.contains('"') && !inner.contains('\\'))
-        .ok_or_else(|| format!("`{}` needs a plain quoted string", key.trim()))?;
-    Ok((key.trim(), inner.to_string()))
+        .ok_or_else(|| format!("`{key}` needs a plain quoted string"))?;
+    Ok(inner.to_string())
+}
+
+/// `api = 1` or `api = "1"`.
+fn api_value(value: &str) -> Result<u32, String> {
+    let inner = (value.strip_prefix('"').and_then(|v| v.strip_suffix('"'))).unwrap_or(value);
+    (inner.parse::<u32>()).map_err(|_| format!("`api` needs a whole number, got `{value}`"))
 }
 
 fn check(plugin: &Plugin, all: &[Plugin]) -> Result<(), String> {
@@ -99,6 +125,12 @@ fn check(plugin: &Plugin, all: &[Plugin]) -> Result<(), String> {
     }
     if all.iter().filter(|p| p.ident() == plugin.ident()).count() > 1 {
         return Err(format!("plugin `{name}` is listed twice"));
+    }
+    let api = plugin.api.unwrap_or(1);
+    if api != API {
+        return Err(format!(
+            "plugin `{name}` targets plugin API {api}, this Fast Harness supports API {API} (fast_harness_core::ext::API_VERSION)"
+        ));
     }
     match (&plugin.git, &plugin.path, &plugin.rev) {
         (Some(_), None, Some(rev)) if !rev.is_empty() => Ok(()),

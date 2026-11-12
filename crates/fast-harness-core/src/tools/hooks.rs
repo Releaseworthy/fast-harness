@@ -19,6 +19,7 @@ pub const DEFAULT_TIMEOUT_MS: u64 = 60_000;
 
 /// The points of the loop a hook can run at.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum HookEvent {
     SessionStart,
     UserPromptSubmit,
@@ -212,6 +213,7 @@ fn glob(pattern: &[u8], name: &[u8]) -> bool {
 
 /// What one hook answered on stdout (empty: all `None`).
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[non_exhaustive]
 pub struct Answer {
     /// `{"decision": "block", "reason"}`: the reason (never empty).
     pub block: Option<String>,
@@ -223,6 +225,34 @@ pub struct Answer {
     pub context: Option<String>,
     /// Stop: the turn goes on with this user text.
     pub cont: Option<String>,
+}
+
+/// Chainable setters from `Answer::default()` (a no-op answer).
+impl Answer {
+    pub fn with_block(mut self, reason: impl Into<String>) -> Answer {
+        self.block = Some(reason.into());
+        self
+    }
+
+    pub fn with_arguments(mut self, arguments: Value) -> Answer {
+        self.arguments = Some(arguments);
+        self
+    }
+
+    pub fn with_output(mut self, output: impl Into<String>) -> Answer {
+        self.output = Some(output.into());
+        self
+    }
+
+    pub fn with_context(mut self, context: impl Into<String>) -> Answer {
+        self.context = Some(context.into());
+        self
+    }
+
+    pub fn with_cont(mut self, text: impl Into<String>) -> Answer {
+        self.cont = Some(text.into());
+        self
+    }
 }
 
 impl Answer {

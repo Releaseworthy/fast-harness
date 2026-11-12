@@ -5,20 +5,14 @@ use std::sync::atomic::AtomicBool;
 
 use fast_harness_core::http::{ScriptedResponse, ScriptedTransport};
 use fast_harness_core::llm::openai::OpenAiChat;
-use fast_harness_core::llm::{
-    custom, Auth, Cache, ChatRequest, Delta, ErrorKind, Provider, ToolSpec,
-};
+use fast_harness_core::llm::{custom, Auth, ChatRequest, Delta, ErrorKind, Provider, ToolSpec};
 use fast_harness_core::types::{Block, Message, Role, StopReason};
 use serde_json::{json, Value};
 
 fn tools() -> Vec<ToolSpec> {
     ["find_tools", "read", "shell"]
         .iter()
-        .map(|name| ToolSpec {
-            name: name.to_string(),
-            description: format!("{name} tool"),
-            schema: json!({"type": "object"}),
-        })
+        .map(|name| ToolSpec::new(*name, format!("{name} tool"), json!({"type": "object"})))
         .collect()
 }
 
@@ -51,17 +45,8 @@ fn call(response: ScriptedResponse, messages: &[Message]) -> Call {
         vec![("x-extra".into(), "1".into())],
     );
     let (tools, cancel) = (tools(), AtomicBool::new(false));
-    let req = ChatRequest {
-        model: "oc/chat-1",
-        system: "be brief",
-        messages,
-        tools: &tools,
-        max_tokens: 32_000,
-        effort: Some("high"),
-        cache: Cache::default(),
-        session: "",
-        cancel: &cancel,
-    };
+    let req = ChatRequest::new("oc/chat-1", "be brief", messages, &tools, 32_000, &cancel)
+        .with_effort(Some("high"));
     let mut deltas = Vec::new();
     let auth = Auth::ApiKey("test-key".into());
     let result = provider.stream(&transport, &auth, &req, &mut |delta| {
@@ -70,6 +55,7 @@ fn call(response: ScriptedResponse, messages: &[Message]) -> Call {
             Delta::Thinking(t) => format!("think:{t}"),
             Delta::ToolStart { index, id, name } => format!("start:{index}:{id}:{name}"),
             Delta::ToolArgs { index, chunk } => format!("args:{index}:{chunk}"),
+            _ => "other".to_string(),
         })
     });
     let recorded = transport.requests().remove(0);
@@ -138,16 +124,8 @@ fn found_read() -> Vec<Message> {
     };
     vec![
         Message::user("read a"),
-        Message {
-            role: Role::Assistant,
-            content: vec![call],
-            model: None,
-        },
-        Message {
-            role: Role::Tool,
-            content: vec![result],
-            model: None,
-        },
+        Message::new(Role::Assistant, vec![call]),
+        Message::new(Role::Tool, vec![result]),
     ]
 }
 

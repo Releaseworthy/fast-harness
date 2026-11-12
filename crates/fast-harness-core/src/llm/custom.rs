@@ -24,6 +24,7 @@ pub const BUILTIN: [&str; 2] = ["anthropic", "antigravity"];
 
 #[derive(Clone, Debug, Default, PartialEq, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
+#[non_exhaustive]
 pub struct ProviderFile {
     pub id: String,
     /// The picker group title; the id when absent.
@@ -40,6 +41,7 @@ pub struct ProviderFile {
 
 #[derive(Clone, Debug, Default, PartialEq, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
+#[non_exhaustive]
 pub struct ModelFile {
     pub id: String,
     pub name: Option<String>,
@@ -57,6 +59,7 @@ pub struct ModelFile {
 /// `input`.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
+#[non_exhaustive]
 pub struct Price {
     pub input: f64,
     pub output: f64,
@@ -66,6 +69,15 @@ pub struct Price {
 }
 
 impl Price {
+    /// Input and output prices; the cache prices take their defaults.
+    pub fn new(input: f64, output: f64) -> Price {
+        Price {
+            input,
+            output,
+            ..Price::default()
+        }
+    }
+
     /// The cost of `usage` in US dollars.
     pub fn cost(&self, usage: &Usage) -> f64 {
         let read = self.cache_read.unwrap_or(self.input);
@@ -81,7 +93,27 @@ impl Price {
     }
 }
 
+impl ModelFile {
+    /// A model entry with nothing but its id; set the other public fields
+    /// on the value (window, max output, efforts, price).
+    pub fn new(id: impl Into<String>) -> ModelFile {
+        ModelFile {
+            id: id.into(),
+            ..ModelFile::default()
+        }
+    }
+}
+
 impl ProviderFile {
+    /// A provider file holding `models`; `Ext::add_provider` sets its id.
+    /// The credential (`key_env`, `account`) is set on the value.
+    pub fn new(models: Vec<ModelFile>) -> ProviderFile {
+        ProviderFile {
+            models,
+            ..ProviderFile::default()
+        }
+    }
+
     /// True for a provider of its own (not an override of a built-in one).
     pub fn is_custom(&self) -> bool {
         !BUILTIN.contains(&self.id.as_str())

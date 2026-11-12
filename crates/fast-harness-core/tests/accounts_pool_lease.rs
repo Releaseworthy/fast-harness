@@ -97,10 +97,7 @@ fn usage_head(status: u16, five: f64, seven: f64) -> HttpHead {
         (format!("{p}7d-reset"), (now_s + 86_400 * 3).to_string()),
         (format!("{p}status"), "allowed".to_string()),
     ];
-    HttpHead {
-        status,
-        headers: pairs.into_iter().collect(),
-    }
+    HttpHead::new(status, pairs.into_iter().collect())
 }
 
 #[test]

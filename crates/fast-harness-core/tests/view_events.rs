@@ -4,20 +4,11 @@ use fast_harness_core::types::{StopReason, Usage};
 use fast_harness_core::view::{Item, NoteKind, State, Transcript};
 
 fn usage(input: u64, output: u64) -> Usage {
-    Usage {
-        input,
-        output,
-        cache_read: 0,
-        cache_write: 0,
-        cache_write_1h: 0,
-    }
+    Usage::new(input, output, 0, 0)
 }
 
 fn timing(total_ms: u64) -> Timing {
-    Timing {
-        total_ms,
-        ..Timing::default()
-    }
+    Timing::new(0, 0, total_ms)
 }
 
 fn tool(id: &str, name: &str, args: &str, summary: &str, out: &str, err: bool, ms: u64) -> Item {

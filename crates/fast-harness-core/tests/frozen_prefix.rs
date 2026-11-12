@@ -25,11 +25,7 @@ struct Later;
 
 impl Tool for Later {
     fn spec(&self) -> ToolSpec {
-        ToolSpec {
-            name: "later".into(),
-            description: "Added later".into(),
-            schema: json!({"type": "object"}),
-        }
+        ToolSpec::new("later", "Added later", json!({"type": "object"}))
     }
 
     fn run(&self, _args: &Value, _ctx: &ToolCtx<'_>) -> ToolOutput {

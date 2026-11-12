@@ -31,11 +31,7 @@ struct GateTool(Arc<Gate>);
 
 impl Tool for GateTool {
     fn spec(&self) -> ToolSpec {
-        ToolSpec {
-            name: "gate".into(),
-            description: "Meet the other session".into(),
-            schema: json!({"type": "object"}),
-        }
+        ToolSpec::new("gate", "Meet the other session", json!({"type": "object"}))
     }
 
     fn run(&self, _args: &Value, _ctx: &ToolCtx<'_>) -> ToolOutput {
