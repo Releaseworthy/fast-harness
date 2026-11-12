@@ -45,4 +45,5 @@ Rules for anyone (human or agent) changing this repo. Read `PLAN.md` first: it h
 - Reachability is not struct fields: `ext::v1` also reaches `HttpRequest`, `HttpHead`, `HttpError`, `Flow`, `HttpErrorKind` and `ToolSession` through `Transport` and `ToolCtx`, so walk trait method signatures before listing the types a rule must cover.
 - `#[non_exhaustive]` still allows `Default` plus field assignment, so a type needs setters only where outside code must build it another way.
 - A cross-crate literal migration: list every site up front (one regex), fix them all, then check. `cargo check` stops per crate, so the errors otherwise arrive in about 5 waves.
+- `AgentEvent::ToolProgress` is live only (PLAN.md D58): never in the trace or a message; a view keeps a bounded tail and drops it at the result.
 - A CRLF working copy shows as `i/lf w/crlf` in `git ls-files --eol`: the commit is fine and `git checkout` of the file rewrites the tree.
