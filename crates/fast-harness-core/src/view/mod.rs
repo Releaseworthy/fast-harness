@@ -3,10 +3,17 @@
 //! [`Transcript::apply`] or from a saved conversation with
 //! [`Transcript::from_messages`] and [`Transcript::from_trace`].
 
+pub mod diff;
 mod replay;
 mod summary;
+pub mod tool_detail;
+mod tool_detail_fs;
+mod tool_detail_run;
 
 pub use summary::tool_summary;
+pub use tool_detail::{
+    tool_detail, Chip, Field, Line, LineKind, Tone, ToolDetail, ToolKind, MAX_LINES,
+};
 
 use crate::events::{AgentEvent, TurnOutcome};
 use crate::llm::Timing;
