@@ -1,7 +1,8 @@
 //! Building a [`Transcript`] from a replayed conversation or a session log.
 
 use super::{
-    compaction_text, new_tool, retry_text, switch_text, turn_end_text, Item, NoteKind, Transcript,
+    compaction_text, logged_outcome_text, new_tool, retry_text, switch_text, Item, NoteKind,
+    Transcript,
 };
 use crate::llm::Timing;
 use crate::trace::{kind, TraceEvent};
@@ -60,7 +61,7 @@ impl Transcript {
         for event in events {
             replay.event(event);
         }
-        replay.flush();
+        replay.finish();
         let mut view = replay.view;
         view.revision = view.items.len() as u64;
         view
@@ -111,25 +112,47 @@ impl Transcript {
     }
 }
 
-/// Replay state: the footer of the current step waits for `step/end`.
+/// Replay state: the footer of the current step waits for `step/end`; a
+/// failed attempt's error waits to see whether a retry or switch follows
+/// (then the live view showed only that note); a compaction at the start of
+/// a turn waits for the turn's user message (the live view shows the user's
+/// text when it is sent).
 #[derive(Default)]
 struct Replay {
     view: Transcript,
     footer: Option<(u32, u32, Usage, Timing, StopReason, String)>,
+    attempt_error: Option<String>,
+    awaiting_user: bool,
+    held_note: Option<String>,
 }
 
 impl Replay {
     fn event(&mut self, event: &TraceEvent) {
         let data = &event.data;
         match event.kind.as_str() {
-            kind::USER_MESSAGE => {
-                self.flush();
-                self.view.turn = int(data, "turn");
-                if let Some(message) = parse::<Message>(data, "message") {
-                    self.view.add_user(&message);
-                    self.view.add_results(&message, None);
-                }
+            kind::ASSISTANT_ATTEMPT => self.attempt_error = Some(text(data, "error")),
+            kind::LLM_RETRY | kind::ACCOUNT_SWITCH => {
+                self.attempt_error = None;
+                self.note(&event.kind, data);
             }
+            _ => {
+                if let Some(error) = self.attempt_error.take() {
+                    self.view.note(NoteKind::Error, error);
+                }
+                self.event_after_attempt(event);
+            }
+        }
+    }
+
+    fn event_after_attempt(&mut self, event: &TraceEvent) {
+        let data = &event.data;
+        match event.kind.as_str() {
+            kind::TURN_START => {
+                self.flush();
+                self.view.turn_usage = Usage::default();
+                self.awaiting_user = data.get("resume").is_none();
+            }
+            kind::USER_MESSAGE => self.user_message(data),
             kind::STEP_START => {
                 self.flush();
                 self.view.turn = int(data, "turn");
@@ -139,7 +162,6 @@ impl Replay {
                 self.view.model = text(data, "model");
                 self.view.account = text(data, "account");
             }
-            kind::LLM_RETRY | kind::ACCOUNT_SWITCH => self.note(&event.kind, data),
             kind::ASSISTANT_MESSAGE => self.assistant(data),
             kind::TOOL_CALL => {
                 let id = text(data, "callId");
@@ -154,17 +176,35 @@ impl Replay {
                     self.view.add_results(&message, duration);
                 }
             }
-            kind::COMPACTION => {
-                self.flush();
-                let auto = data["auto"].as_bool().unwrap_or(true);
-                let text = compaction_text(auto, num(data, "before"), num(data, "after"));
-                self.view.note(NoteKind::Info, text);
-                self.view.context = num(data, "after");
-            }
+            kind::COMPACTION => self.compaction(data),
             kind::STEP_END => self.flush(),
             kind::TURN_END => self.turn_end(data),
             _ => {}
         }
+    }
+
+    fn user_message(&mut self, data: &Value) {
+        self.flush();
+        self.view.turn = int(data, "turn");
+        if let Some(message) = parse::<Message>(data, "message") {
+            self.view.add_user(&message);
+            self.view.add_results(&message, None);
+        }
+        self.awaiting_user = false;
+        if let Some(note) = self.held_note.take() {
+            self.view.note(NoteKind::Info, note);
+        }
+    }
+
+    fn compaction(&mut self, data: &Value) {
+        self.flush();
+        let auto = data["auto"].as_bool().unwrap_or(true);
+        let text = compaction_text(auto, num(data, "before"), num(data, "after"));
+        match self.awaiting_user {
+            true => self.held_note = Some(text),
+            false => self.view.note(NoteKind::Info, text),
+        }
+        self.view.context = num(data, "after");
     }
 
     /// A retry or account switch note.
@@ -191,6 +231,7 @@ impl Replay {
             self.view.add_assistant(turn, step, &message);
         }
         let usage: Usage = parse(data, "usage").unwrap_or_default();
+        self.view.turn_usage.add(&usage);
         // Trace version 4 keys; older logs leave the window unknown.
         self.view.context = data["context"].as_u64().unwrap_or(usage.context());
         self.view.window = data["window"].as_u64().unwrap_or(0);
@@ -205,10 +246,22 @@ impl Replay {
 
     fn turn_end(&mut self, data: &Value) {
         self.flush();
-        let outcome = text(data, "outcome");
-        if !outcome.is_empty() && outcome != "done" {
-            self.view.note(NoteKind::Info, turn_end_text(&outcome));
+        // A `/compact` turn has no user message.
+        if let Some(note) = self.held_note.take() {
+            self.view.note(NoteKind::Info, note);
         }
+        self.awaiting_user = false;
+        if let Some(text) = logged_outcome_text(&text(data, "outcome")) {
+            self.view.note(NoteKind::Info, text);
+        }
+    }
+
+    /// The end of the log: a failed attempt nothing followed, the footer.
+    fn finish(&mut self) {
+        if let Some(error) = self.attempt_error.take() {
+            self.view.note(NoteKind::Error, error);
+        }
+        self.flush();
     }
 
     /// Writes the pending footer, if any.

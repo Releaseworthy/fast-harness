@@ -85,6 +85,22 @@ pub fn text_reply(text: &str) -> ScriptedResponse {
     ScriptedResponse::new(200, &sse(&events), 7)
 }
 
+/// A streamed answer of one thinking block (with a signature) and one text block.
+pub fn thinking_reply(thinking: &str, text: &str) -> ScriptedResponse {
+    let mut events = vec![
+        start(),
+        json!({"type": "content_block_start", "index": 0, "content_block": {"type": "thinking", "thinking": ""}}),
+        json!({"type": "content_block_delta", "index": 0, "delta": {"type": "thinking_delta", "thinking": thinking}}),
+        json!({"type": "content_block_delta", "index": 0, "delta": {"type": "signature_delta", "signature": "sig"}}),
+        json!({"type": "content_block_stop", "index": 0}),
+        json!({"type": "content_block_start", "index": 1, "content_block": {"type": "text", "text": ""}}),
+        json!({"type": "content_block_delta", "index": 1, "delta": {"type": "text_delta", "text": text}}),
+        json!({"type": "content_block_stop", "index": 1}),
+    ];
+    finish(&mut events, "end_turn");
+    ScriptedResponse::new(200, &sse(&events), 9)
+}
+
 /// A streamed answer asking for tool calls `(id, name, arguments)`.
 pub fn tool_reply(calls: &[(&str, &str, &str)]) -> ScriptedResponse {
     let mut events = vec![start()];

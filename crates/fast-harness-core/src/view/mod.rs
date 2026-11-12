@@ -157,6 +157,22 @@ pub(crate) fn turn_end_text(outcome: &str) -> String {
     format!("Turn ended: {outcome}")
 }
 
+/// The note of a logged `turn/end` outcome word (`agent::turn` writes
+/// them): the same text the live view shows; `None` for `done` or no word.
+pub(crate) fn logged_outcome_text(word: &str) -> Option<String> {
+    let outcome = match word {
+        "" | "done" => return None,
+        "cancelled" => TurnOutcome::Cancelled,
+        "failed" => TurnOutcome::Failed,
+        "step_limit" => TurnOutcome::StepLimit,
+        "truncated" => TurnOutcome::Truncated,
+        "context_overflow" => TurnOutcome::ContextOverflow,
+        "paused" => TurnOutcome::Paused,
+        other => return Some(turn_end_text(other)),
+    };
+    outcome_word(outcome).map(turn_end_text)
+}
+
 fn outcome_word(outcome: TurnOutcome) -> Option<&'static str> {
     match outcome {
         TurnOutcome::Done => None,
