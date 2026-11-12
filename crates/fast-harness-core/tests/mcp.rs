@@ -359,3 +359,80 @@ fn legacy_http_server_gets_initialize_and_its_session() {
     assert_eq!(servers.cache_of("web").unwrap().era, "legacy");
     let _ = std::fs::remove_dir_all(&home);
 }
+
+/// The legacy handshake with session `session`: probe 400, initialize, 202.
+fn legacy_handshake(session: &str, out: &mut Vec<ScriptedResponse>) {
+    out.push(ScriptedResponse::new(400, "Bad Request", 4));
+    out.extend(new_session(session));
+}
+
+fn new_session(session: &str) -> Vec<ScriptedResponse> {
+    let init = r#"{"jsonrpc":"2.0","id":0,"result":{"protocolVersion":"2025-06-18"}}"#;
+    vec![
+        ScriptedResponse::new(200, init, 9).with_header("mcp-session-id", session),
+        ScriptedResponse::new(202, "", 1),
+    ]
+}
+
+fn list_reply() -> ScriptedResponse {
+    ScriptedResponse::new(
+        200,
+        r#"{"jsonrpc":"2.0","id":0,"result":{"tools":[{"name":"echo"}]}}"#,
+        9,
+    )
+}
+
+/// D63: HTTP 404 to a request with the session id: one new initialize, one
+/// retry with the new id, success.
+#[test]
+fn an_expired_http_session_is_initialized_again_once() {
+    let home = temp("http-expired");
+    let mut script = Vec::new();
+    legacy_handshake("old", &mut script);
+    script.push(ScriptedResponse::new(404, "Not Found", 4));
+    script.extend(new_session("new"));
+    script.push(list_reply());
+    let transport = Arc::new(ScriptedTransport::new(script));
+    let shared: Arc<dyn Transport> = transport.clone();
+    let servers = McpServers::new(&home, http_spec(&home), Some(shared));
+    assert_eq!(servers.refresh("web"), Ok(1));
+    let requests = transport.requests();
+    assert_eq!(requests.len(), 7);
+    assert_eq!(header(&requests[3].headers, "mcp-session-id"), Some("old"));
+    assert!(requests[4].body.contains("\"initialize\""));
+    assert_eq!(header(&requests[4].headers, "mcp-session-id"), None);
+    assert!(requests[6].body.contains("tools/list"));
+    assert_eq!(header(&requests[6].headers, "mcp-session-id"), Some("new"));
+    let _ = std::fs::remove_dir_all(&home);
+}
+
+/// D63: a second 404 after the new session is an error, not a loop, and the
+/// connection is dead: the next use connects again from the probe.
+#[test]
+fn a_second_404_is_an_error_and_the_connection_is_dropped() {
+    let home = temp("http-expired-twice");
+    let mut script = Vec::new();
+    legacy_handshake("old", &mut script);
+    script.push(ScriptedResponse::new(404, "Not Found", 4));
+    script.extend(new_session("new"));
+    script.push(ScriptedResponse::new(404, "Not Found", 4));
+    legacy_handshake("third", &mut script);
+    script.push(list_reply());
+    let transport = Arc::new(ScriptedTransport::new(script));
+    let shared: Arc<dyn Transport> = transport.clone();
+    let servers = McpServers::new(&home, http_spec(&home), Some(shared));
+    let error = servers.refresh("web").unwrap_err();
+    assert!(error.contains("404 again"), "{error}");
+    assert_eq!(transport.requests().len(), 7, "one retry only");
+    assert_eq!(servers.refresh("web"), Ok(1), "a new connection");
+    let requests = transport.requests();
+    assert!(
+        requests[7].body.contains("server/discover"),
+        "not alive: probed again"
+    );
+    assert_eq!(
+        header(&requests[10].headers, "mcp-session-id"),
+        Some("third")
+    );
+    let _ = std::fs::remove_dir_all(&home);
+}

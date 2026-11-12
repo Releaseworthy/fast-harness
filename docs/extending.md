@@ -230,7 +230,7 @@ The AGENTS.md files from the repository root down to the working directory are i
 
 ## Hooks: `hooks.json`
 
-`~/.fast-harness/hooks.json` and a trusted project's `.fast-harness/hooks.json` run your own programs at seven points of the agent loop. Both files load and both run, user entries first; an untrusted project's file is not read. Without a file nothing is spawned and nothing else is read. The file is read with the other settings (at start, `/trust`, a settings reload); a change applies to the next agent built from them.
+`~/.fast-harness/hooks.json` and a trusted project's `.fast-harness/hooks.json` run your own programs at eight points of the agent loop. Both files load and both run, user entries first; an untrusted project's file is not read. Without a file nothing is spawned and nothing else is read. The file is read with the other settings (at start, `/trust`, a settings reload); a change applies to the next agent built from them.
 
 ```json
 {
@@ -243,7 +243,7 @@ The AGENTS.md files from the repository root down to the working directory are i
 }
 ```
 
-- Events: `SessionStart` (first turn of a new session), `UserPromptSubmit` (each user prompt, before the model sees it), `PreToolUse`, `PostToolUse`, `PreCompact`, `Stop` (the model ended the turn), `SubagentStop` (the same, in a subagent session, instead of `Stop`).
+- Events: `SessionStart` (first turn of a new session), `UserPromptSubmit` (each user prompt, before the model sees it), `PreToolUse`, `PostToolUse`, `PreCompact`, `Stop` (the model ended the turn), `SubagentStop` (the same, in a subagent session, instead of `Stop`), `PreModelRequest` (before each step's model call, below).
 - Entry: `command`, `args`, `timeoutMs` (default 60000), `match`. `match` is for `PreToolUse` and `PostToolUse` only: the tool name, `|` between alternatives, `*` any run of characters, `?` one character; absent matches every tool. A relative `command` with a slash (`./guard.exe`) resolves in the folder of the hooks file; the process runs in the working directory with `FAST_HARNESS_HOOKS_DIR` set to that folder. A timeout or cancel kills the whole process tree.
 - Stdin: one JSON object with `event`, `sessionId`, `cwd` and the event data: `prompt` (UserPromptSubmit), `source` (SessionStart), `toolName` and `arguments` (tool events), `output` and `isError` (PostToolUse), `trigger` (`auto` or `manual`), `instructions` and `summaryRequest` (PreCompact), `answer` and `stopHookActive` (Stop, SubagentStop).
 - Stdout: empty does nothing; else a JSON object with any of:
@@ -273,6 +273,32 @@ event = json.load(sys.stdin)
 lines = [l for l in event["output"].splitlines() if not l.startswith(("Downloading", "Compiling"))]
 print(json.dumps({"output": "\n".join(lines)}))
 ```
+
+### `PreModelRequest` (D63)
+
+Runs once per step, before the step's model call, in the main session and in subagent sessions; retries, account failovers and the call after an overflow compaction resend the same request without running it again, and a compaction's summary request does not run it. Stdin adds `turn`, `step`, `depth`, `model`, `effort`, `maxTokens`, `messages` and `tools` (each `{"count", "bytes"}`); never a key, token, account or header. The answer may hold:
+
+- `{"decision": "block", "reason": "..."}`: no call; the turn ends failed and the front end shows `model request blocked by a hook: <reason>`.
+- `{"request": {"effort": "low", "maxTokens": 4000}}`: `effort` is one of `minimal`, `low`, `medium`, `high`, `xhigh`, `max` (thinking stays on; on Claude a new effort can cost the cache of the messages, not of the system prompt and tools); `maxTokens` may only lower the request's own value. Any other key under `request` (`system`, `tools`, `messages`, `model`, `headers`, ...) makes the whole answer a `hook/error` and the request goes out unchanged: those parts are frozen for the session.
+- `{"context": "..."}`: one `[hook context]` note appended to the newest user message, which the model has not seen yet, so the earlier request still repeats byte for byte.
+
+A per-step budget guard (`budget.py`; not run by the tests) that keeps long sessions cheap:
+
+```python
+import json, sys
+event = json.load(sys.stdin)
+if event["messages"]["bytes"] > 400_000:
+    print(json.dumps({"request": {"effort": "low", "maxTokens": 8000},
+                      "context": "The history is long: answer briefly."}))
+```
+
+```json
+{"PreModelRequest": [{"command": "python", "args": ["./budget.py"], "timeoutMs": 5000}]}
+```
+
+### The hook budget
+
+Besides each entry's `timeoutMs`, all hooks of one event occurrence share one budget: `"budgetMs"` at the top of `hooks.json` (default 120000; with a user and a project file the smaller value counts). A hook starts with at most the time left; once it is spent the remaining hooks of that occurrence are skipped, each logged as `hook/error` (`skipped: the hook budget of N ms was spent`) with one note naming them, and the turn goes on as if they had answered nothing. The budget fails open, like a failed hook: a skipped `PreToolUse` block does not block.
 
 ## Memory
 
@@ -332,7 +358,7 @@ fast-harness mcp refresh github     # one server
 fast-harness mcp list               # servers, cache age, tool counts
 ```
 
-A server starts on the first call of one of its tools (refreshing its list first when it is older than the server's `ttlMs`, one hour for servers without one) and stops after 10 idle minutes. The client speaks MCP 2026-07-28 first (`server/discover`, stateless requests) and falls back to the `initialize` handshake for older servers.
+A server starts on the first call of one of its tools (refreshing its list first when it is older than the server's `ttlMs`, one hour for servers without one) and stops after 10 idle minutes. The client speaks MCP 2026-07-28 first (`server/discover`, stateless requests) and falls back to the `initialize` handshake for older servers. An older HTTP server that answers HTTP 404 to a request with its `Mcp-Session-Id` has ended the session: the client initialises once more and retries the request once; a second failure is the tool's error and the next call connects from scratch (D63).
 
 The model sees `mcp__<server>__<tool>` (other characters become `_`, at most 64 characters) with the description cut to 1 KB, found through `find_tools` like any tool. Up to 64 MCP tools or 64 KB of definitions join the tool list, whole servers in name order; past that, the remaining servers' tools are reached through `mcp_describe` and `mcp_call`, which `find_tools` loads when a search matches one of them. Results follow the tool output budget (`toolOutput`); images and binary resources become a one-line note. A hook can match `mcp__github__*`. A tool file named `mcp__<server>__<tool>.json` without `command` overrides the description or disables the tool.
 

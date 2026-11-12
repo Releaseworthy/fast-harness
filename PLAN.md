@@ -92,6 +92,7 @@ One file per decision in [docs/decisions/](docs/decisions/), moved there unchang
 - D60 [Session index](docs/decisions/D60.md)
 - D61 [Typed trace records and the transcript parity table](docs/decisions/D61.md)
 - D62 [An untrusted project supplies nothing](docs/decisions/D62.md)
+- D63 [PreModelRequest hook, hook budget, MCP session expiry](docs/decisions/D63.md)
 
 ## Architecture
 

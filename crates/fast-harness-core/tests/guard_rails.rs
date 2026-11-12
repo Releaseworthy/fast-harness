@@ -73,11 +73,6 @@ const EXCEPTIONS: &[(&str, &str, usize)] = &[
         "execute",
         53,
     ),
-    (
-        "crates/fast-harness-core/src/agent/call.rs",
-        "stream_once",
-        52,
-    ),
     ("crates/fast-harness/src/args_sessions.rs", "parse", 52),
     (
         "crates/fast-harness-core/examples/step_bench.rs",

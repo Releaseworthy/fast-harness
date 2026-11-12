@@ -1,5 +1,5 @@
-//! `hooks.json` (PLAN.md D44): external commands run at seven points of
-//! the agent loop. The user file and the trusted project file both load
+//! `hooks.json` (PLAN.md D44, D63): external commands run at eight points
+//! of the agent loop. The user file and the trusted project file both load
 //! (user entries first); no file costs one failed read per layer folder
 //! and nothing is ever spawned. Running a hook is [`run`] (`hook_run.rs`).
 
@@ -10,12 +10,17 @@ use serde_json::Value;
 
 use crate::config::layers::{LayerFile, Layers, Skipped, Source};
 
-pub use super::hook_run::{run, HookRun};
+pub use super::hook_request::RequestChange;
+
+pub use super::hook_run::{run, run_for, HookRun};
 
 /// The file name in each layer folder.
 pub const HOOKS_FILE: &str = "hooks.json";
 /// Timeout of an entry without `timeoutMs`.
 pub const DEFAULT_TIMEOUT_MS: u64 = 60_000;
+/// Total time of all hooks of one event occurrence without a `budgetMs`
+/// (D63): two default timeouts. The hooks not started by then are skipped.
+pub const DEFAULT_BUDGET_MS: u64 = 120_000;
 
 /// The points of the loop a hook can run at.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -28,9 +33,12 @@ pub enum HookEvent {
     PreCompact,
     Stop,
     SubagentStop,
+    /// Before each step's model call (D63): may block it, lower
+    /// `max_tokens`, change the effort or append one context note.
+    PreModelRequest,
 }
 
-const EVENTS: [HookEvent; 7] = [
+const EVENTS: [HookEvent; 8] = [
     HookEvent::SessionStart,
     HookEvent::UserPromptSubmit,
     HookEvent::PreToolUse,
@@ -38,6 +46,7 @@ const EVENTS: [HookEvent; 7] = [
     HookEvent::PreCompact,
     HookEvent::Stop,
     HookEvent::SubagentStop,
+    HookEvent::PreModelRequest,
 ];
 
 impl HookEvent {
@@ -50,6 +59,7 @@ impl HookEvent {
             HookEvent::PreCompact => "PreCompact",
             HookEvent::Stop => "Stop",
             HookEvent::SubagentStop => "SubagentStop",
+            HookEvent::PreModelRequest => "PreModelRequest",
         }
     }
 
@@ -63,7 +73,7 @@ impl HookEvent {
     }
 }
 
-/// An in-process hook of a native plugin (PLAN.md D52): the seven events
+/// An in-process hook of a native plugin (PLAN.md D52): the events
 /// of [`HookEvent`] with the same input object a `hooks.json` command reads
 /// on stdin and the same [`Answer`]. Runs after the file entries of its
 /// event; an `Err` is traced as `hook/error` and ignored (fail open).
@@ -105,6 +115,8 @@ impl HookEntry {
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Hooks {
     entries: Vec<(HookEvent, HookEntry)>,
+    /// The smallest top-level `budgetMs` of the files (D63).
+    budget_ms: Option<u64>,
     /// The files that loaded.
     pub files: Vec<LayerFile>,
 }
@@ -121,8 +133,12 @@ impl Hooks {
                 continue;
             };
             match parse(&bytes, &dir) {
-                Ok(entries) => {
+                Ok((entries, budget)) => {
                     hooks.entries.extend(entries);
+                    hooks.budget_ms = match (hooks.budget_ms, budget) {
+                        (Some(a), Some(b)) => Some(a.min(b)),
+                        (a, b) => a.or(b),
+                    };
                     hooks.files.push(LayerFile { path, source });
                 }
                 Err(reason) => skipped.push(Skipped { path, reason }),
@@ -133,6 +149,11 @@ impl Hooks {
 
     pub fn is_empty(&self) -> bool {
         self.entries.is_empty()
+    }
+
+    /// The total time of the hooks of one event occurrence (D63).
+    pub fn budget_ms(&self) -> u64 {
+        self.budget_ms.unwrap_or(DEFAULT_BUDGET_MS).max(1)
     }
 
     /// The entries of `event`; for tool events only those whose pattern
@@ -163,17 +184,27 @@ impl Hooks {
     }
 }
 
-/// `{"<Event>": [entries]}`; an unknown event name makes the file bad.
-fn parse(bytes: &[u8], dir: &Path) -> Result<Vec<(HookEvent, HookEntry)>, String> {
+type Parsed = (Vec<(HookEvent, HookEntry)>, Option<u64>);
+
+/// `{"<Event>": [entries], "budgetMs": n}`; an unknown event name makes the
+/// file bad.
+fn parse(bytes: &[u8], dir: &Path) -> Result<Parsed, String> {
     let value: Value = serde_json::from_slice(bytes).map_err(|err| err.to_string())?;
     let Value::Object(map) = value else {
         return Err("a hooks file is a JSON object keyed by event name".into());
     };
     let header = crate::config::ext_file::json_header(&Value::Object(map.clone()))?;
     crate::config::ext_file::on(header)?;
+    let budget = match map.get("budgetMs") {
+        None => None,
+        Some(n) => Some(
+            n.as_u64()
+                .ok_or("`budgetMs` is not a count of milliseconds")?,
+        ),
+    };
     let mut out = Vec::new();
     for (name, list) in map {
-        if name == "version" || name == "enabled" || name.starts_with('$') {
+        if ["version", "enabled", "budgetMs"].contains(&name.as_str()) || name.starts_with('$') {
             continue;
         }
         let event =
@@ -191,7 +222,7 @@ fn parse(bytes: &[u8], dir: &Path) -> Result<Vec<(HookEvent, HookEntry)>, String
     // A JSON object has no defined order: run in the fixed event order,
     // entries of one event in file order.
     out.sort_by_key(|(event, _)| EVENTS.iter().position(|e| e == event));
-    Ok(out)
+    Ok((out, budget))
 }
 
 /// `pattern` is alternatives split by `|`, each a glob where `*` is any run
@@ -227,6 +258,8 @@ pub struct Answer {
     pub context: Option<String>,
     /// Stop: the turn goes on with this user text.
     pub cont: Option<String>,
+    /// PreModelRequest: the request change (`{"request": {...}}`, D63).
+    pub request: Option<RequestChange>,
 }
 
 /// Chainable setters from `Answer::default()` (a no-op answer).
@@ -255,6 +288,11 @@ impl Answer {
         self.cont = Some(text.into());
         self
     }
+
+    pub fn with_request(mut self, change: RequestChange) -> Answer {
+        self.request = Some(change);
+        self
+    }
 }
 
 impl Answer {
@@ -280,6 +318,7 @@ impl Answer {
             output: text("output"),
             context: text("context").filter(|t| !t.trim().is_empty()),
             cont: text("continue").filter(|t| !t.trim().is_empty()),
+            request: map.get("request").map(RequestChange::parse).transpose()?,
         })
     }
 
@@ -292,7 +331,8 @@ impl Answer {
             (self.context.is_some(), "context"),
             (self.cont.is_some(), "continue"),
         ];
-        let words: Vec<&str> = parts.iter().filter(|(on, _)| *on).map(|p| p.1).collect();
+        let mut words: Vec<&str> = parts.iter().filter(|(on, _)| *on).map(|p| p.1).collect();
+        words.extend(self.request.iter().flat_map(RequestChange::words));
         match words.is_empty() {
             true => "none".into(),
             false => words.join(","),
@@ -325,7 +365,7 @@ mod tests {
             br#"{"Stop":[{"command":"a"}],"PreToolUse":[{"command":"b"}]}"#,
             dir,
         );
-        let events: Vec<HookEvent> = ok.unwrap().into_iter().map(|e| e.0).collect();
+        let events: Vec<HookEvent> = ok.unwrap().0.into_iter().map(|e| e.0).collect();
         assert_eq!(events, [HookEvent::PreToolUse, HookEvent::Stop]);
     }
 }

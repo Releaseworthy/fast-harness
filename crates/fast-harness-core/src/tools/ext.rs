@@ -79,6 +79,12 @@ impl Extensions {
         !self.hooks.is_empty() || !self.native_hooks.is_empty()
     }
 
+    /// Whether a hook of `event` exists (a tool event: one for any tool).
+    pub fn has_event(&self, event: HookEvent) -> bool {
+        self.hooks.entries().iter().any(|(kind, _)| *kind == event)
+            || (self.native_hooks.iter()).any(|hook| hook.matches(event, None))
+    }
+
     /// Whether a PostToolUse hook matches tool `name`.
     pub fn has_post_tool(&self, name: &str) -> bool {
         let event = HookEvent::PostToolUse;

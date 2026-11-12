@@ -10,6 +10,7 @@ use crate::auth::Lease;
 use crate::events::{AgentEvent, TurnOutcome};
 use crate::llm::catalog::context_window;
 use crate::llm::Completion;
+use crate::tools::hooks::RequestChange;
 use crate::types::{Block, Message, StopReason, Usage};
 
 /// The error shown when the prompt no longer fits the context window.
@@ -50,6 +51,8 @@ pub(super) struct Turn<'a> {
     pub last_error: Option<String>,
     /// Hook context texts added at the tail before the next model call (D44).
     pub hook_context: Vec<String>,
+    /// This step's `PreModelRequest` change (D63); `None` without one.
+    pub change: Option<RequestChange>,
     /// A Stop hook already continued this turn (`stopHookActive`).
     pub stop_continued: bool,
     /// The credential source's warning was shown this turn.
@@ -95,6 +98,7 @@ pub(super) fn run(
         request: None,
         last_error: None,
         hook_context: Vec::new(),
+        change: None,
         stop_continued: false,
         warned: false,
     };
@@ -206,7 +210,10 @@ impl Turn<'_> {
         (self.sink)(AgentEvent::StepStart { turn, step });
         traced(self.conv.header_if_changed())?;
         self.flush_hook_context()?;
-        let mut called = self.call_model(step)?;
+        let mut called = match self.model_hooks(step)? {
+            Some(outcome) => Err(outcome),
+            None => self.call_model(step)?,
+        };
         if matches!(called, Err(TurnOutcome::ContextOverflow)) {
             called = self.after_overflow(step)?;
         }

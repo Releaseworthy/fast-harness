@@ -10,11 +10,12 @@ use std::time::Instant;
 use serde_json::{json, Value};
 
 use crate::agent::compact::request_text;
+use crate::agent::model_hook;
 use crate::agent::turn::{traced, Res, Turn};
 use crate::agent::Agent;
 use crate::config::compaction::Compaction;
 use crate::events::{AgentEvent, TurnOutcome};
-use crate::tools::hooks::{self, Answer, HookEvent, HookRun};
+use crate::tools::hooks::{self, Answer, HookEvent, HookRun, RequestChange};
 use crate::tools::{ToolCtx, ToolOutput};
 use crate::types::Role;
 
@@ -31,6 +32,8 @@ pub(super) struct Record {
     ms: u64,
     /// The decision word, or why the hook was ignored.
     result: Result<String, String>,
+    /// Not run: the event's hook budget was spent (D63).
+    skipped: bool,
 }
 
 /// The merged answers of the hooks of one event.
@@ -41,10 +44,28 @@ pub(super) struct Verdict {
     pub output: Option<String>,
     pub context: Vec<String>,
     pub cont: Option<String>,
+    /// PreModelRequest: the merged request change (D63).
+    pub request: Option<RequestChange>,
     pub records: Vec<Record>,
 }
 
-/// Runs the hooks of `event` (for tool events those matching `tool`).
+/// The time left of one event occurrence's hook budget (D63).
+struct Budget {
+    started: Instant,
+    ms: u64,
+}
+
+impl Budget {
+    /// Milliseconds left, `None` once spent.
+    fn left(&self) -> Option<u64> {
+        let spent = self.started.elapsed().as_millis() as u64;
+        self.ms.checked_sub(spent).filter(|left| *left > 0)
+    }
+}
+
+/// Runs the hooks of `event` (for tool events those matching `tool`)
+/// within the hooks' total budget: once it is spent the rest are skipped
+/// and the turn goes on without them (fail open, D63).
 pub(super) fn fire(
     agent: &Agent,
     session: &str,
@@ -63,27 +84,60 @@ pub(super) fn fire(
     if let (Value::Object(map), Value::Object(data)) = (&mut input, data) {
         map.extend(data);
     }
+    let budget = Budget {
+        started: Instant::now(),
+        ms: ext.hooks.budget_ms(),
+    };
+    let mut blocked = false;
     for entry in ext.hooks.matching(event, tool) {
-        let run = hooks::run(entry, &input, cwd, cancel);
-        let mut command = entry.command.clone();
-        for arg in &entry.args {
-            command = format!("{command} {arg}");
-        }
-        if verdict.record(event, command, run, &mut input) {
-            return verdict;
+        let command = command_line(entry);
+        match budget.left() {
+            _ if blocked => break,
+            None => verdict.skip(event, command, budget.ms),
+            Some(left) => {
+                let run = hooks::run_for(entry, &input, cwd, cancel, entry.timeout_ms().min(left));
+                blocked = verdict.record(event, command, run, &mut input);
+            }
         }
     }
-    // Native plugin hooks (D52) after the file entries, same input and answer.
+    if !blocked {
+        natives(agent, (event, tool), &budget, (&mut verdict, &mut input));
+    }
+    verdict
+}
+
+/// Native plugin hooks (D52) after the file entries, same input and answer.
+fn natives(
+    agent: &Agent,
+    (event, tool): (HookEvent, Option<&str>),
+    budget: &Budget,
+    (verdict, input): (&mut Verdict, &mut Value),
+) {
+    let ext = &agent.parts.extensions;
     for hook in (ext.native_hooks.iter()).filter(|hook| hook.matches(event, tool)) {
-        let started = Instant::now();
-        let answer = hook.run(event, &input);
-        let ms = started.elapsed().as_millis() as u64;
         let command = format!("native:{}", hook.name());
-        if verdict.record(event, command, HookRun { ms, answer }, &mut input) {
+        let Some(_) = budget.left() else {
+            verdict.skip(event, command, budget.ms);
+            continue;
+        };
+        let started = Instant::now();
+        let answer = hook.run(event, input);
+        let run = HookRun {
+            ms: started.elapsed().as_millis() as u64,
+            answer,
+        };
+        if verdict.record(event, command, run, input) {
             break;
         }
     }
-    verdict
+}
+
+fn command_line(entry: &hooks::HookEntry) -> String {
+    let mut command = entry.command.clone();
+    for arg in &entry.args {
+        command = format!("{command} {arg}");
+    }
+    command
 }
 
 impl Verdict {
@@ -92,9 +146,14 @@ impl Verdict {
         &mut self,
         event: HookEvent,
         command: String,
-        run: HookRun,
+        mut run: HookRun,
         input: &mut Value,
     ) -> bool {
+        if let Ok(answer) = &run.answer {
+            if let Err(error) = model_hook::allowed(event, answer, input) {
+                run.answer = Err(error);
+            }
+        }
         let result = match &run.answer {
             Ok(answer) => Ok(answer.decision()),
             Err(error) => Err(error.clone()),
@@ -104,11 +163,24 @@ impl Verdict {
             command,
             ms: run.ms,
             result,
+            skipped: false,
         });
         match run.answer {
             Ok(answer) => self.take(event, answer, input),
             Err(_) => false,
         }
+    }
+
+    /// A hook not run because the budget of `ms` was spent.
+    fn skip(&mut self, event: HookEvent, command: String, ms: u64) {
+        let error = format!("skipped: the hook budget of {ms} ms was spent");
+        self.records.push(Record {
+            event,
+            command,
+            ms: 0,
+            result: Err(error),
+            skipped: true,
+        });
     }
 
     /// Merges one answer (keys of other events are ignored); a later hook
@@ -121,6 +193,12 @@ impl Verdict {
         if let (HookEvent::PostToolUse, Some(output)) = (event, answer.output) {
             input["output"] = json!(output);
             self.output = Some(output);
+        }
+        if let (HookEvent::PreModelRequest, Some(change)) = (event, answer.request) {
+            model_hook::show(&change, input);
+            self.request
+                .get_or_insert_with(Default::default)
+                .merge(change);
         }
         self.context.extend(answer.context);
         if matches!(event, HookEvent::Stop | HookEvent::SubagentStop) && answer.cont.is_some() {
@@ -205,6 +283,17 @@ impl Turn<'_> {
     /// `hook` and `hook/error` events; a failure is also an error note.
     pub(super) fn log_hooks(&mut self, records: &[Record]) -> Res<()> {
         use crate::trace::record::{self as log, Record as Logged};
+        let skipped: Vec<String> = (records.iter().filter(|r| r.skipped))
+            .map(|r| format!("{} `{}`", r.event.name(), r.command))
+            .collect();
+        if !skipped.is_empty() {
+            let ms = self.agent.parts.extensions.hooks.budget_ms();
+            let note = format!(
+                "hook budget of {ms} ms spent; skipped: {}",
+                skipped.join(", ")
+            );
+            (self.sink)(AgentEvent::Error(note));
+        }
         for record in records {
             let (turn, event) = (self.turn, record.event.name().to_string());
             let (command, ms) = (record.command.clone(), record.ms);
@@ -230,6 +319,9 @@ impl Turn<'_> {
                         error: error_text,
                     };
                     traced(self.conv.trace.write(&Logged::HookError(hook)))?;
+                    if record.skipped {
+                        continue;
+                    }
                     let (event, command) = (record.event.name(), &record.command);
                     let note = format!("hook {event} `{command}` failed and was ignored: {error}");
                     (self.sink)(AgentEvent::Error(note));

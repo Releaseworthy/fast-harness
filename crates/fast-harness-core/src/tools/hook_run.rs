@@ -29,8 +29,21 @@ pub struct HookRun {
 
 /// Runs `entry` in `cwd` with `input` on stdin.
 pub fn run(entry: &HookEntry, input: &Value, cwd: &Path, cancel: &AtomicBool) -> HookRun {
+    run_for(entry, input, cwd, cancel, entry.timeout_ms())
+}
+
+/// [`run`] killed after `timeout_ms` (the smaller of the entry's timeout
+/// and what is left of the event's hook budget, D63).
+pub fn run_for(
+    entry: &HookEntry,
+    input: &Value,
+    cwd: &Path,
+    cancel: &AtomicBool,
+    timeout_ms: u64,
+) -> HookRun {
     let started = Instant::now();
-    let answer = execute(entry, input, cwd, cancel).and_then(|out| Answer::parse(&out));
+    let answer =
+        execute(entry, input, cwd, (cancel, timeout_ms)).and_then(|out| Answer::parse(&out));
     HookRun {
         ms: started.elapsed().as_millis() as u64,
         answer,
@@ -41,7 +54,7 @@ fn execute(
     entry: &HookEntry,
     input: &Value,
     cwd: &Path,
-    cancel: &AtomicBool,
+    (cancel, timeout_ms): (&AtomicBool, u64),
 ) -> Result<String, String> {
     let mut cmd = Command::new(program(&entry.command, &entry.dir));
     cmd.args(&entry.args)
@@ -67,7 +80,7 @@ fn execute(
     if let Some(stderr) = child.stderr.take() {
         pump(stderr, err_tx);
     }
-    let deadline = Instant::now() + Duration::from_millis(entry.timeout_ms());
+    let deadline = Instant::now() + Duration::from_millis(timeout_ms.max(1));
     let mut out = Capture::default();
     let ending = supervise(&mut child, &group, &out_rx, &mut out, deadline, cancel);
     group.close();

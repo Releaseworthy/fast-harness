@@ -50,8 +50,9 @@ Usage:
       The settings files; a key's value and the layer it came from (default, user, project,
       env, command line); set writes the user config.json (--project: the project's). KEY may
       be dotted (compaction.trigger); VALUE is JSON, else a string.
-  fast-harness trust [PATH]                  Trust the project of PATH (default the current
-      directory): its .fast-harness folder (config.json, providers/) loads from then on.
+  fast-harness trust [PATH|--cwd DIR]        Trust the project of PATH (default the current
+      directory): its .fast-harness folder (config.json, providers/, hooks.json, mcp.json)
+      and its AGENTS.md files load from then on.
   fast-harness doctor [--cwd DIR]            What loaded, from where, and what was skipped and why.
   fast-harness keys [--json] [--cwd DIR]     Every TUI and GUI action with its keys and the layer
       that set them (keys.json in the user and trusted project folders; null unbinds).
@@ -343,6 +344,16 @@ fn session_command(opts: Opts) -> Result<Command, String> {
     Ok(Command::Session { action, cwd })
 }
 
+/// `trust [PATH]`; `--cwd DIR` names the path like every other
+/// subcommand's (D63), and both at once is an error.
+fn trust_command(opts: &Opts, cwd: Option<PathBuf>) -> Result<Command, String> {
+    let path = match (opts.positional.get(1).map(PathBuf::from), cwd) {
+        (Some(_), Some(_)) => return Err("usage: fast-harness trust [PATH|--cwd DIR]".into()),
+        (path, cwd) => path.or(cwd),
+    };
+    Ok(Command::Trust { path })
+}
+
 /// Parses the arguments after the program name.
 pub fn parse(args: Vec<String>) -> Result<Command, String> {
     let mut opts = read_opts(args)?;
@@ -362,10 +373,7 @@ pub fn parse(args: Vec<String>) -> Result<Command, String> {
             let action = config_action(&opts.positional[1..], opts.project)?;
             return Ok(Command::Config { action, cwd });
         }
-        Some("trust") if opts.positional.len() <= 2 => {
-            let path = opts.positional.get(1).map(PathBuf::from);
-            return Ok(Command::Trust { path });
-        }
+        Some("trust") if opts.positional.len() <= 2 => return trust_command(&opts, cwd),
         Some("doctor") if opts.positional.len() == 1 => return Ok(Command::Doctor { cwd }),
         Some(verb @ ("mcp" | "ext")) => return ext_command(verb, &opts, cwd),
         Some(verb) if args_sessions::is_verb(verb) => return session_command(opts),

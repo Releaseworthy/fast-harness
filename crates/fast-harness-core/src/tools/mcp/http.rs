@@ -28,6 +28,8 @@ pub struct HttpConn {
     /// The legacy `Mcp-Session-Id`.
     session: Option<String>,
     next: u64,
+    /// The session expired and a new one failed too (D63): `alive` is false.
+    dead: bool,
 }
 
 struct Posted {
@@ -58,6 +60,7 @@ impl HttpConn {
             version: LEGACY.into(),
             session: None,
             next: 1,
+            dead: false,
         };
         let id = conn.id();
         let probe = rpc::request(id, "server/discover", json!({}), Era::Modern);
@@ -173,9 +176,24 @@ impl HttpConn {
 
 impl Conn for HttpConn {
     fn request(&mut self, method: &str, params: Value, call: &Call<'_>) -> Result<Value, String> {
-        let id = self.id();
-        let msg = rpc::request(id, method, params, self.era);
-        let posted = self.post(&msg, id, &call.headers, call)?;
+        let mut posted = self.send(method, params.clone(), call)?;
+        // HTTP 404 to a request with a session: the server ended the session
+        // (MCP 2025-11-25 Session Management, D63). One new `initialize`,
+        // one retry; a second failure marks the connection dead.
+        if self.expired(&posted) {
+            self.session = None;
+            if let Err(err) = self.initialize(call) {
+                self.dead = true;
+                return Err(format!(
+                    "{method}: session expired; initialize again: {err}"
+                ));
+            }
+            posted = self.send(method, params, call)?;
+            if self.expired(&posted) {
+                self.dead = true;
+                return Err(format!("{method}: HTTP 404 again after a new session"));
+            }
+        }
         if call.cancel.load(Ordering::Relaxed) {
             return Err("cancelled".into());
         }
@@ -193,7 +211,20 @@ impl Conn for HttpConn {
     }
 
     fn alive(&mut self) -> bool {
-        true
+        !self.dead
+    }
+}
+
+impl HttpConn {
+    fn send(&mut self, method: &str, params: Value, call: &Call<'_>) -> Result<Posted, String> {
+        let id = self.id();
+        let msg = rpc::request(id, method, params, self.era);
+        self.post(&msg, id, &call.headers, call)
+    }
+
+    /// A legacy request with a session id answered with HTTP 404.
+    fn expired(&self, posted: &Posted) -> bool {
+        self.era == Era::Legacy && self.session.is_some() && posted.head.status == 404
     }
 }
 

@@ -17,6 +17,7 @@ pub mod hooks;
 mod inbox;
 mod inbox_file;
 pub mod memory;
+mod model_hook;
 pub mod nested;
 mod preload;
 pub mod prompt;

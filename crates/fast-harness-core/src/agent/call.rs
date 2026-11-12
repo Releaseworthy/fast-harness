@@ -140,7 +140,9 @@ impl Turn<'_> {
     fn trace_context(&mut self, step: u32, attempt: u32, lease: &Lease, wire: &str) -> Res<()> {
         let agent = self.agent;
         let parts = &agent.parts;
-        let (model, effort) = request_model(&self.request, &parts.config);
+        let change = self.change.as_ref().filter(|_| !self.quiet);
+        let (model, effort, _) =
+            super::model_hook::request_parts(&self.request, change, &parts.config);
         let context = RequestContext {
             turn: self.turn,
             step,
@@ -175,22 +177,16 @@ impl Turn<'_> {
         let (system_1h, messages_1h) = parts.config.cache_hours();
         // The session's frozen system and tools (PLAN.md D36).
         let conv = &*self.conv;
-        let (model, effort) = request_model(&self.request, &parts.config);
+        // A `PreModelRequest` hook may change only these two (PLAN.md D63).
+        let change = self.change.as_ref().filter(|_| !self.quiet);
+        let (model, effort, max_tokens) =
+            super::model_hook::request_parts(&self.request, change, &parts.config);
         let req = ChatRequest {
             model,
             system: conv.system.as_deref().unwrap_or(&parts.system),
             messages: &conv.messages,
             tools: conv.tools.as_deref().unwrap_or(agent.tools.specs()),
-            // A `maxOutput` in `providers/*.json` caps it (PLAN.md D41).
-            max_tokens: crate::llm::catalog::max_output_override(model).map_or(
-                parts.config.max_tokens,
-                |cap| {
-                    parts
-                        .config
-                        .max_tokens
-                        .min(u32::try_from(cap).unwrap_or(u32::MAX))
-                },
-            ),
+            max_tokens,
             effort,
             cache: Cache {
                 system_1h,

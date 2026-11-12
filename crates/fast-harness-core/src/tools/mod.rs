@@ -24,6 +24,7 @@ pub mod ext;
 pub mod find;
 mod glob;
 mod grep;
+pub mod hook_request;
 mod hook_run;
 pub mod hooks;
 pub mod mcp;

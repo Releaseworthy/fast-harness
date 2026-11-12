@@ -117,6 +117,20 @@ fn parses_prompt() {
     assert!(USAGE.contains("fast-harness prompt [--cwd DIR]"));
 }
 
+/// `trust --cwd DIR` trusts DIR, not the current directory (D63).
+#[test]
+fn trust_takes_cwd_as_its_path() {
+    let path = Some(PathBuf::from("d"));
+    assert_eq!(
+        parse_str("trust --cwd d").unwrap(),
+        Command::Trust { path: path.clone() }
+    );
+    assert_eq!(parse_str("trust d").unwrap(), Command::Trust { path });
+    assert_eq!(parse_str("trust").unwrap(), Command::Trust { path: None });
+    assert!(parse_str("trust d --cwd e").is_err(), "one path only");
+    assert!(USAGE.contains("trust [PATH|--cwd DIR]") && USAGE.contains("AGENTS.md files load"));
+}
+
 #[test]
 fn parses_serve_and_json_print() {
     let Command::Print(print) = parse_str("-p hi --json").unwrap() else {
