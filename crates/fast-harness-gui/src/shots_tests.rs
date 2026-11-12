@@ -95,6 +95,14 @@ fn side_rows() -> Vec<SideRow> {
         detail: time.into(),
         current,
         expanded: false,
+        run: if id == "2" {
+            "running"
+        } else if id == "3" {
+            "paused"
+        } else {
+            ""
+        }
+        .into(),
     };
     vec![
         workspace_row(Path::new("F:\\work\\auto-warband"), false, false),
@@ -224,6 +232,28 @@ fn fill(ui: &MainWindow) {
     ui.set_version("0.1.0".into());
 }
 
+/// A running turn (Pause next to Stop, a steer and a queued chip), then a
+/// paused one (Resume) (D39).
+fn run_states(ui: &MainWindow, window: &MinimalSoftwareWindow, dir: &std::path::Path, id: &str) {
+    let chip = |index: i32, text: &str| crate::QueueChip {
+        index,
+        text: text.into(),
+    };
+    ui.set_busy(true);
+    ui.set_queue_chips(model(vec![
+        chip(-1, "Use the theme roles, not literal colours"),
+        chip(0, "Then run the gates and commit"),
+    ]));
+    let png = shots_png::encode(WIDTH, HEIGHT, &render(window));
+    std::fs::write(dir.join(format!("{id}-running.png")), png).expect("write png");
+    ui.set_busy(false);
+    ui.set_queue_chips(model(Vec::new()));
+    ui.set_resume_word("paused".into());
+    let png = shots_png::encode(WIDTH, HEIGHT, &render(window));
+    std::fs::write(dir.join(format!("{id}-paused.png")), png).expect("write png");
+    ui.set_resume_word("".into());
+}
+
 fn render(window: &MinimalSoftwareWindow) -> Vec<u8> {
     let mut buffer = vec![Rgb8Pixel { r: 0, g: 0, b: 0 }; (WIDTH * HEIGHT) as usize];
     // Twice: the list views measure their rows on the first pass.
@@ -305,6 +335,7 @@ fn shots() {
         let png = shots_png::encode(WIDTH, HEIGHT, &render(&window));
         std::fs::write(dir.join(format!("{}-nosidebar.png", core.id)), png).expect("write png");
         ui.set_sidebar_open(true);
+        run_states(&ui, &window, &dir, &core.id);
         provider_states(&ui, &window, &dir, &core.id);
         outside_click_closes(&ui, &window);
         let size = (WIDTH, HEIGHT);

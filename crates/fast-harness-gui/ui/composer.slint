@@ -9,12 +9,22 @@ export component Composer inherits Rectangle {
     in-out property <string> text <=> area.text;
     in property <bool> busy;
     in property <string> hint: "Enter to send · Shift+Enter for a new line";
+    // How the last turn stopped when Resume applies (D39), else empty.
+    in property <string> resume-word;
     // A note that replaces the hint until the next send (e.g. the effort
     // changed with the model).
     in property <string> note;
     // Fired on Enter or the Send button; the parent clears `text` itself.
     callback submit();
     callback stop();
+    // Alt+Enter: queue a follow-up while busy.
+    callback queue();
+    callback pause();
+    callback resume();
+    property <string> busy-hint: "Enter steers · Alt+Enter queues";
+    property <string> shown-hint: root.busy ? root.busy-hint
+        : root.resume-word != "" ? "Last turn " + root.resume-word + ": Resume continues it"
+        : root.hint;
     public function focus-input() { area.focus(); }
     // A floating card: elevation, a glow halo and an accent edge while focused.
     if area.has-focus: Halo { radius: Theme.radius-xl; }
@@ -36,7 +46,10 @@ export component Composer inherits Rectangle {
             placeholder: "Message Fast Harness";
             key-pressed(event) => {
                 if (event.text == Key.Return && !event.modifiers.shift) {
-                    if (!root.busy) {
+                    // While busy the app steers (Enter) or queues (Alt+Enter).
+                    if (event.modifiers.alt) {
+                        root.queue();
+                    } else {
                         root.submit();
                     }
                     return accept;
@@ -52,7 +65,7 @@ export component Composer inherits Rectangle {
                 @children
             }
             Text {
-                text: root.note != "" ? root.note : root.hint;
+                text: root.note != "" ? root.note : root.shown-hint;
                 color: root.note != "" ? Theme.text : Theme.dim;
                 font-size: root.note != "" ? Theme.font-s : Theme.font-xs;
                 wrap: root.note != "" ? word-wrap : no-wrap;
@@ -60,6 +73,16 @@ export component Composer inherits Rectangle {
                 vertical-alignment: center;
                 overflow: elide;
                 horizontal-stretch: 1;
+            }
+            if root.busy: ActionButton {
+                icon: Icons.debug-pause;
+                text: "Pause";
+                clicked => { root.pause(); }
+            }
+            if !root.busy && root.resume-word != "": ActionButton {
+                icon: Icons.refresh;
+                text: "Resume";
+                clicked => { root.resume(); }
             }
             ActionButton {
                 icon: root.busy ? Icons.debug-stop : Icons.send;

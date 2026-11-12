@@ -25,6 +25,7 @@ mod prompt_settings;
 mod prompt_settings_tests;
 mod providers;
 mod rows;
+mod runs;
 #[cfg(test)]
 mod scroll_tests;
 mod settings;

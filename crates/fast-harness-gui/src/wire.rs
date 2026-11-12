@@ -14,6 +14,16 @@ pub fn connect(ui: &MainWindow) {
     ui.on_stop(|| {
         with_app(turn::stop);
     });
+    ui.on_queue(|text| with_app(|app, ui| turn::queue(app, ui, &text)).unwrap_or(false));
+    ui.on_pause(|| {
+        with_app(turn::pause);
+    });
+    ui.on_resume(|| {
+        with_app(turn::resume);
+    });
+    ui.on_remove_queued(|index| {
+        with_app(|app, ui| turn::remove_queued(app, ui, index));
+    });
     ui.on_new_session(|| {
         with_app(|app, ui| app.new_session(ui));
     });
@@ -152,6 +162,7 @@ pub fn first_paint() {
         prompt_settings::show(app, ui, "");
         app.refresh_sessions(ui);
         app.refresh_status(ui);
+        app.refresh_run(ui);
         accounts::refresh(app, ui);
     });
 }

@@ -71,11 +71,12 @@ pub fn refresh(app: &App, ui: &MainWindow) {
         match session::list(&app.rt.home, &ws.path) {
             Ok(list) => rows.extend(list.iter().map(|s| {
                 let open = if key == current {
-                    app.conv_id.as_deref()
+                    app.runs.id.as_deref()
                 } else {
                     None
                 };
                 let row = session_row(s, open, now);
+                let run = app.runs.mark(&s.id, s.unfinished);
                 SideRow {
                     kind: "session".into(),
                     id: row.id,
@@ -84,6 +85,7 @@ pub fn refresh(app: &App, ui: &MainWindow) {
                     detail: row.time,
                     current: row.current,
                     expanded: false,
+                    run: run.into(),
                 }
             })),
             Err(err) => show_error(ui, format!("Cannot list the sessions: {err}")),
@@ -106,6 +108,7 @@ pub fn workspace_row(path: &Path, current: bool, expanded: bool) -> SideRow {
         detail: full.into(),
         current,
         expanded,
+        run: "".into(),
     }
 }
 
@@ -125,12 +128,9 @@ pub fn select(app: &mut App, ui: &MainWindow, path: &str) {
     }
 }
 
-/// Moves to workspace `path`: cwd, lastUsedAt, saved, expanded. False while a turn runs.
+/// Moves to workspace `path`: cwd, lastUsedAt, saved, expanded. A running
+/// turn goes on parked (D39).
 fn switch(app: &mut App, ui: &MainWindow, path: &Path) -> bool {
-    if app.busy {
-        show_error(ui, "Stop the running turn before switching workspaces.");
-        return false;
-    }
     app.cwd = path.to_path_buf();
     app.side.list.touch(path, now_ms());
     app.side.expanded.insert(slug(path));

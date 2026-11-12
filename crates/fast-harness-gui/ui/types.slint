@@ -107,7 +107,8 @@ export struct TraceRow {
 }
 
 // A sidebar row: kind "workspace" (id and detail: the folder path; title: its name)
-// or "session" (id: the session id; workspace: its folder; detail: the time).
+// or "session" (id: the session id; workspace: its folder; detail: the time;
+// run: "running", "paused", "interrupted", "cancelled" or empty, D39).
 export struct SideRow {
     kind: string,
     id: string,
@@ -116,6 +117,14 @@ export struct SideRow {
     detail: string,
     current: bool,
     expanded: bool,
+    run: string,
+}
+
+// A text waiting above the composer: index -1 for a steer the running turn
+// has not read yet, else its place in the follow-up queue.
+export struct QueueChip {
+    index: int,
+    text: string,
 }
 
 export struct SessionRow {

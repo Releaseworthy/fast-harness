@@ -6,32 +6,25 @@ use std::rc::Rc;
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 
-use fast_harness_core::agent::Conversation;
 use fast_harness_core::app::Runtime;
+use fast_harness_core::session::Unfinished;
 use fast_harness_core::trace::{self, now_ms};
 use fast_harness_core::view::{Item, State, Transcript};
 use slint::{ComponentHandle, ModelRc, SharedString, VecModel, Weak};
 
 use crate::format::{duration, tokens};
 use crate::mirror::Mirror;
-use crate::{MainWindow, MsgRow};
+use crate::runs::{Run, Runs};
+use crate::{MainWindow, MsgRow, QueueChip};
 
 pub struct App {
     pub ui: Weak<MainWindow>,
     pub rt: Runtime,
     pub cwd: PathBuf,
-    /// The session; `None` before the first message and while a turn runs.
-    pub conv: Option<Conversation>,
-    /// Id of the current session, also while a turn has the conversation.
-    pub conv_id: Option<String>,
-    pub view: Transcript,
+    /// The shown session and the parked ones with running turns (D39).
+    pub runs: Runs,
     pub mirror: Mirror,
     pub rows: Rc<VecModel<MsgRow>>,
-    /// First item of the running turn: items before it do not change.
-    pub turn_from: usize,
-    pub busy: bool,
-    pub cancel: Arc<AtomicBool>,
-    pub stopping: bool,
     pub login_cancel: Option<Arc<AtomicBool>>,
     /// Model ids in the order of the Settings list.
     pub models: Vec<String>,
@@ -80,16 +73,10 @@ impl App {
         App {
             ui: ui.as_weak(),
             rt,
+            runs: Runs::new(cwd.clone()),
             cwd,
-            conv: None,
-            conv_id: None,
-            view: Transcript::new(),
             mirror: Mirror::default(),
             rows,
-            turn_from: 0,
-            busy: false,
-            cancel: Arc::new(AtomicBool::new(false)),
-            stopping: false,
             login_cancel: None,
             models: Vec::new(),
             models_fetching: false,
@@ -97,24 +84,25 @@ impl App {
         }
     }
 
-    /// Pushes the transcript changes from `turn_from` on into the model.
+    /// Pushes the shown transcript's changes from its turn start into the model.
     pub fn sync_rows(&mut self) {
+        let run = &self.runs.shown;
         self.mirror
-            .sync(&self.view.items, &*self.rows, self.turn_from);
+            .sync(&run.view.items, &*self.rows, run.turn_from);
     }
 
     pub fn refresh_status(&self, ui: &MainWindow) {
-        ui.set_status_state(state_text(self.view.state, self.busy, self.stopping).into());
-        let model = if self.view.model.is_empty() {
+        let view = &self.runs.shown.view;
+        ui.set_status_state(state_text(view.state, &self.runs.shown).into());
+        let model = if view.model.is_empty() {
             &self.rt.config.model
         } else {
-            &self.view.model
+            &view.model
         };
         ui.set_status_model(model.as_str().into());
-        ui.set_status_account(self.view.account.as_str().into());
-        let t = &self.view.totals;
-        let context = self
-            .view
+        ui.set_status_account(view.account.as_str().into());
+        let t = &view.totals;
+        let context = view
             .context_status()
             .map(|text| format!("{text} · "))
             .unwrap_or_default();
@@ -126,7 +114,25 @@ impl App {
             tokens(t.cache_write)
         );
         ui.set_status_tokens(used.into());
-        ui.set_status_timing(last_step_text(&self.view.items).into());
+        ui.set_status_timing(last_step_text(&view.items).into());
+    }
+
+    /// The composer's part of the shown run: busy, the chips and Resume.
+    pub fn refresh_run(&self, ui: &MainWindow) {
+        let run = &self.runs.shown;
+        ui.set_busy(run.busy);
+        let chips: Vec<QueueChip> = (run.chips().into_iter())
+            .map(|(index, text)| QueueChip {
+                index,
+                text: text.into(),
+            })
+            .collect();
+        ui.set_queue_chips(ModelRc::new(VecModel::from(chips)));
+        let word = match run.unfinished {
+            Some(state) if run.can_resume() => state.word(),
+            _ => "",
+        };
+        ui.set_resume_word(word.into());
     }
 
     pub fn refresh_sessions(&self, ui: &MainWindow) {
@@ -137,52 +143,57 @@ impl App {
         crate::trace_rows::refresh(self, ui);
     }
 
-    /// Shows `view` from its first row.
-    pub fn show_view(&mut self, ui: &MainWindow, view: Transcript) {
-        self.view = view;
-        self.turn_from = 0;
-        self.mirror.reset(&self.view.items, &*self.rows);
+    /// Shows the shown run from its first row.
+    pub fn show_run(&mut self, ui: &MainWindow) {
+        self.mirror.reset(&self.runs.shown.view.items, &*self.rows);
         self.refresh_status(ui);
+        self.refresh_run(ui);
         self.refresh_sessions(ui);
         ui.set_page("chat".into());
         ui.invoke_to_bottom();
     }
 
+    /// A new session in the current folder; a running turn goes on parked.
     pub fn new_session(&mut self, ui: &MainWindow) {
-        if self.busy {
-            return show_error(ui, "Stop the running turn before starting a new session.");
+        let cwd = self.cwd.clone();
+        let fresh = || Ok(Run::new(cwd, None, Transcript::new()));
+        if let Err(err) = self.runs.show(None, fresh) {
+            return show_error(ui, err);
         }
-        self.conv = None;
-        self.conv_id = None;
-        self.show_view(ui, Transcript::new());
+        self.show_run(ui);
     }
 
+    /// Shows session `id`: its live run when it has one, else its log.
     pub fn open_session(&mut self, ui: &MainWindow, id: &str) {
-        if self.busy {
-            return show_error(ui, "Stop the running turn before opening another session.");
-        }
-        match self.rt.open_conversation(&self.cwd, Some(id), false) {
-            Ok(conv) => {
-                let view = match trace::read(&conv.log_path) {
-                    Ok((_, events)) => Transcript::from_trace(&events),
-                    Err(_) => Transcript::from_messages(&conv.messages),
-                };
-                self.conv_id = Some(conv.id.clone());
-                self.conv = Some(conv);
-                self.show_view(ui, view);
-            }
+        let (rt, cwd) = (&self.rt, self.cwd.clone());
+        let load = || {
+            let conv = rt.open_conversation(&cwd, Some(id), false)?;
+            let view = match trace::read(&conv.log_path) {
+                Ok((_, events)) => Transcript::from_trace(&events),
+                Err(_) => Transcript::from_messages(&conv.messages),
+            };
+            Ok(Run::new(cwd.clone(), Some(conv), view))
+        };
+        match self.runs.show(Some(id.to_string()), load) {
+            Ok(()) => self.show_run(ui),
             Err(err) => show_error(ui, err),
         }
     }
 }
 
-pub fn state_text(state: State, busy: bool, stopping: bool) -> String {
-    if busy && stopping {
+pub fn state_text(state: State, run: &Run) -> String {
+    if run.busy && run.stopping {
         return "Stopping".into();
     }
+    if run.busy && run.pausing {
+        return "Pausing after this step's tools".into();
+    }
     match state {
-        State::Idle if busy => "Starting".into(),
-        State::Idle => "Ready".into(),
+        State::Idle if run.busy => "Starting".into(),
+        State::Idle => match run.unfinished {
+            Some(Unfinished::Paused) => "Paused".into(),
+            _ => "Ready".into(),
+        },
         State::Waiting => "Waiting for the model".into(),
         State::Thinking => "Thinking".into(),
         State::Responding => "Responding".into(),

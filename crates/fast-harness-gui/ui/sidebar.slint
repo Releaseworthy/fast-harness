@@ -165,13 +165,30 @@ component WorkspaceEntry inherits Rectangle {
     }
 }
 
+// A session's run state (D39): a mark and its word, tinted by state.
+component RunMark inherits HorizontalLayout {
+    in property <string> word;
+    property <color> tint: root.word == "running" ? Theme.info
+        : root.word == "paused" ? Theme.warning
+        : root.word == "interrupted" ? Theme.error : Theme.dim;
+    spacing: 3px;
+    Mark {
+        text: root.word == "running" ? Icons.pulse
+            : root.word == "paused" ? Icons.debug-pause
+            : root.word == "interrupted" ? Icons.warning : Icons.circle-slash;
+        color: root.tint;
+        font-size: Theme.font-xs;
+    }
+    Text { text: root.word; color: root.tint; font-size: Theme.font-xs; }
+}
+
 // A session under its workspace, indented past the folder icon.
 component SessionEntry inherits Rectangle {
     in property <SideRow> entry;
     callback clicked();
     height: 44px;
     accessible-role: list-item;
-    accessible-label: root.entry.title;
+    accessible-label: root.entry.title + (root.entry.run != "" ? " (" + root.entry.run + ")" : "");
     accessible-item-selected: root.entry.current;
     accessible-action-default => { root.clicked(); }
     // A tree guide under the folder icon.
@@ -198,7 +215,12 @@ component SessionEntry inherits Rectangle {
             font-size: Theme.font-m;
             font-weight: root.entry.current ? 600 : 400;
         }
-        Text { text: root.entry.detail; font-size: Theme.font-xs; color: Theme.dim; }
+        HorizontalLayout {
+            spacing: Theme.space-s;
+            alignment: start;
+            Text { text: root.entry.detail; font-size: Theme.font-xs; color: Theme.dim; }
+            if root.entry.run != "": RunMark { word: root.entry.run; }
+        }
     }
     sta := TouchArea {
         mouse-cursor: pointer;

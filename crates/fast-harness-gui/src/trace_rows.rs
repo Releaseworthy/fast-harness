@@ -165,7 +165,7 @@ fn set_rows(ui: &MainWindow, timeline: Vec<TraceRow>, steps: Vec<ModelRc<SharedS
 
 /// Reads the current session log into both views.
 pub fn refresh(app: &App, ui: &MainWindow) {
-    let Some(id) = app.conv_id.as_deref() else {
+    let Some(id) = app.runs.id.as_deref() else {
         ui.set_trace_session("".into());
         ui.set_trace_message("No session yet: send a message or open a session.".into());
         return set_rows(ui, Vec::new(), Vec::new());
