@@ -192,4 +192,28 @@ mod tests {
         assert_eq!(tools, [false, true]);
         assert_eq!(log.ops.borrow().last().map(String::as_str), Some("set 1"));
     }
+
+    #[test]
+    fn progress_rewrites_only_its_running_row() {
+        let log = Log::default();
+        let mut view = Transcript::new();
+        let mut mirror = Mirror::default();
+        view.push_user("q");
+        for id in ["a", "b"] {
+            view.apply(&AgentEvent::ToolCall {
+                id: id.into(),
+                name: "shell".into(),
+                arguments: "{}".into(),
+            });
+        }
+        mirror.sync(&view.items, &log, 0);
+        let ops = log.ops.borrow().len();
+        for chunk in ["one\n", "two\n"] {
+            let (id, chunk) = ("a".into(), chunk.into());
+            view.apply(&AgentEvent::ToolProgress { id, chunk });
+            assert_eq!(mirror.sync(&view.items, &log, 0), 1);
+        }
+        assert_eq!(log.ops.borrow()[ops..], ["set 1", "set 1"]);
+        assert_eq!(log.rows.borrow()[1].live, "one\ntwo");
+    }
 }

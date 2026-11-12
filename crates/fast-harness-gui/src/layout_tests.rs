@@ -196,6 +196,7 @@ fn tool(name: &str, arguments: &str, output: Option<&str>) -> MsgRow {
         output: output.map(str::to_string),
         is_error: false,
         duration_ms: None,
+        live: None,
     };
     MsgRow {
         expanded: true,

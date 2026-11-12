@@ -4,12 +4,14 @@
 //! [`Transcript::from_messages`] and [`Transcript::from_trace`].
 
 pub mod diff;
+mod live_tail;
 mod replay;
 mod summary;
 pub mod tool_detail;
 mod tool_detail_fs;
 mod tool_detail_run;
 
+pub use live_tail::{LiveTail, LIVE_LINES, LIVE_LINE_BYTES};
 pub use summary::tool_summary;
 pub use tool_detail::{
     tool_detail, Chip, Field, Line, LineKind, Tone, ToolDetail, ToolKind, MAX_LINES,
@@ -40,7 +42,8 @@ pub enum Item {
         text: String,
         thinking: String,
     },
-    /// `output` is `None` while the tool runs.
+    /// `output` is `None` while the tool runs. `live` holds the newest lines
+    /// of its progress while it runs; the result drops it (never replayed).
     Tool {
         id: String,
         name: String,
@@ -49,6 +52,7 @@ pub enum Item {
         output: Option<String>,
         is_error: bool,
         duration_ms: Option<u64>,
+        live: Option<LiveTail>,
     },
     Note {
         kind: NoteKind,
@@ -215,6 +219,7 @@ impl Transcript {
                 name,
                 arguments,
             } => self.tool_call(id, name, arguments),
+            AgentEvent::ToolProgress { id, chunk } => self.progress(id, chunk),
             AgentEvent::ToolResult {
                 id,
                 content,
@@ -268,9 +273,6 @@ impl Transcript {
                 self.subagent_note(session, verb);
             }
             AgentEvent::SubagentProgress { session, line } => self.subagent_note(session, line),
-            // Live tool output leaves the transcript as it is: chunk 24C
-            // shows it; the `ToolResult` that follows holds the whole text.
-            AgentEvent::ToolProgress { .. } => {}
             AgentEvent::StepEnd {
                 turn,
                 step,
@@ -346,6 +348,17 @@ impl Transcript {
         self.state = State::RunningTools { running };
     }
 
+    /// Live output of a running tool goes to its tail; a chunk for an
+    /// unknown or finished call is dropped.
+    fn progress(&mut self, id: &str, chunk: &str) {
+        if let Some(Item::Tool {
+            output: None, live, ..
+        }) = self.tool_mut(id)
+        {
+            live.get_or_insert_with(LiveTail::default).push(chunk);
+        }
+    }
+
     /// Tools without output since the last user message.
     fn running_tools(&self) -> usize {
         self.items
@@ -368,9 +381,11 @@ impl Transcript {
             output,
             is_error,
             duration_ms,
+            live,
             ..
         }) = self.tool_mut(id)
         {
+            *live = None;
             *output = Some(content.to_string());
             *is_error = error;
             *duration_ms = ms;
@@ -430,5 +445,6 @@ pub(crate) fn new_tool(id: &str, name: &str, arguments: String) -> Item {
         output: None,
         is_error: false,
         duration_ms: None,
+        live: None,
     }
 }

@@ -68,6 +68,7 @@ fn tool_lines(item: &Item, o: &Opts) -> Vec<Line<'static>> {
         summary,
         output,
         is_error,
+        live,
         ..
     } = item
     else {
@@ -87,20 +88,38 @@ fn tool_lines(item: &Item, o: &Opts) -> Vec<Line<'static>> {
         Span::styled(head, st.text()),
     ])];
     let Some(output) = output else {
+        // The newest lines of a running tool's output (`view::LiveTail`).
+        let tail = live.iter().flat_map(|tail| tail.lines());
+        push_rows(&mut lines, tail, st.dim(), o.width);
         return lines;
     };
     let style = if *is_error { st.error() } else { st.dim() };
     let rows: Vec<&str> = output.lines().filter(|l| !l.trim().is_empty()).collect();
-    for (index, row) in rows.iter().take(TOOL_LINES).enumerate() {
-        let lead = if index == 0 { "  ⎿ " } else { "    " };
-        let text = clip(row, o.width.saturating_sub(4));
-        lines.push(Line::styled(format!("{lead}{text}"), style));
-    }
+    push_rows(
+        &mut lines,
+        rows.iter().copied().take(TOOL_LINES),
+        style,
+        o.width,
+    );
     if rows.len() > TOOL_LINES {
         let more = format!("    … +{} lines", rows.len() - TOOL_LINES);
         lines.push(Line::styled(more, st.dim()));
     }
     lines
+}
+
+/// Output rows under a tool head, clipped to the width: `⎿` before the first.
+fn push_rows<'a>(
+    lines: &mut Vec<Line<'static>>,
+    rows: impl Iterator<Item = &'a str>,
+    style: Style,
+    width: usize,
+) {
+    for (index, row) in rows.enumerate() {
+        let lead = if index == 0 { "  ⎿ " } else { "    " };
+        let text = clip(row, width.saturating_sub(4));
+        lines.push(Line::styled(format!("{lead}{text}"), style));
+    }
 }
 
 /// A note with a mark for its kind, so greyscale themes still tell them apart.

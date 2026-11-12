@@ -20,6 +20,7 @@ fn tool(id: &str, name: &str, args: &str, summary: &str, out: &str, err: bool, m
         output: Some(out.into()),
         is_error: err,
         duration_ms: Some(ms),
+        live: None,
     }
 }
 

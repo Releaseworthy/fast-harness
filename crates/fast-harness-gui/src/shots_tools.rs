@@ -1,7 +1,7 @@
 //! Sample tool cards for the screenshots, built through the real mapping
 //! (`rows::msg_row`) from realistic arguments and the outputs the core
 //! tools print: "tools-a" (read, write, edit), "tools-b" (grep, glob, a
-//! running grep), "tools-c" (shell, a failing shell, subagent, find).
+//! running grep, a running shell with its live output), "tools-c" (shell, a failing shell, subagent, find).
 
 use std::path::Path;
 
@@ -21,6 +21,7 @@ pub fn tool(name: &str, args: serde_json::Value, output: Option<&str>, error: bo
         output: output.map(str::to_string),
         is_error: error,
         duration_ms: output.map(|_| 41),
+        live: None,
     })
 }
 
@@ -98,6 +99,27 @@ pub fn running_grep() -> MsgRow {
     tool("grep", args, None, false)
 }
 
+/// A shell still running, with the newest lines of its output.
+pub fn running_shell() -> MsgRow {
+    let mut tail = fast_harness_core::view::LiveTail::default();
+    tail.push("   Compiling slint v1.18.1\r\n   Compiling fast-harness-core v0.1.0\r\n");
+    tail.push(
+        "\u{1b}[32m   Compiling\u{1b}[0m fast-harness-gui v0.1.0 (crates/fast-harness-gui)\r\n",
+    );
+    tail.push("    Building [=======>   ] 412/518: fast-harness-gui");
+    let args = serde_json::json!({ "command": "cargo build --release -p fast-harness-gui" });
+    msg_row(&Item::Tool {
+        id: "t".into(),
+        name: "shell".into(),
+        arguments: args.to_string(),
+        summary: String::new(),
+        output: None,
+        is_error: false,
+        duration_ms: None,
+        live: Some(tail),
+    })
+}
+
 fn shell() -> MsgRow {
     let out = "   Compiling fast-harness-gui v0.1.0\n    Finished `test` profile in 14.2s\n     Running unittests src/main.rs\ntest result: ok. 68 passed; 0 failed; 1 ignored\n[exit code: 0]";
     // Longer than 48 characters: the header elides it, the field shows it.
@@ -160,7 +182,10 @@ pub fn shot(
 ) {
     let sets = [
         ("tools-a", vec![read(), write(), edit()]),
-        ("tools-b", vec![grep(), glob(), running_grep()]),
+        (
+            "tools-b",
+            vec![grep(), glob(), running_grep(), running_shell()],
+        ),
         ("tools-c", vec![shell(), shell_failed(), subagent(), find()]),
     ];
     ui.set_page("chat".into());

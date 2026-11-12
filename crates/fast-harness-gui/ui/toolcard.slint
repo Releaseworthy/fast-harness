@@ -375,6 +375,9 @@ export component ToolFrame inherits Rectangle {
     // The Trace page: "call" or "result" before the status, and Copy always.
     in property <string> caption;
     in property <bool> copy-link: root.status && !root.running;
+    // The newest lines of a running tool's output (the chat only).
+    in property <string> live;
+    property <length> indent: 30px + Theme.space-s + Theme.space-xs + Theme.space-s;
     callback toggle();
     callback copy();
     EdgeCard {
@@ -396,13 +399,26 @@ export component ToolFrame inherits Rectangle {
             copy-link: root.copy-link;
             copy => { root.copy(); }
         }
+        // One line per output line, never wrapped: the row grows by whole
+        // lines up to `view::LIVE_LINES`, and the result removes it.
+        if root.running && root.live != "": HorizontalLayout {
+            padding-left: root.indent;
+            Text {
+                text: root.live;
+                color: Theme.dim;
+                font-family: Theme.mono;
+                font-size: Theme.font-xs;
+                overflow: elide;
+                horizontal-stretch: 1;
+            }
+        }
         // A card with no chips, fields, lines, text or link is only its
         // header: an empty body still took the layout's spacing.
         if ToolStyle.has-body(root.tool, root.expanded, root.show-link): ToolBody {
             tool: root.tool;
             expanded: root.expanded;
             show-link: root.show-link;
-            indent: 30px + Theme.space-s + Theme.space-xs + Theme.space-s;
+            indent: root.indent;
             toggle => { root.toggle(); }
         }
     }

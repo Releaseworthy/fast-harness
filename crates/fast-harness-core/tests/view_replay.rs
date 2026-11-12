@@ -48,6 +48,7 @@ fn items(duration_ms: Option<u64>) -> Vec<Item> {
             output: Some("a.rs".into()),
             is_error: false,
             duration_ms,
+            live: None,
         },
         Item::Assistant {
             turn: 1,

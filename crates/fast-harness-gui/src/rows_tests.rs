@@ -12,6 +12,7 @@ fn tool(output: Option<&str>, is_error: bool) -> Item {
         output: output.map(str::to_string),
         is_error,
         duration_ms: None,
+        live: None,
     }
 }
 
@@ -46,6 +47,34 @@ fn tool_rows_track_running_and_errors() {
         (failed.text.as_str(), failed.output.as_str()),
         ("boom", "boom")
     );
+}
+
+#[test]
+fn a_running_tool_row_carries_its_live_tail_until_the_result() {
+    use fast_harness_core::events::AgentEvent;
+    use fast_harness_core::view::Transcript;
+    let mut view = Transcript::new();
+    view.apply(&AgentEvent::ToolCall {
+        id: "s1".into(),
+        name: "shell".into(),
+        arguments: r#"{"command":"echo"}"#.into(),
+    });
+    for chunk in ["one", "\r\n", "\u{1b}[1mtwo"] {
+        let (id, chunk) = ("s1".into(), chunk.into());
+        view.apply(&AgentEvent::ToolProgress { id, chunk });
+    }
+    let running = msg_row(&view.items[0]);
+    assert!(running.running);
+    assert_eq!(running.live, "one\ntwo");
+    view.apply(&AgentEvent::ToolResult {
+        id: "s1".into(),
+        content: "one\ntwo".into(),
+        is_error: false,
+        duration_ms: 9,
+    });
+    let done = msg_row(&view.items[0]);
+    assert!(!done.running);
+    assert_eq!(done.live, "");
 }
 
 /// Lines a drawn text takes at 100 characters a line: what must stay under

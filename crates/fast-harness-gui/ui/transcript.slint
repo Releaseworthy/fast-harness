@@ -148,6 +148,7 @@ component MessageView {
             toggle => { root.toggle(); }
             status: true;
             running: msg.running;
+            live: msg.live;
             copy => { root.copy(msg.text); }
         }
         if msg.kind == "note": Note { msg: msg; }

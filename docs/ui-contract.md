@@ -21,6 +21,10 @@ Without a `~/.fast-harness/ui/main.slint` the built-in UI is used and the banner
 
 The list is generated: `cargo test -p fast-harness-gui ui_contract` fails when it differs from the Rust and `.slint` sources (`UPDATE_UI_CONTRACT=1` rewrites it). The default `fast-harness-gui` never links the interpreter.
 
+## Running tools
+
+Both front ends draw a tool call from `view::Item::Tool`. While it runs (`output` is `None`) its `live` tail holds the newest lines of the tool's live output (`AgentEvent::ToolProgress`, PLAN.md D58): at most `view::LIVE_LINES` (8) lines of at most `view::LIVE_LINE_BYTES` (256) bytes, with escape sequences and control characters removed, `\r\n` or `\n` ending a line and a lone `\r` starting it again. The TUI shows the tail under the spinning tool row in the dim role, one row per line clipped to the width; the GUI shows `MsgRow.live` (the tail joined by `\n`, empty otherwise) under the running card's header in `Theme.dim` mono text, one line per line, never wrapped. When the result arrives the tail is gone and the row is the finished tool row, the same as in a replayed session (progress is never in the trace). A user UI without `MsgRow.live` simply does not show the tail.
+
 ## Entries
 
 <!-- contract:start -->

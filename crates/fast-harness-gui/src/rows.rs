@@ -41,6 +41,7 @@ pub fn msg_row(item: &Item) -> MsgRow {
             output,
             is_error,
             duration_ms,
+            live,
             ..
         } => {
             let detail = tool_detail(name, arguments, output.as_deref(), *is_error, *duration_ms);
@@ -48,6 +49,8 @@ pub fn msg_row(item: &Item) -> MsgRow {
                 title: name.into(),
                 summary: summary.into(),
                 output: expanded(output.as_deref().unwrap_or("")).into(),
+                // The running tool's newest output lines (`view::LiveTail`).
+                live: live.as_ref().map(|tail| tail.text()).unwrap_or_default().into(),
                 running: output.is_none(),
                 error: *is_error,
                 tool: tool_view(name, &detail),

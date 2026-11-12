@@ -97,6 +97,21 @@ Question (a), Slint's `live-preview` feature reading a user folder: not by itsel
 | CPU time over 30 s idle | 0 ms (2 of 2) | 0 and 15.6 ms | 15.6 and 78.1 ms |
 
 The live variant costs about 79 MB more private memory at idle (the interpreter keeps the compiled document and its type loader) and 3 to 10 times the start time; idle CPU stays near zero (the 78 ms run is unexplained, one run). The precompiled exe now carries the 27 `.slint` sources for `--export-ui` (203,824 bytes of text). `cargo tree -p fast-harness-gui -e normal -i slint-interpreter` without the feature finds no such package: the default binaries never link it. GPU: both use the software renderer; not measured again.
+## Phase 24C: live tool output in the GUI (2026-11-13)
+
+Method of phase 21A: `cargo build --release -p fast-harness-gui` at 6aae0c9 (before) and with the live tail (after), copies run alternately twice each on a fresh empty `FAST_HARNESS_HOME`, 10 s idle then CPU time over 30 s. Flood: the real home, Claude Haiku 5.5 at low effort, one turn whose shell runs `1..20000 | ForEach-Object { "line $_ " + ('x' * 100) }` (2,248,908 bytes of output, checked in each spill file), GUI CPU time from Enter over 35 s, sampled by `scripts/window.ps1` (shell child processes not counted).
+
+| Measure | Before (6aae0c9) | After |
+|---|---|---|
+| Private working set after 10 s idle | 18.1 to 18.2 MB | 18.2 MB |
+| Working set after 10 s idle | 43.5 to 56.8 MB | 43.6 to 56.8 MB |
+| Private bytes after 10 s idle | 74.4 to 74.5 MB | 74.4 to 74.5 MB |
+| CPU time over 30 s idle | 31.2 ms (2 of 2) | 31.2 ms (2 of 2) |
+| GUI CPU time, flood turn, 35 s | 422 and 500 ms | 688 and 328 ms |
+| Peak working set, flood turn | 54.2 and 56.4 MB | 56.9 and 54.3 MB |
+
+The flood costs about the same (the runs overlap; the shell sends at most 10 chunks a second and the tail keeps 8 lines of 256 bytes, so the work per event is bounded). Before the change the GUI ignored the progress events.
+
 ## Experiments 2026-11-12 (phase 10, E1 to E6)
 
 Note (PLAN.md D53): the Antigravity measurements below were made on code that now lives on branch `antigravity` (a143cfa), not on main.

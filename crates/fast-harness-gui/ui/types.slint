@@ -77,6 +77,8 @@ export struct MsgRow {
     summary: string,
     // Tool output as shown (shortened when long).
     output: string,
+    // The newest lines of a running tool's output; empty after its result.
+    live: string,
     running: bool,
     error: bool,
     // Thinking or tool output opened by the user.

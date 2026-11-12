@@ -25,6 +25,7 @@ fn tool(output: Option<&str>, is_error: bool) -> Item {
         output: output.map(String::from),
         is_error,
         duration_ms: output.map(|_| 5),
+        live: None,
     }
 }
 
@@ -146,6 +147,42 @@ fn thinking_expands_and_spinner_runs() {
     find(&screen, "second line");
     find(&screen, "running 1 tool(s)");
     find(&screen, "⠋ read README.md");
+}
+
+#[test]
+fn live_output_shows_under_a_running_tool_until_its_result() {
+    use fast_harness_core::events::AgentEvent;
+    let mut ui = Ui::new("m".into(), None);
+    ui.running = true;
+    let mut t = Transcript::new();
+    t.push_user("go");
+    t.apply(&AgentEvent::ToolCall {
+        id: "s1".into(),
+        name: "shell".into(),
+        arguments: r#"{"command":"echo"}"#.into(),
+    });
+    for chunk in ["one", "\r\n", "\u{1b}[32mtwo\u{1b}[0m"] {
+        let (id, chunk) = ("s1".into(), chunk.into());
+        t.apply(&AgentEvent::ToolProgress { id, chunk });
+    }
+    let buffer = render(&mut ui, &t, 70, 20);
+    let screen = rows(&buffer);
+    let head = find(&screen, "⠋");
+    assert_eq!(find(&screen, "⎿ one"), head + 1);
+    let two = find(&screen, "    two");
+    assert_eq!(two, head + 2);
+    assert_eq!(buffer[(4, two as u16)].fg, color(ui.theme.palette.dim));
+    t.apply(&AgentEvent::ToolResult {
+        id: "s1".into(),
+        content: "done".into(),
+        is_error: false,
+        duration_ms: 3,
+    });
+    let screen = rows(&render(&mut ui, &t, 70, 20));
+    find(&screen, "⎿ done");
+    assert!(!screen
+        .iter()
+        .any(|r| r.contains("⎿ one") || r.contains("two")));
 }
 
 #[test]

@@ -30,6 +30,7 @@ fn tool(summary: &str, output: Option<&str>, is_error: bool) -> Item {
         output: output.map(String::from),
         is_error,
         duration_ms: output.map(|_| 5),
+        live: None,
     }
 }
 
