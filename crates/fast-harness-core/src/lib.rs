@@ -8,7 +8,7 @@
 //! `fast-harness-plugins` crate sits above the core and only the binaries
 //! depend on it.
 //! OS specific code lives only under `platform`.
-//! See PLAN.md for the decisions behind this layout.
+//! See ARCHITECTURE.md for this layout and docs/decisions/ for the decisions behind it.
 
 pub mod accounts;
 pub mod agent;

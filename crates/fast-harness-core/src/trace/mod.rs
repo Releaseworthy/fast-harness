@@ -1,7 +1,7 @@
 //! The session log: one JSONL file per session holding the transcript and the
 //! per-turn, per-step trace, plus raw wire capture of every model call when
 //! the config turns it on (`Config::wire`, off by default).
-//! The format is the "Trace format" section of PLAN.md.
+//! The format is the "Trace format" section of docs/formats.md.
 
 pub mod detail;
 mod events;

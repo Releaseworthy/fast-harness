@@ -9,7 +9,7 @@ use super::error;
 use crate::http::{Flow, HttpHead, HttpRequest, Transport};
 use crate::llm::{Auth, LlmError};
 
-/// The `anthropic-version` pi-ai's SDK sends (PLAN.md fixes it too).
+/// The `anthropic-version` pi-ai's SDK sends (docs/providers.md fixes it too).
 pub(crate) const API_VERSION: &str = "2023-06-01";
 /// The Claude Code release pi-ai presents itself as in OAuth mode.
 pub(crate) const CLAUDE_CODE_VERSION: &str = "2.1.280";

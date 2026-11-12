@@ -1,4 +1,4 @@
-//! The workspace list: folders the user works in (PLAN.md D28, "Files on disk").
+//! The workspace list: folders the user works in (PLAN.md D28, docs/formats.md "Files on disk").
 //! `<app_home>/workspaces.json` =
 //! `{"version":1,"workspaces":[{"path":"F:\\work\\x","addedAt":<unix ms>,"lastUsedAt":<unix ms>}]}`.
 //! A missing file is seeded from the session folders; removing a workspace never touches files.

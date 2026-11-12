@@ -137,7 +137,7 @@ fn write_every_event(path: &Path) {
     w.turn_end(1, 1, &usage, 14200, "done").unwrap();
 }
 
-/// Event type and its data keys, as PLAN.md shows them.
+/// Event type and its data keys, as docs/formats.md shows them.
 const EXPECTED: [(&str, &str); 13] = [
     ("turn/start", "turn"),
     ("user/message", "turn message"),

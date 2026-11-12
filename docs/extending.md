@@ -1,6 +1,6 @@
 # Extending Fast Harness
 
-Everything here is a plain file: edit it and restart (or start a new session), no rebuild. Decisions: `PLAN.md` D41 (settings layers, trust, providers) and D33 (themes, `docs/themes.md`). UI panels drawn by your own program (`panels/*.json`, JSON lines): `docs/panels.md` (D46).
+Everything here is a plain file: edit it and restart (or start a new session), no rebuild. Decisions: [D41](decisions/D41.md) (settings layers, trust, providers) and [D33](decisions/D33.md) (themes, `docs/themes.md`). UI panels drawn by your own program (`panels/*.json`, JSON lines): `docs/panels.md` (D46).
 
 ## Settings layers
 

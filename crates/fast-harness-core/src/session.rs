@@ -1,5 +1,5 @@
 //! Session ids, paths, listing and resume by replaying the log.
-//! Layout (PLAN.md "Files on disk"):
+//! Layout (docs/formats.md "Files on disk"):
 //! `<app_home>/sessions/<cwd slug>/<id>.jsonl` and `<id>.wire/`.
 
 pub mod compacted;

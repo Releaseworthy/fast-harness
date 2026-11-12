@@ -1,4 +1,4 @@
-//! One typed method per event of the trace format (PLAN.md), each producing
+//! One typed method per event of the trace format (docs/formats.md), each producing
 //! exactly the data keys the format shows.
 
 use crate::llm::{Timing, ToolSpec};
