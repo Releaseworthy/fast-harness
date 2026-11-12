@@ -18,7 +18,7 @@ Rules for anyone (human or agent) changing this repo. Read `ARCHITECTURE.md` fir
 - The contracts are `http::Transport`, `llm::Provider`, `tools::Tool`, `auth::AuthSource`, `events::AgentEvent` and the `platform` items. Change one only together with every user of it.
 - No panics on input from the network, files or the model: return errors. `unwrap` and `expect` only in tests or on invariants with a comment.
 - Secrets: never in code, tests, fixtures, logs, traces or wire capture. Redact `authorization`, `x-api-key` and token fields. `Auth` prints as `<redacted>`.
-- Formats in `docs/formats.md` (trace, accounts) change only with a version bump and an update there in the same commit. A new decision is a new `docs/decisions/Dnn.md` plus its index line in `PLAN.md`; `ARCHITECTURE.md` stays current and under 12,000 bytes.
+- Formats in `docs/formats.md` (trace, accounts) change only with a version bump and an update there in the same commit. A decision is `docs/decisions/Dnn.md` plus its `PLAN.md` index line; `ARCHITECTURE.md` stays under 12,000 bytes.
 - Colours come only from `fast_harness_core::theme` roles (TUI `tui/theme.rs` Styles, GUI `Theme` global): no literal colours besides the neutral popup shadow. A palette change must keep `theme_tests.rs` green (WCAG 2.2 and APCA levels for every built-in theme at greyscale 0 to 100, pure grey at 100), and every status colour comes with a mark or a word. Built-in themes are JSON files (`crates/fast-harness-core/src/theme/builtin/`) in the same format users write (`docs/themes.md`, D33): a new or renamed role is a format change.
 
 ## Tests
@@ -43,7 +43,7 @@ Rules for anyone (human or agent) changing this repo. Read `ARCHITECTURE.md` fir
 - Tool calls of one step run by effect (PLAN.md D54): a new tool that only reads declares `Effect::Read` and runs alongside other reads; anything else stays serial, in call order.
 - Claude 5.x thinking blocks go back unchanged and bind to the prefix: never drop, shorten or reorder earlier messages on the client.
 - Reachability is not struct fields: `ext::v1` also reaches `HttpRequest`, `HttpHead`, `HttpError`, `Flow`, `HttpErrorKind` and `ToolSession` through `Transport` and `ToolCtx`, so walk trait method signatures before listing the types a rule must cover.
-- `#[non_exhaustive]` still allows `Default` plus field assignment, so a type needs setters only where outside code must build it another way.
-- A cross-crate literal migration: list every site up front (one regex), fix them all, then check. `cargo check` stops per crate, so the errors otherwise arrive in about 5 waves.
+- `#[non_exhaustive]` still allows `Default` plus field assignment: add setters only where outside code needs them.
+- A cross-crate literal migration: list every site with one regex and fix all before the first `cargo check` (it stops per crate).
 - `AgentEvent::ToolProgress` is live only (PLAN.md D58): never in the trace or a message; a view keeps a bounded tail and drops it at the result.
 - A CRLF working copy shows as `i/lf w/crlf` in `git ls-files --eol`: the commit is fine and `git checkout` of the file rewrites the tree.
