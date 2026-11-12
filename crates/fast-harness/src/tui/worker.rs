@@ -1,5 +1,6 @@
-//! Worker threads: the agent turn, the terminal reader, sign-in, usage reads
-//! and the 10-minute usage poller. Each one reports through the UI channel.
+//! Worker threads: the terminal reader, sign-in, usage reads, the model list
+//! and the 10-minute usage poller (turns run in the service, `tui/turns.rs`).
+//! Each one reports through the UI channel.
 
 use std::io;
 use std::sync::atomic::AtomicBool;
@@ -10,7 +11,6 @@ use std::time::Duration;
 
 use fast_harness_core::accounts::oauth;
 use fast_harness_core::accounts::pool::{AccountPool, USAGE_EVERY_MS};
-use fast_harness_core::agent::{Agent, Conversation, Inbox};
 use fast_harness_core::app::Runtime;
 use fast_harness_core::llm::anthropic::ModelInfo;
 use fast_harness_core::net::UreqTransport;
@@ -23,41 +23,6 @@ use crate::accounts_cmd::label;
 
 /// How long a sign-in waits for the browser.
 const LOGIN_TIMEOUT: Duration = Duration::from_secs(600);
-
-/// What a turn thread does: a new user text, or resume the last turn.
-pub enum Job {
-    Text(String),
-    Resume,
-}
-
-/// Runs one turn on a thread, reading `inbox` between steps (PLAN.md D39);
-/// the conversation and the texts no turn used come back in `TurnDone`.
-pub fn start_turn(
-    agent: Agent,
-    mut conv: Conversation,
-    job: Job,
-    cancel: Arc<AtomicBool>,
-    mut inbox: Inbox,
-    tx: Sender<Msg>,
-) -> io::Result<()> {
-    thread::Builder::new()
-        .name("fast-harness-turn".into())
-        .spawn(move || {
-            let sink_tx = tx.clone();
-            let mut sink = move |event| {
-                let _ = sink_tx.send(Msg::Agent(event));
-            };
-            let outcome = match job {
-                Job::Text(prompt) => {
-                    agent.run_turn_with(&mut conv, &prompt, &cancel, &mut inbox, &mut sink)
-                }
-                Job::Resume => agent.resume_turn(&mut conv, &cancel, &mut inbox, &mut sink),
-            };
-            let leftover = inbox.leftover();
-            let _ = tx.send(Msg::TurnDone(Box::new(conv), outcome, leftover));
-        })
-        .map(|_| ())
-}
 
 /// One live model list read, run off the UI thread.
 pub type FetchJob = Box<dyn FnOnce() -> Result<Vec<ModelInfo>, String> + Send>;
@@ -123,7 +88,7 @@ pub fn start_poller(
 impl Tui {
     /// The account actions of the accounts screen.
     pub fn account_action(&mut self, action: Action) {
-        let pool = self.rt.pool.clone();
+        let pool = self.rt().pool.clone();
         let result = match action {
             Action::UseAccount(id) => pool.set_active(&id).map(|_| format!("using {id}")),
             Action::Remove(id) => pool.remove(&id).map(|_| format!("removed {id}")),
@@ -153,7 +118,7 @@ impl Tui {
         if self.ui.fetching {
             return;
         }
-        let job = (self.fetcher)(&self.rt);
+        let job = (self.fetcher)(&self.rt());
         match start_fetch(job, self.tx.clone()) {
             Ok(()) => self.ui.fetch_started(),
             Err(err) => self
@@ -162,12 +127,15 @@ impl Tui {
         }
     }
 
+    /// The account pool and the transport, under one runtime guard.
+    fn pool_and_http(&self) -> (Arc<AccountPool>, Arc<UreqTransport>) {
+        let rt = self.rt();
+        (rt.pool.clone(), rt.transport.clone())
+    }
+
     fn poll_now(&mut self) {
-        let (pool, http, tx) = (
-            self.rt.pool.clone(),
-            self.rt.transport.clone(),
-            self.tx.clone(),
-        );
+        let (pool, http) = self.pool_and_http();
+        let tx = self.tx.clone();
         let spawned = thread::Builder::new()
             .name("fast-harness-usage-now".into())
             .spawn(move || {
@@ -193,11 +161,8 @@ impl Tui {
             self.ui.status = format!("could not open the browser: {err}");
         }
         let cancel = Arc::new(AtomicBool::new(false));
-        let (pool, http, tx) = (
-            self.rt.pool.clone(),
-            self.rt.transport.clone(),
-            self.tx.clone(),
-        );
+        let (pool, http) = self.pool_and_http();
+        let tx = self.tx.clone();
         let flag = cancel.clone();
         let spawned = thread::Builder::new()
             .name("fast-harness-login".into())

@@ -1,4 +1,5 @@
-//! The [`Runtime`] as the host of served sessions (PLAN.md D48).
+//! The [`Runtime`] as the host of served sessions (PLAN.md D48) and of the
+//! TUI's turns (PLAN.md D59).
 
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, MutexGuard};
@@ -10,9 +11,12 @@ use crate::service::{Expanded, Host};
 
 /// The runtime behind a lock, its settings loaded for one project at a
 /// time; `cli` (the `--model` and `--effort` flags) stays the top layer.
+/// Lock order: `runtime`, then `project`.
 pub struct RuntimeHost {
     home: PathBuf,
-    runtime: Mutex<(Runtime, Option<PathBuf>)>,
+    runtime: Mutex<Runtime>,
+    /// The project whose settings `runtime` holds.
+    project: Mutex<Option<PathBuf>>,
     cli: Vec<(String, String)>,
 }
 
@@ -20,22 +24,38 @@ impl RuntimeHost {
     pub fn new(runtime: Runtime, cli: Vec<(String, String)>) -> RuntimeHost {
         RuntimeHost {
             home: runtime.home.clone(),
-            runtime: Mutex::new((runtime, None)),
+            runtime: Mutex::new(runtime),
+            project: Mutex::new(None),
             cli,
         }
     }
 
+    /// A front end of one project (the TUI): `runtime` holds the settings
+    /// of `cwd` already (`Runtime::use_project`) and keeps them.
+    pub fn at_project(runtime: Runtime, cwd: &Path) -> RuntimeHost {
+        let host = RuntimeHost::new(runtime, Vec::new());
+        *host.project.lock().unwrap_or_else(|p| p.into_inner()) = Some(cwd.to_path_buf());
+        host
+    }
+
+    /// The runtime, for a front end that shares it with its turns.
+    pub fn runtime(&self) -> MutexGuard<'_, Runtime> {
+        self.runtime.lock().unwrap_or_else(|p| p.into_inner())
+    }
+
     /// The runtime with the settings of `cwd`'s project.
-    fn at(&self, cwd: &Path) -> Result<MutexGuard<'_, (Runtime, Option<PathBuf>)>, String> {
-        let mut guard = self.runtime.lock().unwrap_or_else(|p| p.into_inner());
-        if guard.1.as_deref() != Some(cwd) {
-            guard.0.use_project(cwd)?;
+    fn at(&self, cwd: &Path) -> Result<MutexGuard<'_, Runtime>, String> {
+        let mut runtime = self.runtime();
+        let mut project = self.project.lock().unwrap_or_else(|p| p.into_inner());
+        if project.as_deref() != Some(cwd) {
+            runtime.use_project(cwd)?;
             for (key, value) in &self.cli {
-                guard.0.set_cli(key, value);
+                runtime.set_cli(key, value);
             }
-            guard.1 = Some(cwd.to_path_buf());
+            *project = Some(cwd.to_path_buf());
         }
-        Ok(guard)
+        drop(project);
+        Ok(runtime)
     }
 }
 
@@ -45,7 +65,7 @@ impl Host for RuntimeHost {
     }
 
     fn config(&self, cwd: &Path) -> Result<Config, String> {
-        Ok(self.at(cwd)?.0.config.clone())
+        Ok(self.at(cwd)?.config.clone())
     }
 
     fn agent(
@@ -54,7 +74,7 @@ impl Host for RuntimeHost {
         conv: &Conversation,
         config: &Config,
     ) -> Result<(Agent, Vec<String>), String> {
-        self.at(cwd)?.0.agent_with(cwd, conv, config)
+        self.at(cwd)?.agent_with(cwd, conv, config)
     }
 
     fn models(&self) -> Vec<String> {
@@ -63,8 +83,7 @@ impl Host for RuntimeHost {
     }
 
     fn expand(&self, text: &str) -> Result<Expanded, String> {
-        let guard = self.runtime.lock().unwrap_or_else(|p| p.into_inner());
-        match guard.0.slash(text) {
+        match self.runtime().slash(text) {
             Slash::Send(text) => Ok(Expanded::Send(text)),
             Slash::Help(help) => Ok(Expanded::Reply(help)),
             Slash::Error(err) => Err(err),

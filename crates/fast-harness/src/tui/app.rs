@@ -4,12 +4,13 @@
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::Sender;
-use std::sync::Arc;
+use std::sync::{Arc, MutexGuard};
 
-use fast_harness_core::agent::{Agent, Conversation, Inbox, Input};
-use fast_harness_core::app::{Runtime, Slash};
-use fast_harness_core::events::{AgentEvent, TurnOutcome};
+use fast_harness_core::agent::Conversation;
+use fast_harness_core::app::{Runtime, RuntimeHost, Slash};
+use fast_harness_core::events::AgentEvent;
 use fast_harness_core::llm::anthropic::ModelInfo;
+use fast_harness_core::service::{Finished, Host, Service, Session, Start};
 use fast_harness_core::session;
 use fast_harness_core::trace::{self, detail, report};
 use fast_harness_core::view::{Item, NoteKind, Transcript};
@@ -24,8 +25,11 @@ pub enum Msg {
     Term(Event),
     TermGone(String),
     Agent(AgentEvent),
-    /// The conversation, the outcome and the inbox texts no turn used.
-    TurnDone(Box<Conversation>, TurnOutcome, Vec<String>),
+    /// The end of a turn the service ran (PLAN.md D59).
+    TurnDone(Box<Finished>),
+    /// Notes of a turn's agent build (an untrusted project), shown before
+    /// its events.
+    Notes(Vec<String>),
     /// The label of the signed-in account, or the error.
     Login(Result<String, String>),
     Polled(usize),
@@ -38,18 +42,19 @@ pub enum Msg {
 }
 
 pub struct Tui {
-    pub rt: Runtime,
+    /// The runtime, shared with the turns' agent builds.
+    pub host: Arc<RuntimeHost>,
     pub cwd: PathBuf,
-    conv: Option<Conversation>,
+    /// Runs the turns (PLAN.md D59); `current` is the shown session.
+    pub(super) service: Service,
+    pub(super) current: Arc<Session>,
     pub session: String,
     log_path: PathBuf,
     pub transcript: Transcript,
     pub ui: Ui,
     pub cache: Cache,
     pub tx: Sender<Msg>,
-    cancel: Arc<AtomicBool>,
-    /// The sender of the running turn's inbox (PLAN.md D39).
-    pub(super) inbox: Option<Sender<Input>>,
+
     login_cancel: Option<Arc<AtomicBool>>,
     /// Makes the job of one live model list fetch (tests swap it).
     pub fetcher: fn(&Runtime) -> worker::FetchJob,
@@ -67,7 +72,61 @@ pub fn load_transcript(conv: &Conversation) -> Transcript {
 }
 
 impl Tui {
-    pub fn new(rt: Runtime, cwd: PathBuf, conv: Conversation, tx: Sender<Msg>) -> Tui {
+    /// The TUI of `cwd`, whose settings `rt` holds; its turns run in a
+    /// [`Service`] over the same runtime.
+    pub fn new(
+        rt: Runtime,
+        cwd: PathBuf,
+        conv: Conversation,
+        tx: Sender<Msg>,
+    ) -> Result<Tui, String> {
+        let host = Arc::new(RuntimeHost::at_project(rt, &cwd));
+        let turns = super::turns::TuiHost::new(host.clone(), tx.clone());
+        Tui::with_host(host, Arc::new(turns), cwd, conv, tx)
+    }
+
+    /// [`Tui::new`] with `turns` building the turns' agents (tests).
+    pub fn with_host(
+        host: Arc<RuntimeHost>,
+        turns: Arc<dyn Host>,
+        cwd: PathBuf,
+        conv: Conversation,
+        tx: Sender<Msg>,
+    ) -> Result<Tui, String> {
+        let ui = Tui::first_ui(&host.runtime());
+        let panels = fast_harness_core::panels::Panels::new(&host.runtime().panels);
+        let service = Service::new(turns);
+        let transcript = load_transcript(&conv);
+        let (session, unfinished) = (conv.id.clone(), conv.unfinished);
+        let log_path = conv.log_path.clone();
+        let current = service.open(conv, &cwd).map_err(|err| format!("{err:?}"))?;
+        let mut tui = Tui {
+            panels,
+            host,
+            cwd,
+            service,
+            current,
+            session,
+            log_path,
+            transcript,
+            ui,
+            cache: Cache::default(),
+            tx,
+            login_cancel: None,
+            fetcher: worker::live_fetch,
+            quit: false,
+        };
+        tui.shown(unfinished);
+        tui.refresh_accounts();
+        Ok(tui)
+    }
+
+    /// The runtime (settings, accounts); hold the guard briefly.
+    pub fn rt(&self) -> MutexGuard<'_, Runtime> {
+        self.host.runtime()
+    }
+
+    fn first_ui(rt: &Runtime) -> Ui {
         let mut ui = Ui::new(rt.config.model.clone(), rt.config.effort.clone());
         ui.themes = fast_harness_core::theme::ThemeSet::load(&rt.home);
         ui.set_greyscale(rt.config.greyscale);
@@ -82,37 +141,14 @@ impl Tui {
         ui.catalog = rt.models().cached();
         ui.icons = super::icons::by_id(&rt.config.icons);
         ui.keys = rt.keys.tui.clone();
-        let panels = fast_harness_core::panels::Panels::new(&rt.panels);
-        let mut tui = Tui {
-            panels,
-            rt,
-            cwd,
-            session: String::new(),
-            log_path: PathBuf::new(),
-            conv: None,
-            transcript: Transcript::new(),
-            ui,
-            cache: Cache::default(),
-            tx,
-            cancel: Arc::new(AtomicBool::new(false)),
-            inbox: None,
-            login_cancel: None,
-            fetcher: worker::live_fetch,
-            quit: false,
-        };
-        tui.set_conversation(conv);
-        tui.refresh_accounts();
-        tui
+        ui
     }
 
-    fn set_conversation(&mut self, conv: Conversation) {
-        self.transcript = load_transcript(&conv);
+    /// A session was opened: its transcript is new, the queue its own.
+    fn shown(&mut self, unfinished: Option<fast_harness_core::session::Unfinished>) {
         self.transcript.revision += 1;
-        self.session = conv.id.clone();
-        self.log_path = conv.log_path.clone();
-        let unfinished = conv.unfinished;
-        self.conv = Some(conv);
         self.ui.top = None;
+        self.show_queue();
         if let Some(state) = unfinished {
             self.ui.status = format!("the last turn was {}: /resume continues it", state.word());
         }
@@ -125,7 +161,8 @@ impl Tui {
     }
 
     pub fn refresh_accounts(&mut self) {
-        self.ui.accounts = self.rt.pool.status();
+        let accounts = self.rt().pool.status();
+        self.ui.accounts = accounts;
         let len = self.ui.list_len();
         if self.ui.screen == Screen::Accounts && self.ui.selected >= len {
             self.ui.selected = len.saturating_sub(1);
@@ -147,10 +184,8 @@ impl Tui {
                 ) {
                     self.refresh_accounts();
                 }
-                if let AgentEvent::UserInput { text, steer: true } = &event {
-                    self.ui
-                        .steering
-                        .retain(|sent| !text.contains(sent.as_str()));
+                if matches!(event, AgentEvent::UserInput { steer: true, .. }) {
+                    self.show_queue();
                 }
                 self.panels.session(&event);
                 self.transcript.apply(&event);
@@ -158,7 +193,12 @@ impl Tui {
             Msg::Panel => self.panel_poll(),
             Msg::Reflected(Ok(text)) => self.note(NoteKind::Info, text),
             Msg::Reflected(Err(err)) => self.note(NoteKind::Error, err),
-            Msg::TurnDone(conv, outcome, leftover) => self.turn_done(*conv, outcome, leftover),
+            Msg::TurnDone(end) => self.turn_done(*end),
+            Msg::Notes(notes) => {
+                for note in notes {
+                    self.note(NoteKind::Error, note);
+                }
+            }
             Msg::Login(result) => self.login_done(result),
             Msg::Models(result) => self.ui.models_fetched(result),
             Msg::Polled(count) => {
@@ -179,7 +219,9 @@ impl Tui {
                 true
             }
             Event::Key(key) => {
+                let before = self.ui.queued.len();
                 let action = self.ui.key(key);
+                self.queue_keyed(before);
                 self.act(action);
                 true
             }
@@ -202,7 +244,7 @@ impl Tui {
             Action::Pause => self.pause(),
             Action::ResumeTurn => self.resume_turn(),
             Action::Cancel => {
-                self.cancel.store(true, Ordering::SeqCst);
+                self.current.cancel();
                 self.ui.status = "cancelling the turn...".into();
             }
             Action::NewSession => self.open_session(None),
@@ -213,36 +255,46 @@ impl Tui {
             Action::Open(screen) => self.open(screen),
             Action::SetModel(id) => {
                 self.ui.set_model(id);
-                self.rt.config.model = self.ui.model.clone();
-                self.rt.config.effort = self.ui.effort.clone();
+                let mut rt = self.rt();
+                rt.config.model = self.ui.model.clone();
+                rt.config.effort = self.ui.effort.clone();
             }
-            Action::SetEffort(effort) => {
-                self.rt.config.set_effort(&effort);
-                self.ui.effort = self.rt.config.effort.clone();
-                let when = if self.ui.running {
-                    "after this turn"
-                } else {
-                    "next turn"
-                };
-                self.ui.status = format!("{when}: effort {effort}");
-            }
+            Action::SetEffort(effort) => self.set_effort(&effort),
             Action::FetchModels => self.fetch_models(),
             Action::CycleTheme => {
-                let theme = super::theme::cycle(&mut self.ui, &self.rt.home);
-                self.rt.config.theme = theme.id;
+                let home = self.rt().home.clone();
+                let theme = super::theme::cycle(&mut self.ui, &home);
+                self.rt().config.theme = theme.id;
             }
             Action::StepGreyscale(delta) => {
-                let level = super::theme::step_greyscale(&mut self.ui, &self.rt.home, delta);
-                self.rt.config.greyscale = level;
+                let home = self.rt().home.clone();
+                let level = super::theme::step_greyscale(&mut self.ui, &home, delta);
+                self.rt().config.greyscale = level;
             }
             other => self.account_action(other),
         }
     }
 
+    fn set_effort(&mut self, effort: &str) {
+        let now = {
+            let mut rt = self.rt();
+            rt.config.set_effort(effort);
+            rt.config.effort.clone()
+        };
+        self.ui.effort = now;
+        let when = if self.ui.running {
+            "after this turn"
+        } else {
+            "next turn"
+        };
+        self.ui.status = format!("{when}: effort {effort}");
+    }
+
     pub(super) fn send(&mut self, text: String) {
         // `/trust` trusts the project's .fast-harness folder (PLAN.md D41).
         if text.trim() == "/trust" {
-            match self.rt.trust_project(&self.cwd) {
+            let trusted = self.rt().trust_project(&self.cwd);
+            match trusted {
                 Ok(note) => self.note(NoteKind::Info, note),
                 Err(err) => self.note(NoteKind::Error, err),
             }
@@ -257,82 +309,41 @@ impl Tui {
             return self.reflect(args);
         }
         // `/help` and the user's commands/*.md (PLAN.md D42).
-        let text = match self.rt.slash(&text) {
+        let expanded = self.rt().slash(&text);
+        let text = match expanded {
             Slash::Send(text) => text,
             Slash::Help(help) => return self.note(NoteKind::Info, help),
             Slash::Error(err) => return self.note(NoteKind::Error, err),
         };
-        if self.conv.is_none() {
+        if self.current.running() {
             self.ui.status = "a turn is running".into();
             return;
         }
         self.transcript.push_user(text.clone());
-        self.start(worker::Job::Text(text));
-    }
-
-    /// Starts `job` on the idle conversation with a fresh inbox.
-    pub(super) fn start(&mut self, job: worker::Job) {
-        let Some(conv) = self.conv.take() else {
-            self.ui.status = "a turn is running".into();
-            return;
-        };
-        let agent: Result<(Agent, Vec<String>), String> = self.rt.agent(&self.cwd, &conv);
-        let agent = match agent {
-            Ok((agent, notes)) => {
-                for note in notes {
-                    self.note(NoteKind::Error, note);
-                }
-                agent
-            }
-            Err(err) => {
-                self.conv = Some(conv);
-                self.note(NoteKind::Error, format!("{err} (F2 opens the accounts)"));
-                return;
-            }
-        };
-        self.cancel.store(false, Ordering::SeqCst);
-        self.ui.running = true;
-        let id = conv.id.clone();
-        let (inbox_tx, inbox) = Inbox::channel();
-        self.inbox = Some(inbox_tx);
-        let (cancel, tx) = (self.cancel.clone(), self.tx.clone());
-        let started = worker::start_turn(agent, conv, job, cancel, inbox, tx);
-        if let Err(err) = started {
-            self.ui.running = false;
-            self.inbox = None;
-            self.note(NoteKind::Error, format!("cannot start the turn: {err}"));
-            self.open_session(Some(&id));
-        }
-    }
-
-    /// The conversation when no turn runs.
-    pub(super) fn conv_mut(&mut self) -> Option<&mut Conversation> {
-        self.conv.as_mut()
-    }
-
-    fn turn_done(&mut self, conv: Conversation, outcome: TurnOutcome, leftover: Vec<String>) {
-        self.ui.running = false;
-        self.inbox = None;
-        self.conv = Some(conv);
-        self.refresh_accounts();
-        if outcome == TurnOutcome::Cancelled {
-            self.ui.status = "turn cancelled: /resume continues it".into();
-        } else if self.ui.status.starts_with("cancelling") {
-            self.ui.status.clear();
-        }
-        self.after_turn(outcome, leftover);
+        self.start(Start::Text(text));
     }
 
     fn open_session(&mut self, id: Option<&str>) {
         if self.ui.running {
             return;
         }
-        match self.rt.open_conversation(&self.cwd, id, false) {
-            Ok(conv) => {
-                self.set_conversation(conv);
+        let opened = self.rt().open_conversation(&self.cwd, id, false);
+        let conv = match opened {
+            Ok(conv) => conv,
+            Err(err) => return self.ui.status = err,
+        };
+        let transcript = load_transcript(&conv);
+        let (session, unfinished) = (conv.id.clone(), conv.unfinished);
+        let log_path = conv.log_path.clone();
+        match self.service.open(conv, &self.cwd) {
+            Ok(current) => {
+                self.service.close(&self.session);
+                (self.current, self.session) = (current, session);
+                (self.transcript, self.log_path) = (transcript, log_path);
+                self.shown(unfinished);
                 self.ui.status = format!("session {}", self.session);
             }
-            Err(err) => self.ui.status = err,
+            Err(err) => self.ui.status = format!("{err:?}"),
         }
     }
 
@@ -350,7 +361,7 @@ impl Tui {
                 let current = self.ui.models.iter().position(|m| m.id == self.ui.model);
                 self.ui.selected = current.unwrap_or(0);
             }
-            Screen::Sessions => match session::list(&self.rt.home, &self.cwd) {
+            Screen::Sessions => match session::list(&self.host.home(), &self.cwd) {
                 Ok(list) => self.ui.sessions = list,
                 Err(err) => self.ui.status = format!("sessions: {err}"),
             },

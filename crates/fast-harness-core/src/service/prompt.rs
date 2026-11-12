@@ -172,6 +172,11 @@ fn done(server: &Arc<Server>, sid: &str, message: &str, wait: Option<Value>) -> 
             server.notify(&sid, acp::notice("info", note));
         }
         if !end.leftover.is_empty() {
+            // A served prompt queues through the inbox: what it left is
+            // reported here, not kept for a front end to start.
+            if let Ok(session) = server.service.get(&sid) {
+                session.drop_queue();
+            }
             let mut notice = acp::notice("warning", "queued inputs were not used");
             notice["_meta"] = json!({"fh/leftover": end.leftover});
             server.notify(&sid, notice);

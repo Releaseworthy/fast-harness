@@ -1,6 +1,7 @@
 //! `fast-harness tui` (and `fast-harness` alone on a terminal): the full-screen front end.
-//! The UI thread owns the state; the agent turn, the terminal reader,
-//! sign-in and usage reads run on threads and report through one channel.
+//! The UI thread owns the state; the turns run in `service::Service`
+//! (PLAN.md D59); they, the terminal reader, sign-in and usage reads report
+//! through one channel.
 
 mod app;
 mod draw;
@@ -35,6 +36,9 @@ mod theme;
 mod theme_tests;
 mod timeline;
 mod transcript;
+#[cfg(test)]
+mod turn_tests;
+mod turns;
 mod ui;
 mod worker;
 mod wrap;
@@ -71,8 +75,13 @@ pub fn run(args: TuiArgs) -> Result<ExitCode, String> {
     rt.use_project(&cwd)?;
     let conv = rt.open_conversation(&cwd, args.resume.as_deref(), args.continue_latest)?;
     let (tx, rx) = mpsc::channel();
-    let mut tui = Tui::new(rt, cwd, conv, tx.clone());
-    let _poller = worker::start_poller(tui.rt.pool.clone(), tui.rt.transport.clone(), tx.clone())
+    let mut tui = Tui::new(rt, cwd, conv, tx.clone())?;
+    // One guard: a second `rt()` in the same statement would deadlock.
+    let (pool, http) = {
+        let rt = tui.rt();
+        (rt.pool.clone(), rt.transport.clone())
+    };
+    let _poller = worker::start_poller(pool, http, tx.clone())
         .map_err(|err| format!("usage thread: {err}"))?;
     let mut terminal = enter().map_err(|err| format!("terminal: {err}"))?;
     let _guard = Guard;
@@ -95,6 +104,12 @@ fn enter() -> io::Result<DefaultTerminal> {
     // ratatui's hook restores raw mode and the screen; this one adds mouse and paste.
     let previous = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |info| {
+        // The service's guard reports a turn's panic in the transcript
+        // (PLAN.md D59): the terminal stays as it is.
+        let name = std::thread::current().name().map(String::from);
+        if name.is_some_and(|name| name.starts_with("turn-")) {
+            return;
+        }
         let _ = execute!(stdout(), DisableMouseCapture, DisableBracketedPaste);
         previous(info);
     }));

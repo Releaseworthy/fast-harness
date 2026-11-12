@@ -1,14 +1,15 @@
 //! Sessions as a service (PLAN.md D48): a table of open sessions, each with
 //! its conversation, settings, inbox sender and cancel flag, and turns run
 //! on one thread each, so several sessions work at once. `fast-harness
-//! serve --stdio` drives it over JSON-RPC ([`rpc`]); the GUI and the
-//! session files and tools of the next phase reuse the same calls.
+//! serve --stdio` drives it over JSON-RPC ([`rpc`]); the TUI calls it in
+//! process (PLAN.md D59: one turn runner, its panic guard, the queue).
 
 pub mod acp;
 pub mod config;
 pub mod json;
 mod methods;
 mod prompt;
+mod queue;
 pub mod remote;
 pub mod rpc;
 mod turn;
@@ -25,10 +26,11 @@ use serde_json::Value;
 use crate::agent::{Agent, Conversation, Input};
 use crate::config::Config as Settings;
 use crate::events::TurnOutcome;
-use crate::session::{self, SessionSummary};
+use crate::session::{self, SessionSummary, Unfinished};
 use crate::stats::{self, Stats};
 use crate::trace;
 
+pub use queue::Status;
 pub use remote::{Mode, Sent};
 pub use turn::{Done, Finished, Sink, Start};
 
@@ -94,10 +96,19 @@ struct State {
     cancel: Arc<AtomicBool>,
     worker: Option<JoinHandle<()>>,
     last: Option<TurnOutcome>,
+    /// Steers sent to the running turn and not yet read by it (D59).
+    steering: Vec<String>,
+    /// Follow-ups a front end starts when a turn ends `Done` (D59).
+    follow_ups: Vec<String>,
+    /// How the last turn stopped when it can be resumed.
+    unfinished: Option<Unfinished>,
+    stopping: bool,
+    pausing: bool,
 }
 
 impl Session {
     fn new(conv: Conversation, cwd: &Path, config: Settings) -> Session {
+        let unfinished = conv.unfinished;
         Session {
             id: conv.id.clone(),
             cwd: cwd.to_path_buf(),
@@ -108,6 +119,11 @@ impl Session {
                 cancel: Arc::default(),
                 worker: None,
                 last: None,
+                steering: Vec::new(),
+                follow_ups: Vec::new(),
+                unfinished,
+                stopping: false,
+                pausing: false,
             }),
             queued: Arc::default(),
         }
@@ -142,13 +158,14 @@ impl Session {
 
     /// Cancels the running turn; false when none runs.
     pub fn cancel(&self) -> bool {
-        let state = self.lock();
+        let mut state = self.lock();
         if state.conv.is_some() {
             return false;
         }
         state
             .cancel
             .store(true, std::sync::atomic::Ordering::SeqCst);
+        state.stopping = true;
         true
     }
 
@@ -194,7 +211,9 @@ impl Service {
         self.sessions.lock().unwrap_or_else(|p| p.into_inner())
     }
 
-    fn open(&self, conv: Conversation, cwd: &Path) -> Result<Arc<Session>, ServiceError> {
+    /// Opens `conv`, a conversation the front end opened itself (`-c`,
+    /// `--session`, a new one); its settings come from the host.
+    pub fn open(&self, conv: Conversation, cwd: &Path) -> Result<Arc<Session>, ServiceError> {
         let config = self.host.config(cwd).map_err(ServiceError::Failed)?;
         let session = Arc::new(Session::new(conv, cwd, config));
         self.table()

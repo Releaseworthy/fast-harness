@@ -9,7 +9,8 @@ use super::app::{Msg, Tui};
 
 impl Tui {
     pub(super) fn reflect(&mut self, args: &str) {
-        let job = match self.rt.reflect_job(&self.cwd, Some(&self.session), args) {
+        let made = self.rt().reflect_job(&self.cwd, Some(&self.session), args);
+        let job = match made {
             Ok(job) => job,
             Err(err) => return self.note(NoteKind::Error, err),
         };

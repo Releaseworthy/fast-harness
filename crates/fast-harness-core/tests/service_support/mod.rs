@@ -11,9 +11,10 @@ use std::time::Duration;
 
 use fast_harness_core::agent::{Agent, Conversation};
 use fast_harness_core::config::Config;
+use fast_harness_core::events::AgentEvent;
 use fast_harness_core::http::ScriptedTransport;
 use fast_harness_core::llm::ToolSpec;
-use fast_harness_core::service::{rpc, Host, Service};
+use fast_harness_core::service::{rpc, Done, Finished, Host, Service, Session, Sink, Start};
 use fast_harness_core::tools::{Registry, Tool, ToolCtx, ToolOutput};
 use serde_json::{json, Value};
 
@@ -239,6 +240,47 @@ impl Client {
         while let Ok(value) = self.rx.try_recv() {
             self.seen.push(value);
         }
+    }
+}
+
+/// A turn started in process whose events and end come back over channels.
+pub struct Watch {
+    pub events: Receiver<AgentEvent>,
+    pub done: Receiver<Finished>,
+}
+
+/// Starts `start` on `session`; panics when the service refuses it.
+pub fn watch(service: &Service, session: &Arc<Session>, start: Start) -> Watch {
+    let (event_tx, events) = mpsc::channel();
+    let (done_tx, done) = mpsc::channel();
+    let sink: Sink = Box::new(move |event| {
+        let _ = event_tx.send(event);
+    });
+    let end: Done = Box::new(move |finished: &Finished| {
+        let _ = done_tx.send(finished.clone());
+    });
+    service.start(session, start, sink, end).unwrap();
+    Watch { events, done }
+}
+
+impl Watch {
+    /// The first event, within 10 s, that matches `pred`.
+    pub fn until(&self, pred: impl Fn(&AgentEvent) -> bool) -> AgentEvent {
+        loop {
+            let event =
+                (self.events.recv_timeout(Duration::from_secs(10))).expect("event within 10 s");
+            if pred(&event) {
+                return event;
+            }
+        }
+    }
+
+    /// The end of the turn within 10 s; `done` ran exactly once.
+    pub fn end(&self) -> Finished {
+        let finished = (self.done.recv_timeout(Duration::from_secs(10)))
+            .expect("the turn's done ran within 10 s");
+        assert!(self.done.recv().is_err(), "done ran once");
+        finished
     }
 }
 

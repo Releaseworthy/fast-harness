@@ -1,10 +1,15 @@
-//! One turn of a served session on its own thread (PLAN.md D48).
+//! One turn of a session on its own thread (PLAN.md D48, D59), behind a
+//! panic guard: a panic anywhere on the thread (the agent's build, the
+//! loop, the sink) ends the turn `Failed` with an error event, and the
+//! session is idle and usable again.
 
+use std::any::Any;
+use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 use std::time::Instant;
 
-use super::{busy, Host, Service, ServiceError, Session};
+use super::{busy, queue, Host, Service, ServiceError, Session};
 use crate::agent::{Conversation, Inbox};
 use crate::config::Config;
 use crate::events::{AgentEvent, TurnOutcome};
@@ -27,15 +32,18 @@ pub struct Finished {
     pub duration_ms: u64,
     /// The last error event, if any.
     pub error: Option<String>,
-    /// Steers and follow-ups no turn used (after a cancel or a pause).
+    /// Steers and follow-ups no turn used (after a cancel or a pause); they
+    /// are first in the session's queue now ([`Session::status`]).
     pub leftover: Vec<String>,
     /// Notes of the agent's build (an untrusted project).
     pub notes: Vec<String>,
+    /// The thread panicked; the conversation was reopened from its log.
+    pub panicked: bool,
 }
 
 /// Sees each event of the turn, in order.
 pub type Sink = Box<dyn FnMut(AgentEvent) + Send>;
-/// Runs on the turn thread once the session is idle again.
+/// Runs on the turn thread once the session is idle again, exactly once.
 pub type Done = Box<dyn FnOnce(&Finished) + Send>;
 
 struct Job {
@@ -45,6 +53,15 @@ struct Job {
     config: Config,
     cancel: Arc<AtomicBool>,
     inbox: Inbox,
+}
+
+/// What the turn thread keeps across a panic: the sink and the numbers.
+struct Tally {
+    sink: Sink,
+    session: Arc<Session>,
+    usage: Usage,
+    error: Option<String>,
+    notes: Vec<String>,
 }
 
 impl Service {
@@ -65,6 +82,7 @@ impl Service {
         let cancel = Arc::new(AtomicBool::new(false));
         state.inbox = Some(tx);
         state.cancel = Arc::clone(&cancel);
+        queue::begun(&mut state);
         if let Some(old) = state.worker.take() {
             // A thread that is still ending is left to end (dropped handle).
             if old.is_finished() {
@@ -100,68 +118,119 @@ impl Service {
 }
 
 impl Job {
-    fn run(mut self, start: Start, mut sink: Sink, done: Done) {
+    fn run(mut self, start: Start, sink: Sink, done: Done) {
         let started = Instant::now();
-        let mut usage = Usage::default();
-        let mut error = None;
-        let mut notes = Vec::new();
-        let outcome = {
-            let mut seen = |event: AgentEvent| {
-                match &event {
-                    AgentEvent::TurnEnd { usage: one, .. } => usage.add(one),
-                    AgentEvent::Error(message) => error = Some(message.clone()),
-                    _ => {}
-                }
-                sink(event);
-            };
-            let built = self.host.agent(&self.session.cwd, &self.conv, &self.config);
-            match built {
-                Ok((agent, agent_notes)) => {
-                    notes = agent_notes;
-                    let (conv, cancel, inbox) = (&mut self.conv, &self.cancel, &mut self.inbox);
-                    match start {
-                        Start::Text(text) => {
-                            agent.run_turn_with(conv, &text, cancel, inbox, &mut seen)
-                        }
-                        Start::Resume => agent.resume_turn(conv, cancel, inbox, &mut seen),
-                    }
-                }
-                Err(err) => {
-                    seen(AgentEvent::Error(err));
-                    TurnOutcome::Failed
-                }
+        let mut tally = Tally {
+            sink,
+            session: Arc::clone(&self.session),
+            usage: Usage::default(),
+            error: None,
+            notes: Vec::new(),
+        };
+        let ran = catch_unwind(AssertUnwindSafe(|| self.turn(start, &mut tally)));
+        let (outcome, panicked) = match ran {
+            Ok(outcome) => (outcome, false),
+            Err(payload) => {
+                tally.panicked(payload.as_ref());
+                (TurnOutcome::Failed, true)
             }
         };
-        let finished = self.finish(outcome, usage, error, notes, started);
-        done(&finished);
+        let finished = self.finish(outcome, panicked, tally, started);
+        // The session is idle already: a panic in `done` is the front end's.
+        let _ = catch_unwind(AssertUnwindSafe(|| done(&finished)));
+    }
+
+    fn turn(&mut self, start: Start, tally: &mut Tally) -> TurnOutcome {
+        let built = self.host.agent(&self.session.cwd, &self.conv, &self.config);
+        let agent = match built {
+            Ok((agent, notes)) => {
+                tally.notes = notes;
+                agent
+            }
+            Err(err) => {
+                tally.see(AgentEvent::Error(err));
+                return TurnOutcome::Failed;
+            }
+        };
+        let mut seen = |event: AgentEvent| tally.see(event);
+        let (conv, cancel, inbox) = (&mut self.conv, &self.cancel, &mut self.inbox);
+        match start {
+            Start::Text(text) => agent.run_turn_with(conv, &text, cancel, inbox, &mut seen),
+            Start::Resume => agent.resume_turn(conv, cancel, inbox, &mut seen),
+        }
     }
 
     /// Gives the conversation back (the session is idle from here) and
-    /// collects what the inbox still held.
+    /// queues what the inbox still held. After a panic the conversation in
+    /// memory may be half changed: the log's is taken when it reads.
     fn finish(
         mut self,
         outcome: TurnOutcome,
-        usage: Usage,
-        error: Option<String>,
-        notes: Vec<String>,
+        panicked: bool,
+        tally: Tally,
         started: Instant,
     ) -> Finished {
+        let leftover = self.inbox.leftover();
+        let mut conv = self.conv;
+        if panicked {
+            let home = self.host.home();
+            if let Ok(fresh) = Conversation::resume(&home, &self.session.cwd, &self.session.id) {
+                conv = fresh;
+            }
+        }
         {
             let mut state = self.session.lock();
             state.inbox = None;
-            state.conv = Some(self.conv);
+            state.conv = Some(conv);
             state.last = Some(outcome);
+            queue::ended(&mut state, outcome, &leftover);
         }
-        if let Ok(mut queued) = self.session.queued.lock() {
-            queued.clear();
-        }
+        let mut ids = (self.session.queued.lock()).unwrap_or_else(|p| p.into_inner());
+        ids.clear();
+        drop(ids);
         Finished {
             outcome,
-            usage,
+            usage: tally.usage,
             duration_ms: started.elapsed().as_millis() as u64,
-            error,
-            leftover: self.inbox.leftover(),
-            notes,
+            error: tally.error,
+            leftover,
+            notes: tally.notes,
+            panicked,
         }
+    }
+}
+
+impl Tally {
+    fn see(&mut self, event: AgentEvent) {
+        match &event {
+            AgentEvent::TurnEnd { usage: one, .. } => self.usage.add(one),
+            AgentEvent::Error(message) => self.error = Some(message.clone()),
+            AgentEvent::UserInput { text, steer: true } => self.session.steer_read(text),
+            _ => {}
+        }
+        (self.sink)(event);
+    }
+
+    /// Reports a panic as the turn's error; a sink that panics again is
+    /// skipped.
+    fn panicked(&mut self, payload: &(dyn Any + Send)) {
+        let text = format!(
+            "the turn stopped on an internal error: {}",
+            panic_text(payload)
+        );
+        self.error = Some(text.clone());
+        let sink = &mut self.sink;
+        let _ = catch_unwind(AssertUnwindSafe(|| sink(AgentEvent::Error(text))));
+    }
+}
+
+/// The message of a panic payload.
+fn panic_text(payload: &(dyn Any + Send)) -> String {
+    if let Some(text) = payload.downcast_ref::<&str>() {
+        return (*text).to_string();
+    }
+    match payload.downcast_ref::<String>() {
+        Some(text) => text.clone(),
+        None => "a panic without a message".into(),
     }
 }

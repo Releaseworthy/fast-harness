@@ -88,6 +88,7 @@ One file per decision in [docs/decisions/](docs/decisions/), moved there unchang
 - D56 [Accounts under the store lock](docs/decisions/D56.md)
 - D57 [Plugin API hardening: types](docs/decisions/D57.md)
 - D58 [Tool progress and output parts](docs/decisions/D58.md)
+- D59 [One turn runner](docs/decisions/D59.md)
 
 ## Architecture
 
