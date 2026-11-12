@@ -6,6 +6,8 @@
 
 use super::command::CommandTool;
 use super::hooks::Hooks;
+use super::mcp::wire::{self, CallTool, DescribeTool, McpTool};
+use super::mcp::McpServers;
 use super::skills::{skills_line, Skill};
 use super::{builtin_tools, Registry, Tool, ToolCtx, ToolOutput};
 use crate::config::index::{Entry, ExtIndex, Item};
@@ -20,6 +22,8 @@ pub struct Extensions {
     commands: Vec<CommandTool>,
     /// The `hooks.json` entries (PLAN.md D44); empty without a file.
     pub hooks: Hooks,
+    /// The `mcp.json` servers (PLAN.md D47); none started yet.
+    pub mcp: McpServers,
 }
 
 impl Extensions {
@@ -32,6 +36,7 @@ impl Extensions {
             index,
             commands,
             hooks: Hooks::default(),
+            mcp: McpServers::default(),
         }
     }
 
@@ -39,6 +44,54 @@ impl Extensions {
     pub fn with_hooks(mut self, hooks: Hooks) -> Extensions {
         self.hooks = hooks;
         self
+    }
+
+    /// These extensions with the MCP servers `mcp`.
+    pub fn with_mcp(mut self, mcp: McpServers) -> Extensions {
+        self.mcp = mcp;
+        self
+    }
+
+    /// The indexed MCP tools (D47): up to the cap as tools of their own,
+    /// past it `mcp_describe` and `mcp_call` with `find_tools` matching
+    /// the rest. Reads the caches only; no server starts.
+    pub fn add_mcp(&self, registry: &mut Registry) {
+        let plan = wire::plan(self.mcp.index());
+        for entry in plan.direct {
+            if !registry.specs().iter().any(|spec| spec.name == entry.name) {
+                self.add(registry, Box::new(McpTool::new(self.mcp.clone(), entry)));
+            }
+        }
+        if !plan.indirect.is_empty() {
+            self.add(registry, Box::new(DescribeTool(self.mcp.clone())));
+            self.add(registry, Box::new(CallTool(self.mcp.clone())));
+            registry.set_mcp(plan.indirect.into_iter().map(|tool| tool.spec).collect());
+        }
+    }
+
+    /// The tools of `alwaysLoad` servers, preloaded like `tools.preload`:
+    /// their own names, or `mcp_describe` and `mcp_call` past the cap.
+    pub fn mcp_preload(&self) -> Vec<String> {
+        let always: Vec<String> = (self.mcp.specs().into_iter())
+            .filter(|spec| spec.always_load && spec.enabled)
+            .map(|spec| spec.name)
+            .collect();
+        if always.is_empty() {
+            return Vec::new();
+        }
+        let plan = wire::plan(self.mcp.index());
+        let mut names: Vec<String> = (plan.direct.into_iter())
+            .filter(|tool| always.contains(&tool.server))
+            .map(|tool| tool.name)
+            .collect();
+        if plan
+            .indirect
+            .iter()
+            .any(|tool| always.contains(&tool.server))
+        {
+            names.extend([wire::DESCRIBE.to_string(), wire::CALL.to_string()]);
+        }
+        names
     }
 
     /// The override file of tool `name` (a tool file without `command`).
@@ -62,7 +115,8 @@ impl Extensions {
         }
     }
 
-    /// The command tools whose name no tool of `registry` has yet.
+    /// The command tools whose name no tool of `registry` has yet, then
+    /// the MCP tools ([`Extensions::add_mcp`]).
     pub fn add_commands(&self, registry: &mut Registry) {
         for tool in &self.commands {
             let name = tool.spec().name;
@@ -70,6 +124,7 @@ impl Extensions {
                 registry.add(Box::new(tool.clone()));
             }
         }
+        self.add_mcp(registry);
     }
 
     /// `find_tools` (naming the agent types) and the built-in tools with

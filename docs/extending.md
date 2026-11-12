@@ -261,6 +261,45 @@ lines = [l for l in event["output"].splitlines() if not l.startswith(("Downloadi
 print(json.dumps({"output": "\n".join(lines)}))
 ```
 
+## MCP servers: `mcp.json`
+
+`mcp.json` in `~/.fast-harness/` and in a trusted project's `.fast-harness/` names MCP servers (PLAN.md D47). A project server with the same name replaces the user one; an untrusted project's file is not read. The servers below are examples, not tested live.
+
+```json
+{
+  "servers": {
+    "github": {
+      "url": "https://api.githubcopilot.com/mcp/",
+      "headers": {"Authorization": "Bearer ${GITHUB_TOKEN}"}
+    },
+    "files": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-filesystem", "F:/work"],
+      "env": {"LOG_LEVEL": "warn"},
+      "alwaysLoad": true
+    },
+    "old-one": {"command": "./bin/server.exe", "enabled": false, "timeoutMs": 30000}
+  }
+}
+```
+
+- `command`, `args`, `env`: a local server on stdio. A relative command with a folder (`./bin/server.exe`) is joined to the folder of the `mcp.json`.
+- `url`, `headers`: a Streamable HTTP server.
+- `${VAR}` in `env` and `headers` values is read from the environment when the server starts. Keep secrets in variables: `doctor` and `mcp list` print header and env names, never values.
+- `enabled` (default true), `alwaysLoad` (default false: preload the server's tools like `tools.preload`), `timeoutMs` (default 120000, per request).
+
+Nothing starts with a session. The tools come from `~/.fast-harness/mcp-cache/<server>.json`, the server's last tool list, so fill it once:
+
+```
+fast-harness mcp refresh            # every enabled server
+fast-harness mcp refresh github     # one server
+fast-harness mcp list               # servers, cache age, tool counts
+```
+
+A server starts on the first call of one of its tools (refreshing its list first when it is older than the server's `ttlMs`, one hour for servers without one) and stops after 10 idle minutes. The client speaks MCP 2026-07-28 first (`server/discover`, stateless requests) and falls back to the `initialize` handshake for older servers.
+
+The model sees `mcp__<server>__<tool>` (other characters become `_`, at most 64 characters) with the description cut to 1 KB, found through `find_tools` like any tool. Up to 64 MCP tools or 64 KB of definitions join the tool list, whole servers in name order; past that, the remaining servers' tools are reached through `mcp_describe` and `mcp_call`, which `find_tools` loads when a search matches one of them. Results follow the tool output budget (`toolOutput`); images and binary resources become a one-line note. A hook can match `mcp__github__*`. A tool file named `mcp__<server>__<tool>.json` without `command` overrides the description or disables the tool.
+
 ## The index and preloading
 
 At session creation the `tools`, `agents`, `commands` and `skills` folders of the user folder and of a trusted project are listed; only names and descriptions are read, and kept in `~/.fast-harness/index.json` by path, size and modified time, so an unchanged file is not read again. Bodies are read on use: a command tool's file when the session's tool list is first rendered (the list is then frozen in the session log), an agent or command body when it is called. Without any of these folders nothing is read. A project file with the same name as a user file replaces it.

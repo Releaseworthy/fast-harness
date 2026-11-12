@@ -50,6 +50,9 @@ Usage:
   fast-harness doctor [--cwd DIR]            What loaded, from where, and what was skipped and why.
   fast-harness keys [--json] [--cwd DIR]     Every TUI and GUI action with its keys and the layer
       that set them (keys.json in the user and trusted project folders; null unbinds).
+  fast-harness mcp list|refresh [SERVER] [--cwd DIR]
+      The MCP servers of mcp.json with their cached tool lists; refresh starts each enabled
+      server (or SERVER), saves its tool list in mcp-cache/ and stops it.
   fast-harness --version                     Print the version.
   fast-harness help                          Print this text.
 
@@ -157,6 +160,12 @@ pub enum Command {
         json: bool,
         cwd: Option<PathBuf>,
     },
+    /// `mcp list` or `mcp refresh [SERVER]` (PLAN.md D47).
+    Mcp {
+        refresh: bool,
+        server: Option<String>,
+        cwd: Option<PathBuf>,
+    },
     Version,
     Help,
 }
@@ -251,6 +260,21 @@ fn tui_args(opts: Opts) -> Result<Command, String> {
     }))
 }
 
+/// `mcp list` or `mcp refresh [SERVER]` (PLAN.md D47).
+fn mcp_command(args: &[String], cwd: Option<PathBuf>) -> Result<Command, String> {
+    let (refresh, server) = match args {
+        [verb] if verb == "list" => (false, None),
+        [verb] if verb == "refresh" => (true, None),
+        [verb, name] if verb == "refresh" => (true, Some(name.clone())),
+        _ => return Err("usage: fast-harness mcp list|refresh [SERVER]".into()),
+    };
+    Ok(Command::Mcp {
+        refresh,
+        server,
+        cwd,
+    })
+}
+
 /// Parses the arguments after the program name.
 pub fn parse(args: Vec<String>) -> Result<Command, String> {
     let mut opts = read_opts(args)?;
@@ -275,6 +299,7 @@ pub fn parse(args: Vec<String>) -> Result<Command, String> {
             return Ok(Command::Trust { path });
         }
         Some("doctor") if opts.positional.len() == 1 => return Ok(Command::Doctor { cwd }),
+        Some("mcp") => return mcp_command(&opts.positional[1..], cwd),
         Some("keys") if opts.positional.len() == 1 => {
             return Ok(Command::Keys {
                 json: opts.json,

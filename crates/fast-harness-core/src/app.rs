@@ -197,9 +197,16 @@ impl Runtime {
     /// tool list has; on a new session an unknown name is a note.
     fn preload(&self, agent: &Agent, conv: &Conversation, notes: &mut Vec<String>) -> Vec<String> {
         let specs = agent.tools.specs();
-        let (known, unknown): (Vec<String>, Vec<String>) = (self.config.tools.preload.iter())
+        let (mut known, unknown): (Vec<String>, Vec<String>) = (self.config.tools.preload.iter())
             .cloned()
             .partition(|name| specs.iter().skip(1).any(|spec| &spec.name == name));
+        // The tools of `alwaysLoad` MCP servers (D47).
+        for name in self.extensions.mcp_preload() {
+            let listed = specs.iter().skip(1).any(|spec| spec.name == name);
+            if listed && !known.contains(&name) {
+                known.push(name);
+            }
+        }
         if !unknown.is_empty() && conv.messages.is_empty() {
             notes.push(format!(
                 "tools.preload: no tool named {}",
@@ -270,7 +277,7 @@ mod models;
 mod settings;
 mod slash;
 
-pub use settings::{doctor, load_settings, provider_for, Settings};
+pub use settings::{doctor, load_settings, mcp_lines, provider_for, Settings};
 pub use slash::{expand_body, help, slash, Slash};
 
 pub use ag_models::{read_ag_cache, write_ag_cache, AG_CACHE_FILE, AG_CACHE_VERSION};

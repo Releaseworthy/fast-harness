@@ -3,9 +3,14 @@
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
-use fast_harness_core::app::{doctor as doctor_text, load_settings};
+use std::sync::Arc;
+
+use fast_harness_core::app::{doctor as doctor_text, load_settings, mcp_lines};
 use fast_harness_core::config::layers::{project_root, PROJECT_DIR};
 use fast_harness_core::config::{save_setting, trust as trusted, FILE_NAME};
+use fast_harness_core::http::Transport;
+use fast_harness_core::net::UreqTransport;
+use fast_harness_core::tools::mcp::McpServers;
 use serde_json::{Map, Value};
 
 use crate::args::ConfigAction;
@@ -94,6 +99,48 @@ pub fn trust(path: Option<PathBuf>) -> Result<ExitCode, String> {
     let path = trusted::trust(&home, &root)?;
     println!("trusted {}", path.display());
     Ok(ExitCode::SUCCESS)
+}
+
+/// `fast-harness mcp list`: the servers with their cache; `mcp refresh
+/// [SERVER]`: starts each (or one) enabled server, saves its `tools/list`
+/// and stops it (PLAN.md D47).
+pub fn mcp(
+    refresh: bool,
+    server: Option<String>,
+    cwd: Option<PathBuf>,
+) -> Result<ExitCode, String> {
+    let (home, cwd) = (crate::home()?, crate::work_dir(cwd)?);
+    let settings = load_settings(&home, Some(&cwd), &env_value)?;
+    if !refresh {
+        print!("{}", mcp_lines(&home, &settings.mcp));
+        return Ok(ExitCode::SUCCESS);
+    }
+    let names: Vec<String> = (settings.mcp.iter())
+        .filter(|spec| spec.enabled || server.as_deref() == Some(spec.name.as_str()))
+        .filter(|spec| server.as_deref().is_none_or(|name| name == spec.name))
+        .map(|spec| spec.name.clone())
+        .collect();
+    if let (Some(name), true) = (&server, names.is_empty()) {
+        return Err(format!("no MCP server `{name}` in mcp.json"));
+    }
+    let transport: Arc<dyn Transport> = Arc::new(UreqTransport::new());
+    let servers = McpServers::new(&home, settings.mcp, Some(transport));
+    let mut failed = false;
+    for name in names {
+        match servers.refresh(&name) {
+            Ok(count) => println!("{name}: {count} tools"),
+            Err(err) => {
+                failed = true;
+                eprintln!("{name}: {err}");
+            }
+        }
+        servers.stop_all();
+    }
+    Ok(if failed {
+        ExitCode::FAILURE
+    } else {
+        ExitCode::SUCCESS
+    })
 }
 
 pub fn doctor(cwd: Option<PathBuf>) -> Result<ExitCode, String> {

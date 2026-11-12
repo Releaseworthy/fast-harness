@@ -107,6 +107,64 @@ pub fn run_with(args: &Value, others: &[ToolSpec], skills: &[Skill]) -> ToolOutp
     ToolOutput::ok(text)
 }
 
+/// [`run_with`] that also matches `mcp`, the MCP tools past the cap
+/// (PLAN.md D47): matched ones are listed after the tool lines, and
+/// `mcp_describe` and `mcp_call` load with them.
+pub fn run_full(
+    args: &Value,
+    others: &[ToolSpec],
+    skills: &[Skill],
+    mcp: &[ToolSpec],
+) -> ToolOutput {
+    if mcp.is_empty() {
+        return run_with(args, others, skills);
+    }
+    let names: Vec<&str> = (args.get("names").and_then(Value::as_array))
+        .map(|list| list.iter().filter_map(Value::as_str).collect())
+        .unwrap_or_default();
+    let query = args.get("query").and_then(Value::as_str).unwrap_or("");
+    let (mut hits, mut rest): (Vec<usize>, Vec<&str>) = (Vec::new(), Vec::new());
+    for name in names {
+        match mcp.iter().position(|t| t.name.eq_ignore_ascii_case(name)) {
+            Some(index) if !hits.contains(&index) => hits.push(index),
+            Some(_) => {}
+            None => rest.push(name),
+        }
+    }
+    for index in search(query, mcp) {
+        if !hits.contains(&index) {
+            hits.push(index);
+        }
+    }
+    hits.truncate(MAX_RESULTS);
+    if hits.is_empty() {
+        return run_with(args, others, skills);
+    }
+    let mut names = vec!["mcp_describe", "mcp_call"];
+    names.extend(rest);
+    let mut args = args.clone();
+    args["names"] = json!(names);
+    let mut output = run_with(&args, others, skills);
+    output.content.push_str(&mcp_lines(&hits, mcp));
+    output.bytes = output.content.len();
+    output
+}
+
+/// The matched MCP tools with the first line of each description.
+fn mcp_lines(hits: &[usize], mcp: &[ToolSpec]) -> String {
+    let mut text = String::from(
+        "\n\nMCP tools matched (not in the tool list: mcp_describe shows one's schema, \
+        mcp_call runs it with `name` and `arguments`):",
+    );
+    for &index in hits {
+        let tool = &mcp[index];
+        let line = tool.description.lines().next().unwrap_or("");
+        let short: String = line.chars().take(200).collect();
+        text.push_str(&format!("\n- {}: {short}", tool.name));
+    }
+    text
+}
+
 /// The skill matching `query` best, when it scores at least 2 (a name hit
 /// or two description words).
 fn best_skill(query: &str, skills: &[Skill]) -> Option<usize> {

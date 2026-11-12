@@ -16,6 +16,8 @@ use crate::llm::custom::{self, ProviderFile, API_OPENAI};
 use crate::llm::openai::OpenAiChat;
 use crate::llm::{Auth, ChatRequest, Completion, Delta, LlmError, Provider};
 use crate::tools::hooks::Hooks;
+use crate::tools::mcp::config as mcp_config;
+use crate::tools::mcp::{cache as mcp_cache, McpServers, ServerSpec};
 use crate::tools::Extensions;
 
 /// The resolved layers and the provider files they found.
@@ -28,6 +30,8 @@ pub struct Settings {
     pub hooks: Hooks,
     /// `keys.json` of the same folders (D45).
     pub keys: crate::keys::Keys,
+    /// The servers of `mcp.json` in the same folders (D47).
+    pub mcp: Vec<ServerSpec>,
 }
 
 /// Every layer for `cwd` (the user layer only without one), then the
@@ -56,12 +60,16 @@ pub fn load_settings(
     let (keys, skipped) = crate::keys::load(&layered.layers);
     layered.report.loaded.extend(keys.files.iter().cloned());
     layered.report.skipped.extend(skipped);
+    let (mcp, loaded, skipped) = mcp_config::load(&layered.layers);
+    layered.report.loaded.extend(loaded);
+    layered.report.skipped.extend(skipped);
     Ok(Settings {
         layered,
         providers,
         index,
         hooks,
         keys,
+        mcp,
     })
 }
 
@@ -158,8 +166,11 @@ impl Runtime {
             index,
             hooks,
             keys,
+            mcp,
         } = settings;
-        let extensions = Extensions::new(index).with_hooks(hooks);
+        let transport: Arc<dyn Transport> = self.transport.clone();
+        let mcp = McpServers::new(&self.home, mcp, Some(transport));
+        let extensions = Extensions::new(index).with_hooks(hooks).with_mcp(mcp);
         // A tool file's `outputBytes` unless `toolOutput` names the tool.
         for (name, bytes) in extensions.output_bytes() {
             layered.config.tool_output.entry(name).or_insert(bytes);
@@ -259,6 +270,7 @@ pub fn doctor(settings: &Settings) -> String {
     }
     extension_lines(&mut out, &settings.index);
     hook_lines(&mut out, &settings.hooks);
+    out.push_str(&mcp_lines(&layered.layers.home, &settings.mcp));
     key_lines(&mut out, &settings.keys);
     let _ = writeln!(out, "settings not at their default:");
     let changed = layered
@@ -290,6 +302,44 @@ fn key_lines(out: &mut String, keys: &crate::keys::Keys) {
             let _ = writeln!(out, "  {front}.{name} = {keys} ({source})");
         }
     }
+}
+
+/// The `mcp` section of `doctor` and `fast-harness mcp list`: one line per
+/// server with its kind, layer, target (names of env and headers, never
+/// values), flags and cache; reads the cache files only.
+pub fn mcp_lines(home: &Path, servers: &[ServerSpec]) -> String {
+    use std::fmt::Write;
+    let mut out = String::from("mcp:\n");
+    let now = crate::trace::now_ms();
+    for spec in servers {
+        let mut flags = String::new();
+        if !spec.enabled {
+            flags.push_str(" [disabled]");
+        }
+        if spec.always_load {
+            flags.push_str(" [alwaysLoad]");
+        }
+        let cache = match mcp_cache::read(home, spec) {
+            Some(file) => {
+                let age = now.saturating_sub(file.fetched_at) / 1000;
+                let state = if file.fresh(now) { "fresh" } else { "stale" };
+                let era = &file.era;
+                format!(
+                    "{} tools cached {age} s ago ({state}, {era})",
+                    file.tools.len()
+                )
+            }
+            None => "no cache: run `fast-harness mcp refresh`".into(),
+        };
+        let (kind, source) = (spec.kind(), spec.source.word());
+        let _ = writeln!(
+            out,
+            "  {}{flags} ({kind}, {source}) {}: {cache}",
+            spec.name,
+            spec.target()
+        );
+    }
+    out
 }
 
 /// The `hooks` section of `doctor`: one line per entry in run order.

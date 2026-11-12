@@ -54,6 +54,11 @@ fn main() -> ExitCode {
         Command::Config { action, cwd } => config_cmd::config(action, cwd),
         Command::Trust { path } => config_cmd::trust(path),
         Command::Doctor { cwd } => config_cmd::doctor(cwd),
+        Command::Mcp {
+            refresh,
+            server,
+            cwd,
+        } => config_cmd::mcp(refresh, server, cwd),
         Command::Keys { json, cwd } => config_cmd::keys(json, cwd),
         Command::Print(print_args) => print::run(print_args),
         Command::Tui(tui_args) => tui::run(tui_args),

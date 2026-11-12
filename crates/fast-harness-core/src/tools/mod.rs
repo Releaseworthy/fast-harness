@@ -24,6 +24,7 @@ mod glob;
 mod grep;
 mod hook_run;
 pub mod hooks;
+pub mod mcp;
 mod read;
 mod shell;
 pub mod skills;
@@ -108,6 +109,9 @@ pub struct Registry {
     note: String,
     /// Skills `find_tools` matches besides tools (D43).
     skills: Vec<skills::Skill>,
+    /// MCP tools past the cap, matched by `find_tools` and reached through
+    /// `mcp_describe` and `mcp_call` (D47).
+    mcp: Vec<ToolSpec>,
 }
 
 impl Registry {
@@ -131,7 +135,25 @@ impl Registry {
             find: true,
             note,
             skills: Vec::new(),
+            mcp: Vec::new(),
         }
+    }
+
+    /// Lets `find_tools` match the MCP tools past the cap (D47); with any,
+    /// its description says how they are reached.
+    pub fn set_mcp(&mut self, mcp: Vec<ToolSpec>) {
+        if !mcp.is_empty() && self.find {
+            if !self.note.is_empty() {
+                self.note.push(' ');
+            }
+            self.note.push_str(&format!(
+                "`query` also matches {} MCP tools outside this list: a find names them and \
+                loads mcp_describe (a tool's schema) and mcp_call (runs it).",
+                mcp.len()
+            ));
+            self.specs[0] = find::spec_noted(&self.specs[1..], &self.note);
+        }
+        self.mcp = mcp;
     }
 
     /// Lets `find_tools` match `skills` too; with any, its description says so.
@@ -204,10 +226,10 @@ impl Registry {
             // Not budgeted: the tool lines are short and each skill body is
             // already cut at `skills::SKILL_BYTES` (at most MAX_SKILLS).
             (true, 0) if !self.skills.is_empty() => {
-                let output = find::run_with(&args, &self.specs[1..], &self.skills);
+                let output = find::run_full(&args, &self.specs[1..], &self.skills, &self.mcp);
                 return filter(&args, output);
             }
-            (true, 0) => find::run(&args, &self.specs[1..]),
+            (true, 0) => find::run_full(&args, &self.specs[1..], &[], &self.mcp),
             (true, index) => self.tools[index - 1].run(&args, ctx),
             (false, index) => self.tools[index].run(&args, ctx),
         };
