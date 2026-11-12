@@ -136,6 +136,10 @@ fn google_without_client_needs_setup() {
 }
 
 #[test]
+#[cfg_attr(
+    not(windows),
+    ignore = "secrets are encrypted with DPAPI, which only Windows has"
+)]
 fn client_state_reads_the_home() {
     let home = std::env::temp_dir().join(format!("fh-providers-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&home);
