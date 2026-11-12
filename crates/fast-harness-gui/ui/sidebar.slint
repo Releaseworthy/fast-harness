@@ -288,6 +288,17 @@ export component Sidebar inherits Rectangle {
                         entry: r;
                         clicked => { root.open-session(r.workspace, r.id); }
                     }
+                    // A workspace whose first list is still being read (D60).
+                    if r.kind == "loading": HorizontalLayout {
+                        height: 28px;
+                        padding-left: SideGrid.name-x;
+                        Text {
+                            text: r.title;
+                            font-size: Theme.font-xs;
+                            color: Theme.dim;
+                            vertical-alignment: center;
+                        }
+                    }
                 }
             }
             ScrollBar {

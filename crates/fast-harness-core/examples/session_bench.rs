@@ -8,9 +8,11 @@
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
+use fast_harness_core::agent::Conversation;
 use fast_harness_core::session::{self, index::INDEX_FILE};
 use fast_harness_core::trace::{self, SessionHeader, TraceWriter};
 use fast_harness_core::types::Message;
+use fast_harness_core::view::Transcript;
 
 /// One log of at least `bytes`: turns of a user message of about 1 KB.
 fn template(home: &Path, bytes: usize) -> Vec<u8> {
@@ -63,16 +65,46 @@ fn median(mut f: impl FnMut()) -> Duration {
     times[1]
 }
 
-fn main() {
-    let mut args = std::env::args().skip(1);
-    let logs: usize = args.next().and_then(|a| a.parse().ok()).unwrap_or(200);
-    let kb: usize = args.next().and_then(|a| a.parse().ok()).unwrap_or(1024);
+/// The home and folder: `FAST_HARNESS_BENCH_HOME` and `FAST_HARNESS_BENCH_CWD`
+/// when set (kept afterwards, for a real-window check), else a temporary home
+/// removed at the end.
+fn bench_home() -> (PathBuf, PathBuf, bool) {
+    if let (Ok(home), Ok(cwd)) = (
+        std::env::var("FAST_HARNESS_BENCH_HOME"),
+        std::env::var("FAST_HARNESS_BENCH_CWD"),
+    ) {
+        return (PathBuf::from(home), PathBuf::from(cwd), true);
+    }
     let home: PathBuf = std::env::temp_dir().join(format!(
         "fast-harness-session-bench-{}-{}",
         std::process::id(),
         trace::now_ms()
     ));
     let cwd = home.join("work");
+    (home, cwd, false)
+}
+
+/// What opening the newest log costs a front end (D60 26B): before, the
+/// reopen and a second read for the transcript; after, the reopen's events.
+fn open_times(home: &Path, cwd: &Path) -> (Duration, Duration) {
+    let id = session::latest(home, cwd).expect("latest").expect("one").id;
+    let before = median(|| {
+        let (conv, _) = Conversation::reopen(home, cwd, &id).expect("reopen");
+        let (_, events) = trace::read(&conv.log_path).expect("read");
+        let _ = Transcript::from_trace(&events);
+    });
+    let after = median(|| {
+        let (conv, events) = Conversation::reopen(home, cwd, &id).expect("reopen");
+        let _ = Transcript::opened(&events, &conv.messages, conv.take_notes());
+    });
+    (before, after)
+}
+
+fn main() {
+    let mut args = std::env::args().skip(1);
+    let logs: usize = args.next().and_then(|a| a.parse().ok()).unwrap_or(200);
+    let kb: usize = args.next().and_then(|a| a.parse().ok()).unwrap_or(1024);
+    let (home, cwd, keep) = bench_home();
     std::fs::create_dir_all(session::dir(&home, &cwd)).expect("home");
     seed(&home, &cwd, logs, kb * 1024);
     let index = session::dir(&home, &cwd).join(INDEX_FILE);
@@ -95,5 +127,13 @@ fn main() {
         ms(warm),
         ms(latest)
     );
-    let _ = std::fs::remove_dir_all(&home);
+    let (before, after) = open_times(&home, &cwd);
+    println!(
+        "open the newest: reopen + read + transcript {:.1} ms, reopen + transcript {:.1} ms",
+        ms(before),
+        ms(after)
+    );
+    if !keep {
+        let _ = std::fs::remove_dir_all(&home);
+    }
 }

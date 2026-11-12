@@ -16,6 +16,7 @@ pub fn read(path: &Path) -> io::Result<(SessionHeader, Vec<TraceEvent>)> {
 
 /// [`read`] with the skipped lines.
 pub fn load(path: &Path) -> io::Result<Parsed> {
+    crate::ui_thread::forbid("trace::read");
     parse(&std::fs::read(path)?)
 }
 

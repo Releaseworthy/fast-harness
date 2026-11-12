@@ -11,8 +11,8 @@ use fast_harness_core::app::{Runtime, RuntimeHost, Slash};
 use fast_harness_core::events::AgentEvent;
 use fast_harness_core::llm::anthropic::ModelInfo;
 use fast_harness_core::service::{Finished, Host, Service, Session, Start};
-use fast_harness_core::session;
-use fast_harness_core::trace::{self, detail, report};
+use fast_harness_core::session::SessionSummary;
+use fast_harness_core::trace::TraceEvent;
 use fast_harness_core::view::{Item, NoteKind, Transcript};
 use ratatui::crossterm::event::Event;
 
@@ -39,6 +39,10 @@ pub enum Msg {
     Panel,
     /// The text of a finished `/reflect` (PLAN.md D50), or its error.
     Reflected(Result<String, String>),
+    /// The Sessions screen's list of read `ticket`, read on a worker (D60).
+    Sessions(u64, Result<Vec<SessionSummary>, String>),
+    /// The Trace screen's read of `ticket` (D60).
+    Trace(u64, super::loads::TraceRead),
 }
 
 pub struct Tui {
@@ -49,7 +53,9 @@ pub struct Tui {
     pub(super) service: Service,
     pub(super) current: Arc<Session>,
     pub session: String,
-    log_path: PathBuf,
+    pub(super) log_path: PathBuf,
+    /// The reads of the Sessions and Trace screens on workers (D60).
+    pub(super) loads: super::loads::Loads,
     pub transcript: Transcript,
     pub ui: Ui,
     pub cache: Cache,
@@ -63,26 +69,21 @@ pub struct Tui {
     pub panels: fast_harness_core::panels::Panels,
 }
 
-/// The transcript of a saved session: its trace, else its messages.
-pub fn load_transcript(conv: &Conversation) -> Transcript {
-    match trace::read(&conv.log_path) {
-        Ok((_, events)) if !events.is_empty() => Transcript::from_trace(&events),
-        _ => Transcript::from_messages(&conv.messages),
-    }
+/// A session opened with the events of its one parse (D60).
+pub type Opened = (Conversation, Vec<TraceEvent>);
+
+/// The transcript of an opened session, with its damaged-line note (once).
+pub fn load_transcript((conv, events): &Opened) -> Transcript {
+    Transcript::opened(events, &conv.messages, conv.take_notes())
 }
 
 impl Tui {
     /// The TUI of `cwd`, whose settings `rt` holds; its turns run in a
     /// [`Service`] over the same runtime.
-    pub fn new(
-        rt: Runtime,
-        cwd: PathBuf,
-        conv: Conversation,
-        tx: Sender<Msg>,
-    ) -> Result<Tui, String> {
+    pub fn new(rt: Runtime, cwd: PathBuf, opened: Opened, tx: Sender<Msg>) -> Result<Tui, String> {
         let host = Arc::new(RuntimeHost::at_project(rt, &cwd));
         let turns = super::turns::TuiHost::new(host.clone(), tx.clone());
-        Tui::with_host(host, Arc::new(turns), cwd, conv, tx)
+        Tui::with_host(host, Arc::new(turns), cwd, opened, tx)
     }
 
     /// [`Tui::new`] with `turns` building the turns' agents (tests).
@@ -90,13 +91,14 @@ impl Tui {
         host: Arc<RuntimeHost>,
         turns: Arc<dyn Host>,
         cwd: PathBuf,
-        conv: Conversation,
+        opened: Opened,
         tx: Sender<Msg>,
     ) -> Result<Tui, String> {
         let ui = Tui::first_ui(&host.runtime());
         let panels = fast_harness_core::panels::Panels::new(&host.runtime().panels);
         let service = Service::new(turns);
-        let transcript = load_transcript(&conv);
+        let transcript = load_transcript(&opened);
+        let conv = opened.0;
         let (session, unfinished) = (conv.id.clone(), conv.unfinished);
         let log_path = conv.log_path.clone();
         let current = service.open(conv, &cwd).map_err(|err| format!("{err:?}"))?;
@@ -108,6 +110,7 @@ impl Tui {
             current,
             session,
             log_path,
+            loads: Default::default(),
             transcript,
             ui,
             cache: Cache::default(),
@@ -194,6 +197,8 @@ impl Tui {
             Msg::Reflected(Ok(text)) => self.note(NoteKind::Info, text),
             Msg::Reflected(Err(err)) => self.note(NoteKind::Error, err),
             Msg::TurnDone(end) => self.turn_done(*end),
+            Msg::Sessions(ticket, result) => self.sessions_loaded(ticket, result),
+            Msg::Trace(ticket, result) => self.trace_loaded(ticket, result),
             Msg::Notes(notes) => {
                 for note in notes {
                     self.note(NoteKind::Error, note);
@@ -327,12 +332,13 @@ impl Tui {
         if self.ui.running {
             return;
         }
-        let opened = self.rt().open_conversation(&self.cwd, id, false);
-        let conv = match opened {
-            Ok(conv) => conv,
+        let opened = self.rt().open_with_events(&self.cwd, id, false);
+        let opened = match opened {
+            Ok(opened) => opened,
             Err(err) => return self.ui.status = err,
         };
-        let transcript = load_transcript(&conv);
+        let transcript = load_transcript(&opened);
+        let conv = opened.0;
         let (session, unfinished) = (conv.id.clone(), conv.unfinished);
         let log_path = conv.log_path.clone();
         match self.service.open(conv, &self.cwd) {
@@ -361,35 +367,10 @@ impl Tui {
                 let current = self.ui.models.iter().position(|m| m.id == self.ui.model);
                 self.ui.selected = current.unwrap_or(0);
             }
-            Screen::Sessions => match session::list(&self.host.home(), &self.cwd) {
-                Ok(list) => self.ui.sessions = list,
-                Err(err) => self.ui.status = format!("sessions: {err}"),
-            },
+            Screen::Sessions => self.load_sessions(),
             Screen::Chat => {}
         }
         self.ui.screen = screen;
-    }
-
-    fn load_trace(&mut self) {
-        self.ui.trace_top = 0;
-        match trace::read(&self.log_path) {
-            Ok((_, events)) => {
-                let rows = report::step_rows(&events);
-                let steps = if rows.is_empty() {
-                    Vec::new()
-                } else {
-                    report::format_table(&rows)
-                        .lines()
-                        .map(String::from)
-                        .collect()
-                };
-                self.ui.trace.set(detail::entries(&events), steps, None);
-            }
-            Err(err) => {
-                let text = format!("cannot read {}: {err}", self.log_path.display());
-                self.ui.trace.set(Vec::new(), Vec::new(), Some(text));
-            }
-        }
     }
 
     fn login_done(&mut self, result: Result<String, String>) {

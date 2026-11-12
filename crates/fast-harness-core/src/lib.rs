@@ -1,7 +1,7 @@
 //! Portable core of fast-harness.
 //!
 //! Layering (a module never imports a higher one):
-//! `types` / `theme` -> `http` / `sse` / `platform` -> `store` / `net`
+//! `types` / `theme` / `ui_thread` -> `http` / `sse` / `platform` -> `store` / `net`
 //! -> `llm` / `tools` / `auth` / `config` -> `trace` / `session` / `events` / `keys`
 //! -> `workspaces` / `accounts` -> `agent` -> `view` / `panels` / `stats` -> `reflect`
 //! -> `service` -> `ext` -> `app`.
@@ -34,5 +34,6 @@ pub mod theme;
 pub mod tools;
 pub mod trace;
 pub mod types;
+pub mod ui_thread;
 pub mod view;
 pub mod workspaces;

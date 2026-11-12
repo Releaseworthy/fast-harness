@@ -10,6 +10,9 @@ mod input;
 mod keys;
 #[cfg(test)]
 mod keys_tests;
+mod loads;
+#[cfg(test)]
+mod loads_tests;
 mod markdown;
 mod panel_screen;
 #[cfg(test)]
@@ -73,9 +76,12 @@ pub fn run(args: TuiArgs) -> Result<ExitCode, String> {
     rt.interactive = true;
     let cwd = crate::work_dir(args.cwd.clone())?;
     rt.use_project(&cwd)?;
-    let conv = rt.open_conversation(&cwd, args.resume.as_deref(), args.continue_latest)?;
+    // `-c` and `--session` resolve before the first frame: one parse (D60).
+    let opened = rt.open_with_events(&cwd, args.resume.as_deref(), args.continue_latest)?;
     let (tx, rx) = mpsc::channel();
-    let mut tui = Tui::new(rt, cwd, conv, tx.clone())?;
+    let mut tui = Tui::new(rt, cwd, opened, tx.clone())?;
+    // From here a session list or a log read panics in a debug build (D60).
+    fast_harness_core::ui_thread::mark(true);
     // One guard: a second `rt()` in the same statement would deadlock.
     let (pool, http) = {
         let rt = tui.rt();

@@ -140,7 +140,7 @@ fn run(root: &Path) {
     let transport = Arc::new(FirstPanics { script, calls });
     let turns = Arc::new(ScriptHost { home, transport });
     let (tx, rx) = mpsc::channel();
-    let mut tui = Tui::with_host(runtime, turns, cwd, conv, tx).unwrap();
+    let mut tui = Tui::with_host(runtime, turns, cwd, (conv, Vec::new()), tx).unwrap();
     tui.act(Action::Send("hi".into()));
     assert!(tui.ui.running);
     pump(&mut tui, &rx);

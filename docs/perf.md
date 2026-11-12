@@ -135,6 +135,20 @@ Method: `cargo run --release -p fast-harness-core --example session_bench -- <lo
 
 Target met: 200 logs of 1 MB list in 2.8 ms with a warm index (target 50 ms). A warm list reads the folder, stats each log and reads `index.json`; a log that changed costs one parse (about 2.5 ms per MB here). The cold column is lower than "before" mostly because the seeded logs differ (D1's logs held tool calls and results); both parse every log. `latest` reads the folder and at most one log. `fast-harness sessions` itself was not timed.
 
+## Phase 26B: lists and trace reads off the UI threads (2026-11-13)
+
+`cargo run --release -p fast-harness-core --example session_bench -- 200 1024` and `-- 1 10240` (median of 3; the "open" line times the calls a front end makes to open the newest log). UI thread blocked time is the time of the calls made on it, not a frame-gap measurement.
+
+| UI thread work | Before (47a1dc0) | After |
+|---|---|---|
+| Expand 200 x 1 MB, cold index | `session::list` 498.4 ms | none (worker); render from the received list |
+| Expand 200 x 1 MB, warm index | 2.4 ms per expanded workspace, again at each turn start and end | none (worker) |
+| Open a 10 MB session | 77.5 ms (reopen, then `trace::read` and the transcript) | 48.9 ms (reopen and the transcript from its events) |
+| Open a 1 MB session | 6.2 ms | 2.6 ms |
+| Trace page after a turn, 10 MB log | a full read on the UI thread | none (worker) |
+
+Idle private working set and CPU time (Phase 21A method): not measured in this chunk.
+
 ## Experiments 2026-11-12 (phase 10, E1 to E6)
 
 Note (PLAN.md D53): the Antigravity measurements below were made on code that now lives on branch `antigravity` (a143cfa), not on main.

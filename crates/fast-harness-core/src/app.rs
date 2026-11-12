@@ -255,6 +255,18 @@ impl Runtime {
         resume: Option<&str>,
         continue_latest: bool,
     ) -> Result<Conversation, String> {
+        Ok(self.open_with_events(cwd, resume, continue_latest)?.0)
+    }
+
+    /// [`Runtime::open_conversation`] with the events of a reopened log, from
+    /// the same parse (D60); a new session has none. A view builds its
+    /// transcript from them without reading the log again.
+    pub fn open_with_events(
+        &self,
+        cwd: &Path,
+        resume: Option<&str>,
+        continue_latest: bool,
+    ) -> Result<(Conversation, Vec<crate::trace::TraceEvent>), String> {
         let id = match (resume, continue_latest) {
             (Some(id), _) => Some(id.to_string()),
             (None, true) => session::latest(&self.home, cwd)
@@ -263,9 +275,10 @@ impl Runtime {
             (None, false) => None,
         };
         match id {
-            Some(id) => Conversation::resume(&self.home, cwd, &id)
+            Some(id) => Conversation::reopen(&self.home, cwd, &id)
                 .map_err(|err| format!("session {id}: {err}")),
             None => Conversation::create(&self.home, cwd, None)
+                .map(|conv| (conv, Vec::new()))
                 .map_err(|err| format!("new session: {err}")),
         }
     }

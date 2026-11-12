@@ -9,7 +9,7 @@ use std::sync::Arc;
 use fast_harness_core::app::words::{state_word, Marks, Voice};
 use fast_harness_core::app::Runtime;
 use fast_harness_core::service::Service;
-use fast_harness_core::trace::{self, now_ms};
+use fast_harness_core::trace::now_ms;
 use fast_harness_core::view::{Item, State, Transcript};
 use slint::{ComponentHandle, ModelRc, SharedString, VecModel, Weak};
 
@@ -40,6 +40,8 @@ pub struct App {
     pub side: crate::workspaces::Side,
     /// The panels of `panels/*.json` (PLAN.md D46); a process starts on open.
     pub panels: fast_harness_core::panels::Panels,
+    /// The Trace page's read on a worker (D60).
+    pub trace_load: crate::trace_load::TraceLoad,
 }
 
 thread_local! {
@@ -93,6 +95,7 @@ impl App {
             models: Vec::new(),
             models_fetching: false,
             side,
+            trace_load: Default::default(),
         }
     }
 
@@ -147,12 +150,14 @@ impl App {
         ui.set_resume_word(word.into());
     }
 
-    pub fn refresh_sessions(&self, ui: &MainWindow) {
+    /// Asks the workers for the sidebar's lists and redraws it (D60).
+    pub fn refresh_sessions(&mut self, ui: &MainWindow) {
         crate::workspaces::refresh(self, ui);
     }
 
-    pub fn refresh_trace(&self, ui: &MainWindow) {
-        crate::trace_rows::refresh(self, ui);
+    /// Asks a worker for the Trace page of the shown session (D60).
+    pub fn refresh_trace(&mut self, ui: &MainWindow) {
+        crate::trace_load::refresh(self, ui);
     }
 
     /// Shows the shown run from its first row.
@@ -177,11 +182,11 @@ impl App {
     pub fn open_session(&mut self, ui: &MainWindow, id: &str) {
         let (rt, service, cwd) = (&self.rt, &self.service, self.cwd.clone());
         let load = || {
-            let conv = rt.open_conversation(&cwd, Some(id), false)?;
-            let view = match trace::read(&conv.log_path) {
-                Ok((_, events)) => Transcript::from_trace(&events),
-                Err(_) => Transcript::from_messages(&conv.messages),
-            };
+            // One parse: the events come from the reopen (D60); a damaged
+            // line's note shows now, once.
+            let (conv, events) = rt.open_with_events(&cwd, Some(id), false)?;
+            let view = Transcript::opened(&events, &conv.messages, conv.take_notes());
+            drop(events);
             let session = service.open(conv, &cwd).map_err(crate::turn::error_text)?;
             Ok(Run::new(cwd.clone(), Some(session), view))
         };

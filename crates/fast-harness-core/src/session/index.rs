@@ -94,6 +94,7 @@ pub fn list(app_home: &Path, cwd: &Path) -> io::Result<Vec<SessionSummary>> {
 
 /// [`list`] with the count of logs parsed and answered from the index.
 pub fn list_counted(app_home: &Path, cwd: &Path) -> io::Result<Listing> {
+    crate::ui_thread::forbid("session::list");
     let folder = dir(app_home, cwd);
     let Some(logs) = logs(&folder)? else {
         return Ok(Listing::default());
@@ -148,6 +149,7 @@ fn entry(old: &Index, name: &str, log: &Path, listing: &mut Listing) -> Option<E
 /// the index or by parsing that one log. A folder without id-named logs
 /// falls back to [`list`]. The index is not written.
 pub fn latest(app_home: &Path, cwd: &Path) -> io::Result<Option<SessionSummary>> {
+    crate::ui_thread::forbid("session::latest");
     let folder = dir(app_home, cwd);
     let Some(logs) = logs(&folder)? else {
         return Ok(None);

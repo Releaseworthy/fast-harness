@@ -34,6 +34,25 @@ impl Transcript {
         view
     }
 
+    /// An opened session (`Runtime::open_with_events`): its events when the
+    /// log had any, else its messages, then `notes` (a skipped damaged line,
+    /// `Conversation::take_notes`, D60) as error notes, so they show at the
+    /// open and once.
+    pub fn opened(events: &[TraceEvent], messages: &[Message], notes: Vec<String>) -> Transcript {
+        let mut view = match events.is_empty() {
+            true => Transcript::from_messages(messages),
+            false => Transcript::from_trace(events),
+        };
+        for text in notes {
+            view.items.push(Item::Note {
+                kind: NoteKind::Error,
+                text,
+            });
+        }
+        view.revision += 1;
+        view
+    }
+
     /// A saved session log: the same as [`Transcript::from_messages`] plus
     /// step footers, retry and account switch notes, and tool durations.
     pub fn from_trace(events: &[TraceEvent]) -> Transcript {

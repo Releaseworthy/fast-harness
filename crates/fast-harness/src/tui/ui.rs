@@ -96,6 +96,8 @@ pub struct Ui {
     /// The open provider of the accounts screen; `None` lists the providers (D32).
     pub account_provider: Option<ProviderKey>,
     pub sessions: Vec<SessionSummary>,
+    /// The Sessions screen's list is being read on a worker (D60).
+    pub sessions_loading: bool,
     pub models: Vec<ModelInfo>,
     /// The model list the pickers show: cached, then live.
     pub catalog: Vec<ModelInfo>,
@@ -147,6 +149,7 @@ impl Ui {
             accounts: Vec::new(),
             account_provider: None,
             sessions: Vec::new(),
+            sessions_loading: false,
             models: Vec::new(),
             catalog: builtin_models(),
             fetching: false,

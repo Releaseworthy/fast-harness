@@ -224,7 +224,9 @@ fn draw_sessions(frame: &mut Frame, ui: &mut Ui, area: Rect) {
         .iter()
         .map(|s| format!("{:<28} {:>3} turns  {}", s.id, s.turns, s.title))
         .collect();
-    let lines = if rows.is_empty() {
+    let lines = if rows.is_empty() && ui.sessions_loading {
+        vec![Line::styled("Loading sessions...", st.dim())]
+    } else if rows.is_empty() {
         vec![Line::raw("No sessions yet.")]
     } else {
         list(rows, ui.selected, inner, &st)

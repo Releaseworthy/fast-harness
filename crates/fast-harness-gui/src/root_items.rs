@@ -11,6 +11,7 @@ mod crash;
 mod format;
 mod host;
 mod keys;
+mod listings;
 mod mirror;
 mod model_refresh;
 mod panels;
@@ -23,6 +24,7 @@ mod runs;
 mod settings;
 mod theme;
 mod tool_rows;
+mod trace_load;
 mod trace_rows;
 mod turn;
 mod window_state;
@@ -60,6 +62,8 @@ fn working_dir() -> Option<PathBuf> {
 /// the live variant) goes to the banner when nothing else is there.
 fn run(ui: MainWindow, note: Option<String>) {
     crash::install();
+    // A session list or a log read here panics in a debug build (D60).
+    fast_harness_core::ui_thread::mark(true);
     ui.set_version(env!("CARGO_PKG_VERSION").into());
     let stop = Arc::new(AtomicBool::new(false));
     start_runtime(&ui, &stop);

@@ -29,7 +29,7 @@ The test `crates/fast-harness-core/tests/guard_rails.rs` holds this list and fai
 - Agent thread: one per running turn, `turn-<session id>`, started by `service::Service::start` for the TUI, the GUI and `serve`; the service catches a panic on it and ends the turn `Failed` (D59). Only the thread that calls `Agent::run_turn` writes the session log, and every traced event is written before its `AgentEvent` goes to the sink (`FnMut(AgentEvent)`).
 - Tool threads, by effect (`agent/tool_run.rs`): a run of consecutive parallel calls (`Effect::Read`, or a tool whose `parallel()` says true, such as the subagent tool) starts together on scoped threads; every other call runs alone, in call order, after everything before it.
 - Subagents: each runs its own loop on a `subagent-<id>` thread with its own session log.
-- Workers: model list (`fast-harness-models`), usage (`fast-harness-usage`), sign-in (`fast-harness-login`, TUI), `fast-harness-reflect`; the shell tool, command hooks, panels and MCP stdio servers start their own helper threads.
+- Workers: model list (`fast-harness-models`), usage (`fast-harness-usage`), sign-in (`fast-harness-login`, TUI), `fast-harness-reflect`, session lists and trace reads (`fast-harness-gui-list`, `fast-harness-gui-trace`, `fast-harness-sessions`, `fast-harness-trace`: a log read never runs on a UI thread, `ui_thread::forbid` panics there in debug builds, D60); the shell tool, command hooks, panels and MCP stdio servers start their own helper threads.
 
 ## Contracts
 

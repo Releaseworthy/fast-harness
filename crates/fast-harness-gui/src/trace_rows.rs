@@ -1,12 +1,13 @@
 //! The Trace page: the timeline of the session log (`trace::detail`) and
-//! the step table (`trace::report`), read again on every refresh.
+//! the step table (`trace::report`), read on a worker (`trace_load`, D60).
 
+use std::path::Path;
+
+use fast_harness_core::trace;
 use fast_harness_core::trace::detail::{entries, Entry, EntryKind};
 use fast_harness_core::trace::report::{step_rows, StepRow};
-use fast_harness_core::{session, trace};
 use slint::{Model, ModelRc, SharedString, VecModel};
 
-use crate::app::App;
 use crate::format::{duration, tokens};
 use crate::tool_rows::{entry_detail, tool_view};
 use crate::{MainWindow, ToolView, TraceRow};
@@ -158,25 +159,41 @@ pub fn step_cells(row: &StepRow) -> Vec<SharedString> {
     cells.iter().map(|c| c.as_str().into()).collect()
 }
 
-fn set_rows(ui: &MainWindow, timeline: Vec<TraceRow>, steps: Vec<ModelRc<SharedString>>) {
+pub fn set_rows(ui: &MainWindow, timeline: Vec<TraceRow>, steps: Vec<ModelRc<SharedString>>) {
     ui.set_trace_entries(ModelRc::new(VecModel::from(timeline)));
     ui.set_trace_steps(ModelRc::new(VecModel::from(steps)));
 }
 
-/// Reads the current session log into both views.
-pub fn refresh(app: &App, ui: &MainWindow) {
-    let Some(id) = app.runs.id.as_deref() else {
-        ui.set_trace_session("".into());
-        ui.set_trace_message("No session yet: send a message or open a session.".into());
-        return set_rows(ui, Vec::new(), Vec::new());
-    };
-    ui.set_trace_session(id.into());
-    let path = session::log_path(&app.rt.home, &app.cwd, id);
-    match trace::read(&path) {
-        Ok((_, events)) => {
-            let timeline: Vec<TraceRow> = entries(&events).iter().map(entry_row).collect();
-            let steps = step_rows(&events)
-                .iter()
+/// The page with no session.
+pub fn no_session(ui: &MainWindow) {
+    ui.set_trace_session("".into());
+    ui.set_trace_message("No session yet: send a message or open a session.".into());
+    set_rows(ui, Vec::new(), Vec::new());
+}
+
+/// A log read on a worker (`trace_load`): its timeline and step table.
+pub struct Loaded {
+    pub entries: Vec<Entry>,
+    pub steps: Vec<StepRow>,
+}
+
+/// Reads and digests the log at `path` (worker thread).
+pub fn load(path: &Path) -> Result<Loaded, String> {
+    match trace::read(path) {
+        Ok((_, events)) => Ok(Loaded {
+            entries: entries(&events),
+            steps: step_rows(&events),
+        }),
+        Err(err) => Err(format!("Cannot read {}: {err}", path.display())),
+    }
+}
+
+/// Fills both views from a read (UI thread).
+pub fn show(ui: &MainWindow, loaded: Result<Loaded, String>) {
+    match loaded {
+        Ok(loaded) => {
+            let timeline: Vec<TraceRow> = loaded.entries.iter().map(entry_row).collect();
+            let steps = (loaded.steps.iter())
                 .map(|r| ModelRc::new(VecModel::from(step_cells(r))))
                 .collect();
             let note = if timeline.is_empty() {
@@ -188,7 +205,7 @@ pub fn refresh(app: &App, ui: &MainWindow) {
             set_rows(ui, timeline, steps);
         }
         Err(err) => {
-            ui.set_trace_message(format!("Cannot read {}: {err}", path.display()).into());
+            ui.set_trace_message(err.into());
             set_rows(ui, Vec::new(), Vec::new());
         }
     }

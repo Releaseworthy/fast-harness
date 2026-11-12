@@ -22,6 +22,8 @@ pub struct TraceView {
     /// The steps table, one row per step.
     pub steps: Vec<String>,
     pub error: Option<String>,
+    /// A read runs ([`TraceView::loading`]).
+    pub loading: bool,
     pub full: bool,
     pub show_steps: bool,
     pub lines: Vec<Line<'static>>,
@@ -34,7 +36,14 @@ impl TraceView {
         self.entries = entries;
         self.steps = steps;
         self.error = error;
+        self.loading = false;
         self.key = None;
+    }
+
+    /// The log is being read on a worker (D60): one muted line until it comes.
+    pub fn loading(&mut self) {
+        self.set(Vec::new(), Vec::new(), None);
+        self.loading = true;
     }
 
     /// Re-renders `lines` when the width, the theme or a toggle changed.
@@ -44,6 +53,7 @@ impl TraceView {
             return;
         }
         self.lines = match &self.error {
+            _ if self.loading => vec![Line::styled("Loading the session log...", st.dim())],
             Some(err) => vec![Line::styled(clip(err, width), st.error())],
             None if self.show_steps => steps_lines(&self.steps, width, st),
             None => lines(&self.entries, self.full, width, st),

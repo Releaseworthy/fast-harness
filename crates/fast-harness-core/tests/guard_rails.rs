@@ -34,7 +34,7 @@ use text::functions;
 /// order of the line of `lib.rs`, which `the_layer_line_of_lib_names_the_same_modules`
 /// holds `lib.rs` to.
 const LAYERS: &[&[&str]] = &[
-    &["types", "theme"],
+    &["types", "theme", "ui_thread"],
     &["http", "sse", "platform"],
     &["store", "net"],
     &["llm", "tools", "auth", "config"],
