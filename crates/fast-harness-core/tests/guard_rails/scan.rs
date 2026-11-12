@@ -275,6 +275,37 @@ fn backtick_re() -> &'static Regex {
     RE.get_or_init(|| Regex::new(r"`([a-z_][a-z0-9_]*)`").expect("backtick regex"))
 }
 
+/// Lines of non-test source outside `trace/` that read a trace event's data
+/// by string key (PLAN.md D61), as `path:line`.
+pub(crate) fn trace_key_reads() -> Vec<String> {
+    let mut out = Vec::new();
+    for src in sources() {
+        let inside = src.path.starts_with("crates/fast-harness-core/src/trace/");
+        if inside || is_test_path(&src.path) || !src.path.contains("/src/") {
+            continue;
+        }
+        let lines: Vec<&str> = src.text.lines().map(str::trim_start).collect();
+        for (index, code) in lines.iter().enumerate() {
+            // A file's unit tests sit at its end, in a `#[cfg(test)]` module.
+            let next = lines.get(index + 1).copied().unwrap_or("");
+            if code.starts_with("#[cfg(test)]") && next.starts_with("mod ") {
+                break;
+            }
+            if !code.starts_with("//") && trace_key_re().is_match(code) {
+                out.push(format!("{}:{}", src.path, index + 1));
+            }
+        }
+    }
+    out
+}
+
+fn trace_key_re() -> &'static Regex {
+    static RE: OnceLock<Regex> = OnceLock::new();
+    RE.get_or_init(|| {
+        Regex::new(r#"event\.data\b|event\["data"\]|\.data\[|\.data\.get\("#).expect("data regex")
+    })
+}
+
 fn decision_re() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
     RE.get_or_init(|| Regex::new(r"docs/decisions/(D\d+)\.md").expect("decision regex"))

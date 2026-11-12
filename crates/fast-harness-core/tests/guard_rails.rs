@@ -25,7 +25,8 @@ use std::fs;
 
 use scan::{
     declared_modules, file_violations, function_violations, layer_of, lib_layer_names,
-    module_exists, paste_table, read, table_problems, upward_imports, workspace_root,
+    module_exists, paste_table, read, table_problems, trace_key_reads, upward_imports,
+    workspace_root,
 };
 use text::functions;
 
@@ -193,6 +194,16 @@ fn no_function_runs_over_50_lines() {
         "functions of more than {FUNCTION_LIMIT} lines (test code not counted):\n{}\n{}",
         problems.join("\n"),
         paste_table(&violations)
+    );
+}
+
+#[test]
+fn no_source_outside_trace_reads_event_data_by_key() {
+    let reads = trace_key_reads();
+    assert!(
+        reads.is_empty(),
+        "read a trace event through `TraceEvent::record()` (PLAN.md D61), not by string key:\n{}",
+        reads.join("\n")
     );
 }
 
