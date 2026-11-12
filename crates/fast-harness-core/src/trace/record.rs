@@ -246,7 +246,7 @@ pub struct StepEnd {
 }
 
 /// `turn/end`; `outcome` is the logged word (`done`, `failed`, ...).
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct TurnEnd {
     pub turn: u32,

@@ -1,7 +1,8 @@
 //! Turns that can be resumed (PLAN.md D39): paused, cancelled, or cut by a
 //! crash or a kill (a `turn/start` without its `turn/end`).
 
-use crate::trace::{kind, TraceEvent};
+use crate::trace::record::TurnEnd;
+use crate::trace::{kind, Record, TraceEvent};
 use crate::types::{Block, Message, Role};
 
 /// How the last turn of a log stopped, when it can be resumed.
@@ -43,15 +44,24 @@ pub fn unfinished(events: &[TraceEvent]) -> Option<Unfinished> {
         .iter()
         .filter(|e| e.kind == kind::TURN_START)
         .max_by_key(|e| e.seq)?;
-    let turn = &last_start.data["turn"];
-    let end = events
+    let turn = match last_start.record() {
+        Record::TurnStart(start) => Some(start.turn),
+        _ => None,
+    };
+    let ends = events
         .iter()
-        .filter(|e| e.kind == kind::TURN_END && e.seq > last_start.seq)
-        .find(|e| &e.data["turn"] == turn);
-    let state = match end.map(|e| e.data["outcome"].as_str().unwrap_or_default()) {
+        .filter(|e| e.kind == kind::TURN_END && e.seq > last_start.seq);
+    let end = ends.map(|e| match e.record() {
+        Record::TurnEnd(end) => end,
+        // An end this build cannot read: the turn ended.
+        _ => TurnEnd::default(),
+    });
+    let mut end =
+        end.filter(|end| turn.is_none_or(|turn| end.turn == turn || end.outcome.is_empty()));
+    let state = match end.next().map(|end| end.outcome) {
         None => Unfinished::Interrupted,
-        Some("paused") => Unfinished::Paused,
-        Some("cancelled") => Unfinished::Cancelled,
+        Some(word) if word == "paused" => Unfinished::Paused,
+        Some(word) if word == "cancelled" => Unfinished::Cancelled,
         Some(_) => return None,
     };
     (!ends_with_answer(events)).then_some(state)
@@ -74,15 +84,18 @@ fn ends_with_answer(events: &[TraceEvent]) -> bool {
     let Some(last) = last.filter(|e| e.kind == kind::ASSISTANT_MESSAGE) else {
         return false;
     };
-    let message = serde_json::from_value::<Message>(last.data["message"].clone());
-    message.is_ok_and(|m| m.tool_calls().next().is_none())
+    match last.record() {
+        Record::AssistantMessage(answer) => answer.message.tool_calls().next().is_none(),
+        _ => false,
+    }
 }
 
 /// Adds a replayed message: a `user/message` with a `kind` (a steer or a
 /// context update inside a turn) joins the tool results or user text before
 /// it, as the live turn did; anything else is a new message.
 pub(super) fn push(messages: &mut Vec<Message>, message: Message, event: &TraceEvent) {
-    let inside = event.kind == kind::USER_MESSAGE && event.data.get("kind").is_some();
+    let inside = event.kind == kind::USER_MESSAGE
+        && matches!(event.record(), Record::UserMessage(user) if user.kind.is_some());
     match messages.last_mut() {
         Some(last) if inside && last.role != Role::Assistant => {
             let texts = message

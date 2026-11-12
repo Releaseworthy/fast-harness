@@ -90,6 +90,7 @@ One file per decision in [docs/decisions/](docs/decisions/), moved there unchang
 - D58 [Tool progress and output parts](docs/decisions/D58.md)
 - D59 [One turn runner](docs/decisions/D59.md)
 - D60 [Session index](docs/decisions/D60.md)
+- D61 [Typed trace records and the transcript parity table](docs/decisions/D61.md)
 
 ## Architecture
 
