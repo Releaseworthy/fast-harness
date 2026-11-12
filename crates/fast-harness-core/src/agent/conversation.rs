@@ -2,6 +2,7 @@
 
 use std::io;
 use std::path::{Path, PathBuf};
+use std::sync::Mutex;
 
 use serde_json::Value;
 
@@ -49,6 +50,9 @@ pub struct Conversation {
     pub unfinished: Option<session::Unfinished>,
     /// Nesting level of the session (0 top level; a subagent's is above 0).
     pub depth: u32,
+    /// Notes of the reopen (a damaged log line skipped, D60), handed out
+    /// once by [`Conversation::take_notes`].
+    notes: Mutex<Vec<String>>,
 }
 
 impl Conversation {
@@ -86,12 +90,37 @@ impl Conversation {
             compacted: false,
             unfinished: None,
             depth,
+            notes: Mutex::default(),
         })
+    }
+
+    /// The seq the next event of the log gets (the append position).
+    pub fn next_seq(&self) -> u64 {
+        self.trace.next_seq()
+    }
+
+    /// The notes of the reopen, each handed out once ([`crate::app::Runtime::agent`]
+    /// adds them to the notes of the first agent built for this session).
+    pub fn take_notes(&self) -> Vec<String> {
+        let mut notes = self.notes.lock().unwrap_or_else(|p| p.into_inner());
+        std::mem::take(&mut *notes)
     }
 
     /// Reopens session `id` of `cwd`: replays and repairs its messages and
     /// continues its log.
     pub fn resume(app_home: &Path, cwd: &Path, id: &str) -> io::Result<Conversation> {
+        Ok(Conversation::reopen(app_home, cwd, id)?.0)
+    }
+
+    /// [`Conversation::resume`] that also returns the events of the log: the
+    /// history, the header data, the append position and these events come
+    /// from one parse (G10, D60), so a view builds its transcript from them
+    /// (`Transcript::from_trace`) without reading the log again.
+    pub fn reopen(
+        app_home: &Path,
+        cwd: &Path,
+        id: &str,
+    ) -> io::Result<(Conversation, Vec<trace::TraceEvent>)> {
         // The id comes from a command line or a `serve` client and names a
         // file that is appended to: it must stay inside the sessions folder.
         if !session::valid_id(id) {
@@ -99,9 +128,24 @@ impl Conversation {
             return Err(io::Error::new(io::ErrorKind::InvalidInput, message));
         }
         let log_path = session::log_path(app_home, cwd, id);
-        let mut messages = session::replay(&log_path)?;
+        let (trace, parsed, mut messages) =
+            TraceWriter::open_parsed(&log_path, |p| session::replay_events(&p.events))?;
         repair(&mut messages);
-        let (session_header, events) = trace::read(&log_path)?;
+        let mut conv = Conversation::from_log(app_home, cwd, id, &parsed.events, trace);
+        conv.messages = messages;
+        conv.depth = parsed.header.depth;
+        conv.notes = Mutex::new(parsed.note().into_iter().collect());
+        Ok((conv, parsed.events))
+    }
+
+    /// The state of a reopened log but its messages, depth and notes.
+    fn from_log(
+        app_home: &Path,
+        cwd: &Path,
+        id: &str,
+        events: &[trace::TraceEvent],
+        trace: TraceWriter,
+    ) -> Conversation {
         let turn = events
             .iter()
             .filter(|e| e.kind == trace::kind::TURN_START)
@@ -113,20 +157,19 @@ impl Conversation {
             .filter(|e| e.kind == trace::kind::REQUEST_HEADER)
             .max_by_key(|e| e.seq)
             .map(|e| e.data.clone());
-        let trace = TraceWriter::open_append(&log_path)?;
         let header = last_header.as_ref();
-        let (last_context, compacted) = last_context(&events);
-        Ok(Conversation {
+        let (last_context, compacted) = last_context(events);
+        Conversation {
             last_context,
             compacted,
-            unfinished: session::unfinished(&events),
-            depth: session_header.depth,
+            unfinished: session::unfinished(events),
+            depth: 0,
             id: id.to_string(),
-            messages,
+            messages: Vec::new(),
             turn,
             wire_dir: session::wire_dir(app_home, cwd, id),
             tool_session: ToolSession::new(Some(session::out_dir(app_home, cwd, id))),
-            log_path,
+            log_path: session::log_path(app_home, cwd, id),
             trace,
             system: header
                 .and_then(|h| h["system"].as_str())
@@ -134,7 +177,8 @@ impl Conversation {
             tools: header.map(|h| saved_tools(&h["tools"])),
             context: header.and_then(|h| h.get("context")).cloned(),
             last_header,
-        })
+            notes: Mutex::default(),
+        }
     }
 
     /// Freezes the system prompt and the tool list on the first turn (a

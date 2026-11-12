@@ -6,19 +6,51 @@ use std::io;
 use std::path::Path;
 
 /// Reads the header and every event. A torn last line (a crash in the middle
-/// of a write) is skipped; any other line that is not a valid event is an
-/// `InvalidData` error naming its 1-based line number.
+/// of a write) is skipped; a damaged line before it is skipped too and
+/// listed in [`Parsed::skipped`] ([`load`] keeps that list). A missing or
+/// bad header is an `InvalidData` error naming line 1.
 pub fn read(path: &Path) -> io::Result<(SessionHeader, Vec<TraceEvent>)> {
-    let bytes = std::fs::read(path)?;
-    let parsed = parse(&bytes)?;
+    let parsed = load(path)?;
     Ok((parsed.header, parsed.events))
 }
 
-pub(crate) struct Parsed {
+/// [`read`] with the skipped lines.
+pub fn load(path: &Path) -> io::Result<Parsed> {
+    parse(&std::fs::read(path)?)
+}
+
+/// A log read back.
+#[derive(Clone, Debug)]
+pub struct Parsed {
     pub header: SessionHeader,
     pub events: Vec<TraceEvent>,
     /// Byte offset of the skipped torn last line.
     pub torn_at: Option<usize>,
+    /// Damaged lines that are not the last, left out of `events` (G10, D60).
+    pub skipped: Vec<Skipped>,
+}
+
+/// A damaged line that is not the last: 1-based line number, byte offset of
+/// its start in the file.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Skipped {
+    pub line: usize,
+    pub offset: usize,
+}
+
+impl Parsed {
+    /// One note naming the skipped lines, if any.
+    pub fn note(&self) -> Option<String> {
+        let first = self.skipped.first()?;
+        let more = match self.skipped.len() {
+            1 => String::new(),
+            n => format!(" and {} more damaged lines", n - 1),
+        };
+        Some(format!(
+            "session log: skipped damaged line {} (byte {}){more}; the log is left as it is",
+            first.line, first.offset
+        ))
+    }
 }
 
 pub(crate) fn parse(bytes: &[u8]) -> io::Result<Parsed> {
@@ -28,8 +60,7 @@ pub(crate) fn parse(bytes: &[u8]) -> io::Result<Parsed> {
         return Err(invalid("empty session log".to_string()));
     };
     let header = parse_header(first)?;
-    let mut events = Vec::new();
-    let mut torn_at = None;
+    let (mut events, mut torn_at, mut skipped) = (Vec::new(), None, Vec::new());
     for (index, (start, line)) in lines.iter().enumerate().skip(1) {
         if is_blank(line) {
             continue;
@@ -37,13 +68,17 @@ pub(crate) fn parse(bytes: &[u8]) -> io::Result<Parsed> {
         match serde_json::from_slice::<TraceEvent>(line) {
             Ok(event) => events.push(event),
             Err(_) if Some(index) == last => torn_at = Some(*start),
-            Err(err) => return Err(invalid(format!("line {}: {err}", index + 1))),
+            Err(_) => skipped.push(Skipped {
+                line: index + 1,
+                offset: *start,
+            }),
         }
     }
     Ok(Parsed {
         header,
         events,
         torn_at,
+        skipped,
     })
 }
 

@@ -34,10 +34,25 @@ impl TraceWriter {
     /// Opens an existing log to add events after its last one: `seq`
     /// continues from the highest seq present. A torn last line is removed.
     pub fn open_append(path: &Path) -> io::Result<TraceWriter> {
+        let (writer, _, ()) = TraceWriter::open_parsed(path, |_| Ok(()))?;
+        Ok(writer)
+    }
+
+    /// [`TraceWriter::open_append`] that also returns the log as read: one
+    /// read of one open handle gives the events and the append position
+    /// (a resume parses its log once, G10). `check` runs on the parsed log
+    /// before anything is written; its error leaves the file untouched. A
+    /// damaged line that is not the last stays in the file
+    /// ([`reader::Parsed::skipped`]).
+    pub fn open_parsed<T>(
+        path: &Path,
+        check: impl FnOnce(&reader::Parsed) -> io::Result<T>,
+    ) -> io::Result<(TraceWriter, reader::Parsed, T)> {
         let mut file = OpenOptions::new().read(true).write(true).open(path)?;
         let mut bytes = Vec::new();
         file.read_to_end(&mut bytes)?;
         let parsed = reader::parse(&bytes)?;
+        let checked = check(&parsed)?;
         let keep = parsed.torn_at.unwrap_or(bytes.len());
         if keep < bytes.len() {
             file.set_len(keep as u64)?;
@@ -47,7 +62,7 @@ impl TraceWriter {
             file.write_all(b"\n")?;
         }
         let next_seq = parsed.events.iter().map(|e| e.seq + 1).max().unwrap_or(0);
-        Ok(TraceWriter { file, next_seq })
+        Ok((TraceWriter { file, next_seq }, parsed, checked))
     }
 
     /// Writes `{"type","seq","time","data"}` and a newline, flushes, and

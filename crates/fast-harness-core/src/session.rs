@@ -4,9 +4,11 @@
 
 pub mod compacted;
 pub mod coord;
+pub mod index;
 pub mod lock;
 mod unfinished;
 
+pub use index::{latest, list, list_counted, Listing};
 pub use unfinished::{unfinished, Unfinished};
 
 use crate::trace::{self, TraceEvent};
@@ -117,31 +119,11 @@ pub fn out_dir(app_home: &Path, cwd: &Path, id: &str) -> PathBuf {
     dir(app_home, cwd).join(format!("{id}.out"))
 }
 
-/// Sessions of `cwd`, newest first. A missing folder is an empty list;
-/// a log that cannot be read is left out.
-pub fn list(app_home: &Path, cwd: &Path) -> io::Result<Vec<SessionSummary>> {
-    let entries = match std::fs::read_dir(dir(app_home, cwd)) {
-        Ok(entries) => entries,
-        Err(err) if err.kind() == io::ErrorKind::NotFound => return Ok(Vec::new()),
-        Err(err) => return Err(err),
-    };
-    let mut sessions = Vec::new();
-    for entry in entries {
-        let path = entry?.path();
-        if !coord::is_log(&path) || !path.is_file() {
-            continue;
-        }
-        if let Ok((header, events)) = trace::read(&path) {
-            sessions.push(summarize(header, &events));
-        }
-    }
-    sessions.sort_by(|a, b| (b.created_at, &b.id).cmp(&(a.created_at, &a.id)));
-    Ok(sessions)
-}
-
-/// The newest session of `cwd`, if any.
-pub fn latest(app_home: &Path, cwd: &Path) -> io::Result<Option<SessionSummary>> {
-    Ok(list(app_home, cwd)?.into_iter().next())
+/// The summary of the log at `path` from one full parse (what the index of
+/// [`list`] caches); `None` when it cannot be read.
+pub fn summary_of(path: &Path) -> Option<SessionSummary> {
+    let (header, events) = trace::read(path).ok()?;
+    Some(summarize(header, &events))
 }
 
 fn summarize(header: trace::SessionHeader, events: &[TraceEvent]) -> SessionSummary {
@@ -186,10 +168,15 @@ fn message_of(event: &TraceEvent) -> io::Result<Message> {
 /// `compaction` (PLAN.md D38). A turn without `turn/end` (a crash or a
 /// cancel) still counts.
 pub fn replay(path: &Path) -> io::Result<Vec<Message>> {
-    let (_, mut events) = trace::read(path)?;
-    events.sort_by_key(|e| e.seq);
+    replay_events(&trace::read(path)?.1)
+}
+
+/// [`replay`] of events already read.
+pub fn replay_events(events: &[TraceEvent]) -> io::Result<Vec<Message>> {
+    let mut sorted: Vec<&TraceEvent> = events.iter().collect();
+    sorted.sort_by_key(|e| e.seq);
     let mut messages = Vec::new();
-    for event in &events {
+    for event in sorted {
         let role = match event.kind.as_str() {
             trace::kind::USER_MESSAGE => Role::User,
             trace::kind::ASSISTANT_MESSAGE => Role::Assistant,

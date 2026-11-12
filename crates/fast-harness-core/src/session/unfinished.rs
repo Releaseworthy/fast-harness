@@ -23,6 +23,17 @@ impl Unfinished {
             Unfinished::Cancelled => "cancelled",
         }
     }
+
+    /// The state named by [`Unfinished::word`].
+    pub fn from_word(word: &str) -> Option<Unfinished> {
+        [
+            Unfinished::Interrupted,
+            Unfinished::Paused,
+            Unfinished::Cancelled,
+        ]
+        .into_iter()
+        .find(|state| state.word() == word)
+    }
 }
 
 /// The state of the last turn of `events`, when its history does not end

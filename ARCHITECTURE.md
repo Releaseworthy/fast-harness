@@ -68,7 +68,7 @@ Full text: [docs/formats.md](docs/formats.md#files-on-disk). Home folder `~/.fas
 - `workspaces.json`: the sidebar's workspace folders.
 - `system-prompt.md`, `prompts/<cwd slug>.md`: the global and the per-workspace system prompt template.
 - `<file>.lock`: exists only while a write of `<file>` runs.
-- `sessions/<cwd slug>/<id>.jsonl`: one log per session (transcript and trace); `<id>.out/<callId>.txt`: full tool results; `<id>.wire/`: raw requests and responses, only with wire capture on.
+- `sessions/<cwd slug>/<id>.jsonl`: one log per session (transcript and trace); `<id>.out/<callId>.txt`: full tool results; `<id>.wire/`: raw requests and responses, only with wire capture on; `index.json`: the cache of the session list (D60).
 - `ui/*.slint`: the UI files of `fast-harness-gui-live`.
 
 Project folder `<project>/.fast-harness/`, read only when trusted: `config.json`, `providers/*.json`, `keys.json`, `panels/*.json`. The `AGENTS.md` files from the repository root down to the working folder join the system prompt.

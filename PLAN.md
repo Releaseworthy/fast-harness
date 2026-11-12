@@ -89,6 +89,7 @@ One file per decision in [docs/decisions/](docs/decisions/), moved there unchang
 - D57 [Plugin API hardening: types](docs/decisions/D57.md)
 - D58 [Tool progress and output parts](docs/decisions/D58.md)
 - D59 [One turn runner](docs/decisions/D59.md)
+- D60 [Session index](docs/decisions/D60.md)
 
 ## Architecture
 

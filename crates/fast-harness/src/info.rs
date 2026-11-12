@@ -49,8 +49,11 @@ pub fn trace(
     if !path.is_file() {
         return Err(format!("no session {id} for {}", cwd.display()));
     }
-    let (header, events) =
-        trace::read(&path).map_err(|err| format!("{}: {err}", path.display()))?;
+    let parsed = trace::reader::load(&path).map_err(|err| format!("{}: {err}", path.display()))?;
+    if let Some(note) = parsed.note() {
+        eprintln!("note: {note}");
+    }
+    let (header, events) = (parsed.header, parsed.events);
     if json {
         let line = serde_json::to_string(&header).map_err(|err| err.to_string())?;
         println!("{line}");

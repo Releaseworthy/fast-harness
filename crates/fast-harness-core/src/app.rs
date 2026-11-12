@@ -184,6 +184,7 @@ impl Runtime {
             context.memory = None;
         }
         let mut notes = self.take_notes();
+        notes.extend(conv.take_notes());
         notes.extend(read_notes);
         let system = conv.system.clone().unwrap_or_else(|| context.system());
         let parts = self.parts_with(cwd, system, config)?;

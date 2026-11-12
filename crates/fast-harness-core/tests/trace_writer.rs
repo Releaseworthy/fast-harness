@@ -194,7 +194,7 @@ fn every_typed_event_has_the_plan_keys() {
 }
 
 #[test]
-fn torn_last_line_is_skipped_and_other_bad_lines_fail() {
+fn torn_last_line_and_damaged_middle_lines_are_skipped_a_bad_header_fails() {
     let tmp = TempDir::new("torn");
     let path = tmp.0.join("s.jsonl");
     let mut writer = TraceWriter::create(&path, &header("t")).unwrap();
@@ -207,10 +207,21 @@ fn torn_last_line_is_skipped_and_other_bad_lines_fail() {
     assert_eq!(events.len(), 2);
     let mut lines: Vec<&str> = good.lines().collect();
     lines.insert(2, "not json");
-    std::fs::write(&path, lines.join("\n") + "\n").unwrap();
-    let err = trace::read(&path).unwrap_err();
-    assert_eq!(err.kind(), std::io::ErrorKind::InvalidData);
-    assert!(err.to_string().contains("line 3"), "{err}");
+    let damaged = lines.join("\n") + "\n";
+    std::fs::write(&path, &damaged).unwrap();
+    let parsed = trace::reader::load(&path).unwrap();
+    assert_eq!(parsed.events.len(), 2);
+    let offset = damaged.find("not json").unwrap();
+    let skipped = trace::reader::Skipped { line: 3, offset };
+    assert_eq!((parsed.skipped, parsed.torn_at), (vec![skipped], None));
+    // Opening it to append keeps the damaged line.
+    let mut writer = TraceWriter::open_append(&path).unwrap();
+    assert_eq!(writer.next_seq(), 2);
+    writer.turn_start(2).unwrap();
+    drop(writer);
+    assert!(std::fs::read_to_string(&path)
+        .unwrap()
+        .starts_with(&damaged));
     std::fs::write(&path, "{\"type\":\"turn/start\"}\n").unwrap();
     assert!(trace::read(&path)
         .unwrap_err()

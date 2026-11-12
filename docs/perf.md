@@ -123,6 +123,18 @@ Method of phase 21A: `cargo build --release -p fast-harness-gui` at e5aa0bb (bef
 
 The service adds no thread or timer at idle: a turn thread exists only while a turn runs, and events reach the UI thread with `slint::invoke_from_event_loop` as before.
 
+## Phase 26A: the session index (2026-11-13)
+
+Method: `cargo run --release -p fast-harness-core --example session_bench -- <logs> <kb>`: N logs of S bytes (turns of about 1 KB user messages) in a temporary home, `session::list` with the index removed (cold, every log parsed) and with a warm index, and `session::latest`, median of 3, warm file cache. Before: finding D1 of `docs/architecture-plan.md` (`fast-harness sessions`, release build, seeded homes, median of 3), same parse of every log as the cold column.
+
+| Logs | before (full parse) | after, cold index | after, warm index | `latest` after |
+|---|---|---|---|---|
+| 50 x 300 KB | 103 ms | 45.4 ms | 0.7 ms | 0.11 ms |
+| 200 x 300 KB | 359 ms | 161.9 ms | 2.6 ms | 0.28 ms |
+| 200 x 1 MB | 1,216 ms | 505.8 ms | 2.8 ms | 0.30 ms |
+
+Target met: 200 logs of 1 MB list in 2.8 ms with a warm index (target 50 ms). A warm list reads the folder, stats each log and reads `index.json`; a log that changed costs one parse (about 2.5 ms per MB here). The cold column is lower than "before" mostly because the seeded logs differ (D1's logs held tool calls and results); both parse every log. `latest` reads the folder and at most one log. `fast-harness sessions` itself was not timed.
+
 ## Experiments 2026-11-12 (phase 10, E1 to E6)
 
 Note (PLAN.md D53): the Antigravity measurements below were made on code that now lives on branch `antigravity` (a143cfa), not on main.

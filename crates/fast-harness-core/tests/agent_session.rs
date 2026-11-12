@@ -94,6 +94,54 @@ fn resume_merges_results_and_repairs_a_dangling_call() {
     drop(env);
 }
 
+/// D3 (G10): a damaged line that is not the last is skipped with one note;
+/// the session opens, the dangling call is repaired, the next turn runs and
+/// the log keeps the damaged line.
+#[test]
+fn resume_skips_a_damaged_middle_line_with_one_note() {
+    let env = env("damaged");
+    let id = "20260101-000000-0002";
+    write_crashed_log(&env, id);
+    let path = session::log_path(&env.home, &env.cwd, id);
+    let text = std::fs::read_to_string(&path).unwrap();
+    let mut lines: Vec<&str> = text.lines().collect();
+    // Line 5 is the result of toolu_1: the repair gives it an error result.
+    lines[4] = "{\"type\":\"tool/res";
+    let damaged = lines.join("\n") + "\n";
+    std::fs::write(&path, &damaged).unwrap();
+    let offset = damaged.find("{\"type\":\"tool/res\n").unwrap();
+    let mut conv = Conversation::resume(&env.home, &env.cwd, id).unwrap();
+    let notes = conv.take_notes();
+    assert_eq!(notes.len(), 1, "{notes:?}");
+    assert!(
+        notes[0].contains("line 5") && notes[0].contains(&format!("byte {offset}")),
+        "{notes:?}"
+    );
+    assert!(conv.take_notes().is_empty());
+    let results = &conv.messages[2].content;
+    assert_eq!(results.len(), 3);
+    let errors: Vec<&str> = (results.iter())
+        .filter_map(|b| match b {
+            Block::ToolResult {
+                call_id,
+                is_error: true,
+                ..
+            } => Some(call_id.as_str()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(errors, ["toolu_1", "toolu_3"]);
+    let transport = Arc::new(ScriptedTransport::new(vec![text_reply("resumed")]));
+    let agent = Agent::new(parts(&transport, key_auth(), &env.cwd), echo_registry());
+    let outcome = agent.run_turn(&mut conv, "next", &AtomicBool::new(false), &mut |_| {});
+    assert_eq!(outcome, TurnOutcome::Done);
+    let after = std::fs::read_to_string(&path).unwrap();
+    assert!(after.starts_with(&damaged), "the log is never rewritten");
+    let (_, events) = trace::read(&path).unwrap();
+    assert_eq!(first(&events, "turn/end").data["turn"], 2);
+    drop(env);
+}
+
 #[test]
 fn prompt_includes_agents_files_root_first() {
     let root = TempDir::new("prompt");
