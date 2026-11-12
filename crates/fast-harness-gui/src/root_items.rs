@@ -9,6 +9,7 @@ mod appearance;
 mod config_page;
 mod crash;
 mod format;
+mod host;
 mod keys;
 mod mirror;
 mod model_refresh;

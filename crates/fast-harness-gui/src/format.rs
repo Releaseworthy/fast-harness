@@ -44,28 +44,9 @@ pub fn window_caption(utilization: f64, resets_at: Option<i64>, now_ms: i64) -> 
     }
 }
 
-/// `850 ms`, `3.2 s`, `2m 05s`.
-pub fn duration(ms: u64) -> String {
-    if ms < 1000 {
-        format!("{ms} ms")
-    } else if ms < 60_000 {
-        format!("{:.1} s", ms as f64 / 1000.0)
-    } else {
-        let secs = ms / 1000;
-        format!("{}m {:02}s", secs / 60, secs % 60)
-    }
-}
-
-/// `950`, `12.3k`, `4.1M`.
-pub fn tokens(n: u64) -> String {
-    if n < 1000 {
-        n.to_string()
-    } else if n < 1_000_000 {
-        format!("{:.1}k", n as f64 / 1000.0)
-    } else {
-        format!("{:.1}M", n as f64 / 1_000_000.0)
-    }
-}
+/// `850 ms`, `3.2 s`, `2m 05s`; `950`, `12.3k`, `4.1M` (one home for both
+/// front ends, PLAN.md D59).
+pub use fast_harness_core::app::words::{duration, tokens};
 
 /// How long ago `then_ms` was: `just now`, `5 min ago`, `3 h ago`, `2 d ago`.
 pub fn ago(then_ms: u64, now_ms: u64) -> String {

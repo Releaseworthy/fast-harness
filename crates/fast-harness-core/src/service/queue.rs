@@ -92,6 +92,11 @@ impl Session {
         (state.conv.as_mut()).is_some_and(|conv| conv.can_resume())
     }
 
+    /// Forgets how the last turn stopped (a Resume the history refused).
+    pub fn forget_unfinished(&self) {
+        self.lock().unfinished = None;
+    }
+
     /// Replaces the settings the next turn starts with (a front end that
     /// changed the model or the effort).
     pub fn set_config(&self, config: Settings) {

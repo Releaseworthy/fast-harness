@@ -6,13 +6,15 @@ use std::rc::Rc;
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 
+use fast_harness_core::app::words::{state_word, Marks, Voice};
 use fast_harness_core::app::Runtime;
-use fast_harness_core::session::Unfinished;
+use fast_harness_core::service::Service;
 use fast_harness_core::trace::{self, now_ms};
 use fast_harness_core::view::{Item, State, Transcript};
 use slint::{ComponentHandle, ModelRc, SharedString, VecModel, Weak};
 
 use crate::format::{duration, tokens};
+use crate::host::GuiHost;
 use crate::mirror::Mirror;
 use crate::runs::{Run, Runs};
 use crate::{MainWindow, MsgRow, QueueChip};
@@ -21,7 +23,11 @@ pub struct App {
     pub ui: Weak<MainWindow>,
     pub rt: Runtime,
     pub cwd: PathBuf,
-    /// The shown session and the parked ones with running turns (D39).
+    /// The sessions the window opened, their turns and queues (D59).
+    pub service: Service,
+    /// Hands the agents built here to the service's turn threads.
+    pub host: Arc<GuiHost>,
+    /// The view of the shown session and of the parked live ones (D39).
     pub runs: Runs,
     pub mirror: Mirror,
     pub rows: Rc<VecModel<MsgRow>>,
@@ -72,9 +78,12 @@ impl App {
         if let Some(error) = error {
             show_error(ui, error);
         }
+        let host = Arc::new(GuiHost::new(rt.home.clone()));
         App {
             ui: ui.as_weak(),
             panels: fast_harness_core::panels::Panels::new(&rt.panels),
+            service: Service::new(host.clone()),
+            host,
             rt,
             runs: Runs::new(cwd.clone()),
             cwd,
@@ -131,7 +140,7 @@ impl App {
             })
             .collect();
         ui.set_queue_chips(ModelRc::new(VecModel::from(chips)));
-        let word = match run.unfinished {
+        let word = match run.status().unfinished {
             Some(state) if run.can_resume() => state.word(),
             _ => "",
         };
@@ -160,52 +169,51 @@ impl App {
     pub fn new_session(&mut self, ui: &MainWindow) {
         let cwd = self.cwd.clone();
         let fresh = || Ok(Run::new(cwd, None, Transcript::new()));
-        if let Err(err) = self.runs.show(None, fresh) {
-            return show_error(ui, err);
-        }
-        self.show_run(ui);
+        let shown = self.runs.show(None, fresh);
+        self.shown(ui, shown);
     }
 
     /// Shows session `id`: its live run when it has one, else its log.
     pub fn open_session(&mut self, ui: &MainWindow, id: &str) {
-        let (rt, cwd) = (&self.rt, self.cwd.clone());
+        let (rt, service, cwd) = (&self.rt, &self.service, self.cwd.clone());
         let load = || {
             let conv = rt.open_conversation(&cwd, Some(id), false)?;
             let view = match trace::read(&conv.log_path) {
                 Ok((_, events)) => Transcript::from_trace(&events),
                 Err(_) => Transcript::from_messages(&conv.messages),
             };
-            Ok(Run::new(cwd.clone(), Some(conv), view))
+            let session = service.open(conv, &cwd).map_err(crate::turn::error_text)?;
+            Ok(Run::new(cwd.clone(), Some(session), view))
         };
-        match self.runs.show(Some(id.to_string()), load) {
-            Ok(()) => self.show_run(ui),
+        let shown = self.runs.show(Some(id.to_string()), load);
+        self.shown(ui, shown);
+    }
+
+    /// After `Runs::show`: closes the session of a dropped idle run, then
+    /// shows the new run.
+    fn shown(&mut self, ui: &MainWindow, shown: Result<Option<String>, String>) {
+        match shown {
+            Ok(dropped) => {
+                if let Some(id) = dropped {
+                    self.service.close(&id);
+                }
+                self.show_run(ui);
+            }
             Err(err) => show_error(ui, err),
         }
     }
 }
 
+/// The status bar's word for `run` (the window's voice, PLAN.md D59).
 pub fn state_text(state: State, run: &Run) -> String {
-    if run.busy && run.stopping {
-        return "Stopping".into();
-    }
-    if run.busy && run.pausing {
-        return "Pausing after this step's tools".into();
-    }
-    match state {
-        State::Idle if run.busy => "Starting".into(),
-        State::Idle => match run.unfinished {
-            Some(Unfinished::Paused) => "Paused".into(),
-            _ => "Ready".into(),
-        },
-        State::Waiting => "Waiting for the model".into(),
-        State::Thinking => "Thinking".into(),
-        State::Responding => "Responding".into(),
-        State::RunningTools { running } => format!("Running {running} tool(s)"),
-        State::Retrying { until_ms } => {
-            let left = until_ms.saturating_sub(now_ms());
-            format!("Retrying in {}", duration(left))
-        }
-    }
+    let status = run.status();
+    let marks = Marks {
+        busy: run.busy,
+        stopping: status.stopping,
+        pausing: status.pausing,
+        unfinished: status.unfinished,
+    };
+    state_word(state, marks, now_ms(), Voice::Window)
 }
 
 /// `last step: TTFB 850 ms, total 3.2 s` from the newest step footer.

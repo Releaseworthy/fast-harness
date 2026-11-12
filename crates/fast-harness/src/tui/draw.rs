@@ -1,5 +1,6 @@
 //! The frame: header, transcript or a screen, input box and hint bar.
 
+use fast_harness_core::app::words::{state_word, Marks, Voice};
 use fast_harness_core::view::{State, Transcript};
 use ratatui::layout::{Constraint, Layout, Position, Rect};
 use ratatui::style::Modifier;
@@ -26,30 +27,13 @@ pub struct View<'a> {
     pub session: &'a str,
 }
 
+/// The header's state word (the terminal's voice, PLAN.md D59).
 pub fn state_text(state: State, now_ms: u64) -> String {
-    match state {
-        State::Idle => "idle".into(),
-        State::Waiting => "waiting".into(),
-        State::Thinking => "thinking".into(),
-        State::Responding => "responding".into(),
-        State::RunningTools { running } => format!("running {running} tool(s)"),
-        State::Retrying { until_ms } => {
-            format!(
-                "retrying in {}s",
-                until_ms.saturating_sub(now_ms).div_ceil(1000)
-            )
-        }
-    }
+    state_word(state, Marks::default(), now_ms, Voice::Terminal)
 }
 
-/// Token counts as `1.2k` and `3.4M`.
-pub fn tokens(n: u64) -> String {
-    match n {
-        0..=999 => n.to_string(),
-        1_000..=999_999 => format!("{:.1}k", n as f64 / 1e3),
-        _ => format!("{:.1}M", n as f64 / 1e6),
-    }
-}
+/// Token counts as `1.2k` and `3.4M` (shared with the GUI, PLAN.md D59).
+pub use fast_harness_core::app::words::tokens;
 
 fn account_text(ui: &Ui) -> String {
     let Some(active) = ui.accounts.iter().find(|s| s.active) else {

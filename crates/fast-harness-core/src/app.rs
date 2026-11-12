@@ -278,6 +278,7 @@ mod plugins;
 pub mod reflect;
 mod settings;
 mod slash;
+pub mod words;
 
 pub use settings::{doctor, load_settings, mcp_lines, provider_for, Settings};
 pub use slash::{expand_body, help, reflect_args, slash, Slash};

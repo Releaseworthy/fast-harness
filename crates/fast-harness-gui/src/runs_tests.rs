@@ -1,16 +1,200 @@
+//! The window's session views on `service::Service` (PLAN.md D39, D59):
+//! real turns on the service's threads, with a scripted model.
+
+use std::path::Path;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::mpsc::{self, Receiver, Sender};
+use std::sync::Mutex;
+use std::time::Duration;
+
 use super::*;
 use crate::app::state_text;
+use crate::host::GuiHost;
+use crate::turn::{end_run, start_run};
+use fast_harness_core::agent::{Agent, AgentParts, Conversation};
+use fast_harness_core::auth::StaticAuth;
+use fast_harness_core::events::TurnOutcome;
+use fast_harness_core::http::{
+    Flow, HttpError, HttpHead, HttpRequest, ScriptedResponse, ScriptedTransport, Transport,
+};
+use fast_harness_core::llm::anthropic::Anthropic;
+use fast_harness_core::llm::Auth;
+use fast_harness_core::service::{Done, Finished, Service, Sink, Start};
+use fast_harness_core::tools::Registry;
 use fast_harness_core::view::{Item, State};
+use serde_json::{json, Value};
 
-fn fresh() -> Result<Run, String> {
-    Ok(Run::new(PathBuf::from("."), None, Transcript::new()))
+/// The scripted model: each request waits for the gate (when there is
+/// one), and the first one panics when asked to.
+struct Model {
+    script: ScriptedTransport,
+    gate: Option<Mutex<Receiver<()>>>,
+    panics: AtomicBool,
 }
 
-fn user(text: &str) -> AgentEvent {
-    AgentEvent::UserInput {
-        text: text.into(),
-        steer: false,
+impl Transport for Model {
+    fn send(
+        &self,
+        req: &HttpRequest<'_>,
+        on_chunk: &mut dyn FnMut(&HttpHead, &[u8]) -> Flow,
+    ) -> Result<HttpHead, HttpError> {
+        if let Some(gate) = &self.gate {
+            let gate = gate.lock().unwrap_or_else(|p| p.into_inner());
+            let _ = gate.recv_timeout(Duration::from_secs(10));
+        }
+        if self.panics.swap(false, Ordering::SeqCst) {
+            panic!("boom transport");
+        }
+        self.script.send(req, on_chunk)
     }
+}
+
+fn text_reply(text: &str) -> ScriptedResponse {
+    let events: [Value; 6] = [
+        json!({"type": "message_start", "message": {"id": "m1", "type": "message",
+            "role": "assistant", "content": [], "model": "claude-x",
+            "usage": {"input_tokens": 10, "output_tokens": 1}}}),
+        json!({"type": "content_block_start", "index": 0,
+            "content_block": {"type": "text", "text": ""}}),
+        json!({"type": "content_block_delta", "index": 0,
+            "delta": {"type": "text_delta", "text": text}}),
+        json!({"type": "content_block_stop", "index": 0}),
+        json!({"type": "message_delta", "delta": {"stop_reason": "end_turn"},
+            "usage": {"output_tokens": 5}}),
+        json!({"type": "message_stop"}),
+    ];
+    let body: String = (events.iter())
+        .map(|e| format!("event: {}\ndata: {e}\n\n", e["type"].as_str().unwrap_or("")))
+        .collect();
+    ScriptedResponse::new(200, &body, 7)
+}
+
+fn agent(model: Model, cwd: &Path) -> Agent {
+    let parts = AgentParts {
+        extensions: Default::default(),
+        provider: Arc::new(Anthropic::new("http://scripted.invalid")),
+        transport: Arc::new(model),
+        auth: Arc::new(StaticAuth::new("acct-1", "test", Auth::ApiKey("k".into()))),
+        config: Default::default(),
+        cwd: cwd.to_path_buf(),
+        system: "test system".into(),
+    };
+    Agent::new(parts, Arc::new(Registry::new()))
+}
+
+/// What the turn threads hand to the "UI thread" (the test).
+enum Msg {
+    Event(String, AgentEvent),
+    Done(String, Box<Finished>),
+}
+
+/// A window without a window: the service, its host, the views, and the
+/// channel that stands in for `slint::invoke_from_event_loop`.
+struct Window {
+    dir: PathBuf,
+    host: Arc<GuiHost>,
+    service: Service,
+    runs: Runs,
+    tx: Sender<Msg>,
+    rx: Receiver<Msg>,
+}
+
+impl Window {
+    fn new(name: &str) -> Window {
+        let dir = std::env::temp_dir().join(format!("fh-gui-runs-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let host = Arc::new(GuiHost::new(dir.clone()));
+        let (tx, rx) = mpsc::channel();
+        Window {
+            service: Service::new(host.clone()),
+            runs: Runs::new(dir.clone()),
+            host,
+            dir,
+            tx,
+            rx,
+        }
+    }
+
+    /// A new session, shown; returns its id.
+    fn show_new(&mut self) -> String {
+        let conv = Conversation::create(&self.dir, &self.dir, None).unwrap();
+        let session = self.service.open(conv, &self.dir).unwrap();
+        let id = session.id.clone();
+        let run = Run::new(self.dir.clone(), Some(session), Transcript::new());
+        self.show(&id, run);
+        id
+    }
+
+    fn show(&mut self, id: &str, run: Run) {
+        let dropped = self.runs.show(Some(id.into()), || Ok(run)).unwrap();
+        if let Some(old) = dropped {
+            self.service.close(&old);
+        }
+    }
+
+    fn start(&mut self, id: &str, start: Start, model: Model) -> Result<(), String> {
+        let (events, ended) = (self.tx.clone(), self.tx.clone());
+        let tag = id.to_string();
+        let sink: Sink = Box::new(move |e| {
+            let _ = events.send(Msg::Event(tag.clone(), e));
+        });
+        let tag = id.to_string();
+        let done: Done = Box::new(move |end: &Finished| {
+            let _ = ended.send(Msg::Done(tag.clone(), Box::new(end.clone())));
+        });
+        let built = (agent(model, &self.dir), Vec::new());
+        let wiring = (&self.service, &*self.host);
+        start_run(&mut self.runs, wiring, id, built, start, (sink, done))
+    }
+
+    /// Applies messages until session `id`'s turn ended; returns its end
+    /// and the next queued text the window would start.
+    fn pump(&mut self, id: &str) -> (Finished, Option<String>) {
+        loop {
+            let msg = self.rx.recv_timeout(Duration::from_secs(10));
+            match msg.expect("the turn ended within 10 s") {
+                Msg::Event(tag, event) => {
+                    self.runs.apply(&tag, &event);
+                }
+                Msg::Done(tag, end) => {
+                    let next = end_run(&mut self.runs, &tag, &end);
+                    if tag == id {
+                        return (*end, next);
+                    }
+                }
+            }
+        }
+    }
+
+    fn session(&self, id: &str) -> Arc<fast_harness_core::service::Session> {
+        self.service.get(id).unwrap()
+    }
+}
+
+impl Drop for Window {
+    fn drop(&mut self) {
+        for session in self.service.open_sessions() {
+            self.service.close(&session.id);
+        }
+        let _ = std::fs::remove_dir_all(&self.dir);
+    }
+}
+
+fn model(replies: &[&str]) -> Model {
+    Model {
+        script: ScriptedTransport::new(replies.iter().map(|t| text_reply(t)).collect()),
+        gate: None,
+        panics: AtomicBool::new(false),
+    }
+}
+
+/// A model whose requests wait until the returned sender sends.
+fn gated(replies: &[&str]) -> (Model, Sender<()>) {
+    let (open, gate) = mpsc::channel();
+    let mut model = model(replies);
+    model.gate = Some(Mutex::new(gate));
+    (model, open)
 }
 
 fn users(run: &Run) -> Vec<String> {
@@ -22,155 +206,5 @@ fn users(run: &Run) -> Vec<String> {
         .collect()
 }
 
-/// A conversation in a fresh temporary folder (removed by the caller).
-fn conversation(name: &str) -> (PathBuf, Conversation) {
-    let dir = std::env::temp_dir().join(format!("fh-gui-runs-{name}-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(&dir).unwrap();
-    let conv = Conversation::create(&dir, &dir, None).unwrap();
-    (dir, conv)
-}
-
-#[test]
-fn start_marks_the_run_busy() {
-    let mut runs = Runs::new(PathBuf::from("."));
-    runs.show(Some("a".into()), fresh).unwrap();
-    assert!(runs.is_shown("a"));
-    let (cancel, _inbox) = runs.shown.begin();
-    assert!(runs.shown.busy && !cancel.load(Ordering::SeqCst));
-    assert_eq!(runs.mark("a", None), "running");
-    assert_eq!(state_text(State::Idle, &runs.shown), "Starting");
-}
-
-#[test]
-fn steer_goes_to_the_inbox_until_the_turn_reads_it() {
-    let mut run = fresh().unwrap();
-    // Not busy: the text waits in the queue.
-    assert!(!run.steer("early".into()));
-    assert_eq!(run.queued, ["early"]);
-    run.queued.clear();
-    let (_, mut inbox) = run.begin();
-    assert!(run.steer("go left\nand then up".into()));
-    assert_eq!(run.chips(), [(-1, "go left ...".to_string())]);
-    run.apply(&AgentEvent::UserInput {
-        text: "go left\nand then up".into(),
-        steer: true,
-    });
-    assert!(run.steering.is_empty());
-    assert_eq!(users(&run), ["go left\nand then up"]);
-    // The turn never read it here: the inbox hands it back.
-    assert_eq!(inbox.leftover(), ["go left\nand then up"]);
-}
-
-#[test]
-fn queue_and_remove_chips() {
-    let mut run = fresh().unwrap();
-    let _wires = run.begin();
-    for text in ["a", "b", "c"] {
-        run.queue(text.into());
-    }
-    assert_eq!(run.remove_queued(1).as_deref(), Some("b"));
-    assert_eq!(run.remove_queued(5), None);
-    assert_eq!(run.chips(), [(0, "a".to_string()), (1, "c".to_string())]);
-}
-
-#[test]
-fn done_starts_the_next_text_and_pause_keeps_the_queue() {
-    let mut run = fresh().unwrap();
-    let _wires = run.begin();
-    run.queue("q1".into());
-    // Unused steers come back first.
-    let next = run.end(None, TurnOutcome::Done, vec!["late".into()]);
-    assert_eq!(
-        (next.as_deref(), run.queued.clone()),
-        (Some("late"), vec!["q1".to_string()])
-    );
-    let _wires = run.begin();
-    assert!(run.pause() && run.pausing);
-    assert_eq!(
-        state_text(State::Idle, &run),
-        "Pausing after this step's tools"
-    );
-    assert_eq!(run.end(None, TurnOutcome::Paused, Vec::new()), None);
-    assert_eq!(
-        (run.unfinished, run.queued.len()),
-        (Some(Unfinished::Paused), 1)
-    );
-    assert!(!run.busy && !run.pause());
-}
-
-#[test]
-fn pause_then_resume() {
-    let (dir, conv) = conversation("resume");
-    let mut runs = Runs::new(dir.clone());
-    runs.show(Some(conv.id.clone()), fresh).unwrap();
-    let id = conv.id.clone();
-    let _wires = runs.shown.begin();
-    assert_eq!(
-        runs.shown.end(Some(conv), TurnOutcome::Paused, Vec::new()),
-        None
-    );
-    assert!(runs.shown.can_resume());
-    assert_eq!(runs.mark(&id, None), "paused");
-    assert_eq!(state_text(State::Idle, &runs.shown), "Paused");
-    let _wires = runs.shown.begin();
-    assert!(!runs.shown.can_resume() && runs.shown.unfinished.is_none());
-    assert_eq!(runs.mark(&id, Some(Unfinished::Paused)), "running");
-    let _ = std::fs::remove_dir_all(&dir);
-}
-
-#[test]
-fn stop_cancels_and_offers_resume() {
-    let mut run = fresh().unwrap();
-    assert!(!run.stop());
-    let (cancel, _inbox) = run.begin();
-    assert!(run.stop() && cancel.load(Ordering::SeqCst));
-    assert_eq!(state_text(State::Thinking, &run), "Stopping");
-    run.end(None, TurnOutcome::Cancelled, Vec::new());
-    assert_eq!(run.mark(), "cancelled");
-    // Without its conversation there is nothing to resume.
-    assert!(!run.can_resume());
-}
-
-#[test]
-fn background_session_events_stay_in_their_run() {
-    let mut runs = Runs::new(PathBuf::from("."));
-    runs.show(Some("a".into()), fresh).unwrap();
-    let _wires = runs.shown.begin();
-    runs.show(Some("b".into()), fresh).unwrap();
-    assert_eq!(runs.parked_ids(), ["a"]);
-    runs.get_mut("a").unwrap().apply(&user("for a"));
-    assert!(users(&runs.shown).is_empty());
-    assert_eq!(runs.mark("a", None), "running");
-    assert_eq!(runs.mark("c", Some(Unfinished::Interrupted)), "interrupted");
-    // Back to a: its live run returns; idle b is dropped.
-    runs.show(Some("a".into()), || Err("no load".into()))
-        .unwrap();
-    assert_eq!(users(&runs.shown), ["for a"]);
-    assert!(runs.parked_ids().is_empty());
-}
-
-#[test]
-fn parked_run_settles_after_its_turn() {
-    let mut runs = Runs::new(PathBuf::from("."));
-    runs.show(Some("a".into()), fresh).unwrap();
-    let _wires = runs.shown.begin();
-    runs.shown.queue("next".into());
-    runs.show(None, fresh).unwrap();
-    let run = runs.get_mut("a").unwrap();
-    assert_eq!(
-        run.end(None, TurnOutcome::Done, Vec::new()).as_deref(),
-        Some("next")
-    );
-    // A follow-up started in the background keeps it parked.
-    let _wires = runs.get_mut("a").unwrap().begin();
-    runs.settle("a");
-    assert_eq!(runs.parked_ids(), ["a"]);
-    runs.get_mut("a")
-        .unwrap()
-        .end(None, TurnOutcome::Failed, Vec::new());
-    runs.settle("a");
-    assert!(runs.parked_ids().is_empty());
-    assert!(runs.show(Some("a".into()), || Err("gone".into())).is_err());
-    assert_eq!(runs.id, None);
-}
+#[path = "runs_turn_tests.rs"]
+mod turn_tests;
