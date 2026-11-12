@@ -85,16 +85,7 @@ impl Snapshot {
             accounts: self.entries.clone(),
         };
         let text = serde_json::to_string_pretty(&data).map_err(io::Error::other)?;
-        if let Some(dir) = self.path.parent().filter(|d| !d.as_os_str().is_empty()) {
-            fs::create_dir_all(dir)?;
-        }
-        let mut tmp = self.path.clone().into_os_string();
-        tmp.push(format!(".{}.tmp", std::process::id()));
-        let tmp = PathBuf::from(tmp);
-        if let Err(err) = fs::write(&tmp, text).and_then(|()| fs::rename(&tmp, &self.path)) {
-            let _ = fs::remove_file(&tmp);
-            return Err(err);
-        }
+        crate::store::write_atomic(&self.path, text.as_bytes())?;
         self.last_save = now;
         Ok(())
     }

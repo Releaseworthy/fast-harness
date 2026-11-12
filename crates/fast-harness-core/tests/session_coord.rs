@@ -277,6 +277,32 @@ fn a_turn_is_refused_while_another_process_runs_the_session() {
     assert_eq!(errors.len(), 1);
 }
 
+/// The take lost after the check (PLAN.md D55): a lock another process has
+/// just made (empty yet, so the check saw no live lock) refuses the turn
+/// instead of running it without a lock.
+#[test]
+fn a_turn_whose_lock_take_is_lost_is_refused() {
+    let env = env("coord-lost-take");
+    let transport = Arc::new(ScriptedTransport::new(vec![text_reply("late")]));
+    let mut conv = Conversation::create(&env.home, &env.cwd, None).unwrap();
+    let path = coord::lock_path(&conv.log_path);
+    fs::write(&path, "").unwrap();
+    let before = fs::read(&conv.log_path).unwrap();
+    let mut errors = Vec::new();
+    let mut sink = |event: AgentEvent| {
+        if let AgentEvent::Error(text) = event {
+            errors.push(text);
+        }
+    };
+    let outcome =
+        agent(&transport, &env).run_turn(&mut conv, "go", &AtomicBool::new(false), &mut sink);
+    assert_eq!(outcome, TurnOutcome::Failed);
+    assert!(errors[0].contains("another process"), "{errors:?}");
+    assert!(transport.requests().is_empty());
+    assert_eq!(fs::read(&conv.log_path).unwrap(), before, "nothing logged");
+    assert!(path.exists(), "their lock stays");
+}
+
 #[test]
 fn resume_refuses_an_id_that_is_a_path() {
     let env = env("coord-resume-id");

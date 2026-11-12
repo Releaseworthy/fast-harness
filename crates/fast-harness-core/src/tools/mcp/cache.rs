@@ -63,15 +63,11 @@ pub fn read(home: &Path, spec: &ServerSpec) -> Option<CacheFile> {
     (file.fingerprint == spec.fingerprint() && file.server == spec.name).then_some(file)
 }
 
-/// Writes `file` through a temporary file and a rename.
+/// Writes `file` through `store::write_atomic` (a cache: the last writer wins).
 pub fn write(home: &Path, file: &CacheFile) -> Result<(), String> {
     let target = path(home, &file.server);
-    let dir = home.join(CACHE_DIR);
-    std::fs::create_dir_all(&dir).map_err(|err| format!("{}: {err}", dir.display()))?;
     let text = serde_json::to_vec_pretty(file).map_err(|err| err.to_string())?;
-    let tmp = target.with_extension("json.tmp");
-    std::fs::write(&tmp, text).map_err(|err| format!("{}: {err}", tmp.display()))?;
-    std::fs::rename(&tmp, &target).map_err(|err| format!("{}: {err}", target.display()))
+    crate::store::write_atomic(&target, &text).map_err(|err| format!("{}: {err}", target.display()))
 }
 
 /// One MCP tool of the index under its model-facing name.

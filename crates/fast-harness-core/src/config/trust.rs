@@ -55,25 +55,33 @@ pub fn is_trusted(home: &Path, root: &Path) -> bool {
         .any(|path| key(Path::new(path)) == wanted)
 }
 
-/// Adds `root` to the trusted list (written through a `.tmp` file) and
-/// returns its canonical path. Trusting a trusted path changes nothing.
+/// Adds `root` to the trusted list and returns its canonical path. The list
+/// is re-read and written under its lock (`store::update`, PLAN.md D55);
+/// an unreadable list starts empty, as [`read`] does. Trusting a trusted
+/// path changes nothing.
 pub fn trust(home: &Path, root: &Path) -> Result<PathBuf, String> {
     let path = canonical(root);
     if !path.is_dir() {
         return Err(format!("{} is not a directory", path.display()));
     }
-    let mut list = read(home);
-    list.version = VERSION;
-    if !is_trusted(home, &path) {
-        list.paths.push(path.to_string_lossy().into_owned());
-    }
     let file = home.join(FILE_NAME);
-    let failed = |err: &dyn std::fmt::Display| format!("{}: {err}", file.display());
-    let mut bytes = serde_json::to_vec_pretty(&list).map_err(|err| failed(&err))?;
-    bytes.push(b'\n');
-    std::fs::create_dir_all(home).map_err(|err| failed(&err))?;
-    let tmp = home.join(format!("{FILE_NAME}.tmp"));
-    std::fs::write(&tmp, bytes).map_err(|err| failed(&err))?;
-    std::fs::rename(&tmp, &file).map_err(|err: io::Error| failed(&err))?;
+    let wanted = key(&path);
+    let changed = crate::store::update(&file, crate::store::WAIT, |current| {
+        let mut list: Trusted = (current.as_deref())
+            .and_then(|bytes| serde_json::from_slice(bytes).ok())
+            .unwrap_or_default();
+        list.version = VERSION;
+        if !list
+            .paths
+            .iter()
+            .any(|known| key(Path::new(known)) == wanted)
+        {
+            list.paths.push(path.to_string_lossy().into_owned());
+        }
+        let mut bytes = serde_json::to_vec_pretty(&list).map_err(io::Error::other)?;
+        bytes.push(b'\n');
+        Ok((bytes, ()))
+    });
+    changed.map_err(|err| format!("{}: {err}", file.display()))?;
     Ok(path)
 }

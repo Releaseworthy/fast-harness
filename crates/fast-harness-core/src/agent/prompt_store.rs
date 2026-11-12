@@ -5,7 +5,7 @@
 //! an unreadable file is skipped with a note.
 
 use std::fmt;
-use std::io::{ErrorKind, Write};
+use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
 
 use super::prompt::DEFAULT_TEMPLATE;
@@ -106,22 +106,11 @@ pub fn template(home: &Path, cwd: &Path) -> Template {
     }
 }
 
-/// Writes `text` as the template of `scope` (temp file, then rename).
+/// Writes `text` as the template of `scope` (`store::write_atomic`).
 pub fn save(home: &Path, cwd: &Path, scope: Scope, text: &str) -> Result<(), String> {
     let file = path(home, cwd, scope);
-    let fail = |err: std::io::Error| format!("cannot save {}: {err}", file.display());
-    let dir = file.parent().unwrap_or(home);
-    std::fs::create_dir_all(dir).map_err(fail)?;
-    let tmp = file.with_extension("md.tmp");
-    let written = std::fs::File::create(&tmp).and_then(|mut out| {
-        out.write_all(text.as_bytes())?;
-        out.sync_all()
-    });
-    if let Err(err) = written.and_then(|()| std::fs::rename(&tmp, &file)) {
-        let _ = std::fs::remove_file(&tmp);
-        return Err(fail(err));
-    }
-    Ok(())
+    crate::store::write_atomic(&file, text.as_bytes())
+        .map_err(|err| format!("cannot save {}: {err}", file.display()))
 }
 
 /// Deletes the template of `scope`; nothing to do without one.

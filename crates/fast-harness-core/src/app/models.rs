@@ -45,16 +45,12 @@ pub fn write_cache(home: &Path, models: &[ModelInfo]) -> Result<(), String> {
     write_atomic(home, CACHE_FILE, &text)
 }
 
-/// Writes `text` to `home/name` through a temp file and a rename.
+/// Writes `text` to `home/name` through `store::write_atomic` (a cache: the
+/// last writer wins, no lock).
 pub(super) fn write_atomic(home: &Path, name: &str, text: &str) -> Result<(), String> {
-    std::fs::create_dir_all(home).map_err(|err| format!("{}: {err}", home.display()))?;
     let path = home.join(name);
-    let tmp = home.join(format!("{name}.{}.tmp", std::process::id()));
-    std::fs::write(&tmp, text).map_err(|err| format!("{}: {err}", tmp.display()))?;
-    std::fs::rename(&tmp, &path).map_err(|err| {
-        let _ = std::fs::remove_file(&tmp);
-        format!("{}: {err}", path.display())
-    })
+    crate::store::write_atomic(&path, text.as_bytes())
+        .map_err(|err| format!("{}: {err}", path.display()))
 }
 
 /// Fills the live capability registries from the caches of `home`, if any.

@@ -14,6 +14,7 @@ Rules for anyone (human or agent) changing this repo. Read `PLAN.md` first: it h
 - Functions and methods: at most 50 lines. Files: under 500 lines; split a module before it gets there.
 - Dependencies: only the crates in `[workspace.dependencies]` of the root `Cargo.toml`. A new crate needs the maintainer's OK.
 - Layering (`crates/fast-harness-core/src/lib.rs`): a module never imports a higher one. OS specific code only under `platform/`; every `unsafe` block there has a `// SAFETY:` comment.
+- Files under the home folder are written only through `store::write_atomic` or `store::update` (never `fs::write`); a read-change-write is always `store::update` (PLAN.md D55).
 - The contracts are `http::Transport`, `llm::Provider`, `tools::Tool`, `auth::AuthSource`, `events::AgentEvent` and the `platform` items. Change one only together with every user of it.
 - No panics on input from the network, files or the model: return errors. `unwrap` and `expect` only in tests or on invariants with a comment.
 - Secrets: never in code, tests, fixtures, logs, traces or wire capture. Redact `authorization`, `x-api-key` and token fields. `Auth` prints as `<redacted>`.

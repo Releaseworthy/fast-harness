@@ -5,12 +5,8 @@
 use std::fs::OpenOptions;
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
 
 use crate::platform;
-
-/// Makes the temporary names of one process unique.
-static COUNTER: AtomicU64 = AtomicU64::new(0);
 
 /// Writes `bytes` to `path`: a temporary file next to it is written, synced
 /// and renamed over it. A symlink stays a link: its target is replaced. When
@@ -41,12 +37,9 @@ fn resolve(path: &Path) -> Option<PathBuf> {
     }
 }
 
-/// `.<name>.<pid>.<n>.tmp` in the folder of `target`.
+/// `.<name>.<pid>.<n>.tmp` in the folder of `target` (`store::temp_path`).
 fn temp_path(target: &Path) -> Option<PathBuf> {
-    let name = target.file_name()?.to_string_lossy();
-    let n = COUNTER.fetch_add(1, Ordering::Relaxed);
-    let temp = format!(".{name}.{}.{n}.tmp", std::process::id());
-    Some(target.with_file_name(temp))
+    crate::store::temp_path(target)
 }
 
 /// Writes and syncs a new `temp`; it gets the permissions of an existing

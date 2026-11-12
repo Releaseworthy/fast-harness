@@ -311,24 +311,23 @@ fn switch(word: &str) -> Option<bool> {
 
 /// Sets `key` to `value` in `<app_home>/config.json` and keeps every other
 /// key (they come back sorted). A missing file or folder is created; a file
-/// that is not a JSON object is an error and stays untouched. The write goes
-/// to `config.json.tmp` first and is then renamed over the file.
+/// that is not a JSON object is an error and stays untouched. The file is
+/// re-read and written under its lock (`store::update`, PLAN.md D55), so
+/// two processes saving different keys keep both.
 pub fn save_setting(app_home: &Path, key: &str, value: Value) -> Result<(), String> {
     let path = app_home.join(FILE_NAME);
-    let failed = |err: &dyn std::fmt::Display| format!("{}: {err}", path.display());
-    let mut root = match std::fs::read(&path) {
-        Ok(bytes) => serde_json::from_slice::<Value>(&bytes).map_err(|err| failed(&err))?,
-        Err(err) if err.kind() == io::ErrorKind::NotFound => Value::Object(Map::new()),
-        Err(err) => return Err(failed(&err)),
-    };
-    let Some(object) = root.as_object_mut() else {
-        return Err(failed(&"not a JSON object"));
-    };
-    object.insert(key.to_string(), value);
-    let mut bytes = serde_json::to_vec_pretty(&root).map_err(|err| failed(&err))?;
-    bytes.push(b'\n');
-    std::fs::create_dir_all(app_home).map_err(|err| failed(&err))?;
-    let tmp = app_home.join(format!("{FILE_NAME}.tmp"));
-    std::fs::write(&tmp, bytes).map_err(|err| failed(&err))?;
-    std::fs::rename(&tmp, &path).map_err(|err| failed(&err))
+    let changed = crate::store::update(&path, crate::store::WAIT, |current| {
+        let mut root = match current {
+            Some(bytes) => serde_json::from_slice::<Value>(&bytes).map_err(io::Error::other)?,
+            None => Value::Object(Map::new()),
+        };
+        let Some(object) = root.as_object_mut() else {
+            return Err(io::Error::other("not a JSON object"));
+        };
+        object.insert(key.to_string(), value);
+        let mut bytes = serde_json::to_vec_pretty(&root).map_err(io::Error::other)?;
+        bytes.push(b'\n');
+        Ok((bytes, ()))
+    });
+    changed.map_err(|err| format!("{}: {err}", path.display()))
 }

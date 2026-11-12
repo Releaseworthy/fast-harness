@@ -58,11 +58,7 @@ fn running_elsewhere(conv: &Conversation) -> Option<String> {
         return None;
     }
     let lock = lock::live_lock(&conv.log_path).filter(|lock| lock.pid != std::process::id())?;
-    Some(format!(
-        "session {} is running in {} (pid {}): wait for it (`fast-harness wait {}`) or \
-        reach it with `fast-harness send`",
-        conv.id, lock.program, lock.pid, conv.id
-    ))
+    Some(lock::busy_note(&conv.id, &lock))
 }
 
 /// The provider and credential source of a model id (`<provider id>/<id>`
@@ -212,11 +208,13 @@ impl Agent {
         inbox: &mut Inbox,
         sink: &mut dyn FnMut(AgentEvent),
     ) -> TurnOutcome {
-        if let Some(note) = running_elsewhere(conv) {
+        // A lost take (another process took the lock since the check) is
+        // refused the same way.
+        let refused = running_elsewhere(conv).map(Err);
+        if let Err(note) = refused.unwrap_or_else(|| inbox.attach(conv, &self.parts.cwd)) {
             sink(AgentEvent::Error(note));
             return TurnOutcome::Failed;
         }
-        inbox.attach(conv, &self.parts.cwd);
         let outcome = self.turn_loop(conv, first, cancel, inbox, sink);
         if cancel.load(Ordering::Relaxed) || inbox.stopped() {
             self.stop_children(sink);

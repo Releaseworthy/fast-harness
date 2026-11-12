@@ -3,8 +3,8 @@
 //! ends; a lock whose process no longer runs (pid and start time, through
 //! `platform::process_start`) is stale and removed by the next reader.
 
-use std::fs;
-use std::io;
+use std::fs::{self, OpenOptions};
+use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
@@ -12,6 +12,7 @@ use serde::{Deserialize, Serialize};
 
 use super::coord::lock_path;
 use crate::platform;
+use crate::store;
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -125,8 +126,31 @@ pub struct Held {
 }
 
 impl Held {
-    /// Writes the lock of session log `log` for this process.
+    /// Takes the lock of session log `log` for this process: the file is made
+    /// with `create_new`, so of two processes starting a turn at once one
+    /// wins. A live lock of another process (or an unreadable one younger
+    /// than 10 seconds, see `store::stale`) is an `AlreadyExists` error whose
+    /// message is [`busy_note`]; a stale one is removed and the create
+    /// retried once. A lock of this very process is rewritten, as before.
     pub fn take(log: &Path, id: &str, cwd: &str, turn: u32) -> io::Result<Held> {
+        let held = Held::new(log, id, cwd, turn);
+        let text = serde_json::to_string(&held.lock).map_err(io::Error::other)?;
+        for retry in [false, true] {
+            match create(&held.path, &text) {
+                Err(err) if err.kind() == io::ErrorKind::AlreadyExists => {}
+                done => return done.map(|()| held),
+            }
+            if held.claim_existing(retry)? {
+                return Ok(held);
+            }
+        }
+        Err(io::Error::new(
+            io::ErrorKind::AlreadyExists,
+            format!("session {id}: its lock is taken"),
+        ))
+    }
+
+    fn new(log: &Path, id: &str, cwd: &str, turn: u32) -> Held {
         let pid = std::process::id();
         let program = std::env::current_exe()
             .ok()
@@ -143,12 +167,35 @@ impl Held {
             turn,
             step: 0,
         };
-        let held = Held {
+        Held {
             path: lock_path(log),
             lock,
+        }
+    }
+
+    /// The lock file exists: true when it is this process's own (rewritten
+    /// as ours), an error when another process holds it (or `last`, the
+    /// retry, found it again), false after a stale one was removed.
+    fn claim_existing(&self, last: bool) -> io::Result<bool> {
+        let Ok(bytes) = fs::read(&self.path) else {
+            return Ok(false);
         };
-        held.write()?;
-        Ok(held)
+        let found = serde_json::from_slice::<Lock>(&bytes).ok();
+        if let Some(lock) = &found {
+            if lock.pid == self.lock.pid && lock.started == self.lock.started {
+                return self.write().map(|()| true);
+            }
+        }
+        let holder = found.as_ref().map(|lock| (lock.pid, lock.started));
+        if last || !store::stale(holder, store::age(&self.path)) {
+            let note = match &found {
+                Some(lock) => busy_note(&self.lock.id, lock),
+                None => format!("session {} is starting in another process", self.lock.id),
+            };
+            return Err(io::Error::new(io::ErrorKind::AlreadyExists, note));
+        }
+        store::remove_if_same(&self.path, &bytes);
+        Ok(false)
     }
 
     /// Rewrites the lock when `state`, `turn` or `step` changed.
@@ -166,13 +213,33 @@ impl Held {
         &self.lock
     }
 
-    /// A temporary file renamed over the lock, so readers never see half.
+    /// `store::write_atomic`, so readers never see half.
     fn write(&self) -> io::Result<()> {
-        let tmp = self.path.with_extension("lock.tmp");
         let text = serde_json::to_string(&self.lock).map_err(io::Error::other)?;
-        fs::write(&tmp, text)?;
-        fs::rename(&tmp, &self.path)
+        store::write_atomic(&self.path, text.as_bytes())
     }
+}
+
+/// Makes `path` with `create_new` and writes `text` into the new handle; a
+/// failed write removes the file again.
+fn create(path: &Path, text: &str) -> io::Result<()> {
+    let mut file = OpenOptions::new().write(true).create_new(true).open(path)?;
+    let written = file.write_all(text.as_bytes());
+    if written.is_err() {
+        drop(file);
+        let _ = fs::remove_file(path);
+    }
+    written
+}
+
+/// The note of a turn refused because `lock` (another process) runs session
+/// `id` (PLAN.md D49).
+pub fn busy_note(id: &str, lock: &Lock) -> String {
+    format!(
+        "session {id} is running in {} (pid {}): wait for it (`fast-harness wait {id}`) or \
+        reach it with `fast-harness send`",
+        lock.program, lock.pid
+    )
 }
 
 impl Drop for Held {

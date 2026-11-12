@@ -4,6 +4,7 @@
 //! A missing file is seeded from the session folders; removing a workspace never touches files.
 
 use crate::session;
+use crate::store;
 use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::fs;
@@ -59,6 +60,9 @@ struct FileData {
 pub struct Workspaces {
     path: PathBuf,
     entries: Vec<Workspace>,
+    /// The session slugs the file held at the load: what [Workspaces::save]
+    /// compares against to find this process's additions and removals.
+    base: Vec<String>,
 }
 
 impl Workspaces {
@@ -80,10 +84,16 @@ impl Workspaces {
         let mut list = Workspaces {
             path,
             entries: Vec::new(),
+            base: Vec::new(),
         };
         for entry in data.workspaces {
             list.insert(entry);
         }
+        list.base = list
+            .entries
+            .iter()
+            .map(|w| session::slug(&w.path))
+            .collect();
         Ok(list)
     }
 
@@ -92,6 +102,7 @@ impl Workspaces {
         Workspaces {
             path: app_home.join(FILE_NAME),
             entries: Vec::new(),
+            base: Vec::new(),
         }
     }
 
@@ -99,6 +110,7 @@ impl Workspaces {
         let mut list = Workspaces {
             path,
             entries: Vec::new(),
+            base: Vec::new(),
         };
         for known in session::known_cwds(app_home)? {
             list.insert(Workspace {
@@ -124,25 +136,61 @@ impl Workspaces {
         }
     }
 
-    /// Writes the list: a temporary file in the same folder, renamed over the old one.
+    /// Writes this process's changes into the file's current content, under
+    /// its lock (`store::update`, PLAN.md D55): a folder added since the load
+    /// is added, a removed one removed, `lastUsedAt` takes the newer value,
+    /// and folders another process added or removed stay so. A corrupt file
+    /// or another version is an error and stays untouched.
     pub fn save(&self) -> Result<(), WorkspacesError> {
-        let data = FileData {
-            version: VERSION,
-            workspaces: self.list(),
+        let mut failure = None;
+        let saved = store::update(&self.path, store::WAIT, |current| {
+            let merged = self.merged(current).map_err(|err| {
+                failure = Some(err);
+                io::Error::other("workspaces.json cannot be merged")
+            })?;
+            let data = FileData {
+                version: VERSION,
+                workspaces: merged.list(),
+            };
+            let mut text = serde_json::to_string_pretty(&data).map_err(io::Error::other)?;
+            text.push('\n');
+            Ok((text.into_bytes(), ()))
+        });
+        match (saved, failure) {
+            (_, Some(err)) => Err(err),
+            (saved, None) => Ok(saved?),
+        }
+    }
+
+    /// The file's list (`current`, `None` when missing) with this process's
+    /// changes since the load applied.
+    fn merged(&self, current: Option<Vec<u8>>) -> Result<Workspaces, WorkspacesError> {
+        let mut merged = Workspaces {
+            path: self.path.clone(),
+            entries: Vec::new(),
+            base: Vec::new(),
         };
-        let mut text = serde_json::to_string_pretty(&data).map_err(WorkspacesError::Json)?;
-        text.push('\n');
-        if let Some(dir) = self.path.parent().filter(|d| !d.as_os_str().is_empty()) {
-            fs::create_dir_all(dir)?;
+        if let Some(bytes) = current {
+            let data: FileData = serde_json::from_slice(&bytes).map_err(WorkspacesError::Json)?;
+            if data.version != VERSION {
+                return Err(WorkspacesError::Version(data.version));
+            }
+            data.workspaces.into_iter().for_each(|w| merged.insert(w));
         }
-        let mut name = self.path.file_name().unwrap_or_default().to_os_string();
-        name.push(format!(".{}.tmp", std::process::id()));
-        let tmp = self.path.with_file_name(name);
-        if let Err(err) = fs::write(&tmp, text).and_then(|()| fs::rename(&tmp, &self.path)) {
-            let _ = fs::remove_file(&tmp);
-            return Err(err.into());
+        for gone in self.base.iter().filter(|s| !self.has_slug(s)) {
+            merged.entries.retain(|w| session::slug(&w.path) != *gone);
         }
-        Ok(())
+        for entry in &self.entries {
+            let slug = session::slug(&entry.path);
+            if !self.base.contains(&slug) || merged.has_slug(&slug) {
+                merged.insert(entry.clone());
+            }
+        }
+        Ok(merged)
+    }
+
+    fn has_slug(&self, slug: &str) -> bool {
+        self.entries.iter().any(|w| session::slug(&w.path) == slug)
     }
 
     /// Adds `path` at time `now`. Returns false when it was already listed (kept as is).

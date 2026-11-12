@@ -2,6 +2,7 @@
 //! attached when the turns start, read once per step boundary into the
 //! same queues as the front end's channel, removed when the turns end.
 
+use std::io::ErrorKind;
 use std::path::Path;
 
 use super::{Conversation, Inbox};
@@ -15,19 +16,23 @@ pub(crate) struct Watch {
 
 impl Inbox {
     /// Takes the lock of `conv` and starts reading its inbox file. A
-    /// subagent session (depth above 0) has neither.
-    pub(crate) fn attach(&mut self, conv: &Conversation, cwd: &Path) {
+    /// subagent session (depth above 0) has neither. Another process holding
+    /// the lock is the error (`session::lock::busy_note`): the turn must not run.
+    pub(crate) fn attach(&mut self, conv: &Conversation, cwd: &Path) -> Result<(), String> {
         self.stopped = false;
         if conv.depth > 0 || self.file.is_some() {
-            return;
+            return Ok(());
         }
         let cwd = cwd.to_string_lossy();
-        // No lock (a read-only folder): the turn runs without coordination.
-        let Ok(lock) = Held::take(&conv.log_path, &conv.id, &cwd, conv.turn) else {
-            return;
+        let lock = match Held::take(&conv.log_path, &conv.id, &cwd, conv.turn) {
+            Ok(lock) => lock,
+            Err(err) if err.kind() == ErrorKind::AlreadyExists => return Err(err.to_string()),
+            // No lock (a read-only folder): the turn runs without coordination.
+            Err(_) => return Ok(()),
         };
         let inbox = FileInbox::new(coord::inbox_path(&conv.log_path));
         self.file = Some(Watch { inbox, lock });
+        Ok(())
     }
 
     /// One step boundary: one size check of the inbox file, its new lines

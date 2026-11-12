@@ -111,3 +111,33 @@ fn a_corrupt_file_or_another_version_is_an_error() {
         Err(WorkspacesError::Version(2))
     ));
 }
+
+/// Two processes with the list loaded before either saved (PLAN.md D55):
+/// each save merges into the file instead of overwriting the other's change.
+#[test]
+fn two_lists_loaded_from_one_file_keep_both_changes() {
+    let home = TempDir::new("merge");
+    let mut first = Workspaces::load(&home.0).unwrap();
+    first.add(Path::new("F:\\work\\old"), 5);
+    first.save().unwrap();
+    let mut one = Workspaces::load(&home.0).unwrap();
+    let mut two = Workspaces::load(&home.0).unwrap();
+    one.add(Path::new("F:\\work\\a"), 10);
+    one.remove(Path::new("F:\\work\\old"));
+    two.add(Path::new("F:\\work\\b"), 20);
+    two.touch(Path::new("F:\\work\\old"), 30);
+    one.save().unwrap();
+    two.save().unwrap();
+    let paths: Vec<PathBuf> = (Workspaces::load(&home.0).unwrap().list().into_iter())
+        .map(|w| w.path)
+        .collect();
+    assert_eq!(
+        paths,
+        [PathBuf::from("F:\\work\\a"), PathBuf::from("F:\\work\\b")],
+        "both additions kept, the removal not undone"
+    );
+    let corrupt = home.0.join("workspaces.json");
+    std::fs::write(&corrupt, "{not json").unwrap();
+    assert!(matches!(two.save(), Err(WorkspacesError::Json(_))));
+    assert_eq!(std::fs::read_to_string(&corrupt).unwrap(), "{not json");
+}
