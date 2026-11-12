@@ -62,6 +62,13 @@ pub enum AgentEvent {
         name: String,
         arguments: String,
     },
+    /// New text from running tool call `id` since its last progress event
+    /// (`ToolCtx::progress`, PLAN.md D58), after its `ToolCall` and before
+    /// its `ToolResult`. Live only: never traced, never sent to the model.
+    ToolProgress {
+        id: String,
+        chunk: String,
+    },
     ToolResult {
         id: String,
         content: String,

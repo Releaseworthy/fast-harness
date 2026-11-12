@@ -61,19 +61,20 @@ fn read_returns_whole_lines_within_the_budget_then_the_range() {
     let env = env("diet-read");
     std::fs::write(env.cwd.join("f.txt"), lines(1000)).unwrap();
     let out = run_tool(&env.cwd, "read", json!({"path": "f.txt"}), 8192);
-    assert!(out.content.len() <= 8192, "{}", out.content.len());
-    assert!(out.spilled.is_none());
-    let last = out.content.lines().last().unwrap();
-    let shown = out.content.lines().count() - 1;
+    assert!(out.text().len() <= 8192, "{}", out.text().len());
+    assert!(out.spilled().is_none());
+    let text = out.text();
+    let last = text.lines().last().unwrap();
+    let shown = out.text().lines().count() - 1;
     let expect = format!(
         "[lines 1 to {shown} of 1000; continue with offset {}]",
         shown + 1
     );
     assert_eq!(last, expect);
     assert!(
-        out.content.starts_with("1:      1 "),
+        out.text().starts_with("1:      1 "),
         "{}",
-        &out.content[..20]
+        &out.text()[..20]
     );
     let next = run_tool(
         &env.cwd,
@@ -81,7 +82,7 @@ fn read_returns_whole_lines_within_the_budget_then_the_range() {
         json!({"path": "f.txt", "offset": shown + 1}),
         8192,
     );
-    assert!(next.content.starts_with(&format!("{}: ", shown + 1)));
+    assert!(next.text().starts_with(&format!("{}: ", shown + 1)));
 }
 
 #[test]
@@ -94,7 +95,7 @@ fn an_unchanged_range_answers_with_the_earlier_call() {
     let tools = builtin();
     let read = |id: &str, args: Value| {
         let ctx = session_ctx(&env.cwd, &cancel, &session, id);
-        tools.run("read", &args.to_string(), &ctx).content
+        tools.run("read", &args.to_string(), &ctx).into_text()
     };
     assert_eq!(read("c1", json!({"path": "f.txt"})), "1: one\n2: two\n");
     assert_eq!(
@@ -122,16 +123,16 @@ fn grep_shows_fifty_matches_grouped_then_counts_the_rest() {
         std::fs::write(env.cwd.join(name), text).unwrap();
     }
     let out = run_tool(&env.cwd, "grep", json!({"pattern": "hit"}), 8192);
-    let shown = out.content.lines().filter(|l| l.starts_with("  ")).count();
-    assert_eq!(shown, 50, "{}", out.content);
+    let shown = out.text().lines().filter(|l| l.starts_with("  ")).count();
+    assert_eq!(shown, 50, "{}", out.text());
     assert_eq!(
-        out.content.lines().filter(|l| l.ends_with(".txt")).count(),
+        out.text().lines().filter(|l| l.ends_with(".txt")).count(),
         2
     );
     assert!(
-        out.content.contains("[25 more matches in 1 file;"),
+        out.text().contains("[25 more matches in 1 file;"),
         "{}",
-        out.content
+        out.text()
     );
 }
 
@@ -143,13 +144,13 @@ fn glob_shows_one_hundred_paths() {
     }
     let out = run_tool(&env.cwd, "glob", json!({"pattern": "*.rs"}), 8192);
     assert_eq!(
-        out.content.lines().filter(|l| l.ends_with(".rs")).count(),
+        out.text().lines().filter(|l| l.ends_with(".rs")).count(),
         100
     );
     assert!(
-        out.content.contains("[20 more files not shown"),
+        out.text().contains("[20 more files not shown"),
         "{}",
-        out.content
+        out.text()
     );
 }
 
@@ -161,19 +162,19 @@ fn shell_keeps_head_and_tail_and_spills_the_whole_output() {
     let ctx = session_ctx(&env.cwd, &cancel, &session, "toolu_9");
     let full = lines(1000) + "[exit code: 1]";
     let out = budget::fit("shell", ToolOutput::err(full.clone()), &ctx);
-    assert!(out.content.len() <= 8192, "{}", out.content.len());
-    assert_eq!(out.bytes, full.len());
-    assert!(out.content.starts_with("     1 x"));
-    assert!(out.content.contains("bytes cut ...]"));
-    let path = out.spilled.clone().expect("spilled");
+    assert!(out.text().len() <= 8192, "{}", out.text().len());
+    assert_eq!(out.bytes(), full.len());
+    assert!(out.text().starts_with("     1 x"));
+    assert!(out.text().contains("bytes cut ...]"));
+    let path = out.spilled().expect("spilled");
     assert!(path.ends_with("toolu_9.txt"), "{path}");
-    assert_eq!(std::fs::read_to_string(&path).unwrap(), full);
+    assert_eq!(std::fs::read_to_string(path).unwrap(), full);
     let note = format!(
         "\n[full output: {path}, {} bytes, 1001 lines; read it with offset and limit or grep it]",
         full.len()
     );
-    assert!(out.content.ends_with(&note), "{}", out.content);
-    let body = &out.content[..out.content.len() - note.len()];
+    assert!(out.text().ends_with(&note), "{}", out.text());
+    let body = &out.text()[..out.text().len() - note.len()];
     assert!(body.ends_with("[exit code: 1]"), "errors stay at the end");
     let head = body.split("[...").next().unwrap();
     assert!((1500..=2048).contains(&head.len()), "head {}", head.len());
@@ -187,12 +188,12 @@ fn subagent_keeps_its_stats_line_and_outside_a_session_nothing_spills() {
     let stats = "[subagent session s1 \u{b7} 3 steps]";
     let answer = format!("{}\n\n{stats}", "word ".repeat(4000));
     let out = budget::fit("subagent", ToolOutput::ok(answer), &ctx);
-    assert!(out.content.len() <= 8192);
-    assert!(out.spilled.is_none());
+    assert!(out.text().len() <= 8192);
+    assert!(out.spilled().is_none());
     assert!(
-        out.content.contains(&format!("\n\n{stats}\n[output cut: ")),
+        out.text().contains(&format!("\n\n{stats}\n[output cut: ")),
         "{}",
-        out.content
+        out.text()
     );
 }
 
@@ -215,9 +216,9 @@ fn budgets_come_from_config_with_a_per_tool_override() {
         config.tool_budget("read"),
     );
     assert!(
-        (15_000..=16384).contains(&out.content.len()),
+        (15_000..=16384).contains(&out.text().len()),
         "{}",
-        out.content.len()
+        out.text().len()
     );
 }
 
@@ -228,12 +229,12 @@ fn find_tools_takes_a_limit() {
     let names = json!(["alpha", "beta", "gamma"]);
     let out = find::run(&json!({"names": names, "limit": 2}), &others);
     assert!(
-        out.content.contains("beta") && !out.content.contains("gamma"),
+        out.text().contains("beta") && !out.text().contains("gamma"),
         "{}",
-        out.content
+        out.text()
     );
     let out = find::run(&json!({"names": names}), &others);
-    assert!(out.content.contains("gamma"), "{}", out.content);
+    assert!(out.text().contains("gamma"), "{}", out.text());
 }
 
 #[test]

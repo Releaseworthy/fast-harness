@@ -59,7 +59,7 @@ pub fn attach(messages: &[Message], cwd: &Path, args: &[&str], outputs: &mut [To
             let Ok(text) = std::fs::read_to_string(&file) else {
                 continue;
             };
-            output.content.push_str(&block(&key, &text));
+            output.push_text(&block(&key, &text));
             known.push(key);
         }
     }

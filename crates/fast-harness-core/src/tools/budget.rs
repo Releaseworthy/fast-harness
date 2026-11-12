@@ -67,11 +67,11 @@ impl ToolSession {
 /// Fits `output` of tool `name` into `ctx.budget`: sets `bytes` to the full
 /// size and, when cut, writes the spill file and sets `spilled`.
 pub fn fit(name: &str, mut output: ToolOutput, ctx: &ToolCtx<'_>) -> ToolOutput {
-    output.bytes = output.content.len();
-    if output.content.len() <= ctx.budget {
+    let full = output.text().into_owned();
+    output.set_size(full.len(), None);
+    if full.len() <= ctx.budget {
         return output;
     }
-    let full = std::mem::take(&mut output.content);
     let lines = full.lines().count();
     let spilled = spill(ctx, &full);
     let note = match &spilled {
@@ -91,8 +91,8 @@ pub fn fit(name: &str, mut output: ToolOutput, ctx: &ToolCtx<'_>) -> ToolOutput 
         "subagent" => head_and_last_line(&full, room),
         _ => head(&full, room).to_string(),
     };
-    output.content = body + &note;
-    output.spilled = spilled.map(|path| path.display().to_string());
+    output.set_text(body + &note);
+    output.set_size(full.len(), spilled.map(|path| path.display().to_string()));
     output
 }
 

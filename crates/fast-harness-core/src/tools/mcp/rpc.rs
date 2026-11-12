@@ -230,8 +230,8 @@ mod tests {
             {"type": "resource", "resource": {"uri": "file:///a", "text": "body"}}
         ], "isError": true});
         let output = tool_output(&result);
-        assert!(output.is_error);
-        assert!(output.content.starts_with("hi\n[image image/png of 4"));
-        assert!(output.content.ends_with("[resource file:///a]\nbody"));
+        assert!(output.is_error());
+        assert!(output.text().starts_with("hi\n[image image/png of 4"));
+        assert!(output.text().ends_with("[resource file:///a]\nbody"));
     }
 }

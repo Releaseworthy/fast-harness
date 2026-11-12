@@ -144,10 +144,9 @@ pub fn run_full(
     names.extend(rest);
     let mut args = args.clone();
     args["names"] = json!(names);
-    let mut output = run_with(&args, others, skills);
-    output.content.push_str(&mcp_lines(&hits, mcp));
-    output.bytes = output.content.len();
-    output
+    let output = run_with(&args, others, skills);
+    let text = output.text().into_owned() + &mcp_lines(&hits, mcp);
+    ToolOutput::new(text, output.is_error())
 }
 
 /// The matched MCP tools with the first line of each description.

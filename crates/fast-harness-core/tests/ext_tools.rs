@@ -46,7 +46,7 @@ fn extensions(home: &Path) -> Extensions {
 fn run(ext: &Extensions, cwd: &Path, name: &str, args: &str) -> (String, bool) {
     let cancel = AtomicBool::new(false);
     let output = ext.registry().run(name, args, &ToolCtx::new(cwd, &cancel));
-    (output.content, output.is_error)
+    (output.text().into_owned(), output.is_error())
 }
 
 #[test]
@@ -120,7 +120,7 @@ fn a_file_overrides_read_budget_and_disables_a_built_in() {
     ctx.budget = rt.config.tool_budget("read");
     let out = registry.run("read", r#"{"path":"big.txt"}"#, &ctx);
     // The default budget (8 KB) would return far more of the 13 KB file.
-    let len = out.content.len();
+    let len = out.text().len();
     assert!((1000..=1500).contains(&len), "{len}");
 }
 

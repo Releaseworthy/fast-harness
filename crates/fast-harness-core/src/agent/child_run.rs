@@ -151,7 +151,7 @@ fn background(
         let _slot = slot;
         let mut fwd = Forward::new(&children, &label);
         let output = run(&agent, &mut conv, &prompt, &cancel, &mut inbox, &mut fwd);
-        children.finish_kid(&kid, output.content, budget);
+        children.finish_kid(&kid, output.into_text(), budget);
     };
     let thread = std::thread::Builder::new().name(format!("subagent-{id}"));
     if let Err(err) = thread.spawn(job) {

@@ -58,15 +58,15 @@ fn find_answers_names_query_unknown_and_caps_at_five() {
     let others = &registry.specs()[1..];
     let out = finder::run(&json!({"names": ["Read", "edit", "nope"]}), others);
     assert_eq!(
-        out.content,
+        out.text(),
         "Loaded: read, edit\nYou can call them now.\nUnknown: nope."
     );
     let out = finder::run(&json!({"query": "file path pattern text command"}), others);
-    assert_eq!(find::loaded_names(&out.content).len(), finder::MAX_RESULTS);
+    assert_eq!(find::loaded_names(&out.text()).len(), finder::MAX_RESULTS);
     let out = finder::run(&json!({"query": "zzzz"}), others);
-    assert!(out.content.starts_with("No tool matched. Tools: read,"));
-    assert!(find::loaded_names(&out.content).is_empty());
-    assert!(finder::run(&json!({}), others).is_error);
+    assert!(out.text().starts_with("No tool matched. Tools: read,"));
+    assert!(find::loaded_names(&out.text()).is_empty());
+    assert!(finder::run(&json!({}), others).is_error());
 }
 
 fn agent(transport: &Arc<ScriptedTransport>, env: &Env) -> Agent {

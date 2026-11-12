@@ -35,6 +35,7 @@ line per agent event:
 | `tool_call_start` | `id`, `name` |
 | `tool_args` | `id`, `chunk` |
 | `tool_call` | `id`, `name`, `arguments` (raw JSON text) |
+| `tool_progress` | `id`, `chunk` (new output of the running call, such as `shell` text; live only, the `tool_result` holds the whole text) |
 | `tool_result` | `id`, `content`, `isError`, `durationMs` |
 | `retry` | `attempt`, `delayMs`, `error` |
 | `account_switch` | `from`, `to`, `reason` |
@@ -48,7 +49,8 @@ line per agent event:
 
 `usage` is `{"inputTokens","outputTokens","cacheReadTokens","cacheWriteTokens"}` plus
 `cacheWrite1hTokens` when not 0. `outcome` is `done`, `cancelled`, `failed`, `step_limit`,
-`truncated`, `context_overflow` or `paused`. A breaking change bumps `schema`.
+`truncated`, `context_overflow` or `paused`. A breaking change bumps `schema`; a new `type`
+is not one, so a reader skips the types it does not know.
 
 ```text
 $ fast-harness -p "say hi" --json
@@ -114,6 +116,7 @@ Each `session/update` has `params: {"sessionId","update"}` with `update.sessionU
 | reasoning delta | `agent_thought_chunk` (`msg_t<turn>_<step>`) |
 | tool call streaming | `tool_call_update` `pending` with `title`, `name`, `kind` |
 | tool call runs | `tool_call_update` `in_progress` with `rawInput` |
+| tool progress | `tool_call_update` `in_progress` with `content` holding the newest chunk (ACP content replaces, so a client shows the latest output until the result) |
 | tool result | `tool_call_update` `completed` or `failed` with `content` |
 | step end | `usage_update` (`used`, `size`) when the window is known |
 | compaction | `compaction_update` `completed` with `summary` |

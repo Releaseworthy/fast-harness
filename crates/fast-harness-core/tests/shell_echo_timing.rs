@@ -44,7 +44,7 @@ fn shell_echo_one_timing() {
     let args = json!({"command": "echo 1"}).to_string();
     let tool = timed(|| {
         let out = registry.run("shell", &args, &ctx);
-        assert!(out.content.contains('1'), "{}", out.content);
+        assert!(out.text().contains('1'), "{}", out.text());
     });
     let program = if cfg!(windows) { "pwsh.exe" } else { "sh" };
     let flags: &[&str] = if cfg!(windows) {

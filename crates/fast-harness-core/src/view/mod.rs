@@ -268,6 +268,9 @@ impl Transcript {
                 self.subagent_note(session, verb);
             }
             AgentEvent::SubagentProgress { session, line } => self.subagent_note(session, line),
+            // Live tool output leaves the transcript as it is: chunk 24C
+            // shows it; the `ToolResult` that follows holds the whole text.
+            AgentEvent::ToolProgress { .. } => {}
             AgentEvent::StepEnd {
                 turn,
                 step,

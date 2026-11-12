@@ -79,6 +79,9 @@ pub fn event(event: &AgentEvent) -> Value {
             name,
             arguments,
         } => json!({"type": "tool_call", "id": id, "name": name, "arguments": arguments}),
+        AgentEvent::ToolProgress { id, chunk } => {
+            json!({"type": "tool_progress", "id": id, "chunk": chunk})
+        }
         AgentEvent::ToolResult {
             id,
             content,

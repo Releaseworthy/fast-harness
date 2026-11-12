@@ -38,8 +38,8 @@ fn find(ext: &Extensions, cwd: &Path, args: &str) -> String {
     let registry = ext.builtin();
     let cancel = AtomicBool::new(false);
     let out = registry.run("find_tools", args, &ToolCtx::new(cwd, &cancel));
-    assert!(!out.is_error, "{}", out.content);
-    out.content
+    assert!(!out.is_error(), "{}", out.text());
+    out.into_text()
 }
 
 fn results(messages: &[Message]) -> Vec<String> {

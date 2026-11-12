@@ -50,19 +50,15 @@ fn shell_reports_output_cwd_and_exit_code() {
         "ls; echo 'h\u{e9}llo \u{2713}'"
     };
     let out = run(&tmp.0, json!({"command": list}));
-    assert!(!out.is_error, "{}", out.content);
-    assert!(out.content.contains("marker.txt"), "{}", out.content);
-    assert!(
-        out.content.contains("h\u{e9}llo \u{2713}"),
-        "{}",
-        out.content
-    );
-    assert!(out.content.ends_with("[exit code: 0]"), "{}", out.content);
+    assert!(!out.is_error(), "{}", out.text());
+    assert!(out.text().contains("marker.txt"), "{}", out.text());
+    assert!(out.text().contains("h\u{e9}llo \u{2713}"), "{}", out.text());
+    assert!(out.text().ends_with("[exit code: 0]"), "{}", out.text());
     let out = run(&tmp.0, json!({"command": "exit 3"}));
     assert!(
-        out.is_error && out.content.ends_with("[exit code: 3]"),
+        out.is_error() && out.text().ends_with("[exit code: 3]"),
         "{}",
-        out.content
+        out.text()
     );
 }
 
@@ -76,14 +72,10 @@ fn shell_merges_stderr() {
     };
     let out = run(&tmp.0, json!({"command": command}));
     for text in ["out1", "err1", "out2", "[exit code: 0]"] {
-        assert!(
-            out.content.contains(text),
-            "{text} missing: {}",
-            out.content
-        );
+        assert!(out.text().contains(text), "{text} missing: {}", out.text());
     }
-    assert!(run(&tmp.0, json!({})).content.contains("missing required"));
-    assert!(run(&tmp.0, json!({"command": "x", "timeout_ms": "5"})).is_error);
+    assert!(run(&tmp.0, json!({})).text().contains("missing required"));
+    assert!(run(&tmp.0, json!({"command": "x", "timeout_ms": "5"})).is_error());
 }
 
 #[test]
@@ -104,9 +96,9 @@ fn shell_cancel_kills_the_command() {
         run_with(&tmp.0, json!({"command": sleep}), &cancel)
     });
     assert!(
-        out.is_error && out.content.contains("cancelled"),
+        out.is_error() && out.text().contains("cancelled"),
         "{}",
-        out.content
+        out.text()
     );
     assert!(
         started.elapsed() < Duration::from_secs(10),
@@ -152,12 +144,12 @@ fn shell_timeout_kills_the_process_tree() {
         started.elapsed()
     );
     assert!(
-        out.is_error && out.content.contains("timed out"),
+        out.is_error() && out.text().contains("timed out"),
         "{}",
-        out.content
+        out.text()
     );
-    let parent = pid_of(&out.content, "PARENT");
-    let child = pid_of(&out.content, "CHILD");
+    let parent = pid_of(&out.text(), "PARENT");
+    let child = pid_of(&out.text(), "CHILD");
     let deadline = Instant::now() + Duration::from_secs(10);
     while (alive(parent) || alive(child)) && Instant::now() < deadline {
         std::thread::sleep(Duration::from_millis(200));

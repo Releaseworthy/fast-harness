@@ -90,14 +90,14 @@ fn session_start_creates_a_session_and_launches_a_worker() {
     let env = env("tools-start");
     let set = tools(&env);
     let out = set.run(START, json!({"prompt": "build it", "model": "m2"}), &env);
-    assert!(!out.is_error, "{}", out.content);
+    assert!(!out.is_error(), "{}", out.text());
     let launched = set.launched.lock().unwrap();
     assert_eq!(launched.len(), 1);
     let id = flag_value(&launched[0], "--resume");
-    assert!(out.content.contains(id) && out.content.contains("4242"));
+    assert!(out.text().contains(id) && out.text().contains("4242"));
     assert_eq!(flag_value(&launched[0], "-p"), "build it");
     assert_eq!(flag_value(&launched[0], "--model"), "m2");
-    let listed = set.run(LIST, json!({}), &env).content;
+    let listed = set.run(LIST, json!({}), &env).into_text();
     assert!(listed.contains(id), "{listed}");
 }
 
@@ -107,7 +107,7 @@ fn send_and_stop_reach_a_running_session_through_its_inbox() {
     let set = tools(&env);
     let conv = Conversation::create(&env.home, &env.cwd, None).unwrap();
     let held = Held::take(&conv.log_path, &conv.id, &env.cwd.to_string_lossy(), 1).unwrap();
-    let listed = set.run(LIST, json!({}), &env).content;
+    let listed = set.run(LIST, json!({}), &env).into_text();
     assert!(
         listed.contains(&format!("{}  running", conv.id)),
         "{listed}"
@@ -117,9 +117,9 @@ fn send_and_stop_reach_a_running_session_through_its_inbox() {
         json!({"id": conv.id, "text": "look", "mode": "queue"}),
         &env,
     );
-    assert!(!sent.is_error, "{}", sent.content);
+    assert!(!sent.is_error(), "{}", sent.text());
     let stop = set.run(STOP, json!({"id": conv.id}), &env);
-    assert!(!stop.is_error);
+    assert!(!stop.is_error());
     let mut inbox = FileInbox::new(coord::inbox_path(&conv.log_path));
     assert_eq!(
         inbox.poll(),
@@ -128,7 +128,7 @@ fn send_and_stop_reach_a_running_session_through_its_inbox() {
     assert!(set.launched.lock().unwrap().is_empty());
     drop(held);
     let idle_stop = set.run(STOP, json!({"id": conv.id}), &env);
-    assert!(idle_stop.content.contains("not running"));
+    assert!(idle_stop.text().contains("not running"));
 }
 
 #[test]
@@ -137,12 +137,12 @@ fn send_to_an_idle_session_starts_a_worker() {
     let set = tools(&env);
     let conv = Conversation::create(&env.home, &env.cwd, None).unwrap();
     let out = set.run(SEND, json!({"id": conv.id, "text": "go on"}), &env);
-    assert!(out.content.contains("was idle"), "{}", out.content);
+    assert!(out.text().contains("was idle"), "{}", out.text());
     let launched = set.launched.lock().unwrap();
     assert_eq!(flag_value(&launched[0], "--resume"), conv.id);
     assert_eq!(flag_value(&launched[0], "-p"), "go on");
     let missing = set.run(SEND, json!({"id": "nope", "text": "x"}), &env);
-    assert!(missing.is_error);
+    assert!(missing.is_error());
 }
 
 #[test]
@@ -155,10 +155,10 @@ fn session_read_returns_the_last_answer() {
         Arc::new(Registry::new()),
     );
     let mut conv = Conversation::create(&env.home, &env.cwd, None).unwrap();
-    let before = set.run(READ, json!({"id": conv.id}), &env).content;
+    let before = set.run(READ, json!({"id": conv.id}), &env).into_text();
     assert!(before.contains("no answer yet"), "{before}");
     agent.run_turn(&mut conv, "q", &AtomicBool::new(false), &mut |_| {});
-    let read = set.run(READ, json!({"id": conv.id}), &env).content;
+    let read = set.run(READ, json!({"id": conv.id}), &env).into_text();
     assert!(
         read.contains("is idle") && read.ends_with("the answer"),
         "{read}"

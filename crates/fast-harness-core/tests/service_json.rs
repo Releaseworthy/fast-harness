@@ -41,7 +41,7 @@ fn every_event() -> Vec<AgentEvent> {
             arguments: "{}".into(),
         },
         AgentEvent::ToolResult {
-            id,
+            id: id.clone(),
             content: text.clone(),
             is_error: false,
             duration_ms: 3,
@@ -89,6 +89,10 @@ fn every_event() -> Vec<AgentEvent> {
             outcome: TurnOutcome::Done,
         },
         AgentEvent::Error(text),
+        AgentEvent::ToolProgress {
+            id,
+            chunk: "line 1\n".into(),
+        },
     ]
 }
 
@@ -117,7 +121,8 @@ fn every_event_has_its_own_type() {
         "step_end",
         "compaction",
         "turn_end",
-        "error"
+        "error",
+        "tool_progress"
     ]);
     assert_eq!(Value::Array(types), want);
 }
@@ -138,6 +143,10 @@ fn events_carry_camel_case_fields() {
     assert_eq!(step["window"], 200_000);
     assert_eq!(event(&all[17])["outcome"], "done");
     assert_eq!(event(&all[18]), json!({"type": "error", "message": "x"}));
+    assert_eq!(
+        event(&all[19]),
+        json!({"type": "tool_progress", "id": "toolu_1", "chunk": "line 1\n"})
+    );
 }
 
 #[test]

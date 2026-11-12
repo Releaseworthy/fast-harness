@@ -11,6 +11,7 @@ use std::time::{Duration, Instant};
 use serde_json::{json, Value};
 
 use super::args::{object_schema, opt_positive, req_str};
+use super::shell_live::Live;
 use super::{Tool, ToolCtx, ToolOutput};
 use crate::llm::ToolSpec;
 use crate::platform::ProcessGroup;
@@ -75,17 +76,20 @@ pub(super) enum Ending {
 }
 
 #[derive(Default)]
-pub(super) struct Capture {
+pub(super) struct Capture<'r> {
     pub(super) bytes: Vec<u8>,
     pub(super) dropped: usize,
+    /// The output as it arrives (`shell` only); changes nothing above.
+    live: Live<'r>,
 }
 
-impl Capture {
+impl Capture<'_> {
     fn push(&mut self, chunk: &[u8]) {
         let room = MAX_CAPTURE.saturating_sub(self.bytes.len());
         let kept = room.min(chunk.len());
         self.bytes.extend_from_slice(&chunk[..kept]);
         self.dropped += chunk.len() - kept;
+        self.live.push(chunk, Instant::now());
     }
 }
 
@@ -107,13 +111,23 @@ fn run_shell(command: &str, timeout_ms: u64, ctx: &ToolCtx<'_>) -> Result<ToolOu
     if let Some(stderr) = child.stderr.take() {
         pump(stderr, tx);
     }
-    let mut capture = Capture::default();
+    let report = |text: &str| ctx.progress(text);
+    let live = match ctx.reports_progress() {
+        true => Live::new(&report),
+        false => Live::off(),
+    };
+    let mut capture = Capture {
+        live,
+        ..Capture::default()
+    };
     let deadline = Instant::now() + Duration::from_millis(timeout_ms);
     let ending = supervise(&mut child, &group, &rx, &mut capture, deadline, ctx.cancel);
     // Closing the group kills processes the command left running, so the
     // pipes they hold close and the readers finish.
     group.close();
     drain(&rx, &mut capture);
+    // The rest when it is due; else the result, which follows at once.
+    capture.live.flush(Instant::now());
     Ok(render(capture, ending?, timeout_ms))
 }
 
@@ -180,7 +194,7 @@ pub(super) fn supervise(
         if idle.is_zero() {
             match rx.recv_timeout(POLL) {
                 Ok(chunk) => capture.push(&chunk),
-                Err(RecvTimeoutError::Timeout) => {}
+                Err(RecvTimeoutError::Timeout) => capture.live.flush(Instant::now()),
                 Err(RecvTimeoutError::Disconnected) => idle = Duration::from_millis(1),
             }
         } else {

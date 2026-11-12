@@ -19,7 +19,9 @@ pub fn register(ext: &mut Ext) {
 struct WordCount;
 
 // A tool that only reads can add `fn effect(&self) -> Effect { Effect::Read }`
-// (`ext::v1::Effect`) so its calls run in parallel with other reads.
+// (`ext::v1::Effect`) so its calls run in parallel with other reads. A tool
+// that runs long can call `ctx.progress("new text")` while it works: front
+// ends show it live; the returned `ToolOutput` is what the model reads.
 impl Tool for WordCount {
     fn spec(&self) -> ToolSpec {
         // v1 structs are `#[non_exhaustive]`: build them with constructors.

@@ -112,8 +112,8 @@ fn call(servers: &McpServers, name: &str, args: &str, cwd: &Path) -> String {
     let ext = Extensions::default().with_mcp(servers.clone());
     let cancel = AtomicBool::new(false);
     let output = ext.registry().run(name, args, &ToolCtx::new(cwd, &cancel));
-    assert!(!output.is_error, "{}", output.content);
-    output.content
+    assert!(!output.is_error(), "{}", output.text());
+    output.into_text()
 }
 
 #[test]
@@ -302,7 +302,7 @@ fn modern_http_server_with_sse_and_request_headers() {
     let cancel = AtomicBool::new(false);
     let ctx = ToolCtx::new(&home, &cancel);
     let output = servers.call("web", "echo", &json!({"r": "eu"}), &ctx);
-    assert_eq!(output.content, "ok");
+    assert_eq!(output.text(), "ok");
     let requests = transport.requests();
     assert_eq!(requests.len(), 3);
     let list = &requests[1].headers;

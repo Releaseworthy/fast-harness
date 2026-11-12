@@ -164,8 +164,8 @@ pub(super) fn run_tool(
         return (agent.tools.run(name, &raw, ctx), records, context);
     }
     let output = agent.tools.run_with(name, &raw, ctx, &mut |args, output| {
-        let data = json!({"toolName": name, "arguments": args, "output": output.content,
-            "isError": output.is_error});
+        let data = json!({"toolName": name, "arguments": args, "output": output.text(),
+            "isError": output.is_error()});
         let post = fire(
             agent,
             session,
@@ -177,7 +177,7 @@ pub(super) fn run_tool(
         context.extend(post.context);
         match (post.block, post.output) {
             (Some(reason), _) => blocked(&reason),
-            (None, Some(text)) => ToolOutput::new(text, output.is_error),
+            (None, Some(text)) => ToolOutput::new(text, output.is_error()),
             (None, None) => output,
         }
     });

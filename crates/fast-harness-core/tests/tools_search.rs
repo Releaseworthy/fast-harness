@@ -63,29 +63,29 @@ fn tree(tag: &str) -> TempDir {
 fn grep_honours_gitignore_and_skips_hidden_and_binary() {
     let tmp = tree("grep");
     let out = run(&tmp.0, "grep", json!({"pattern": "needle"}));
-    assert!(!out.is_error, "{}", out.content);
+    assert!(!out.is_error(), "{}", out.text());
     assert!(
-        out.content.contains("notes.txt\n  1: a needle here\n"),
+        out.text().contains("notes.txt\n  1: a needle here\n"),
         "{}",
-        out.content
+        out.text()
     );
-    assert!(out.content.contains("src/lib.rs\n  1: // needle in lib\n"));
+    assert!(out.text().contains("src/lib.rs\n  1: // needle in lib\n"));
     for absent in ["ignored.txt", "build/", ".hidden", "blob.bin", "main.rs"] {
-        assert!(!out.content.contains(absent), "{absent} in {}", out.content);
+        assert!(!out.text().contains(absent), "{absent} in {}", out.text());
     }
     let out = run(
         &tmp.0,
         "grep",
         json!({"pattern": "NEEDLE", "ignore_case": true, "glob": "*.rs"}),
     );
-    assert!(out.content.contains("src/main.rs\n  2:"), "{}", out.content);
-    assert!(!out.content.contains("notes.txt"));
+    assert!(out.text().contains("src/main.rs\n  2:"), "{}", out.text());
+    assert!(!out.text().contains("notes.txt"));
     let out = run(
         &tmp.0,
         "grep",
         json!({"pattern": "needle", "glob": "*.txt"}),
     );
-    assert!(!out.content.contains("ignored.txt"), "{}", out.content);
+    assert!(!out.text().contains("ignored.txt"), "{}", out.text());
 }
 
 #[test]
@@ -96,17 +96,18 @@ fn grep_cuts_results_and_long_lines() {
     tmp.file("long.txt", format!("hit{}\n", "x".repeat(1000)).as_bytes());
     let out = run(&tmp.0, "grep", json!({"pattern": "hit", "max_results": 3}));
     assert_eq!(
-        out.content.lines().filter(|l| l.contains(": hit")).count(),
+        out.text().lines().filter(|l| l.contains(": hit")).count(),
         3
     );
     let more = "[8 more matches in 1 file;";
-    assert!(out.content.contains(more), "{}", out.content);
+    assert!(out.text().contains(more), "{}", out.text());
     let out = run(
         &tmp.0,
         "grep",
         json!({"pattern": "hitx", "path": "long.txt"}),
     );
-    let line = out.content.lines().nth(1).unwrap();
+    let text = out.text();
+    let line = text.lines().nth(1).unwrap();
     assert!(line.len() < 400 && line.ends_with("[line cut]"), "{line}");
 }
 
@@ -114,11 +115,11 @@ fn grep_cuts_results_and_long_lines() {
 fn grep_reports_errors_and_no_matches() {
     let tmp = tree("grep-err");
     let bad = run(&tmp.0, "grep", json!({"pattern": "("}));
-    assert!(bad.is_error && bad.content.contains("invalid regex"));
+    assert!(bad.is_error() && bad.text().contains("invalid regex"));
     let missing = run(&tmp.0, "grep", json!({"pattern": "x", "path": "nope"}));
-    assert!(missing.is_error && missing.content.contains("not found"));
+    assert!(missing.is_error() && missing.text().contains("not found"));
     assert_eq!(
-        run(&tmp.0, "grep", json!({"pattern": "zzzq"})).content,
+        run(&tmp.0, "grep", json!({"pattern": "zzzq"})).text(),
         "No matches."
     );
 }
@@ -143,18 +144,19 @@ fn glob_lists_newest_first_and_respects_gitignore() {
         .set_modified(future)
         .unwrap();
     let out = run(&tmp.0, "glob", json!({"pattern": "*.rs"}));
-    let lines: Vec<&str> = out.content.lines().collect();
-    assert_eq!(lines.first(), Some(&"src/new.rs"), "{}", out.content);
-    assert_eq!(lines.last(), Some(&"src/old.rs"), "{}", out.content);
+    let text = out.text();
+    let lines: Vec<&str> = text.lines().collect();
+    assert_eq!(lines.first(), Some(&"src/new.rs"), "{}", out.text());
+    assert_eq!(lines.last(), Some(&"src/old.rs"), "{}", out.text());
     assert_eq!(lines.len(), 4);
     let txt = run(&tmp.0, "glob", json!({"pattern": "**/*.txt", "path": "."}));
-    assert_eq!(txt.content, "notes.txt\n");
+    assert_eq!(txt.text(), "notes.txt\n");
     let none = run(&tmp.0, "glob", json!({"pattern": "*.zig"}));
-    assert_eq!(none.content, "No files found.");
+    assert_eq!(none.text(), "No files found.");
     let bad = run(
         &tmp.0,
         "glob",
         json!({"pattern": "*.rs", "path": "notes.txt"}),
     );
-    assert!(bad.is_error);
+    assert!(bad.is_error());
 }

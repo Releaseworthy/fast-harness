@@ -60,8 +60,8 @@ fn write_creates_parents_and_read_numbers_lines() {
         "write",
         json!({"path": "a/b/c.txt", "content": "one\ntwo\nthree\n"}),
     );
-    assert!(!out.is_error, "{}", out.content);
-    assert!(out.content.contains("14 bytes"), "{}", out.content);
+    assert!(!out.is_error(), "{}", out.text());
+    assert!(out.text().contains("14 bytes"), "{}", out.text());
     let out = run(&tmp.0, "read", json!({"path": "a/b/c.txt"}));
     assert_eq!(out, ToolOutput::ok("1: one\n2: two\n3: three\n"));
     let abs = tmp.0.join("a/b/c.txt");
@@ -70,9 +70,9 @@ fn write_creates_parents_and_read_numbers_lines() {
         "read",
         json!({"path": abs.to_string_lossy(), "offset": 2, "limit": 1}),
     );
-    assert!(out.content.starts_with("2: two\n"), "{}", out.content);
+    assert!(out.text().starts_with("2: two\n"), "{}", out.text());
     assert!(out
-        .content
+        .text()
         .contains("[lines 2 to 2 of 3; continue with offset 3]"));
 }
 
@@ -84,27 +84,27 @@ fn read_reports_errors() {
     std::fs::write(tmp.0.join("empty.txt"), "").unwrap();
     let dir = run(&tmp.0, "read", json!({"path": "."}));
     assert!(
-        dir.is_error && dir.content.contains("directory"),
+        dir.is_error() && dir.text().contains("directory"),
         "{}",
-        dir.content
+        dir.text()
     );
     let bin = run(&tmp.0, "read", json!({"path": "bin.dat"}));
     assert!(
-        bin.is_error && bin.content.contains("binary"),
+        bin.is_error() && bin.text().contains("binary"),
         "{}",
-        bin.content
+        bin.text()
     );
     let missing = run(&tmp.0, "read", json!({"path": "nope.txt"}));
-    assert!(missing.is_error && missing.content.contains("nope.txt"));
+    assert!(missing.is_error() && missing.text().contains("nope.txt"));
     let past = run(&tmp.0, "read", json!({"path": "short.txt", "offset": 5}));
-    assert!(past.is_error && past.content.contains("past the end"));
+    assert!(past.is_error() && past.text().contains("past the end"));
     let bad = run(&tmp.0, "read", json!({"path": "short.txt", "offset": 0}));
-    assert!(bad.is_error && bad.content.contains("positive integer"));
+    assert!(bad.is_error() && bad.text().contains("positive integer"));
     assert!(run(&tmp.0, "read", json!({}))
-        .content
+        .text()
         .contains("missing required"));
     assert_eq!(
-        run(&tmp.0, "read", json!({"path": "empty.txt"})).content,
+        run(&tmp.0, "read", json!({"path": "empty.txt"})).text(),
         "(empty file)"
     );
 }
@@ -120,9 +120,9 @@ fn edit_requires_a_unique_match_unless_replace_all() {
         json!({"path": "f.txt", "old_string": "foo", "new_string": "baz"}),
     );
     assert!(
-        dup.is_error && dup.content.contains("matches 2 times"),
+        dup.is_error() && dup.text().contains("matches 2 times"),
         "{}",
-        dup.content
+        dup.text()
     );
     let all = run(
         &tmp.0,
@@ -130,9 +130,9 @@ fn edit_requires_a_unique_match_unless_replace_all() {
         json!({"path": "f.txt", "old_string": "foo", "new_string": "baz", "replace_all": true}),
     );
     assert!(
-        !all.is_error && all.content.contains("Replaced 2 occurrences"),
+        !all.is_error() && all.text().contains("Replaced 2 occurrences"),
         "{}",
-        all.content
+        all.text()
     );
     let one = run(
         &tmp.0,
@@ -140,9 +140,9 @@ fn edit_requires_a_unique_match_unless_replace_all() {
         json!({"path": "f.txt", "old_string": "bar", "new_string": "qux"}),
     );
     assert!(
-        one.content.contains("Replaced 1 occurrence"),
+        one.text().contains("Replaced 1 occurrence"),
         "{}",
-        one.content
+        one.text()
     );
     assert_eq!(std::fs::read_to_string(&file).unwrap(), "baz qux baz\n");
     let none = run(
@@ -150,19 +150,19 @@ fn edit_requires_a_unique_match_unless_replace_all() {
         "edit",
         json!({"path": "f.txt", "old_string": "zzz", "new_string": "y"}),
     );
-    assert!(none.is_error && none.content.contains("not found"));
+    assert!(none.is_error() && none.text().contains("not found"));
     let same = run(
         &tmp.0,
         "edit",
         json!({"path": "f.txt", "old_string": "baz", "new_string": "baz"}),
     );
-    assert!(same.is_error);
+    assert!(same.is_error());
     let gone = run(
         &tmp.0,
         "edit",
         json!({"path": "x.txt", "old_string": "a", "new_string": "b"}),
     );
-    assert!(gone.is_error && gone.content.contains("x.txt"));
+    assert!(gone.is_error() && gone.text().contains("x.txt"));
 }
 
 #[test]
@@ -175,7 +175,7 @@ fn edit_retries_with_crlf() {
         "edit",
         json!({"path": "win.txt", "old_string": "alpha\nbeta", "new_string": "one\ntwo"}),
     );
-    assert!(!out.is_error, "{}", out.content);
+    assert!(!out.is_error(), "{}", out.text());
     assert_eq!(
         std::fs::read_to_string(&file).unwrap(),
         "one\r\ntwo\r\ngamma\r\n"

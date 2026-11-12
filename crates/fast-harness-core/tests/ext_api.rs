@@ -184,11 +184,28 @@ mod constructible {
             .with_call_id("c1")
             .with_session(&session);
         assert_eq!((ctx.budget, ctx.call_id), (100, "c1"));
-        let _ = (
-            ToolOutput::ok("a"),
-            ToolOutput::err("b"),
-            ToolOutput::new("c", true),
+        let report = |_: &str| {};
+        let ctx = ctx.with_progress(&report);
+        assert!(ctx.reports_progress());
+        ctx.progress("going");
+        let (ok, err) = (ToolOutput::ok("a"), ToolOutput::err("b"));
+        assert_eq!(
+            (ok.text(), ok.is_error(), ok.bytes()),
+            ("a".into(), false, 1)
         );
+        assert_eq!(
+            (err.text(), err.is_error(), err.spilled()),
+            ("b".into(), true, None)
+        );
+        let parts = vec![Part::Text("c".into()), Part::Text("d".into())];
+        let two = ToolOutput::from_parts(parts, true);
+        assert_eq!((two.text(), two.parts().len()), ("cd".into(), 2));
+        assert_eq!(ToolOutput::new("c", true).into_text(), "c");
+        let named = |part: &Part| match part {
+            Part::Text(text) => text.len(),
+            _ => 0,
+        };
+        assert_eq!(named(&two.parts()[0]), 1);
         let _ = (
             Host::new(Path::new("."), "s1", true),
             Place::Tab,

@@ -13,6 +13,7 @@ use crate::llm::ToolSpec;
 pub use budget::ToolSession;
 pub use command::CommandTool;
 pub use ext::Extensions;
+pub use output::{Part, ToolOutput};
 
 mod args;
 mod atomic;
@@ -26,8 +27,10 @@ mod grep;
 mod hook_run;
 pub mod hooks;
 pub mod mcp;
+mod output;
 mod read;
 mod shell;
+mod shell_live;
 pub mod skills;
 mod walk;
 mod write;
@@ -48,7 +51,13 @@ pub struct ToolCtx<'a> {
     pub call_id: &'a str,
     /// State shared by the tools of one session; `None` outside a session.
     pub session: Option<&'a ToolSession>,
+    /// Where [`ToolCtx::progress`] goes; `None` outside a session.
+    progress: Option<&'a Progress<'a>>,
 }
+
+/// The receiver of a call's progress text (PLAN.md D58): callable from any
+/// thread, it must return at once and never panic.
+pub type Progress<'a> = dyn Fn(&str) + Sync + 'a;
 
 impl<'a> ToolCtx<'a> {
     /// A context outside a session with the default budget.
@@ -59,6 +68,29 @@ impl<'a> ToolCtx<'a> {
             budget: crate::config::DEFAULT_TOOL_OUTPUT_BYTES,
             call_id: "",
             session: None,
+            progress: None,
+        }
+    }
+
+    /// Sends `progress` the text [`ToolCtx::progress`] reports.
+    pub fn with_progress(mut self, progress: &'a Progress<'a>) -> ToolCtx<'a> {
+        self.progress = Some(progress);
+        self
+    }
+
+    /// Does [`ToolCtx::progress`] go anywhere? (Lets a tool skip the work.)
+    pub fn reports_progress(&self) -> bool {
+        self.progress.is_some()
+    }
+
+    /// Reports `text` (new output since the last call) while the tool runs;
+    /// front ends get it as `AgentEvent::ToolProgress`. Live only: never in
+    /// the trace, the result or a request. Callable from the tool's thread
+    /// and from threads it starts; does nothing outside a session and never
+    /// blocks on a slow front end.
+    pub fn progress(&self, text: &str) {
+        if let (Some(progress), false) = (self.progress, text.is_empty()) {
+            progress(text);
         }
     }
 
@@ -75,37 +107,6 @@ impl<'a> ToolCtx<'a> {
     pub fn with_session(mut self, session: &'a ToolSession) -> ToolCtx<'a> {
         self.session = Some(session);
         self
-    }
-}
-
-#[derive(Clone, Debug, PartialEq)]
-#[non_exhaustive]
-pub struct ToolOutput {
-    pub content: String,
-    pub is_error: bool,
-    /// Size of the full output before the budget cut it.
-    pub bytes: usize,
-    /// The spill file holding the full output, when it was cut.
-    pub spilled: Option<String>,
-}
-
-impl ToolOutput {
-    pub fn new(content: impl Into<String>, is_error: bool) -> ToolOutput {
-        let content = content.into();
-        ToolOutput {
-            bytes: content.len(),
-            content,
-            is_error,
-            spilled: None,
-        }
-    }
-
-    pub fn ok(content: impl Into<String>) -> ToolOutput {
-        ToolOutput::new(content, false)
-    }
-
-    pub fn err(content: impl Into<String>) -> ToolOutput {
-        ToolOutput::new(content, true)
     }
 }
 
@@ -374,8 +375,8 @@ mod tests {
     fn registry_runs_and_reports_bad_input() {
         assert_eq!(run(r#"{"text":"hi"}"#, "echo"), ToolOutput::ok("hi"));
         assert_eq!(run("", "echo"), ToolOutput::ok(""));
-        assert!(run("[1]", "echo").is_error);
-        assert!(run("{oops", "echo").content.contains("not valid JSON"));
-        assert!(run("{}", "nope").content.contains("unknown tool"));
+        assert!(run("[1]", "echo").is_error());
+        assert!(run("{oops", "echo").text().contains("not valid JSON"));
+        assert!(run("{}", "nope").text().contains("unknown tool"));
     }
 }

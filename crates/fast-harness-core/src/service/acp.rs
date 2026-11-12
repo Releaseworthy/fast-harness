@@ -142,6 +142,11 @@ fn tail(event: &AgentEvent) -> Option<Value> {
             json!({"sessionUpdate": "tool_call_update", "toolCallId": id, "title": name,
                 "name": name, "kind": tool_kind(name), "status": "in_progress", "rawInput": raw})
         }
+        // ACP's content replaces the call's content: the client shows the
+        // newest chunk until the result replaces it with the whole text.
+        AgentEvent::ToolProgress { id, chunk } => json!({"sessionUpdate": "tool_call_update",
+            "toolCallId": id, "status": "in_progress",
+            "content": [{"type": "content", "content": text(chunk)}]}),
         AgentEvent::ToolResult {
             id,
             content,

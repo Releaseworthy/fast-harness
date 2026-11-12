@@ -13,7 +13,7 @@ use crate::agent::turn::{ms, traced, Res, Turn};
 use crate::agent::Agent;
 use crate::events::AgentEvent;
 use crate::llm::find::{self, FIND_TOOLS};
-use crate::tools::{ToolCtx, ToolOutput, ToolSession};
+use crate::tools::{Progress, ToolCtx, ToolOutput, ToolSession};
 use crate::types::{Block, Message, Role};
 
 /// What the tool threads of one step share.
@@ -86,10 +86,10 @@ impl Turn<'_> {
         for (call, (output, duration_ms)) in calls.iter().zip(results) {
             let block = Block::ToolResult {
                 call_id: call.id.clone(),
-                content: output.content,
-                is_error: output.is_error,
+                content: output.text().into_owned(),
+                is_error: output.is_error(),
             };
-            let size = (output.bytes, output.spilled.as_deref());
+            let size = (output.bytes(), output.spilled());
             let message = Message {
                 role: Role::Tool,
                 content: vec![block.clone()],
@@ -196,12 +196,18 @@ fn run_batch(
             let (tx, call) = (tx.clone(), &calls[index]);
             scope.spawn(move || {
                 let started = Instant::now();
+                // An unbounded send: never blocks on the agent thread, and a
+                // closed channel (cannot happen in the scope) is ignored.
+                let progress = |text: &str| {
+                    let _ = tx.send(Msg::Progress(index, text.to_string()));
+                };
                 let (output, records, context) = match not_loaded(run.agent, &call.name, run.loaded)
                 {
                     Some(error) => (error, Vec::new(), Vec::new()),
-                    None => run_one(run, call),
+                    None => run_one(run, call, &progress),
                 };
-                let _ = tx.send((index, (output, ms(started), records, context)));
+                let done = (output, ms(started), records, context);
+                let _ = tx.send(Msg::Done(index, done));
             });
         }
         drop(tx);
@@ -209,27 +215,37 @@ fn run_batch(
     });
 }
 
-/// Takes the results of one batch as they end, forwarding subagent events
-/// every `TICK` while its calls run.
+/// What a tool thread sends the agent thread. One channel keeps the order:
+/// a call's progress is sent before its result (PLAN.md D58).
+enum Msg {
+    Progress(usize, String),
+    Done(usize, Done),
+}
+
+/// Takes the results of one batch as they end, sending each progress text
+/// as it comes and forwarding subagent events every `TICK`.
 fn collect(
     run: &Run<'_>,
     calls: &[Call],
-    rx: &mpsc::Receiver<(usize, Done)>,
+    rx: &mpsc::Receiver<Msg>,
     results: &mut [Option<Done>],
     sink: &mut dyn FnMut(AgentEvent),
 ) {
     loop {
         // Subagents' events reach the sink while their tool call runs.
-        let (index, done) = match rx.recv_timeout(TICK) {
-            Ok(done) => done,
-            Err(RecvTimeoutError::Timeout) => {
-                run.agent.forward_events(sink);
-                continue;
+        match rx.recv_timeout(TICK) {
+            Ok(Msg::Progress(index, chunk)) if results[index].is_none() => {
+                let id = calls[index].id.clone();
+                sink(AgentEvent::ToolProgress { id, chunk });
             }
+            Ok(Msg::Progress(..)) => {}
+            Ok(Msg::Done(index, done)) => {
+                run.agent.forward_events(sink);
+                finish(calls, index, done, results, sink);
+            }
+            Err(RecvTimeoutError::Timeout) => run.agent.forward_events(sink),
             Err(RecvTimeoutError::Disconnected) => break,
-        };
-        run.agent.forward_events(sink);
-        finish(calls, index, done, results, sink);
+        }
     }
 }
 
@@ -243,8 +259,8 @@ fn finish(
 ) {
     sink(AgentEvent::ToolResult {
         id: calls[index].id.clone(),
-        content: done.0.content.clone(),
-        is_error: done.0.is_error,
+        content: done.0.text().into_owned(),
+        is_error: done.0.is_error(),
         duration_ms: done.1,
     });
     results[index] = Some(done);
@@ -267,15 +283,17 @@ fn not_loaded(agent: &Agent, name: &str, loaded: Option<&[String]>) -> Option<To
 /// A panicking tool becomes an error result instead of ending the turn.
 /// The budget of each call comes from `Config::tool_budget` (PLAN.md D37);
 /// PreToolUse and PostToolUse hooks wrap it (D44).
-fn run_one(run: &Run<'_>, call: &Call) -> (ToolOutput, Vec<Record>, Vec<String>) {
+fn run_one(
+    run: &Run<'_>,
+    call: &Call,
+    progress: &Progress<'_>,
+) -> (ToolOutput, Vec<Record>, Vec<String>) {
     let agent = run.agent;
-    let ctx = ToolCtx {
-        cwd: &agent.parts.cwd,
-        cancel: run.cancel,
-        budget: agent.parts.config.tool_budget(&call.name),
-        call_id: &call.id,
-        session: Some(run.session),
-    };
+    let ctx = ToolCtx::new(&agent.parts.cwd, run.cancel)
+        .with_budget(agent.parts.config.tool_budget(&call.name))
+        .with_call_id(&call.id)
+        .with_session(run.session)
+        .with_progress(progress);
     let go = || match !agent.parts.extensions.has_hooks() {
         true => (
             agent.tools.run(&call.name, &call.arguments, &ctx),
