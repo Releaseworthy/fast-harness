@@ -7,6 +7,7 @@ mod accounts;
 mod app;
 mod appearance;
 mod config_page;
+mod crash;
 mod format;
 mod keys;
 mod mirror;
@@ -57,6 +58,7 @@ fn working_dir() -> Option<PathBuf> {
 /// Wires the window and runs the event loop; `note` (the UI files report of
 /// the live variant) goes to the banner when nothing else is there.
 fn run(ui: MainWindow, note: Option<String>) {
+    crash::install();
     ui.set_version(env!("CARGO_PKG_VERSION").into());
     let stop = Arc::new(AtomicBool::new(false));
     start_runtime(&ui, &stop);

@@ -8,7 +8,7 @@ use serde_json::{json, Value};
 use crate::config::Config;
 use crate::llm::catalog;
 
-/// `config` with dotted `key` (the camelCase names of `settings.json`, e.g.
+/// `config` with dotted `key` (the camelCase names of `config.json`, e.g.
 /// `maxSteps` or `compaction.percent`) set to `value`. A string is parsed as
 /// JSON when the key does not hold a string (`"40"` for a number). An
 /// unknown key or a value of the wrong type is an error and changes nothing.

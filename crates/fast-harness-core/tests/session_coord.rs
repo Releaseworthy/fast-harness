@@ -213,6 +213,80 @@ fn send_to_a_running_session_appends_to_its_inbox() {
     drop(held);
 }
 
+/// A process that is not this one and outlives the test's checks.
+fn other_process() -> std::process::Child {
+    let mut command = if cfg!(windows) {
+        let mut ping = std::process::Command::new("ping");
+        ping.args(["-n", "30", "127.0.0.1"]);
+        ping
+    } else {
+        let mut sleep = std::process::Command::new("sleep");
+        sleep.arg("30");
+        sleep
+    };
+    let quiet = std::process::Stdio::null;
+    command.stdout(quiet()).stderr(quiet()).spawn().unwrap()
+}
+
+/// Two processes never write one session log: a turn is refused while the
+/// live lock of another process is there, and runs once that process is gone.
+#[test]
+fn a_turn_is_refused_while_another_process_runs_the_session() {
+    let env = env("coord-two-writers");
+    let transport = Arc::new(ScriptedTransport::new(vec![text_reply("late")]));
+    let mut conv = Conversation::create(&env.home, &env.cwd, None).unwrap();
+    let mut other = other_process();
+    let end = |other: &mut std::process::Child| {
+        let _ = other.kill();
+        let _ = other.wait();
+    };
+    let Some(started) = fast_harness_core::platform::process_start(other.id()) else {
+        // No process start time on this platform: no lock is ever live.
+        return end(&mut other);
+    };
+    let held = Held::take(&conv.log_path, &conv.id, "x", 1).unwrap();
+    let theirs = Lock {
+        pid: other.id(),
+        started,
+        program: "fast-harness-gui.exe".into(),
+        ..held.lock().clone()
+    };
+    std::mem::forget(held);
+    let path = coord::lock_path(&conv.log_path);
+    fs::write(&path, serde_json::to_string(&theirs).unwrap()).unwrap();
+    let before = fs::read(&conv.log_path).unwrap();
+    let mut errors = Vec::new();
+    let turn = |conv: &mut Conversation, errors: &mut Vec<String>| {
+        let mut sink = |event: AgentEvent| {
+            if let AgentEvent::Error(text) = event {
+                errors.push(text);
+            }
+        };
+        agent(&transport, &env).run_turn(conv, "go", &AtomicBool::new(false), &mut sink)
+    };
+    assert_eq!(turn(&mut conv, &mut errors), TurnOutcome::Failed);
+    assert!(
+        errors[0].contains("is running in fast-harness-gui.exe"),
+        "{errors:?}"
+    );
+    assert!(transport.requests().is_empty());
+    assert_eq!(fs::read(&conv.log_path).unwrap(), before, "nothing logged");
+    assert!(path.exists(), "the other process keeps its lock");
+    end(&mut other);
+    assert_eq!(turn(&mut conv, &mut errors), TurnOutcome::Done);
+    assert_eq!(errors.len(), 1);
+}
+
+#[test]
+fn resume_refuses_an_id_that_is_a_path() {
+    let env = env("coord-resume-id");
+    for id in ["..\\..\\accounts", "../x", "a.b", ""] {
+        let err = Conversation::resume(&env.home, &env.cwd, id).err();
+        let kind = err.map(|err| err.kind());
+        assert_eq!(kind, Some(std::io::ErrorKind::InvalidInput), "{id}");
+    }
+}
+
 #[test]
 fn wait_returns_when_the_lock_goes() {
     let env = env("coord-wait");

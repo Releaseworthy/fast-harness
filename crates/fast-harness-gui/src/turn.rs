@@ -264,10 +264,15 @@ fn finish(id: &str, ended: Ended) {
         let next = match ended {
             Ended::Turn(conv, outcome, leftover) => run.end(Some(*conv), outcome, leftover),
             Ended::Lost => {
-                show_error(
-                    ui,
-                    "The turn stopped on an internal error; the session was reloaded.",
+                let log = crate::crash::path().map_or_else(
+                    || crate::crash::FILE_NAME.to_string(),
+                    |path| path.display().to_string(),
                 );
+                let text = format!(
+                    "The turn stopped on an internal error; the session was reloaded. \
+                    What happened is in {log}."
+                );
+                show_error(ui, text);
                 let conv = app.rt.open_conversation(&run.cwd, Some(id), false).ok();
                 run.end(conv, TurnOutcome::Failed, Vec::new())
             }

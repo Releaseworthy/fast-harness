@@ -92,6 +92,12 @@ impl Conversation {
     /// Reopens session `id` of `cwd`: replays and repairs its messages and
     /// continues its log.
     pub fn resume(app_home: &Path, cwd: &Path, id: &str) -> io::Result<Conversation> {
+        // The id comes from a command line or a `serve` client and names a
+        // file that is appended to: it must stay inside the sessions folder.
+        if !session::valid_id(id) {
+            let message = format!("not a session id: {id}");
+            return Err(io::Error::new(io::ErrorKind::InvalidInput, message));
+        }
         let log_path = session::log_path(app_home, cwd, id);
         let mut messages = session::replay(&log_path)?;
         repair(&mut messages);

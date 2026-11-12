@@ -98,7 +98,7 @@ idle `end_turn`). A `session/prompt` to a session that is running is queued as a
 
 Config options: `model` (category `model`, the cached model list plus the current one) and
 `effort` (category `thought_level`, `default` plus the model's levels). Any other settings key
-of `settings.json` (`maxSteps`, `compaction.percent`, `toolOutputBytes`) is accepted too, for
+of `config.json` (`maxSteps`, `compaction.percent`, `toolOutputBytes`) is accepted too, for
 that session only; a string is parsed as JSON when the key does not hold a string. A change
 reaches the next turn.
 

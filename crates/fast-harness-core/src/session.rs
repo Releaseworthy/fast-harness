@@ -98,6 +98,12 @@ pub fn dir(app_home: &Path, cwd: &Path) -> PathBuf {
     app_home.join("sessions").join(slug(cwd))
 }
 
+/// A session id is one file name stem: no separator and no dot, so it cannot
+/// name a path outside its sessions folder.
+pub fn valid_id(id: &str) -> bool {
+    !id.is_empty() && !id.contains(['/', '\\', '.'])
+}
+
 pub fn log_path(app_home: &Path, cwd: &Path, id: &str) -> PathBuf {
     dir(app_home, cwd).join(format!("{id}.jsonl"))
 }

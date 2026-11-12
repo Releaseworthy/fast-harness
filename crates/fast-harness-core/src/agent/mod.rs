@@ -37,6 +37,7 @@ use crate::config::Config;
 use crate::events::{AgentEvent, TurnOutcome};
 use crate::http::Transport;
 use crate::llm::Provider;
+use crate::session::lock;
 use crate::tools::{self, Registry};
 pub use child_run::ChildStats;
 pub use child_tools::{OUTPUT as AGENT_OUTPUT, SEND as AGENT_SEND, STOP as AGENT_STOP};
@@ -48,6 +49,21 @@ pub use context::Context;
 pub use conversation::{repair, Conversation, MISSING_RESULT, NOTHING_TO_RESUME};
 pub use inbox::{Inbox, Input, CONTEXT as CONTEXT_KIND, STEER as STEER_KIND};
 pub use subagent::{SubagentTool, NAME as SUBAGENT};
+
+/// The note of a turn refused because another process runs a turn of this
+/// session (its live `<id>.lock`, PLAN.md D49): two writers would interleave
+/// their events in one log. Nothing is logged. A subagent session has no lock.
+fn running_elsewhere(conv: &Conversation) -> Option<String> {
+    if conv.depth > 0 {
+        return None;
+    }
+    let lock = lock::live_lock(&conv.log_path).filter(|lock| lock.pid != std::process::id())?;
+    Some(format!(
+        "session {} is running in {} (pid {}): wait for it (`fast-harness wait {}`) or \
+        reach it with `fast-harness send`",
+        conv.id, lock.program, lock.pid, conv.id
+    ))
+}
 
 /// The provider and credential source of a model id (`<provider id>/<id>`
 /// included); a subagent with another model than its parent uses it.
@@ -196,6 +212,10 @@ impl Agent {
         inbox: &mut Inbox,
         sink: &mut dyn FnMut(AgentEvent),
     ) -> TurnOutcome {
+        if let Some(note) = running_elsewhere(conv) {
+            sink(AgentEvent::Error(note));
+            return TurnOutcome::Failed;
+        }
         inbox.attach(conv, &self.parts.cwd);
         let outcome = self.turn_loop(conv, first, cancel, inbox, sink);
         if cancel.load(Ordering::Relaxed) || inbox.stopped() {

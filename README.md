@@ -43,6 +43,20 @@ Accounts switch automatically when one hits its rate limit. Settings live in `~/
 
 Using a Claude subscription (OAuth) outside Claude Code works only by sending Claude Code's identity, as other third-party clients do; Anthropic may restrict that. API keys carry no such risk.
 
+## Safety
+
+There is no approval step and no sandbox: the model's tool calls run at once, with your user's rights. `shell` runs any command, and `read`, `write`, `edit`, `grep` and `glob` take absolute paths, so they reach outside the working folder. Use it on code you trust, under version control, and in a virtual machine or a container for anything else.
+
+- The `AGENTS.md` files of a repository become part of the system prompt, so a repository you did not write can steer the agent.
+- A repository's `.fast-harness` folder (settings, tools, hooks, MCP servers, skills, panels) loads only after `fast-harness trust` (or `/trust`).
+- A `PreToolUse` hook can refuse or rewrite a tool call before it runs: [docs/extending.md](docs/extending.md) has an example that blocks destructive commands.
+
+## Troubleshooting
+
+- `fast-harness doctor` lists what loaded, from where, and what was skipped and why.
+- `fast-harness trace latest` shows every request, tool call and step of the newest session; with `"wire": true` the request and response bodies are kept too.
+- A panic in the desktop window is appended to `~/.fast-harness/crash.log`; read it before attaching it to a report.
+
 ## Licence
 
 MIT OR Apache-2.0, at your option. The GUI uses [Slint](https://slint.dev) under its royalty-free licence. The icon font in `crates/fast-harness-gui/fonts/` is a subset of [Nerd Fonts](https://www.nerdfonts.com) (SIL OFL 1.1; glyphs from Codicons CC BY 4.0, Material Design Icons Apache 2.0 and Octicons MIT, see `crates/fast-harness-gui/fonts/NOTES.md`).

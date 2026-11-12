@@ -110,7 +110,7 @@ fn sub_dirs(dir: &Path) -> Vec<PathBuf> {
 
 /// The log of session `id` in any directory under `<home>/sessions`.
 pub fn find(home: &Path, id: &str) -> Option<PathBuf> {
-    if id.is_empty() || id.contains(['/', '\\', '.']) {
+    if !super::valid_id(id) {
         return None;
     }
     (sub_dirs(&home.join("sessions")).into_iter())

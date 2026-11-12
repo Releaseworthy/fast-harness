@@ -7,6 +7,7 @@ Rules for anyone (human or agent) changing this repo. Read `PLAN.md` first: it h
 - Windows: run commands with PowerShell (`pwsh`).
 - Every change ends green: `cargo fmt --all -- --check`, `cargo clippy --workspace --all-targets -- -D warnings`, `cargo test --workspace`.
 - Network tests that call real services are `#[ignore]` and run by hand.
+- A change to a request body, the find tool, compaction or subagents, and every release tag, also passes `pwsh scripts/live-smoke.ps1` (six small live calls): scripted tests cannot tell that the API accepts a body (the `find_tools` result was an HTTP 400 on Claude until 2026-11-12).
 
 ## Code
 
