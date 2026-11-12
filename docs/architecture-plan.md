@@ -193,13 +193,15 @@ Phases 22 and 23 touch no format and no contract and can start as soon as G5 and
 | Phase | State | Commits | Decision |
 |---|---|---|---|
 | 22 | done 2026-11-12 | 9f12d48 | PLAN.md D54 |
-| 23 | done 2026-11-13 | 875f10b (store module, writers, session lock), b536da2 (lock errors at once), 79efd48 (accounts) | PLAN.md D55, D56 |
+| 23 | done 2026-11-13 | 875f10b (store module, writers, session lock), b536da2 (lock errors at once), 79efd48 (accounts), 27bc979 and da69164 (reads and renames retried on Windows) | PLAN.md D55, D56 |
 
-Checked for both: `fmt`, `clippy`, 590 tests passed, 0 failed, 9 ignored on Windows; `tests/parallel_edits.rs` passes un-ignored; `fast-harness accounts` with the new binary reads the real store and rewrites nothing.
+Checked for both: `fmt`, `clippy`, 590 tests passed, 0 failed, 9 ignored on Windows; CI green on Windows and Linux at da69164 (run 43269200480); `tests/parallel_edits.rs` passes un-ignored; `fast-harness accounts` with the new binary reads the real store and rewrites nothing.
+
+Found by CI, not locally: on the Windows runner `fs::read` answered "Access is denied" while other threads replaced the file by rename (runs 43266120877 and 43267804839). Every reader of a file written through `store::write_atomic` now reads through `store::read` or `store::read_to_string`, which try again for up to 2 s.
 
 Open from phases 22 and 23:
 - `scripts/live-smoke.ps1` was not run: every call answered HTTP 429 (the account's 5 hour limit was at 100%). Neither phase touches a request body.
-- Nothing was run on Linux or macOS before the push; the symlink path and the Unix permission copy of `tools/atomic.rs` have no test.
+- Linux ran only in CI (the secret store tests are skipped there); macOS not at all. The symlink path and the Unix permission copy of `tools/atomic.rs` have no test.
 - `Workspaces::save` merges against the file, but does not refresh its own list: a folder this process added and another process removed is added again by this process's next save.
 - Still written with plain `fs::write`: `config/index.rs` (the `index.json` cache), `reflect/patch.rs`, `app/reflect.rs`, and the write-once files of `tools/budget.rs` (spill) and `trace/wire.rs` (wire capture).
 - On Linux `session::lock::live_lock` still removes a lock it judges stale without the re-read (the start time is unknown there).
