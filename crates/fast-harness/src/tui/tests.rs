@@ -224,10 +224,11 @@ fn keys_send_newline_cancel_and_quit() {
     );
     let ctrl_c = |ui: &mut Ui| press(ui, KeyCode::Char('c'), KeyModifiers::CONTROL);
     assert_eq!(ctrl_c(&mut ui), Action::Cancel);
+    // Enter while a turn runs steers it (PLAN.md D39).
     typed(&mut ui, "x");
     assert_eq!(
         press(&mut ui, KeyCode::Enter, KeyModifiers::NONE),
-        Action::None
+        Action::Steer("x".into())
     );
     ui.running = false;
     assert_eq!(ctrl_c(&mut ui), Action::None);

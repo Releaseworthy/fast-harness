@@ -109,6 +109,18 @@ impl TraceWriter {
         self.emit(kind::USER_MESSAGE, data)
     }
 
+    /// A user text added inside a turn (version 8): `kind` `steer` or
+    /// `context`; replay adds it to the message before it (D39).
+    pub fn user_text(&mut self, turn: u32, message: &Message, kind: &str) -> io::Result<u64> {
+        let data = json!({ "turn": turn, "message": value(message)?, "kind": kind });
+        self.emit(kind::USER_MESSAGE, data)
+    }
+
+    /// The start of a turn that resumes the history without a user message.
+    pub fn turn_resume(&mut self, turn: u32) -> io::Result<u64> {
+        self.emit(kind::TURN_START, json!({ "turn": turn, "resume": true }))
+    }
+
     pub fn step_start(&mut self, turn: u32, step: u32) -> io::Result<u64> {
         self.emit(kind::STEP_START, json!({ "turn": turn, "step": step }))
     }

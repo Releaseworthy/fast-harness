@@ -64,7 +64,8 @@ fn exit_code(outcome: TurnOutcome) -> ExitCode {
         TurnOutcome::Failed
         | TurnOutcome::StepLimit
         | TurnOutcome::Truncated
-        | TurnOutcome::ContextOverflow => ExitCode::FAILURE,
+        | TurnOutcome::ContextOverflow
+        | TurnOutcome::Paused => ExitCode::FAILURE,
         TurnOutcome::Cancelled => ExitCode::from(130),
     }
 }

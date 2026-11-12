@@ -4,6 +4,7 @@ use std::io;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Instant;
 
+use crate::agent::inbox::{self, Inbox};
 use crate::agent::{compact, repair, Agent, Conversation};
 use crate::auth::Lease;
 use crate::events::{AgentEvent, TurnOutcome};
@@ -29,6 +30,8 @@ pub(super) struct Turn<'a> {
     pub agent: &'a Agent,
     pub conv: &'a mut Conversation,
     pub cancel: &'a AtomicBool,
+    /// Steers, follow-ups and pauses from the front end (PLAN.md D39).
+    pub inbox: &'a mut Inbox,
     pub sink: &'a mut dyn FnMut(AgentEvent),
     pub turn: u32,
     pub steps: u32,
@@ -47,12 +50,26 @@ pub(super) struct Turn<'a> {
     pub last_error: Option<String>,
 }
 
+/// How a turn begins: with a user text, or by resuming a history that ends
+/// with tool results or user text (PLAN.md D39).
+#[derive(Clone, Copy)]
+pub(super) enum Start<'t> {
+    Text(&'t str),
+    Resume,
+}
+
+/// What a turn runs on besides the agent and the conversation.
+pub(super) struct Io<'a> {
+    pub cancel: &'a AtomicBool,
+    pub inbox: &'a mut Inbox,
+    pub sink: &'a mut dyn FnMut(AgentEvent),
+}
+
 pub(super) fn run(
     agent: &Agent,
     conv: &mut Conversation,
-    text: &str,
-    cancel: &AtomicBool,
-    sink: &mut dyn FnMut(AgentEvent),
+    start: Start<'_>,
+    io: Io<'_>,
 ) -> TurnOutcome {
     let started = Instant::now();
     conv.turn += 1;
@@ -60,8 +77,9 @@ pub(super) fn run(
         agent,
         turn: conv.turn,
         conv,
-        cancel,
-        sink,
+        cancel: io.cancel,
+        inbox: io.inbox,
+        sink: io.sink,
         steps: 0,
         usage: Usage::default(),
         continued: false,
@@ -71,7 +89,7 @@ pub(super) fn run(
         request: None,
         last_error: None,
     };
-    let outcome = turn.run(text).unwrap_or_else(|message| {
+    let outcome = turn.run(start).unwrap_or_else(|message| {
         (turn.sink)(AgentEvent::Error(message));
         TurnOutcome::Failed
     });
@@ -86,15 +104,24 @@ pub(super) fn outcome_word(outcome: TurnOutcome) -> &'static str {
         TurnOutcome::StepLimit => "step_limit",
         TurnOutcome::Truncated => "truncated",
         TurnOutcome::ContextOverflow => "context_overflow",
+        TurnOutcome::Paused => "paused",
     }
 }
 
 impl Turn<'_> {
-    fn run(&mut self, text: &str) -> Res<TurnOutcome> {
-        traced(self.conv.trace.turn_start(self.turn))?;
+    fn run(&mut self, start: Start<'_>) -> Res<TurnOutcome> {
+        let text = match start {
+            Start::Text(text) => Some(text),
+            Start::Resume => None,
+        };
+        let trace = &mut self.conv.trace;
+        traced(match text {
+            Some(_) => trace.turn_start(self.turn),
+            None => trace.turn_resume(self.turn),
+        })?;
         (self.sink)(AgentEvent::TurnStart { turn: self.turn });
         repair(&mut self.conv.messages);
-        if let Some(instructions) = compact::command(text) {
+        if let Some(instructions) = text.and_then(compact::command) {
             return self.manual_compact(instructions);
         }
         let agent = self.agent;
@@ -103,12 +130,28 @@ impl Turn<'_> {
         // The header (with the new context stamp) goes first: a crash before
         // the user message then cannot repeat the context update on resume.
         traced(self.conv.header_if_changed())?;
-        if let Some(outcome) = self.auto_compact(false)? {
+        // A resume is mid-task: a compaction then asks to continue it.
+        if let Some(outcome) = self.auto_compact(text.is_none())? {
             return Ok(outcome);
         }
-        let message = user_message(note, text);
-        traced(self.conv.trace.user_message(self.turn, &message))?;
-        self.conv.messages.push(message);
+        match text {
+            Some(text) => {
+                let message = user_message(note, text);
+                traced(self.conv.trace.user_message(self.turn, &message))?;
+                self.conv.messages.push(message);
+            }
+            None => {
+                if let Some(note) = note {
+                    self.add_user_text(note.trim_end(), inbox::CONTEXT)?;
+                }
+            }
+        }
+        self.steps_loop()
+    }
+
+    /// Steps until one ends the turn. At each boundary (tool results
+    /// complete): cancel, step limit, pause, compaction, then steers.
+    fn steps_loop(&mut self) -> Res<TurnOutcome> {
         loop {
             if self.cancel.load(Ordering::Relaxed) {
                 return Ok(TurnOutcome::Cancelled);
@@ -116,19 +159,24 @@ impl Turn<'_> {
             if self.steps >= self.agent.parts.config.max_steps {
                 return Ok(TurnOutcome::StepLimit);
             }
+            if self.inbox.take_pause() {
+                // A steer that came with the pause is kept for the resume.
+                self.apply_steers()?;
+                return Ok(TurnOutcome::Paused);
+            }
             // Between steps the tool results are complete (PLAN.md D38).
             if self.steps > 0 {
                 if let Some(outcome) = self.auto_compact(true)? {
                     return Ok(outcome);
                 }
             }
+            self.apply_steers()?;
             self.steps += 1;
             if let Some(outcome) = self.step()? {
                 return Ok(outcome);
             }
         }
     }
-
     /// One model call and its tools; `Some` ends the turn.
     fn step(&mut self) -> Res<Option<TurnOutcome>> {
         let (turn, step, started) = (self.turn, self.steps, Instant::now());
@@ -175,6 +223,8 @@ impl Turn<'_> {
             StopReason::MaxTokens => return Ok(Some(TurnOutcome::Truncated)),
             StopReason::PauseTurn => {}
             StopReason::ContextWindow => return self.window_full(),
+            // A steer that came during the last step starts the next one.
+            _ if self.apply_steers()? => {}
             _ => return Ok(Some(TurnOutcome::Done)),
         }
         Ok(None)

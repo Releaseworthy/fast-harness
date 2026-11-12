@@ -29,7 +29,7 @@ use serde_json::Value;
 /// result cut to its budget, `spilled` (the spill file, PLAN.md D37).
 /// Version 7: `compaction` events (PLAN.md D38) replace the history before
 /// them on resume; `request/header` is written before `user/message`.
-pub const VERSION: u32 = 7;
+pub const VERSION: u32 = 8;
 
 /// The oldest version the reader accepts; a resumed log keeps its own header.
 pub const MIN_VERSION: u32 = 1;

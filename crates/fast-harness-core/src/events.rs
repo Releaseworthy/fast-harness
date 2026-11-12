@@ -18,10 +18,19 @@ pub enum TurnOutcome {
     Truncated,
     /// The prompt no longer fits the model's context window.
     ContextOverflow,
+    /// A pause arrived: the step's tools finished and the model was not
+    /// called again; `Agent::resume_turn` goes on (PLAN.md D39).
+    Paused,
 }
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum AgentEvent {
+    /// A steer or follow-up text the turn took from its inbox (the first
+    /// text of `run_turn` is the caller's and has no event).
+    UserInput {
+        text: String,
+        steer: bool,
+    },
     TurnStart {
         turn: u32,
     },

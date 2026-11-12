@@ -92,7 +92,7 @@ fn hint_text(ui: &Ui) -> String {
     }
     match ui.screen {
         Screen::Chat if ui.picker.is_some() => "↑↓ PgUp PgDn choose · Enter pick · Esc close".into(),
-        Screen::Chat if ui.running => "Esc cancel · Ctrl+P model · Ctrl+E effort · PgUp/PgDn scroll · Ctrl+T thinking · F3 trace · F5 theme · F6 grey".into(),
+        Screen::Chat if ui.running => "Enter steer · Alt+Enter queue · Ctrl+G pause · Ctrl+Backspace unqueue · Esc cancel · Ctrl+P model · Ctrl+E effort · PgUp/PgDn scroll · Ctrl+T thinking · F3 trace · F5 theme · F6 grey".into(),
         Screen::Chat => "Enter send · Alt+Enter newline · Ctrl+P model · Ctrl+E effort · Ctrl+T thinking · Ctrl+N new · Ctrl+O sessions · F2 accounts · F3 trace · F5 theme · F6 grey".into(),
         Screen::Accounts if ui.account_provider.is_none() => "↑↓ choose · Enter open provider · r read usage · Esc back".into(),
         Screen::Accounts => "Enter use · l Claude sign-in · g Google sign-in · k add key · d remove · r read usage · Esc providers".into(),
@@ -134,15 +134,18 @@ pub fn draw(frame: &mut Frame, ui: &mut Ui, view: &mut View<'_>, now_ms: u64) {
     frame.render_widget(Block::default().style(st.base()), area);
     let width = usize::from(area.width);
     let (rows, cursor) = ui.input.layout(width.saturating_sub(2));
-    let input_height = if ui.screen == Screen::Chat {
+    let chat = ui.screen == Screen::Chat;
+    let input_height = if chat {
         rows.len().min(INPUT_ROWS) as u16 + 2
     } else {
         0
     };
-    let [head, tabs, body, input, hint] = Layout::vertical([
+    let queue_rows = if chat { ui.queue_rows() } else { Vec::new() };
+    let [head, tabs, body, queue, input, hint] = Layout::vertical([
         Constraint::Length(1),
         Constraint::Length(1),
         Constraint::Min(1),
+        Constraint::Length(queue_rows.len() as u16),
         Constraint::Length(input_height),
         Constraint::Length(1),
     ])
@@ -153,6 +156,10 @@ pub fn draw(frame: &mut Frame, ui: &mut Ui, view: &mut View<'_>, now_ms: u64) {
     match ui.screen {
         Screen::Chat => {
             draw_transcript(frame, ui, view, body);
+            let lines: Vec<Line> = (queue_rows.iter())
+                .map(|row| Line::styled(clip(row, width), st.dim()))
+                .collect();
+            frame.render_widget(Paragraph::new(lines), queue);
             draw_input(frame, ui, &rows, cursor, input);
             picker::draw(frame, ui, input, body);
         }

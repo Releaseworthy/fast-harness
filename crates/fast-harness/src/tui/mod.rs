@@ -17,6 +17,9 @@ mod picker_tests;
 mod screens;
 #[cfg(test)]
 mod scroll_tests;
+mod steer;
+#[cfg(test)]
+mod steer_tests;
 #[cfg(test)]
 mod tabs_tests;
 #[cfg(test)]

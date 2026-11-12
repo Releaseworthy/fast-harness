@@ -45,6 +45,12 @@ pub enum Action {
     None,
     Quit,
     Send(String),
+    /// Enter while a turn runs: steer it at the next step (PLAN.md D39).
+    Steer(String),
+    /// Ctrl+G while a turn runs: stop after this step's tools.
+    Pause,
+    /// `/resume`: continue a paused, cancelled or interrupted turn.
+    ResumeTurn,
     Cancel,
     NewSession,
     /// Load the data of a screen and show it.
@@ -72,6 +78,10 @@ pub struct Ui {
     pub screen: Screen,
     pub input: Input,
     pub running: bool,
+    /// Follow-ups queued with Alt+Enter, started in order after a turn.
+    pub queued: Vec<String>,
+    /// Steers sent to the running turn and not read yet.
+    pub steering: Vec<String>,
     pub quit_armed: bool,
     pub show_thinking: bool,
     /// First transcript line shown; `None` follows the bottom.
@@ -123,6 +133,8 @@ impl Ui {
             screen: Screen::Chat,
             input: Input::default(),
             running: false,
+            queued: Vec::new(),
+            steering: Vec::new(),
             quit_armed: false,
             show_thinking: false,
             top: None,
@@ -305,6 +317,9 @@ impl Ui {
         let alt = key.modifiers.contains(KeyModifiers::ALT);
         match key.code {
             KeyCode::Esc if self.running => return Action::Cancel,
+            KeyCode::Enter if alt && !ctrl && self.running => return self.queue(),
+            KeyCode::Char('g') if ctrl && !alt && self.running => return Action::Pause,
+            KeyCode::Backspace if ctrl && !self.queued.is_empty() => self.drop_queued(),
             KeyCode::Enter if alt || ctrl || key.modifiers.contains(KeyModifiers::SHIFT) => {
                 self.input.insert("\n")
             }
@@ -354,12 +369,15 @@ impl Ui {
         if self.input.text().trim().is_empty() {
             return Action::None;
         }
-        if self.running {
-            self.status = "a turn is running: wait or press Esc to cancel it".into();
-            return Action::None;
-        }
         self.top = None;
-        Action::Send(self.input.submit())
+        if self.running {
+            return Action::Steer(self.input.submit());
+        }
+        let text = self.input.submit();
+        if text.trim() == super::steer::RESUME_COMMAND {
+            return Action::ResumeTurn;
+        }
+        Action::Send(text)
     }
 
     fn new_session(&mut self) -> Action {

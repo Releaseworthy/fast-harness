@@ -8,7 +8,7 @@ use std::sync::Arc;
 
 use fast_harness_core::accounts::model::Provider;
 use fast_harness_core::accounts::providers::ClientState;
-use fast_harness_core::agent::{Agent, Conversation};
+use fast_harness_core::agent::{Agent, Conversation, Inbox, Input};
 use fast_harness_core::app::Runtime;
 use fast_harness_core::events::{AgentEvent, TurnOutcome};
 use fast_harness_core::llm::anthropic::ModelInfo;
@@ -26,7 +26,8 @@ pub enum Msg {
     Term(Event),
     TermGone(String),
     Agent(AgentEvent),
-    TurnDone(Box<Conversation>, TurnOutcome),
+    /// The conversation, the outcome and the inbox texts no turn used.
+    TurnDone(Box<Conversation>, TurnOutcome, Vec<String>),
     /// The label of the signed-in account, or the error.
     Login(Result<String, String>),
     Polled(usize),
@@ -45,6 +46,8 @@ pub struct Tui {
     pub cache: Cache,
     pub tx: Sender<Msg>,
     cancel: Arc<AtomicBool>,
+    /// The sender of the running turn's inbox (PLAN.md D39).
+    pub(super) inbox: Option<Sender<Input>>,
     login_cancel: Option<Arc<AtomicBool>>,
     /// Makes the job of one live model list fetch (tests swap it).
     pub fetcher: fn(&Runtime) -> worker::FetchJob,
@@ -85,6 +88,7 @@ impl Tui {
             cache: Cache::default(),
             tx,
             cancel: Arc::new(AtomicBool::new(false)),
+            inbox: None,
             login_cancel: None,
             fetcher: worker::live_fetch,
             quit: false,
@@ -99,8 +103,12 @@ impl Tui {
         self.transcript.revision += 1;
         self.session = conv.id.clone();
         self.log_path = conv.log_path.clone();
+        let unfinished = conv.unfinished;
         self.conv = Some(conv);
         self.ui.top = None;
+        if let Some(state) = unfinished {
+            self.ui.status = format!("the last turn was {}: /resume continues it", state.word());
+        }
     }
 
     pub fn note(&mut self, kind: NoteKind, text: impl Into<String>) {
@@ -136,9 +144,14 @@ impl Tui {
                 ) {
                     self.refresh_accounts();
                 }
+                if let AgentEvent::UserInput { text, steer: true } = &event {
+                    self.ui
+                        .steering
+                        .retain(|sent| !text.contains(sent.as_str()));
+                }
                 self.transcript.apply(&event);
             }
-            Msg::TurnDone(conv, outcome) => self.turn_done(*conv, outcome),
+            Msg::TurnDone(conv, outcome, leftover) => self.turn_done(*conv, outcome, leftover),
             Msg::Login(result) => self.login_done(result),
             Msg::Models(result) => self.ui.models_fetched(result),
             Msg::Polled(count) => {
@@ -174,6 +187,9 @@ impl Tui {
             Action::None => {}
             Action::Quit => self.quit = true,
             Action::Send(text) => self.send(text),
+            Action::Steer(text) => self.steer(text),
+            Action::Pause => self.pause(),
+            Action::ResumeTurn => self.resume_turn(),
             Action::Cancel => {
                 self.cancel.store(true, Ordering::SeqCst);
                 self.ui.status = "cancelling the turn...".into();
@@ -212,13 +228,22 @@ impl Tui {
         }
     }
 
-    fn send(&mut self, text: String) {
+    pub(super) fn send(&mut self, text: String) {
+        if self.conv.is_none() {
+            self.ui.status = "a turn is running".into();
+            return;
+        }
+        self.transcript.push_user(text.clone());
+        self.start(worker::Job::Text(text));
+    }
+
+    /// Starts `job` on the idle conversation with a fresh inbox.
+    pub(super) fn start(&mut self, job: worker::Job) {
         let Some(conv) = self.conv.take() else {
             self.ui.status = "a turn is running".into();
             return;
         };
         let agent: Result<(Agent, Vec<String>), String> = self.rt.agent(&self.cwd, &conv);
-        self.transcript.push_user(text.clone());
         let agent = match agent {
             Ok((agent, notes)) => {
                 for note in notes {
@@ -235,25 +260,36 @@ impl Tui {
         self.cancel.store(false, Ordering::SeqCst);
         self.ui.running = true;
         let id = conv.id.clone();
-        let started = worker::start_turn(agent, conv, text, self.cancel.clone(), self.tx.clone());
+        let (inbox_tx, inbox) = Inbox::channel();
+        self.inbox = Some(inbox_tx);
+        let (cancel, tx) = (self.cancel.clone(), self.tx.clone());
+        let started = worker::start_turn(agent, conv, job, cancel, inbox, tx);
         if let Err(err) = started {
             self.ui.running = false;
+            self.inbox = None;
             self.note(NoteKind::Error, format!("cannot start the turn: {err}"));
             self.open_session(Some(&id));
         }
     }
 
-    fn turn_done(&mut self, conv: Conversation, outcome: TurnOutcome) {
+    /// The conversation when no turn runs.
+    pub(super) fn conv_mut(&mut self) -> Option<&mut Conversation> {
+        self.conv.as_mut()
+    }
+
+    fn turn_done(&mut self, conv: Conversation, outcome: TurnOutcome, leftover: Vec<String>) {
         self.ui.running = false;
+        self.inbox = None;
         self.conv = Some(conv);
         // Schedules the Google quota read of the account the turn used (D23).
         self.rt.google.after_turn(trace::now_ms());
         self.refresh_accounts();
         if outcome == TurnOutcome::Cancelled {
-            self.ui.status = "turn cancelled".into();
+            self.ui.status = "turn cancelled: /resume continues it".into();
         } else if self.ui.status.starts_with("cancelling") {
             self.ui.status.clear();
         }
+        self.after_turn(outcome, leftover);
     }
 
     fn open_session(&mut self, id: Option<&str>) {

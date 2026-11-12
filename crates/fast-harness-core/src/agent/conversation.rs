@@ -14,6 +14,9 @@ use crate::types::{Block, Message, Role};
 
 /// Content of the error result given to a tool call that has none.
 pub const MISSING_RESULT: &str = "interrupted: no result was recorded";
+/// The error of a resume whose history ends with the model's answer.
+pub const NOTHING_TO_RESUME: &str =
+    "nothing to resume: the last turn ended with the model's answer";
 
 pub struct Conversation {
     pub id: String,
@@ -41,6 +44,9 @@ pub struct Conversation {
     /// True from a compaction until the next model answer: no second
     /// automatic compaction before a step measured the new context.
     pub compacted: bool,
+    /// How the last turn of a reopened session stopped when it can be
+    /// resumed (PLAN.md D39); `None` for a new session.
+    pub unfinished: Option<session::Unfinished>,
 }
 
 impl Conversation {
@@ -64,6 +70,7 @@ impl Conversation {
             context: None,
             last_context: 0,
             compacted: false,
+            unfinished: None,
         })
     }
 
@@ -91,6 +98,7 @@ impl Conversation {
         Ok(Conversation {
             last_context,
             compacted,
+            unfinished: session::unfinished(&events),
             id: id.to_string(),
             messages,
             turn,
@@ -122,6 +130,15 @@ impl Conversation {
         let note = self.context.as_ref().and_then(|old| current.update(old));
         self.context = Some(current.stamp());
         note
+    }
+
+    /// True when the history (repaired) ends with tool results or user text,
+    /// so [`super::Agent::resume_turn`] can call the model on it.
+    pub fn can_resume(&mut self) -> bool {
+        repair(&mut self.messages);
+        self.messages
+            .last()
+            .is_some_and(|m| m.role != Role::Assistant)
     }
 
     /// Writes `request/header` when the frozen system, tools or context

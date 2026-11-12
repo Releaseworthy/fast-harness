@@ -165,6 +165,7 @@ fn outcome_word(outcome: TurnOutcome) -> Option<&'static str> {
         TurnOutcome::ContextOverflow => {
             Some("context overflow: the conversation no longer fits the context window")
         }
+        TurnOutcome::Paused => Some("paused: resume continues it"),
     }
 }
 
@@ -286,6 +287,7 @@ impl Transcript {
                 }
             }
             AgentEvent::Error(text) => self.note(NoteKind::Error, text.clone()),
+            AgentEvent::UserInput { text, .. } => self.push_user(text.clone()),
             AgentEvent::Compaction {
                 before,
                 after,

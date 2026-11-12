@@ -10,6 +10,7 @@ mod call;
 mod compact;
 pub mod context;
 mod conversation;
+mod inbox;
 pub mod prompt;
 pub mod prompt_store;
 mod subagent;
@@ -17,7 +18,7 @@ mod tool_run;
 mod turn;
 
 use std::path::{Path, PathBuf};
-use std::sync::atomic::AtomicBool;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 use crate::auth::AuthSource;
@@ -26,10 +27,12 @@ use crate::events::{AgentEvent, TurnOutcome};
 use crate::http::Transport;
 use crate::llm::Provider;
 use crate::tools::{self, Registry};
+use turn::{Io, Start};
 
 pub use compact::{facts, COMMAND as COMPACT_COMMAND, NO_TOOLS, SUMMARY_REQUEST};
 pub use context::Context;
-pub use conversation::{repair, Conversation, MISSING_RESULT};
+pub use conversation::{repair, Conversation, MISSING_RESULT, NOTHING_TO_RESUME};
+pub use inbox::{Inbox, Input, CONTEXT as CONTEXT_KIND, STEER as STEER_KIND};
 pub use subagent::{ChildStats, SubagentTool};
 
 /// Everything an agent needs besides its tools; cheap to clone (shared parts
@@ -79,10 +82,11 @@ impl Agent {
         Agent::new(parts, Arc::new(registry))
     }
 
-    /// Runs one turn on `conv`. `cancel` may be set from another thread; the
-    /// turn then ends `Cancelled` as soon as the model call, the waits and
-    /// the tools notice it. `sink` sees the events in order, `TurnEnd` last.
-    /// `/compact [instructions]` runs a turn that only compacts (PLAN.md D38).
+    /// Runs one turn on `conv` with no inbox. `cancel` may be set from
+    /// another thread; the turn then ends `Cancelled` as soon as the model
+    /// call, the waits and the tools notice it. `sink` sees the events in
+    /// order, `TurnEnd` last. `/compact [instructions]` runs a turn that only
+    /// compacts (PLAN.md D38).
     pub fn run_turn(
         &self,
         conv: &mut Conversation,
@@ -90,6 +94,75 @@ impl Agent {
         cancel: &AtomicBool,
         sink: &mut dyn FnMut(AgentEvent),
     ) -> TurnOutcome {
-        turn::run(self, conv, user_text, cancel, sink)
+        self.run_turn_with(conv, user_text, cancel, &mut Inbox::empty(), sink)
+    }
+
+    /// [`Agent::run_turn`] reading `inbox` at every step boundary (PLAN.md
+    /// D39): steers join the history there, a pause ends the turn `Paused`
+    /// after the step's tools, and each follow-up starts a new turn after
+    /// one that ended `Done`. Returns the outcome of the last turn; texts no
+    /// turn used stay in [`Inbox::leftover`].
+    pub fn run_turn_with(
+        &self,
+        conv: &mut Conversation,
+        user_text: &str,
+        cancel: &AtomicBool,
+        inbox: &mut Inbox,
+        sink: &mut dyn FnMut(AgentEvent),
+    ) -> TurnOutcome {
+        self.turns(conv, Start::Text(user_text), cancel, inbox, sink)
+    }
+
+    /// Continues a turn that was paused, cancelled or cut by a crash: the
+    /// model is called on the history as it is (ending with tool results or
+    /// user text), without a new user message. A history that ends with the
+    /// model's answer has nothing to resume: an error, outcome `Failed`, and
+    /// nothing is logged.
+    pub fn resume_turn(
+        &self,
+        conv: &mut Conversation,
+        cancel: &AtomicBool,
+        inbox: &mut Inbox,
+        sink: &mut dyn FnMut(AgentEvent),
+    ) -> TurnOutcome {
+        if !conv.can_resume() {
+            sink(AgentEvent::Error(NOTHING_TO_RESUME.into()));
+            return TurnOutcome::Failed;
+        }
+        self.turns(conv, Start::Resume, cancel, inbox, sink)
+    }
+
+    fn turns(
+        &self,
+        conv: &mut Conversation,
+        first: Start<'_>,
+        cancel: &AtomicBool,
+        inbox: &mut Inbox,
+        sink: &mut dyn FnMut(AgentEvent),
+    ) -> TurnOutcome {
+        let mut follow_up: Option<String> = None;
+        loop {
+            let start = match &follow_up {
+                Some(text) => Start::Text(text),
+                None => first,
+            };
+            let io = Io {
+                cancel,
+                inbox: &mut *inbox,
+                sink: &mut *sink,
+            };
+            let outcome = turn::run(self, conv, start, io);
+            if outcome != TurnOutcome::Done || cancel.load(Ordering::Relaxed) {
+                return outcome;
+            }
+            let Some(text) = inbox.next_turn() else {
+                return outcome;
+            };
+            sink(AgentEvent::UserInput {
+                text: text.clone(),
+                steer: false,
+            });
+            follow_up = Some(text);
+        }
     }
 }

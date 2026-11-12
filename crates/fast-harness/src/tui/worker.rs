@@ -11,7 +11,7 @@ use std::time::Duration;
 use fast_harness_core::accounts::google::GoogleAuth;
 use fast_harness_core::accounts::oauth;
 use fast_harness_core::accounts::pool::{AccountPool, USAGE_EVERY_MS};
-use fast_harness_core::agent::{Agent, Conversation};
+use fast_harness_core::agent::{Agent, Conversation, Inbox};
 use fast_harness_core::app::Runtime;
 use fast_harness_core::llm::anthropic::ModelInfo;
 use fast_harness_core::net::UreqTransport;
@@ -26,12 +26,20 @@ use crate::accounts_cmd::label;
 /// How long a sign-in waits for the browser.
 const LOGIN_TIMEOUT: Duration = Duration::from_secs(600);
 
-/// Runs one turn on a thread; the conversation comes back in `TurnDone`.
+/// What a turn thread does: a new user text, or resume the last turn.
+pub enum Job {
+    Text(String),
+    Resume,
+}
+
+/// Runs one turn on a thread, reading `inbox` between steps (PLAN.md D39);
+/// the conversation and the texts no turn used come back in `TurnDone`.
 pub fn start_turn(
     agent: Agent,
     mut conv: Conversation,
-    prompt: String,
+    job: Job,
     cancel: Arc<AtomicBool>,
+    mut inbox: Inbox,
     tx: Sender<Msg>,
 ) -> io::Result<()> {
     thread::Builder::new()
@@ -41,8 +49,14 @@ pub fn start_turn(
             let mut sink = move |event| {
                 let _ = sink_tx.send(Msg::Agent(event));
             };
-            let outcome = agent.run_turn(&mut conv, &prompt, &cancel, &mut sink);
-            let _ = tx.send(Msg::TurnDone(Box::new(conv), outcome));
+            let outcome = match job {
+                Job::Text(prompt) => {
+                    agent.run_turn_with(&mut conv, &prompt, &cancel, &mut inbox, &mut sink)
+                }
+                Job::Resume => agent.resume_turn(&mut conv, &cancel, &mut inbox, &mut sink),
+            };
+            let leftover = inbox.leftover();
+            let _ = tx.send(Msg::TurnDone(Box::new(conv), outcome, leftover));
         })
         .map(|_| ())
 }

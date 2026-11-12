@@ -3,6 +3,9 @@
 //! `<app_home>/sessions/<cwd slug>/<id>.jsonl` and `<id>.wire/`.
 
 pub mod compacted;
+mod unfinished;
+
+pub use unfinished::{unfinished, Unfinished};
 
 use crate::trace::{self, TraceEvent};
 use crate::types::{Message, Role};
@@ -22,6 +25,8 @@ pub struct SessionSummary {
     pub turns: u64,
     /// Time of the last event, or `created_at` when there is none.
     pub last_time: u64,
+    /// The last turn can be resumed: paused, cancelled or interrupted (D39).
+    pub unfinished: Option<Unfinished>,
 }
 
 const TITLE_CHARS: usize = 60;
@@ -153,6 +158,7 @@ fn summarize(header: trace::SessionHeader, events: &[TraceEvent]) -> SessionSumm
         title: title.lines().next().unwrap_or_default().to_string(),
         turns,
         last_time,
+        unfinished: unfinished(events),
     }
 }
 
@@ -194,7 +200,7 @@ pub fn replay(path: &Path) -> io::Result<Vec<Message>> {
             );
             return Err(io::Error::new(io::ErrorKind::InvalidData, text));
         }
-        messages.push(message);
+        unfinished::push(&mut messages, message, event);
     }
     Ok(messages)
 }
