@@ -13,12 +13,12 @@ pub use signals::{NameCount, Signals};
 use std::collections::{HashMap, HashSet};
 
 use serde::Serialize;
-use serde_json::Value;
 
 use crate::llm::find::FIND_TOOLS;
 use crate::tools::budget::SPILL_MARK;
-use crate::trace::{kind, prefix_binding_mismatches, TraceEvent};
-use crate::types::Usage;
+use crate::trace::record::{AssistantMessage, ToolCall, ToolResult};
+use crate::trace::{prefix_binding_mismatches, Record, TraceEvent};
+use crate::types::{Block, Usage};
 
 /// The cache lives 5 minutes after its last use, or 1 hour when written so.
 pub const IDLE_LIMIT_MS: u64 = 5 * 60 * 1000;
@@ -95,10 +95,6 @@ struct Pass {
     results: Vec<ResultSize>,
 }
 
-fn int(data: &Value, key: &str) -> u64 {
-    data[key].as_u64().unwrap_or(0)
-}
-
 /// The numbers of one session log's events; `session` names its results.
 pub fn compute(session: &str, events: &[TraceEvent]) -> Stats {
     let mut pass = Pass {
@@ -113,44 +109,43 @@ pub fn compute(session: &str, events: &[TraceEvent]) -> Stats {
 
 impl Pass {
     fn event(&mut self, event: &TraceEvent) {
-        let data = &event.data;
-        match event.kind.as_str() {
-            kind::TURN_START => {
+        match event.record() {
+            Record::TurnStart(_) => {
                 self.stats.turns += 1;
                 self.signals.turn();
             }
-            kind::STEP_START => {
+            Record::StepStart(_) => {
                 self.stats.steps += 1;
                 self.signals.step();
                 let end = self.last_step_end;
                 self.gap_ms = end.map(|last| event.time.saturating_sub(last));
             }
-            kind::STEP_END => self.last_step_end = Some(event.time),
-            kind::ASSISTANT_MESSAGE => self.answer(data),
-            kind::TOOL_CALL => self.call(data),
-            kind::TOOL_RESULT => self.result(data),
-            kind::COMPACTION => self.stats.compactions += 1,
-            kind::REQUEST_TRANSFORMATIONS => {
+            Record::StepEnd(_) => self.last_step_end = Some(event.time),
+            Record::AssistantMessage(answer) => self.answer(&answer),
+            Record::ToolCall(call) => self.call(&call),
+            Record::ToolResult(result) => self.result(&result),
+            Record::Compaction(_) => self.stats.compactions += 1,
+            Record::RequestTransformations(found) => {
                 self.stats.transformations += 1;
-                let mismatches = prefix_binding_mismatches(&data["transformations"]);
+                let mismatches = prefix_binding_mismatches(&found.transformations);
                 self.stats.prefix_binding_mismatches += mismatches;
             }
             _ => {}
         }
     }
 
-    fn answer(&mut self, data: &Value) {
-        let usage: Usage = serde_json::from_value(data["usage"].clone()).unwrap_or_default();
+    fn answer(&mut self, answer: &AssistantMessage) {
+        let usage = answer.usage;
         self.stats.usage.add(&usage);
         (self.signals).answer(usage.cache_read, usage.cache_write);
-        let model = data["message"]["model"].as_str().unwrap_or("");
+        let model = answer.message.model.as_deref().unwrap_or("");
         if let Some(price) = crate::llm::custom::price(model) {
             self.stats.cost_micro_usd += (price.cost(&usage) * 1_000_000.0).round() as u64;
             self.stats.priced_steps += 1;
         }
-        let context = data["context"].as_u64().unwrap_or(usage.context());
+        let context = answer.context.unwrap_or(usage.context());
         self.stats.peak_context = self.stats.peak_context.max(context);
-        if let Some(window) = data["window"].as_u64().filter(|w| *w > 0) {
+        if let Some(window) = answer.window.filter(|w| *w > 0) {
             self.stats.window = window;
         }
         let limit = if usage.cache_write_1h > 0 {
@@ -164,41 +159,44 @@ impl Pass {
         }
     }
 
-    fn call(&mut self, data: &Value) {
-        let name = data["name"].as_str().unwrap_or("?").to_string();
-        if name == FIND_TOOLS {
-            self.find_steps
-                .insert((int(data, "turn"), int(data, "step")));
+    fn call(&mut self, call: &ToolCall) {
+        if call.name == FIND_TOOLS {
+            let (turn, step) = (u64::from(call.turn), u64::from(call.step));
+            self.find_steps.insert((turn, step));
         }
-        if let Some(id) = data["callId"].as_str() {
-            let arguments = data["arguments"].as_str().unwrap_or("");
-            self.arguments.insert(id.to_string(), arguments.to_string());
-            self.names.insert(id.to_string(), name);
-        }
+        let id = call.call_id.clone();
+        self.arguments.insert(id.clone(), call.arguments.clone());
+        self.names.insert(id, call.name.clone());
     }
 
-    fn result(&mut self, data: &Value) {
-        let Some(blocks) = data["message"]["content"].as_array() else {
-            return;
-        };
-        for block in blocks {
-            let content = block["content"].as_str().unwrap_or("");
-            let id = block["callId"].as_str().unwrap_or("");
-            let name = self.names.get(id).cloned().unwrap_or_else(|| "?".into());
-            let arguments = self.arguments.get(id).map_or("", String::as_str);
-            let is_error = block["isError"].as_bool().unwrap_or(false);
-            (self.signals).result(&name, arguments, content, is_error);
+    fn result(&mut self, result: &ToolResult) {
+        for block in &result.message.content {
+            let Block::ToolResult {
+                call_id,
+                content,
+                is_error,
+            } = block
+            else {
+                continue;
+            };
+            let name = self
+                .names
+                .get(call_id)
+                .cloned()
+                .unwrap_or_else(|| "?".into());
+            let arguments = self.arguments.get(call_id).map_or("", String::as_str);
+            (self.signals).result(&name, arguments, content, *is_error);
             let bytes = content.len() as u64;
             let entry = self.tools.entry(name.clone()).or_default();
             entry.results += 1;
             entry.bytes += bytes;
             // Version 6 names the spill file of a result cut to its budget.
-            let spilled = data["spilled"].is_string() || content.contains(SPILL_MARK);
+            let spilled = result.spilled.is_some() || content.contains(SPILL_MARK);
             self.stats.clipped += u64::from(spilled || content.contains(CLIP_MARK));
             self.results.push(ResultSize {
                 session: self.session.clone(),
-                turn: int(data, "turn"),
-                step: int(data, "step"),
+                turn: u64::from(result.turn),
+                step: u64::from(result.step),
                 name,
                 bytes,
             });

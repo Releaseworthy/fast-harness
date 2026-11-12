@@ -16,7 +16,15 @@ fn ev(kind: &str, time: u64, data: Value) -> TraceEvent {
 }
 
 fn answer(turn: u32, step: u32, time: u64, usage: Value) -> TraceEvent {
-    let data = json!({"turn": turn, "step": step, "usage": usage, "window": 1_000_000});
+    let data = json!({
+        "turn": turn,
+        "step": step,
+        "message": {"role": "assistant", "content": []},
+        "usage": usage,
+        "window": 1_000_000,
+        "stop": "end",
+        "timing": {},
+    });
     ev("assistant/message", time, data)
 }
 
@@ -29,12 +37,12 @@ fn results(turn: u32, step: u32, time: u64, blocks: &[(&str, String)]) -> TraceE
     ev(
         "tool/result",
         time,
-        json!({"turn": turn, "step": step, "message": message}),
+        json!({"turn": turn, "step": step, "message": message, "durationMs": 0}),
     )
 }
 
 fn call(turn: u32, step: u32, id: &str, name: &str) -> TraceEvent {
-    let data = json!({"turn": turn, "step": step, "callId": id, "name": name});
+    let data = json!({"turn": turn, "step": step, "callId": id, "name": name, "arguments": "{}"});
     ev("tool/call", 0, data)
 }
 
@@ -54,7 +62,11 @@ fn log() -> Vec<TraceEvent> {
         ),
         call(1, 1, "c1", "find_tools"),
         results(1, 1, MINUTE, &[("c1", "abc".into())]),
-        ev("step/end", MINUTE, json!({"turn": 1, "step": 1})),
+        ev(
+            "step/end",
+            MINUTE,
+            json!({"turn": 1, "step": 1, "durationMs": 0}),
+        ),
         ev("step/start", 2 * MINUTE, json!({"turn": 1, "step": 2})),
         answer(
             1,
@@ -65,13 +77,22 @@ fn log() -> Vec<TraceEvent> {
         call(1, 2, "c2", "read"),
         call(1, 2, "c3", "read"),
         results(1, 2, 2 * MINUTE, &[("c2", clipped), ("c3", "y".repeat(40))]),
-        ev("step/end", 2 * MINUTE, json!({"turn": 1, "step": 2})),
+        ev(
+            "step/end",
+            2 * MINUTE,
+            json!({"turn": 1, "step": 2, "durationMs": 0}),
+        ),
         ev("turn/start", 12 * MINUTE, json!({"turn": 2})),
         ev("step/start", 12 * MINUTE, json!({"turn": 2, "step": 1})),
         ev(
             "request/transformations",
             13 * MINUTE,
-            json!({"transformations": changes}),
+            json!({
+                "turn": 2,
+                "step": 1,
+                "transformations": changes,
+                "prefixBindingMismatch": 0,
+            }),
         ),
         answer(
             2,
@@ -79,8 +100,12 @@ fn log() -> Vec<TraceEvent> {
             13 * MINUTE,
             json!({"inputTokens": 5, "outputTokens": 9, "cacheWriteTokens": 1020}),
         ),
-        ev("step/end", 13 * MINUTE, json!({"turn": 2, "step": 1})),
-        ev("compaction", 14 * MINUTE, json!({})),
+        ev(
+            "step/end",
+            13 * MINUTE,
+            json!({"turn": 2, "step": 1, "durationMs": 0}),
+        ),
+        ev("compaction", 14 * MINUTE, json!({"summary": "s"})),
     ]
 }
 
