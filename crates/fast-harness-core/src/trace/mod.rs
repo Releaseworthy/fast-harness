@@ -31,7 +31,10 @@ use serde_json::Value;
 /// them on resume; `request/header` is written before `user/message`.
 /// Version 9: the header may carry `depth` (a subagent session's nesting
 /// level, PLAN.md D40; absent means 0).
-pub const VERSION: u32 = 9;
+/// Version 10: `hook` and `hook/error` events (PLAN.md D44); a user text of
+/// kind `hook` (a hook's context or Stop continuation) joins the history
+/// like a steer.
+pub const VERSION: u32 = 10;
 
 /// The oldest version the reader accepts; a resumed log keeps its own header.
 pub const MIN_VERSION: u32 = 1;

@@ -47,6 +47,8 @@ pub struct Conversation {
     /// How the last turn of a reopened session stopped when it can be
     /// resumed (PLAN.md D39); `None` for a new session.
     pub unfinished: Option<session::Unfinished>,
+    /// Nesting level of the session (0 top level; a subagent's is above 0).
+    pub depth: u32,
 }
 
 impl Conversation {
@@ -83,6 +85,7 @@ impl Conversation {
             last_context: 0,
             compacted: false,
             unfinished: None,
+            depth,
         })
     }
 
@@ -92,7 +95,7 @@ impl Conversation {
         let log_path = session::log_path(app_home, cwd, id);
         let mut messages = session::replay(&log_path)?;
         repair(&mut messages);
-        let (_, events) = trace::read(&log_path)?;
+        let (session_header, events) = trace::read(&log_path)?;
         let turn = events
             .iter()
             .filter(|e| e.kind == trace::kind::TURN_START)
@@ -111,6 +114,7 @@ impl Conversation {
             last_context,
             compacted,
             unfinished: session::unfinished(&events),
+            depth: session_header.depth,
             id: id.to_string(),
             messages,
             turn,

@@ -22,6 +22,8 @@ pub mod ext;
 pub mod find;
 mod glob;
 mod grep;
+mod hook_run;
+pub mod hooks;
 mod read;
 mod shell;
 pub mod skills;
@@ -170,6 +172,19 @@ impl Registry {
     /// Runs tool `name` with the raw JSON arguments text from the model.
     /// Unknown tools and unparsable arguments become error outputs.
     pub fn run(&self, name: &str, raw_args: &str, ctx: &ToolCtx<'_>) -> ToolOutput {
+        self.run_with(name, raw_args, ctx, &mut |_, output| output)
+    }
+
+    /// [`Registry::run`] with `filter` applied to the tool's own output
+    /// (with the parsed arguments) before the budget (PostToolUse hooks,
+    /// PLAN.md D44).
+    pub fn run_with(
+        &self,
+        name: &str,
+        raw_args: &str,
+        ctx: &ToolCtx<'_>,
+        filter: &mut dyn FnMut(&Value, ToolOutput) -> ToolOutput,
+    ) -> ToolOutput {
         let Some(index) = self.specs.iter().position(|spec| spec.name == name) else {
             return ToolOutput::err(format!("unknown tool `{name}`"));
         };
@@ -189,13 +204,14 @@ impl Registry {
             // Not budgeted: the tool lines are short and each skill body is
             // already cut at `skills::SKILL_BYTES` (at most MAX_SKILLS).
             (true, 0) if !self.skills.is_empty() => {
-                return find::run_with(&args, &self.specs[1..], &self.skills)
+                let output = find::run_with(&args, &self.specs[1..], &self.skills);
+                return filter(&args, output);
             }
             (true, 0) => find::run(&args, &self.specs[1..]),
             (true, index) => self.tools[index - 1].run(&args, ctx),
             (false, index) => self.tools[index].run(&args, ctx),
         };
-        budget::fit(name, output, ctx)
+        budget::fit(name, filter(&args, output), ctx)
     }
 }
 

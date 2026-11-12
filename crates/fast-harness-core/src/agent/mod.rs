@@ -13,6 +13,7 @@ mod children;
 mod compact;
 pub mod context;
 mod conversation;
+pub mod hooks;
 mod inbox;
 pub mod nested;
 mod preload;

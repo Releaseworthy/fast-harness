@@ -15,6 +15,7 @@ use crate::llm::anthropic::Anthropic;
 use crate::llm::custom::{self, ProviderFile, API_OPENAI};
 use crate::llm::openai::OpenAiChat;
 use crate::llm::{Auth, ChatRequest, Completion, Delta, LlmError, Provider};
+use crate::tools::hooks::Hooks;
 use crate::tools::Extensions;
 
 /// The resolved layers and the provider files they found.
@@ -23,6 +24,8 @@ pub struct Settings {
     pub providers: Vec<ProviderFile>,
     /// The tool, agent and command files of the same folders (D42).
     pub index: ExtIndex,
+    /// `hooks.json` of the same folders (D44); empty without a file.
+    pub hooks: Hooks,
 }
 
 /// Every layer for `cwd` (the user layer only without one), then the
@@ -45,10 +48,14 @@ pub fn load_settings(
     add_compaction(&mut layered.config, &providers);
     let index = ExtIndex::build(&layered.layers);
     layered.report.skipped.extend(index.skipped.iter().cloned());
+    let (hooks, skipped) = Hooks::load(&layered.layers);
+    layered.report.loaded.extend(hooks.files.iter().cloned());
+    layered.report.skipped.extend(skipped);
     Ok(Settings {
         layered,
         providers,
         index,
+        hooks,
     })
 }
 
@@ -143,8 +150,9 @@ impl Runtime {
             mut layered,
             providers,
             index,
+            hooks,
         } = settings;
-        let extensions = Extensions::new(index);
+        let extensions = Extensions::new(index).with_hooks(hooks);
         // A tool file's `outputBytes` unless `toolOutput` names the tool.
         for (name, bytes) in extensions.output_bytes() {
             layered.config.tool_output.entry(name).or_insert(bytes);
@@ -238,6 +246,7 @@ pub fn doctor(settings: &Settings) -> String {
         let _ = writeln!(out, "  {} ({kind}, {} models)", file.id, file.models.len());
     }
     extension_lines(&mut out, &settings.index);
+    hook_lines(&mut out, &settings.hooks);
     let _ = writeln!(out, "settings not at their default:");
     let changed = layered
         .sources
@@ -251,6 +260,30 @@ pub fn doctor(settings: &Settings) -> String {
         let _ = writeln!(out, "  {key} = {value} ({source})");
     }
     out
+}
+
+/// The `hooks` section of `doctor`: one line per entry in run order.
+fn hook_lines(out: &mut String, hooks: &Hooks) {
+    use std::fmt::Write;
+    let _ = writeln!(out, "hooks:");
+    for (event, entry) in hooks.entries() {
+        let matcher = match (event.has_tool(), entry.matcher.as_deref()) {
+            (true, Some(pattern)) => format!(" match {pattern}"),
+            _ => String::new(),
+        };
+        let mut command = entry.command.clone();
+        for arg in &entry.args {
+            command.push(' ');
+            command.push_str(arg);
+        }
+        let source = hooks.source_of(entry).word();
+        let timeout = entry.timeout_ms();
+        let _ = writeln!(
+            out,
+            "  {}{matcher}: {command} ({source}, {timeout} ms)",
+            event.name()
+        );
+    }
 }
 
 /// The `tools`, `agents` and `commands` sections of `doctor`.

@@ -215,6 +215,52 @@ Run `pdftotext -layout file.pdf -` and read the result; forms: see references/fo
 
 The AGENTS.md files from the repository root down to the working directory are in the system prompt, at most `agentsBytes` (default 32768) together. A folder below the working directory with its own `AGENTS.md` has it appended, at most 6 KB, to the first tool result whose `path` argument (read, write, edit, grep, glob, and any command tool with a `path`) lies inside it, once per session. The shell has no working-directory argument, so its calls load nothing. The text joins the result after the `toolOutputBytes` cut (outside the budget) and before the result is sent or logged, under a line `[nested AGENTS.md <path>]`; the loaded set is rebuilt from the log on resume, and a compaction summary lists those lines so the files are not appended again.
 
+## Hooks: `hooks.json`
+
+`~/.fast-harness/hooks.json` and a trusted project's `.fast-harness/hooks.json` run your own programs at seven points of the agent loop. Both files load and both run, user entries first; an untrusted project's file is not read. Without a file nothing is spawned and nothing else is read. The file is read with the other settings (at start, `/trust`, a settings reload); a change applies to the next agent built from them.
+
+```json
+{
+  "PreToolUse": [
+    {"match": "shell", "command": "python", "args": ["./guard.py"], "timeoutMs": 5000}
+  ],
+  "PostToolUse": [
+    {"match": "shell|mcp__*", "command": "python", "args": ["./filter.py"]}
+  ]
+}
+```
+
+- Events: `SessionStart` (first turn of a new session), `UserPromptSubmit` (each user prompt, before the model sees it), `PreToolUse`, `PostToolUse`, `PreCompact`, `Stop` (the model ended the turn), `SubagentStop` (the same, in a subagent session, instead of `Stop`).
+- Entry: `command`, `args`, `timeoutMs` (default 60000), `match`. `match` is for `PreToolUse` and `PostToolUse` only: the tool name, `|` between alternatives, `*` any run of characters, `?` one character; absent matches every tool. A relative `command` with a slash (`./guard.exe`) resolves in the folder of the hooks file; the process runs in the working directory with `FAST_HARNESS_HOOKS_DIR` set to that folder. A timeout or cancel kills the whole process tree.
+- Stdin: one JSON object with `event`, `sessionId`, `cwd` and the event data: `prompt` (UserPromptSubmit), `source` (SessionStart), `toolName` and `arguments` (tool events), `output` and `isError` (PostToolUse), `trigger` (`auto` or `manual`), `instructions` and `summaryRequest` (PreCompact), `answer` and `stopHookActive` (Stop, SubagentStop).
+- Stdout: empty does nothing; else a JSON object with any of:
+  - `{"decision": "block", "reason": "..."}`: a tool call's result becomes the error `blocked by a hook: <reason>`; a prompt does not run (the turn ends failed and the front end shows the reason); a compaction is skipped; on Stop the turn goes on with the reason as the next user text. Later hooks of that event do not run.
+  - `{"arguments": {...}}` (PreToolUse): the tool runs with these arguments; the model's call in the log stays as sent.
+  - `{"output": "..."}` (PostToolUse): replaces the tool's output before the `toolOutputBytes` cut and before it is sent or logged.
+  - `{"context": "..."}`: added as `[hook context] <text>` at the end of the history before the next model call (after the last tool results or user text); earlier messages never change, so the cached prefix holds. For PreCompact it is added to the summary instructions.
+  - `{"continue": "..."}` (Stop, SubagentStop): the turn goes on with this text as a user message. The step limit (`maxSteps`) bounds the loop; `stopHookActive` is true once a Stop hook has continued this turn.
+- Fail open: a hook that cannot start, times out, exits non-zero or prints something that is not a JSON object is ignored; the log gets a `hook/error` event and the front end an error note. Every run is logged as `hook` with `event`, `command`, `ms` and `decision`.
+- `fast-harness doctor` lists every hook with its event, pattern, layer and timeout.
+
+A block rule (`guard.py`, PreToolUse on `shell`; not run by the tests):
+
+```python
+import json, sys
+event = json.load(sys.stdin)
+command = event["arguments"].get("command", "")
+if "rm -rf" in command or "git push --force" in command:
+    print(json.dumps({"decision": "block", "reason": "destructive command: ask the user first"}))
+```
+
+An output filter (`filter.py`, PostToolUse; not run by the tests) that drops progress lines before the result reaches the model:
+
+```python
+import json, sys
+event = json.load(sys.stdin)
+lines = [l for l in event["output"].splitlines() if not l.startswith(("Downloading", "Compiling"))]
+print(json.dumps({"output": "\n".join(lines)}))
+```
+
 ## The index and preloading
 
 At session creation the `tools`, `agents`, `commands` and `skills` folders of the user folder and of a trusted project are listed; only names and descriptions are read, and kept in `~/.fast-harness/index.json` by path, size and modified time, so an unchanged file is not read again. Bodies are read on use: a command tool's file when the session's tool list is first rendered (the list is then frozen in the session log), an agent or command body when it is called. Without any of these folders nothing is read. A project file with the same name as a user file replaces it.

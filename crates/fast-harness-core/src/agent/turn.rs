@@ -48,6 +48,10 @@ pub(super) struct Turn<'a> {
     pub request: Option<(String, Option<String>)>,
     /// The error text of a context overflow, shown when compaction cannot help.
     pub last_error: Option<String>,
+    /// Hook context texts added at the tail before the next model call (D44).
+    pub hook_context: Vec<String>,
+    /// A Stop hook already continued this turn (`stopHookActive`).
+    pub stop_continued: bool,
 }
 
 /// How a turn begins: with a user text, or by resuming a history that ends
@@ -88,6 +92,8 @@ pub(super) fn run(
         quiet: false,
         request: None,
         last_error: None,
+        hook_context: Vec::new(),
+        stop_continued: false,
     };
     let outcome = turn.run(start).unwrap_or_else(|message| {
         (turn.sink)(AgentEvent::Error(message));
@@ -123,6 +129,13 @@ impl Turn<'_> {
         repair(&mut self.conv.messages);
         if let Some(instructions) = text.and_then(compact::command) {
             return self.manual_compact(instructions);
+        }
+        if let Some(outcome) = text
+            .map(|text| self.prompt_hooks(text))
+            .transpose()?
+            .flatten()
+        {
+            return Ok(outcome);
         }
         let agent = self.agent;
         let specs = agent.tools.specs();
@@ -187,6 +200,7 @@ impl Turn<'_> {
         traced(self.conv.trace.step_start(turn, step))?;
         (self.sink)(AgentEvent::StepStart { turn, step });
         traced(self.conv.header_if_changed())?;
+        self.flush_hook_context()?;
         let mut called = self.call_model(step)?;
         if matches!(called, Err(TurnOutcome::ContextOverflow)) {
             called = self.after_overflow(step)?;
@@ -229,6 +243,8 @@ impl Turn<'_> {
             StopReason::ContextWindow => return self.window_full(),
             // A steer that came during the last step starts the next one.
             _ if self.apply_steers()? => {}
+            // A Stop hook's `continue` (or block) goes on (PLAN.md D44).
+            _ if self.stop_hook()? => {}
             _ => return Ok(Some(TurnOutcome::Done)),
         }
         Ok(None)

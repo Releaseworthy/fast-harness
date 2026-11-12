@@ -74,8 +74,8 @@ fn header_line_is_exactly_the_plan_format() {
         made.harness,
         format!("fast-harness {}", env!("CARGO_PKG_VERSION"))
     );
-    assert_eq!((made.version, made.parent.as_deref()), (9, Some("x")));
-    assert_eq!((trace::VERSION, trace::MIN_VERSION), (9, 1));
+    assert_eq!((made.version, made.parent.as_deref()), (10, Some("x")));
+    assert_eq!((trace::VERSION, trace::MIN_VERSION), (10, 1));
 }
 
 #[test]
@@ -265,9 +265,9 @@ fn open_append_continues_seq_and_cuts_a_torn_line() {
 }
 
 #[test]
-fn reader_accepts_versions_1_to_9_only() {
+fn reader_accepts_versions_1_to_10_only() {
     let tmp = TempDir::new("versions");
-    for version in [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 0] {
+    for version in [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 0] {
         let path = tmp.0.join(format!("v{version}.jsonl"));
         let mut head = header("v");
         head.version = version;
@@ -276,11 +276,11 @@ fn reader_accepts_versions_1_to_9_only() {
         drop(writer);
         match trace::read(&path) {
             Ok((read, events)) => {
-                assert!((1..=9).contains(&version), "read version {version}");
+                assert!((1..=10).contains(&version), "read version {version}");
                 assert_eq!((read.version, events.len()), (version, 1));
             }
             Err(err) => {
-                assert!(version == 10 || version == 0, "{err}");
+                assert!(version == 11 || version == 0, "{err}");
                 assert!(err.to_string().contains("unsupported trace version"));
             }
         }

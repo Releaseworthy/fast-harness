@@ -5,6 +5,7 @@
 //! tool list a session freezes is builtins plus the index.
 
 use super::command::CommandTool;
+use super::hooks::Hooks;
 use super::skills::{skills_line, Skill};
 use super::{builtin_tools, Registry, Tool, ToolCtx, ToolOutput};
 use crate::config::index::{Entry, ExtIndex, Item};
@@ -17,6 +18,8 @@ const AGENT_NOTE_BYTES: usize = 1000;
 pub struct Extensions {
     pub index: ExtIndex,
     commands: Vec<CommandTool>,
+    /// The `hooks.json` entries (PLAN.md D44); empty without a file.
+    pub hooks: Hooks,
 }
 
 impl Extensions {
@@ -25,7 +28,17 @@ impl Extensions {
             .filter(|item| item.entry.command && !item.entry.disabled)
             .map(|item| CommandTool::new(&item.entry.name, &item.entry.description, &item.path))
             .collect();
-        Extensions { index, commands }
+        Extensions {
+            index,
+            commands,
+            hooks: Hooks::default(),
+        }
+    }
+
+    /// These extensions running `hooks`.
+    pub fn with_hooks(mut self, hooks: Hooks) -> Extensions {
+        self.hooks = hooks;
+        self
     }
 
     /// The override file of tool `name` (a tool file without `command`).

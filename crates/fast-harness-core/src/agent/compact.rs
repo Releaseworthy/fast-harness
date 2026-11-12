@@ -139,6 +139,12 @@ impl Turn<'_> {
         auto: bool,
         mid: bool,
     ) -> Res<Result<(), TurnOutcome>> {
+        // PreCompact hooks (PLAN.md D44): a block skips the compaction.
+        let hooked = match self.pre_compact(settings, instructions, auto)? {
+            Ok(hooked) => hooked,
+            Err(outcome) => return Ok(Err(outcome)),
+        };
+        let instructions = hooked.as_deref();
         let summary = match self.summarize(settings, instructions)? {
             Ok(summary) => summary,
             Err(outcome) => {
@@ -240,7 +246,7 @@ impl Turn<'_> {
     }
 }
 
-fn request_text(settings: &Compaction, instructions: Option<&str>) -> String {
+pub(super) fn request_text(settings: &Compaction, instructions: Option<&str>) -> String {
     let mut text = SUMMARY_REQUEST.to_string();
     let extra = [settings.instructions.as_deref(), instructions];
     for line in extra.into_iter().flatten() {

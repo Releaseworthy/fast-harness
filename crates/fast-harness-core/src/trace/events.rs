@@ -26,6 +26,10 @@ pub mod kind {
     pub const TOOL_RESULT: &str = "tool/result";
     pub const STEP_END: &str = "step/end";
     pub const TURN_END: &str = "turn/end";
+    /// A hook ran (PLAN.md D44): `event`, `command`, `ms`, `decision`.
+    pub const HOOK: &str = "hook";
+    /// A hook failed and was ignored: `event`, `command`, `ms`, `error`.
+    pub const HOOK_ERROR: &str = "hook/error";
 }
 
 /// Data of `request/context`: one model call attempt.

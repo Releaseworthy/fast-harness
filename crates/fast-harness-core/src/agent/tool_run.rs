@@ -6,6 +6,7 @@ use std::sync::mpsc::{self, RecvTimeoutError};
 use std::time::Instant;
 
 use crate::agent::children::TICK;
+use crate::agent::hooks::{self, Record};
 use crate::agent::nested;
 use crate::agent::turn::{ms, traced, Res, Turn};
 use crate::agent::Agent;
@@ -21,7 +22,12 @@ struct Run<'a> {
     loaded: Option<&'a [String]>,
     cancel: &'a AtomicBool,
     session: &'a ToolSession,
+    /// The session id given to hooks (PLAN.md D44).
+    session_id: &'a str,
 }
+
+/// One call's output, duration, hook runs and hook context texts.
+type Done = (ToolOutput, u64, Vec<Record>, Vec<String>);
 
 struct Call {
     id: String,
@@ -62,9 +68,17 @@ impl Turn<'_> {
             loaded,
             cancel: self.cancel,
             session: shared,
+            session_id: &self.conv.id,
         };
-        let (mut outputs, durations): (Vec<ToolOutput>, Vec<u64>) =
-            execute(&run, &calls, &mut *self.sink).into_iter().unzip();
+        let done = execute(&run, &calls, &mut *self.sink);
+        let mut outputs = Vec::with_capacity(done.len());
+        let mut durations = Vec::with_capacity(done.len());
+        for (output, duration_ms, records, mut context) in done {
+            self.log_hooks(&records)?;
+            self.hook_context.append(&mut context);
+            outputs.push(output);
+            durations.push(duration_ms);
+        }
         let args: Vec<&str> = calls.iter().map(|call| call.arguments.as_str()).collect();
         let cwd = &self.agent.parts.cwd;
         nested::attach(&self.conv.messages, cwd, &args, &mut outputs);
@@ -102,11 +116,7 @@ impl Turn<'_> {
 
 /// Outputs and durations in call order. Events go out on this thread:
 /// `ToolCall` for every call before any starts, `ToolResult` as each ends.
-fn execute(
-    run: &Run<'_>,
-    calls: &[Call],
-    sink: &mut dyn FnMut(AgentEvent),
-) -> Vec<(ToolOutput, u64)> {
+fn execute(run: &Run<'_>, calls: &[Call], sink: &mut dyn FnMut(AgentEvent)) -> Vec<Done> {
     for call in calls {
         sink(AgentEvent::ToolCall {
             id: call.id.clone(),
@@ -114,24 +124,25 @@ fn execute(
             arguments: call.arguments.clone(),
         });
     }
-    let mut results: Vec<Option<(ToolOutput, u64)>> = vec![None; calls.len()];
+    let mut results: Vec<Option<Done>> = vec![None; calls.len()];
     std::thread::scope(|scope| {
         let (tx, rx) = mpsc::channel();
         for (index, call) in calls.iter().enumerate() {
             let tx = tx.clone();
             scope.spawn(move || {
                 let started = Instant::now();
-                let output = match not_loaded(run.agent, &call.name, run.loaded) {
-                    Some(error) => error,
+                let (output, records, context) = match not_loaded(run.agent, &call.name, run.loaded)
+                {
+                    Some(error) => (error, Vec::new(), Vec::new()),
                     None => run_one(run, call),
                 };
-                let _ = tx.send((index, output, ms(started)));
+                let _ = tx.send((index, output, ms(started), records, context));
             });
         }
         drop(tx);
         loop {
             // Subagents' events reach the sink while their tool call runs.
-            let (index, output, duration_ms) = match rx.recv_timeout(TICK) {
+            let (index, output, duration_ms, records, context) = match rx.recv_timeout(TICK) {
                 Ok(done) => done,
                 Err(RecvTimeoutError::Timeout) => {
                     run.agent.forward_events(sink);
@@ -146,12 +157,19 @@ fn execute(
                 is_error: output.is_error,
                 duration_ms,
             });
-            results[index] = Some((output, duration_ms));
+            results[index] = Some((output, duration_ms, records, context));
         }
     });
-    results
-        .into_iter()
-        .map(|result| result.unwrap_or_else(|| (ToolOutput::err("the tool gave no result"), 0)))
+    let missing = || {
+        (
+            ToolOutput::err("the tool gave no result"),
+            0,
+            Vec::new(),
+            Vec::new(),
+        )
+    };
+    (results.into_iter())
+        .map(|result| result.unwrap_or_else(missing))
         .collect()
 }
 
@@ -170,8 +188,9 @@ fn not_loaded(agent: &Agent, name: &str, loaded: Option<&[String]>) -> Option<To
 }
 
 /// A panicking tool becomes an error result instead of ending the turn.
-/// The budget of each call comes from `Config::tool_budget` (PLAN.md D37).
-fn run_one(run: &Run<'_>, call: &Call) -> ToolOutput {
+/// The budget of each call comes from `Config::tool_budget` (PLAN.md D37);
+/// PreToolUse and PostToolUse hooks wrap it (D44).
+fn run_one(run: &Run<'_>, call: &Call) -> (ToolOutput, Vec<Record>, Vec<String>) {
     let agent = run.agent;
     let ctx = ToolCtx {
         cwd: &agent.parts.cwd,
@@ -180,7 +199,19 @@ fn run_one(run: &Run<'_>, call: &Call) -> ToolOutput {
         call_id: &call.id,
         session: Some(run.session),
     };
-    let go = || agent.tools.run(&call.name, &call.arguments, &ctx);
-    panic::catch_unwind(AssertUnwindSafe(go))
-        .unwrap_or_else(|_| ToolOutput::err(format!("tool `{}` panicked", call.name)))
+    let go = || match agent.parts.extensions.hooks.is_empty() {
+        true => (
+            agent.tools.run(&call.name, &call.arguments, &ctx),
+            Vec::new(),
+            Vec::new(),
+        ),
+        false => {
+            let names = (run.session_id, call.name.as_str(), call.arguments.as_str());
+            hooks::run_tool(agent, names, &ctx)
+        }
+    };
+    panic::catch_unwind(AssertUnwindSafe(go)).unwrap_or_else(|_| {
+        let error = ToolOutput::err(format!("tool `{}` panicked", call.name));
+        (error, Vec::new(), Vec::new())
+    })
 }
