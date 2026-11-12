@@ -7,9 +7,7 @@ use std::path::Path;
 use std::process::ExitCode;
 
 use fast_harness_core::session::lock;
-use fast_harness_core::trace::kind;
-use fast_harness_core::types::Message;
-use serde_json::Value;
+use fast_harness_core::trace::{Record, TraceEvent};
 
 use crate::session_cmd::EVERY;
 
@@ -58,18 +56,17 @@ fn print_new(log: &Path, offset: u64, json: bool) -> Result<u64, String> {
 
 /// One event as a text line; `None` for events a reader skips.
 pub fn text_line(line: &str) -> Option<String> {
-    let event: Value = serde_json::from_str(line).ok()?;
-    let data = &event["data"];
-    let message = || -> Option<String> {
-        let message: Message = serde_json::from_value(data["message"].clone()).ok()?;
-        Some(message.text())
-    };
-    match event["type"].as_str()? {
-        kind::TURN_START => Some(format!("-- turn {}", data["turn"])),
-        kind::USER_MESSAGE => message().map(|text| format!("> {text}")),
-        kind::ASSISTANT_MESSAGE => message().filter(|text| !text.trim().is_empty()),
-        kind::TOOL_CALL => Some(format!("[tool] {}", data["name"].as_str().unwrap_or("?"))),
-        kind::TOOL_RESULT => message().map(|text| {
+    let event: TraceEvent = serde_json::from_str(line).ok()?;
+    match event.record() {
+        Record::TurnStart(start) => Some(format!("-- turn {}", start.turn)),
+        Record::UserMessage(user) => Some(format!("> {}", user.message.text())),
+        Record::AssistantMessage(answer) => {
+            let text = answer.message.text();
+            (!text.trim().is_empty()).then_some(text)
+        }
+        Record::ToolCall(call) => Some(format!("[tool] {}", call.name)),
+        Record::ToolResult(result) => {
+            let text = result.message.text();
             let first: String = text
                 .lines()
                 .next()
@@ -77,12 +74,9 @@ pub fn text_line(line: &str) -> Option<String> {
                 .chars()
                 .take(TOOL_CHARS)
                 .collect();
-            format!("[result] {first}")
-        }),
-        kind::TURN_END => Some(format!(
-            "-- turn end {}",
-            data["outcome"].as_str().unwrap_or("")
-        )),
+            Some(format!("[result] {first}"))
+        }
+        Record::TurnEnd(end) => Some(format!("-- turn end {}", end.outcome)),
         _ => None,
     }
 }
