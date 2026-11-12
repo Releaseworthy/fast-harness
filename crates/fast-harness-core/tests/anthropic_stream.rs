@@ -130,6 +130,7 @@ fn text_only_stream() {
             output: 15,
             cache_read: 100,
             cache_write: 20,
+            cache_write_1h: 0,
         };
         assert_eq!(done.usage, usage);
         assert_eq!(done.stop, StopReason::End);
@@ -137,7 +138,40 @@ fn text_only_stream() {
         assert_eq!(done.timing.chunks as usize, body.len().div_ceil(chunk));
         assert!(done.timing.total_ms >= done.timing.first_token_ms);
         assert_eq!(done.head.header("request-id"), Some("req_1"));
+        assert_eq!(done.transformations, None);
     }
+}
+
+#[test]
+fn one_hour_writes_and_input_transformations() {
+    let mut first = start(json!({"input_tokens": 3, "output_tokens": 1,
+        "cache_creation_input_tokens": 50,
+        "cache_creation": {"ephemeral_5m_input_tokens": 20, "ephemeral_1h_input_tokens": 30}}));
+    let changes = json!([{"type": "prefix_binding_mismatch"}, {"type": "other"}]);
+    first["message"]["input_transformations"] = changes.clone();
+    let mut events = vec![
+        first,
+        block_start(0, json!({"type": "text", "text": ""})),
+        delta(0, json!({"type": "text_delta", "text": "ok"})),
+        stop_block(0),
+    ];
+    events.extend(finish("end_turn", json!({"output_tokens": 2})));
+    let body = sse(&events);
+    for chunk in CHUNKS {
+        let done = call(ScriptedResponse::new(200, &body, chunk), &key(), &[], None)
+            .result
+            .unwrap();
+        assert_eq!(
+            (done.usage.cache_write, done.usage.cache_write_1h),
+            (50, 30)
+        );
+        assert_eq!(done.usage.context(), 55);
+        assert_eq!(done.transformations.as_ref(), Some(&changes));
+    }
+    let count = fast_harness_core::trace::prefix_binding_mismatches;
+    assert_eq!(count(&changes), 1);
+    assert_eq!(count(&json!(null)), 0);
+    assert_eq!(count(&json!({"kind": "prefix_binding_mismatch"})), 1);
 }
 
 fn tool_stream() -> String {

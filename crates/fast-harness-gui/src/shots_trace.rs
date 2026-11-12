@@ -92,6 +92,7 @@ pub fn steps() -> Vec<ModelRc<SharedString>> {
             output: 300,
             cache_read: 80_000,
             cache_write: 4000,
+            cache_write_1h: 0,
         },
         tools,
         retries,

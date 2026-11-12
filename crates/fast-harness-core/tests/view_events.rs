@@ -9,6 +9,7 @@ fn usage(input: u64, output: u64) -> Usage {
         output,
         cache_read: 0,
         cache_write: 0,
+        cache_write_1h: 0,
     }
 }
 
@@ -102,6 +103,8 @@ fn step_one() -> Vec<AgentEvent> {
             turn: 1,
             step: 1,
             usage: usage(10, 20),
+            context: 30,
+            window: 1_000_000,
             timing: timing(500),
             stop: StopReason::ToolUse,
         },
@@ -118,6 +121,8 @@ fn step_two() -> Vec<AgentEvent> {
             turn: 1,
             step: 2,
             usage: usage(1, 2),
+            context: 410_000,
+            window: 1_000_000,
             timing: timing(90),
             stop: StopReason::End,
         },
@@ -206,6 +211,17 @@ fn scripted_turn_produces_exact_items_and_revisions() {
     assert_eq!(view.totals, usage(11, 22));
     assert_eq!((view.turn, view.step), (1, 2));
     assert_eq!(view.account, "a2");
+    // The last step's context against its window; no cache reads this turn.
+    let status = view.context_status();
+    assert_eq!(status.as_deref(), Some("context 41% of 1M · cache 0%"));
+    view.turn_usage.cache_read = 33;
+    let status = view.context_status();
+    assert_eq!(status.as_deref(), Some("context 41% of 1M · cache 75%"));
+    assert_eq!(Transcript::new().context_status(), None);
+    assert_eq!(
+        [1_048_576, 1_500_000, 200_000, 999].map(fast_harness_core::view::short_tokens),
+        ["1M", "1.5M", "200K", "999"]
+    );
 }
 
 #[test]

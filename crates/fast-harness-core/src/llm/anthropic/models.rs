@@ -118,6 +118,15 @@ pub(crate) fn find(id: &str) -> Option<&'static ModelSpec> {
     MODELS.iter().find(|spec| spec.id == id)
 }
 
+/// The context window of `model`: the live list wins, then the table; 0 when unknown.
+pub fn context_window(model: &str) -> u64 {
+    super::live::lookup(model)
+        .map(|info| info.context_window)
+        .filter(|window| *window > 0)
+        .or_else(|| find(model).map(|spec| spec.context))
+        .unwrap_or(0)
+}
+
 impl ModelSpec {
     fn info(&self) -> ModelInfo {
         ModelInfo {

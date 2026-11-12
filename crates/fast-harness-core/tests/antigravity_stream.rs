@@ -175,6 +175,7 @@ fn usage_from_the_last_metadata() {
         output: 80,
         cache_read: 600,
         cache_write: 0,
+        cache_write_1h: 0,
     };
     assert_eq!(usage, want);
 }

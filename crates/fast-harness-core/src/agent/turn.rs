@@ -7,6 +7,7 @@ use std::time::Instant;
 use crate::agent::{repair, Agent, Conversation};
 use crate::auth::Lease;
 use crate::events::{AgentEvent, TurnOutcome};
+use crate::llm::catalog::context_window;
 use crate::llm::Completion;
 use crate::types::{Message, StopReason, Usage};
 
@@ -116,24 +117,7 @@ impl Turn<'_> {
         (self.sink)(AgentEvent::UsageUpdate {
             account: lease.account.clone(),
         });
-        let trace = &mut self.conv.trace;
-        traced(trace.assistant_message(
-            turn,
-            step,
-            &done.message,
-            &done.usage,
-            done.stop,
-            &done.timing,
-            &lease.account,
-        ))?;
-        self.usage.add(&done.usage);
-        (self.sink)(AgentEvent::StepEnd {
-            turn,
-            step,
-            usage: done.usage,
-            timing: done.timing,
-            stop: done.stop,
-        });
+        self.record(turn, step, &done, &lease.account)?;
         let has_calls = done.message.tool_calls().next().is_some();
         self.conv.messages.push(done.message);
         if done.stop == StopReason::ToolUse && has_calls {
@@ -141,6 +125,37 @@ impl Turn<'_> {
             return Ok(None);
         }
         Ok(Some(TurnOutcome::Done))
+    }
+
+    /// Traces the answer (and the server's input transformations), adds its
+    /// usage to the turn and emits `StepEnd` with the context and window.
+    fn record(&mut self, turn: u32, step: u32, done: &Completion, account: &str) -> Res<()> {
+        let window = context_window(&self.agent.parts.config.model);
+        let trace = &mut self.conv.trace;
+        if let Some(changes) = &done.transformations {
+            traced(trace.request_transformations(turn, step, changes))?;
+        }
+        traced(trace.assistant_message(
+            turn,
+            step,
+            &done.message,
+            &done.usage,
+            done.stop,
+            &done.timing,
+            account,
+            window,
+        ))?;
+        self.usage.add(&done.usage);
+        (self.sink)(AgentEvent::StepEnd {
+            turn,
+            step,
+            usage: done.usage,
+            context: done.usage.context(),
+            window,
+            timing: done.timing,
+            stop: done.stop,
+        });
+        Ok(())
     }
 
     fn finish(&mut self, outcome: TurnOutcome, started: Instant) -> TurnOutcome {

@@ -20,6 +20,10 @@ Usage:
       A session (default latest): what the user sent, each request, the model's thinking,
       answers and tool calls, then one row per step. --steps prints only the step table,
       --json the raw events.
+  fast-harness stats [ID|latest|--all] [--json] [--cwd DIR]
+      Context and cache numbers of a session (default latest) or of every session of the
+      directory: prompt tokens, cache hit rate, cache rewrites after an idle gap, tool result
+      bytes per tool, the largest and clipped results, find_tools steps, transformations.
   fast-harness models [--json]
       The Claude models with their effort levels, read live from the API (else the last
       known list); --json prints the full entries.
@@ -117,6 +121,12 @@ pub enum Command {
         json: bool,
         cwd: Option<PathBuf>,
     },
+    Stats {
+        id: Option<String>,
+        all: bool,
+        json: bool,
+        cwd: Option<PathBuf>,
+    },
     Accounts(AccountsAction),
     Models {
         json: bool,
@@ -131,6 +141,7 @@ struct Opts {
     prompt: Option<String>,
     json: bool,
     steps: bool,
+    all: bool,
     no_browser: bool,
     google: bool,
     id: Option<String>,
@@ -156,6 +167,7 @@ fn read_opts(args: Vec<String>) -> Result<Opts, String> {
             "-c" | "--continue" => opts.print.continue_latest = true,
             "--json" => opts.json = true,
             "--steps" => opts.steps = true,
+            "--all" => opts.all = true,
             "--no-browser" => opts.no_browser = true,
             "--google" => opts.google = true,
             "--id" => opts.id = Some(value(&mut args, &arg)?),
@@ -212,6 +224,14 @@ pub fn parse(args: Vec<String>) -> Result<Command, String> {
                 json,
                 cwd,
             });
+        }
+        Some("stats") if opts.positional.len() <= 2 => {
+            let id = opts.positional.get(1).cloned();
+            if opts.all && id.is_some() {
+                return Err("use either a session id or --all, not both".into());
+            }
+            let (all, json) = (opts.all, opts.json);
+            return Ok(Command::Stats { id, all, json, cwd });
         }
         Some("models") if opts.positional.len() == 1 => {
             return Ok(Command::Models { json: opts.json })

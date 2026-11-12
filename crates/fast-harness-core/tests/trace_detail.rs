@@ -68,6 +68,7 @@ fn usage(input: u64, output: u64, read: u64, write: u64) -> Usage {
         output,
         cache_read: read,
         cache_write: write,
+        cache_write_1h: 0,
     }
 }
 
@@ -149,6 +150,7 @@ fn first_step(w: &mut TraceWriter) {
         stop,
         &timing(812, 2300),
         "acct-b",
+        0,
     )
     .unwrap();
     w.tool_call(1, 1, "c1", "read", r#"{"path":"a.txt"}"#)
@@ -183,6 +185,7 @@ fn write_turn(path: &Path) -> Vec<TraceEvent> {
         StopReason::End,
         &timing(300, 900),
         "acct-b",
+        0,
     )
     .unwrap();
     w.step_end(1, 2, 950).unwrap();

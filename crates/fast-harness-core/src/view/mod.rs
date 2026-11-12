@@ -95,6 +95,48 @@ pub struct Transcript {
     pub model: String,
     pub account: String,
     pub totals: Usage,
+    /// Prompt plus output tokens of the last step; 0 before the first.
+    pub context: u64,
+    /// The context window of the last step's model; 0 when unknown.
+    pub window: u64,
+    /// Usage of the current (or last) turn.
+    pub turn_usage: Usage,
+}
+
+/// `1M`, `1.5M`, `200K` or `999` for a token count.
+pub fn short_tokens(count: u64) -> String {
+    if count >= 1_000_000 {
+        let tenths = (count + 50_000) / 100_000;
+        let text = format!("{}.{}", tenths / 10, tenths % 10);
+        format!("{}M", text.trim_end_matches(".0"))
+    } else if count >= 1000 {
+        format!("{}K", (count + 500) / 1000)
+    } else {
+        count.to_string()
+    }
+}
+
+impl Transcript {
+    /// `context 41% of 1M · cache 87%` for the status line: the context of
+    /// the last step against the window, then the cache hit rate of the turn;
+    /// `None` before the first step.
+    pub fn context_status(&self) -> Option<String> {
+        if self.context == 0 {
+            return None;
+        }
+        let mut text = match self.window {
+            0 => format!("context {}", short_tokens(self.context)),
+            window => format!(
+                "context {}% of {}",
+                self.context * 100 / window,
+                short_tokens(window)
+            ),
+        };
+        if let Some(hit) = self.turn_usage.cache_hit_percent() {
+            text.push_str(&format!(" · cache {hit}%"));
+        }
+        Some(text)
+    }
 }
 
 pub(crate) fn retry_text(attempt: u32, delay_ms: u64, error: &str) -> String {
@@ -188,6 +230,7 @@ impl Transcript {
             AgentEvent::TurnStart { turn } => {
                 self.turn = *turn;
                 self.step = 0;
+                self.turn_usage = Usage::default();
             }
             AgentEvent::StepStart { turn, step } => {
                 self.turn = *turn;
@@ -219,9 +262,15 @@ impl Transcript {
                 turn,
                 step,
                 usage,
+                context,
+                window,
                 timing,
                 stop,
-            } => self.footer(*turn, *step, *usage, *timing, *stop),
+            } => {
+                (self.context, self.window) = (*context, *window);
+                self.turn_usage.add(usage);
+                self.footer(*turn, *step, *usage, *timing, *stop);
+            }
             AgentEvent::TurnEnd { outcome, .. } => {
                 self.state = State::Idle;
                 if let Some(word) = outcome_word(*outcome) {

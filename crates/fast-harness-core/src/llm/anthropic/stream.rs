@@ -41,6 +41,8 @@ pub(crate) struct Assembler<'a> {
     pub usage: Usage,
     pub stop: Option<StopReason>,
     pub done: bool,
+    /// `message_start.message.input_transformations`, when present and not null.
+    pub transformations: Option<Value>,
 }
 
 fn protocol(message: impl Into<String>) -> LlmError {
@@ -70,6 +72,9 @@ fn read_usage(into: &mut Usage, usage: &Value) {
             *slot = value;
         }
     }
+    if let Some(value) = usage["cache_creation"]["ephemeral_1h_input_tokens"].as_u64() {
+        into.cache_write_1h = value;
+    }
 }
 
 impl<'a> Assembler<'a> {
@@ -82,6 +87,7 @@ impl<'a> Assembler<'a> {
             usage: Usage::default(),
             stop: None,
             done: false,
+            transformations: None,
         }
     }
 
@@ -96,7 +102,11 @@ impl<'a> Assembler<'a> {
             .map_err(|err| protocol(format!("bad JSON in `{name}` event: {err}")))?;
         let kind = event["type"].as_str().unwrap_or(name);
         match kind {
-            "message_start" => read_usage(&mut self.usage, &event["message"]["usage"]),
+            "message_start" => {
+                read_usage(&mut self.usage, &event["message"]["usage"]);
+                let changes = &event["message"]["input_transformations"];
+                self.transformations = (!changes.is_null()).then(|| changes.clone());
+            }
             "content_block_start" => return self.start(&event, on_delta),
             "content_block_delta" => return self.delta(&event, on_delta),
             "message_delta" => {

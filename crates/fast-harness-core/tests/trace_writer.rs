@@ -73,8 +73,8 @@ fn header_line_is_exactly_the_plan_format() {
         made.harness,
         format!("fast-harness {}", env!("CARGO_PKG_VERSION"))
     );
-    assert_eq!((made.version, made.parent.as_deref()), (3, Some("x")));
-    assert_eq!((trace::VERSION, trace::MIN_VERSION), (3, 1));
+    assert_eq!((made.version, made.parent.as_deref()), (4, Some("x")));
+    assert_eq!((trace::VERSION, trace::MIN_VERSION), (4, 1));
 }
 
 #[test]
@@ -102,6 +102,7 @@ fn fixtures() -> (Usage, Timing, ToolSpec, Message) {
         output: 363,
         cache_read: 0,
         cache_write: 24114,
+        cache_write_1h: 0,
     };
     let timing = Timing {
         ttfb_ms: 812,
@@ -150,7 +151,7 @@ fn write_every_event(path: &Path) {
     w.llm_retry(1, 1, 1, 2000, "Overloaded").unwrap();
     w.account_switch("u-1f3c", "u-77ab", "RateLimit", Some(9))
         .unwrap();
-    w.assistant_message(1, 1, &answer, &usage, stop, &timing, "u-1f3c")
+    w.assistant_message(1, 1, &answer, &usage, stop, &timing, "u-1f3c", 1_000_000)
         .unwrap();
     w.tool_call(1, 1, "c1", "read", "{}").unwrap();
     w.tool_result(1, 1, &result, 3).unwrap();
@@ -173,7 +174,7 @@ const EXPECTED: [(&str, &str); 13] = [
     ("account/switch", "from to reason holdUntil"),
     (
         "assistant/message",
-        "turn step message usage stop timing account",
+        "turn step message usage context window stop timing account",
     ),
     ("tool/call", "turn step callId name arguments"),
     ("tool/result", "turn step message durationMs"),
@@ -197,6 +198,16 @@ fn every_typed_event_has_the_plan_keys() {
     assert_eq!(answer["stop"], json!("tool_use"));
     assert_eq!(answer["usage"]["cacheWriteTokens"], json!(24114));
     assert_eq!(answer["timing"]["ttfbMs"], json!(812));
+    assert_eq!(answer["window"], json!(1_000_000));
+    let context = answer["usage"]["inputTokens"].as_u64().unwrap()
+        + answer["usage"]["outputTokens"].as_u64().unwrap()
+        + answer["usage"]["cacheReadTokens"].as_u64().unwrap()
+        + 24114;
+    assert_eq!(answer["context"], json!(context));
+    assert!(
+        answer["usage"].get("cacheWrite1hTokens").is_none(),
+        "0 is left out"
+    );
     assert_eq!(events[3].data["tools"][0]["name"], json!("read"));
     assert_eq!(events[4].data["effort"], json!("high"));
     assert_eq!(events[7].data["holdUntil"], json!(9));
@@ -253,9 +264,9 @@ fn open_append_continues_seq_and_cuts_a_torn_line() {
 }
 
 #[test]
-fn reader_accepts_versions_1_to_3_only() {
+fn reader_accepts_versions_1_to_4_only() {
     let tmp = TempDir::new("versions");
-    for version in [1, 2, 3, 4, 0] {
+    for version in [1, 2, 3, 4, 5, 0] {
         let path = tmp.0.join(format!("v{version}.jsonl"));
         let mut head = header("v");
         head.version = version;
@@ -264,11 +275,11 @@ fn reader_accepts_versions_1_to_3_only() {
         drop(writer);
         match trace::read(&path) {
             Ok((read, events)) => {
-                assert!((1..=3).contains(&version), "read version {version}");
+                assert!((1..=4).contains(&version), "read version {version}");
                 assert_eq!((read.version, events.len()), (version, 1));
             }
             Err(err) => {
-                assert!(version == 4 || version == 0, "{err}");
+                assert!(version == 5 || version == 0, "{err}");
                 assert!(err.to_string().contains("unsupported trace version"));
             }
         }

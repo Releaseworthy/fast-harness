@@ -56,6 +56,7 @@ fn sample() -> Transcript {
                 output: 30,
                 cache_read: 7,
                 cache_write: 9,
+                cache_write_1h: 0,
             },
             timing: Timing {
                 ttfb_ms: 1500,

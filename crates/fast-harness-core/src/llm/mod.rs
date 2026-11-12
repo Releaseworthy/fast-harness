@@ -111,6 +111,9 @@ pub struct Completion {
     pub timing: Timing,
     /// Status and response headers; the rate-limit headers feed the account layer.
     pub head: HttpHead,
+    /// Claude `message_start.message.input_transformations`, when the server
+    /// reported changes to the request; traced as `request/transformations`.
+    pub transformations: Option<Value>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]

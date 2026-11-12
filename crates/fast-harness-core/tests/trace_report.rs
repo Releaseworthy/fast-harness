@@ -51,6 +51,7 @@ fn usage(input: u64, output: u64, cache_read: u64, cache_write: u64) -> Usage {
         output,
         cache_read,
         cache_write,
+        cache_write_1h: 0,
     }
 }
 
@@ -75,6 +76,7 @@ fn write_session(path: &Path) {
         StopReason::ToolUse,
         &timing(812, 5100),
         "u-1f3c",
+        1_000_000,
     )
     .unwrap();
     w.tool_call(1, 1, "c1", "read", "{}").unwrap();
@@ -95,6 +97,7 @@ fn write_session(path: &Path) {
         StopReason::End,
         &timing(640, 2000),
         "u-77ab",
+        1_000_000,
     )
     .unwrap();
     w.step_end(1, 2, 2010).unwrap();

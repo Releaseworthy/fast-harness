@@ -16,7 +16,7 @@ use std::sync::atomic::Ordering;
 use std::time::Instant;
 
 pub use live::{remember as remember_models, LiveCaps};
-pub use models::{builtin_models, efforts, fit_effort, ModelInfo};
+pub use models::{builtin_models, context_window, efforts, fit_effort, ModelInfo};
 
 use crate::http::{Flow, HttpHead, HttpRequest, Transport};
 use crate::llm::{Auth, ChatRequest, Completion, Delta, ErrorKind, LlmError, Provider, Timing};
@@ -60,6 +60,13 @@ impl Anthropic {
 /// `GET https://api.anthropic.com/v1/models` merged with the built-in table.
 pub fn list_models(http: &dyn Transport, auth: &Auth) -> Result<Vec<ModelInfo>, LlmError> {
     Anthropic::default().list_models(http, auth)
+}
+
+/// The JSON body Claude would receive for `req` (benchmarks and tests).
+pub fn request_body(req: &ChatRequest<'_>, oauth: bool) -> String {
+    request::build(req, models::find(req.model), oauth)
+        .0
+        .to_string()
 }
 
 fn elapsed_ms(start: Instant) -> u64 {
@@ -154,6 +161,7 @@ impl Run<'_, '_> {
         }
         self.timing.total_ms = elapsed_ms(self.start);
         Ok(Completion {
+            transformations: self.assembler.transformations.take(),
             usage: self.assembler.usage,
             stop: self.assembler.stop.unwrap_or(StopReason::Other),
             message: self.assembler.message(),

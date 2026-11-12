@@ -78,6 +78,10 @@ pub enum AgentEvent {
         turn: u32,
         step: u32,
         usage: Usage,
+        /// The context after this step: prompt plus output tokens.
+        context: u64,
+        /// The model's context window in tokens; 0 when unknown.
+        window: u64,
         timing: Timing,
         stop: StopReason,
     },

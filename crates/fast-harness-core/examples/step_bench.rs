@@ -14,9 +14,10 @@ use fast_harness_core::agent::{Agent, AgentParts, Conversation};
 use fast_harness_core::auth::StaticAuth;
 use fast_harness_core::config::Config;
 use fast_harness_core::http::{ScriptedResponse, ScriptedTransport};
-use fast_harness_core::llm::anthropic::Anthropic;
-use fast_harness_core::llm::Auth;
+use fast_harness_core::llm::anthropic::{request_body, Anthropic};
+use fast_harness_core::llm::{Auth, ChatRequest};
 use fast_harness_core::tools;
+use fast_harness_core::types::{Block, Message, Role};
 use serde_json::{json, Value};
 
 const CHUNK: usize = 512;
@@ -146,4 +147,65 @@ fn main() {
         dir_bytes(&conv.wire_dir)
     );
     let _ = std::fs::remove_dir_all(&root);
+    [200, 1000].into_iter().for_each(build_bench);
+}
+
+/// `count` messages: the user prompt, then tool call and tool result pairs.
+fn history(count: usize) -> Vec<Message> {
+    let mut messages = vec![Message::user("bench")];
+    for index in 1..count {
+        let id = format!("toolu_{}", index / 2);
+        let (role, block) = if index % 2 == 1 {
+            let arguments = r#"{"path": "notes.txt"}"#.into();
+            let name = "read".into();
+            let call = Block::ToolCall {
+                id,
+                name,
+                arguments,
+                signature: None,
+            };
+            (Role::Assistant, call)
+        } else {
+            let content = "line one\nline two\nline three\n".repeat(20);
+            let result = Block::ToolResult {
+                call_id: id,
+                content,
+                is_error: false,
+            };
+            (Role::Tool, result)
+        };
+        let content = vec![block];
+        messages.push(Message {
+            role,
+            content,
+            model: None,
+        });
+    }
+    messages
+}
+
+/// Time to build and serialise one Claude request body of `count` messages
+/// with the built-in tools (`request_body`, as each step does).
+fn build_bench(count: usize) {
+    const RUNS: u32 = 50;
+    let messages = history(count);
+    let specs = tools::builtin().specs().to_vec();
+    let cancel = AtomicBool::new(false);
+    let req = ChatRequest {
+        model: "claude-opus-5-5",
+        system: "You are a benchmark.",
+        messages: &messages,
+        tools: &specs,
+        max_tokens: 32_000,
+        effort: None,
+        cache_long: false,
+        cancel: &cancel,
+    };
+    let started = Instant::now();
+    let mut bytes = 0;
+    for _ in 0..RUNS {
+        bytes = request_body(&req, false).len();
+    }
+    let each = started.elapsed().as_secs_f64() * 1e6 / f64::from(RUNS);
+    println!("request build {count} messages: {each:.0} us, body {bytes} bytes");
 }

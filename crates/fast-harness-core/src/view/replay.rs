@@ -162,7 +162,10 @@ impl Replay {
         if let Some(message) = parse::<Message>(data, "message") {
             self.view.add_assistant(turn, step, &message);
         }
-        let usage = parse(data, "usage").unwrap_or_default();
+        let usage: Usage = parse(data, "usage").unwrap_or_default();
+        // Trace version 4 keys; older logs leave the window unknown.
+        self.view.context = data["context"].as_u64().unwrap_or(usage.context());
+        self.view.window = data["window"].as_u64().unwrap_or(0);
         let timing = parse(data, "timing").unwrap_or_default();
         let stop = parse(data, "stop").unwrap_or(StopReason::Other);
         let account = match data.get("account").and_then(Value::as_str) {

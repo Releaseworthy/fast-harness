@@ -67,8 +67,12 @@ pub const APP_NAME: &str = "Fast Harness";
 
 pub fn header_text(ui: &Ui, view: &View<'_>, now_ms: u64) -> String {
     let t = view.transcript;
+    let context = t
+        .context_status()
+        .map(|text| format!("{text} │ "))
+        .unwrap_or_default();
     format!(
-        "{}{APP_NAME} │ {} {} │ {} │ {} │ {} │ in {} out {} cache r {} w {}",
+        "{}{APP_NAME} │ {} {} │ {} │ {} │ {} │ {context}in {} out {} cache r {} w {}",
         lead(ui.icons.app),
         ui.model,
         ui.effort.as_deref().unwrap_or("default"),

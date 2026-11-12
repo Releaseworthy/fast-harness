@@ -6,6 +6,7 @@ mod auth_choice;
 mod info;
 mod models_cmd;
 mod print;
+mod stats_cmd;
 mod tui;
 
 use std::io::IsTerminal;
@@ -46,6 +47,7 @@ fn main() -> ExitCode {
             json,
             cwd,
         } => info::trace(id, steps, json, cwd),
+        Command::Stats { id, all, json, cwd } => stats_cmd::run(id, all, json, cwd),
         Command::Accounts(action) => accounts_cmd::run(action),
         Command::Models { json } => models_cmd::run(json),
         Command::Print(print_args) => print::run(print_args),

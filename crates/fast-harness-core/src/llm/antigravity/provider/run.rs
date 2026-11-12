@@ -209,6 +209,7 @@ impl<'a, 'd> Run<'a, 'd> {
             stop,
             timing: self.timing,
             head,
+            transformations: None,
         })
     }
 }

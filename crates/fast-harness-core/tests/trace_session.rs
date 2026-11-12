@@ -94,7 +94,7 @@ fn tool_turn(w: &mut TraceWriter) {
         model: None,
     };
     let (usage, timing) = (Usage::default(), Timing::default());
-    w.assistant_message(1, 1, &call, &usage, StopReason::ToolUse, &timing, "a")
+    w.assistant_message(1, 1, &call, &usage, StopReason::ToolUse, &timing, "a", 0)
         .unwrap();
     w.tool_call(1, 1, "c1", "read", "{}").unwrap();
     w.tool_result(1, 1, &result, 2).unwrap();

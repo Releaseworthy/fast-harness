@@ -64,6 +64,7 @@ pub fn usage_from(meta: &Value) -> Usage {
         output: count(meta, "candidatesTokenCount") + count(meta, "thoughtsTokenCount"),
         cache_read: cached,
         cache_write: 0,
+        cache_write_1h: 0,
     }
 }
 

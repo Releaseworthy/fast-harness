@@ -113,8 +113,13 @@ impl App {
         ui.set_status_model(model.as_str().into());
         ui.set_status_account(self.view.account.as_str().into());
         let t = &self.view.totals;
+        let context = self
+            .view
+            .context_status()
+            .map(|text| format!("{text} · "))
+            .unwrap_or_default();
         let used = format!(
-            "session: in {} out {} cache {} / {}",
+            "{context}session: in {} out {} cache {} / {}",
             tokens(t.input),
             tokens(t.output),
             tokens(t.cache_read),

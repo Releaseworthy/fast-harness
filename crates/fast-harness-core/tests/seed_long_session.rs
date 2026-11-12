@@ -36,6 +36,7 @@ fn tool_step(log: &mut TraceWriter, turn: u32, output: &str) -> std::io::Result<
         StopReason::ToolUse,
         &timing,
         "seed",
+        0,
     )?;
     log.tool_call(
         turn,
@@ -83,7 +84,16 @@ fn seed_long_session() -> std::io::Result<()> {
         let text = format!("Answer {turn}.\n\n").repeat(1 + (turn as usize * 7) % 23);
         let answer = assistant(vec![Block::Text { text }]);
         log.step_start(turn, 2)?;
-        log.assistant_message(turn, 2, &answer, &usage, StopReason::End, &timing, "seed")?;
+        log.assistant_message(
+            turn,
+            2,
+            &answer,
+            &usage,
+            StopReason::End,
+            &timing,
+            "seed",
+            0,
+        )?;
         log.step_end(turn, 2, 5)?;
         log.turn_end(turn, 2, &usage, 10, "done")?;
     }

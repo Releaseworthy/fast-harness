@@ -51,3 +51,15 @@ Wall time 4.0 s for the turn. `fast-harness.exe` release: 4.98 MB.
 | `fast-harness-gui` window created (cold, then warm) | 311 ms, then 30 to 31 ms |
 | `fast-harness-gui` idle after 4 s with 7 accounts | working set 46.0 to 58.4 MB, private 76 MB |
 | DeepSeek Harness on the same machine | 9 processes, 1,680 MB working set |
+
+## Phase 10: request-build time (2026-11-12)
+
+`cargo run --release -p fast-harness-core --example step_bench` (no other build running): the 200-step scripted turn, then the Claude request body (`llm::anthropic::request_body`: build and serialise, built-in tools, mean of 50 runs) for a history of the user prompt and alternating `read` tool calls and results (600-byte results).
+
+| Measure | Result |
+|---|---|
+| 200-step turn, harness time per step | 517 us (total 103.9 ms, session log 265,553 bytes) |
+| Request build, 200 messages | 340 us, body 90,052 bytes |
+| Request build, 1000 messages | 2,426 us, body 434,052 bytes |
+
+The request build grows with the history (about 2.4 us per message at 1000), so it is most of the 3 ms per-step budget on a long session.

@@ -100,6 +100,7 @@ fn usage() -> Usage {
         output: 9,
         cache_read: 100,
         cache_write: 20,
+        cache_write_1h: 0,
     }
 }
 

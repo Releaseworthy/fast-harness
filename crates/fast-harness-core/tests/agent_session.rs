@@ -59,6 +59,7 @@ fn write_crashed_log(env: &Env, id: &str) {
             StopReason::ToolUse,
             &timing,
             "acct-1",
+            0,
         )
         .unwrap();
     writer

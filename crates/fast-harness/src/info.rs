@@ -25,7 +25,7 @@ pub fn sessions(cwd: Option<PathBuf>) -> Result<ExitCode, String> {
 }
 
 /// The id itself, or the newest session for `None` and `latest`.
-fn resolve(home: &Path, cwd: &Path, id: Option<String>) -> Result<String, String> {
+pub fn resolve(home: &Path, cwd: &Path, id: Option<String>) -> Result<String, String> {
     match id.filter(|id| id != "latest") {
         Some(id) => Ok(id),
         None => session::latest(home, cwd)

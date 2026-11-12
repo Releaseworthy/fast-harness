@@ -19,6 +19,9 @@ pub mod kind {
     pub const LLM_RETRY: &str = "llm/retry";
     pub const ACCOUNT_SWITCH: &str = "account/switch";
     pub const ASSISTANT_MESSAGE: &str = "assistant/message";
+    pub const REQUEST_TRANSFORMATIONS: &str = "request/transformations";
+    /// Written by the compaction of a later phase; counted by `stats`.
+    pub const COMPACTION: &str = "compaction";
     pub const TOOL_CALL: &str = "tool/call";
     pub const TOOL_RESULT: &str = "tool/result";
     pub const STEP_END: &str = "step/end";
@@ -49,6 +52,10 @@ struct AssistantData<'a> {
     step: u32,
     message: &'a Message,
     usage: &'a Usage,
+    /// Prompt plus output tokens of this call (trace version 4).
+    context: u64,
+    /// The model's context window; 0 when unknown (trace version 4).
+    window: u64,
     stop: StopReason,
     timing: &'a Timing,
     account: &'a str,
@@ -56,6 +63,18 @@ struct AssistantData<'a> {
 
 fn value(data: impl Serialize) -> io::Result<Value> {
     Ok(serde_json::to_value(data)?)
+}
+
+/// Entries of an `input_transformations` value that name
+/// `prefix_binding_mismatch` (an array of entries, or one entry). The entry
+/// shape is not documented, so any entry whose JSON holds the word counts.
+pub fn prefix_binding_mismatches(transformations: &Value) -> u64 {
+    let hit = |entry: &Value| entry.to_string().contains("prefix_binding_mismatch");
+    match transformations {
+        Value::Array(entries) => entries.iter().filter(|entry| hit(entry)).count() as u64,
+        Value::Null => 0,
+        other => u64::from(hit(other)),
+    }
 }
 
 impl TraceWriter {
@@ -138,17 +157,37 @@ impl TraceWriter {
         stop: StopReason,
         timing: &Timing,
         account: &str,
+        window: u64,
     ) -> io::Result<u64> {
         let data = AssistantData {
             turn,
             step,
             message,
             usage,
+            context: usage.context(),
+            window,
             stop,
             timing,
             account,
         };
         self.emit(kind::ASSISTANT_MESSAGE, value(data)?)
+    }
+
+    /// `request/transformations`: the server's `input_transformations` of
+    /// one call and how many of them are `prefix_binding_mismatch`.
+    pub fn request_transformations(
+        &mut self,
+        turn: u32,
+        step: u32,
+        transformations: &Value,
+    ) -> io::Result<u64> {
+        let data = json!({
+            "turn": turn,
+            "step": step,
+            "transformations": transformations,
+            "prefixBindingMismatch": prefix_binding_mismatches(transformations),
+        });
+        self.emit(kind::REQUEST_TRANSFORMATIONS, data)
     }
 
     pub fn tool_call(

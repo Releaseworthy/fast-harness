@@ -95,8 +95,10 @@ impl Message {
     }
 }
 
-/// Token counts of one model call. The four fields are disjoint:
-/// the prompt size is `input + cache_read + cache_write`.
+/// Token counts of one model call. The first four fields are disjoint:
+/// the prompt size is `input + cache_read + cache_write`. `cache_write_1h` is
+/// the part of `cache_write` written with the 1 hour lifetime (Anthropic
+/// `usage.cache_creation.ephemeral_1h_input_tokens`; 0 for Antigravity).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Usage {
@@ -108,6 +110,12 @@ pub struct Usage {
     pub cache_read: u64,
     #[serde(rename = "cacheWriteTokens")]
     pub cache_write: u64,
+    #[serde(rename = "cacheWrite1hTokens", skip_serializing_if = "is_zero")]
+    pub cache_write_1h: u64,
+}
+
+fn is_zero(value: &u64) -> bool {
+    *value == 0
 }
 
 impl Usage {
@@ -116,10 +124,22 @@ impl Usage {
         self.output += other.output;
         self.cache_read += other.cache_read;
         self.cache_write += other.cache_write;
+        self.cache_write_1h += other.cache_write_1h;
     }
 
     pub fn prompt(&self) -> u64 {
         self.input + self.cache_read + self.cache_write
+    }
+
+    /// The context after this call: the prompt plus the output.
+    pub fn context(&self) -> u64 {
+        self.prompt() + self.output
+    }
+
+    /// `cache_read / prompt` in percent; `None` for an empty prompt.
+    pub fn cache_hit_percent(&self) -> Option<u64> {
+        let prompt = self.prompt();
+        (prompt > 0).then(|| self.cache_read * 100 / prompt)
     }
 }
 
@@ -222,6 +242,7 @@ mod tests {
             output: 9,
             cache_read: 100,
             cache_write: 20,
+            cache_write_1h: 0,
         };
         let json = serde_json::to_string(&usage).unwrap();
         assert_eq!(

@@ -10,7 +10,7 @@ pub mod report;
 pub mod wire;
 pub mod writer;
 
-pub use events::{kind, RequestContext};
+pub use events::{kind, prefix_binding_mismatches, RequestContext};
 pub use reader::read;
 pub use writer::TraceWriter;
 
@@ -20,8 +20,9 @@ use serde_json::Value;
 /// Format version written in every new header line. Version 2: the
 /// `request/context` key `wire` is present only with wire capture on.
 /// Version 3: assistant messages carry `model`; `tool_call` blocks may carry
-/// `signature`.
-pub const VERSION: u32 = 3;
+/// `signature`. Version 4: `assistant/message` has `context` and `window`,
+/// usage may have `cacheWrite1hTokens`, and `request/transformations` exists.
+pub const VERSION: u32 = 4;
 
 /// The oldest version the reader accepts; a resumed log keeps its own header.
 pub const MIN_VERSION: u32 = 1;

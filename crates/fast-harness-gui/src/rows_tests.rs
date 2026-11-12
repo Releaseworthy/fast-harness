@@ -98,6 +98,7 @@ fn notes_and_footers() {
             output: 300,
             cache_read: 10_000,
             cache_write: 0,
+            cache_write_1h: 0,
         },
         timing: Timing {
             ttfb_ms: 850,

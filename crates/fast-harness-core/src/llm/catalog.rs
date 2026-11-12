@@ -81,6 +81,17 @@ pub fn fit_effort(model: &str, effort: Option<&str>) -> Option<String> {
     }
 }
 
+/// The context window of `model` in tokens from the remembered catalog or
+/// the built-in table; 0 when unknown.
+pub fn context_window(model: &str) -> u64 {
+    if antigravity::is_antigravity(model) {
+        return antigravity::models::lookup(model)
+            .map(|entry| antigravity::models::to_info(&entry).context_window)
+            .unwrap_or(0);
+    }
+    anthropic::context_window(model)
+}
+
 /// The display name of `model` from the remembered catalog or the built-in
 /// table; `None` when unknown.
 pub fn display_name(model: &str) -> Option<String> {
