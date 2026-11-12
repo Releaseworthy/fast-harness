@@ -15,8 +15,12 @@ pub const FIELD_LINES: usize = 3;
 /// A drawn line is cut at this many characters (Copy takes all).
 pub const LINE_CHARS: usize = 400;
 /// Characters of chip text on one chip line, 4 more per chip for its
-/// padding: about 470 px of the card at the extra-small size.
+/// padding: about 470 px of the card at the extra-small size. A chip is
+/// cut at this length.
 pub const CHIP_ROW_CHARS: usize = 72;
+/// The same on a wide card: ui/toolcard.slint uses these rows from
+/// (112 + 4) * 6 px = 696 px of chip line.
+pub const CHIP_ROW_CHARS_WIDE: usize = 112;
 
 fn model<T: Clone + 'static>(items: Vec<T>) -> ModelRc<T> {
     ModelRc::new(VecModel::from(items))
@@ -47,10 +51,14 @@ pub fn head(text: &str, n: usize) -> String {
 /// keep their whole target (shell gets its `$`).
 pub fn split_target(kind: ToolKind, target: &str) -> (String, String) {
     match kind {
-        ToolKind::Read | ToolKind::Write | ToolKind::Edit => {}
-        ToolKind::Shell if !target.is_empty() => return (format!("$ {target}"), String::new()),
-        _ => return (cut(target, LINE_CHARS), String::new()),
+        ToolKind::Read | ToolKind::Write | ToolKind::Edit => split_path(target),
+        ToolKind::Shell if !target.is_empty() => (format!("$ {target}"), String::new()),
+        _ => (cut(target, LINE_CHARS), String::new()),
     }
+}
+
+/// A path's file name and its folder.
+pub fn split_path(target: &str) -> (String, String) {
     let path = target.trim_end_matches(['/', '\\']);
     match path.rfind(['/', '\\']) {
         Some(at) => {
@@ -61,13 +69,13 @@ pub fn split_target(kind: ToolKind, target: &str) -> (String, String) {
     }
 }
 
-/// The chips in lines of at most [`CHIP_ROW_CHARS`] characters.
-pub fn chip_rows(chips: &[Chip]) -> Vec<ChipRow> {
+/// The chips in lines of at most `max` characters.
+pub fn chip_rows(chips: &[Chip], max: usize) -> Vec<ChipRow> {
     let mut rows: Vec<Vec<ToolChip>> = Vec::new();
     let mut used = 0;
     for chip in chips {
         let width = chip.text.chars().count().min(CHIP_ROW_CHARS) + 4;
-        if rows.is_empty() || used + width > CHIP_ROW_CHARS + 4 {
+        if rows.is_empty() || used + width > max + 4 {
             rows.push(Vec::new());
             used = 0;
         }
@@ -99,6 +107,24 @@ pub fn code_line(line: &Line) -> CodeLine {
     }
 }
 
+/// A glob path: the file mark, the folder (dim, with its separator) and
+/// the name.
+pub fn file_line(line: &Line) -> CodeLine {
+    let (name, dir) = split_path(&line.text);
+    let sep = if line.text.contains('\\') { '\\' } else { '/' };
+    let dir = match dir.as_str() {
+        "" => String::new(),
+        "/" | "\\" => dir,
+        _ => format!("{dir}{sep}"),
+    };
+    CodeLine {
+        kind: "file".into(),
+        old: cut(&dir, LINE_CHARS).into(),
+        new: Default::default(),
+        text: cut(&name, LINE_CHARS).into(),
+    }
+}
+
 pub fn field(field: &Field) -> ToolField {
     ToolField {
         label: field.label.as_str().into(),
@@ -116,8 +142,13 @@ fn digits(lines: &[Line]) -> i32 {
 /// What the Show all link says, when the card has more than its preview.
 fn more_label(detail: &ToolDetail) -> Option<String> {
     let text_lines = detail.text.lines().count();
+    let unit = if detail.kind == ToolKind::Glob {
+        "files"
+    } else {
+        "lines"
+    };
     if detail.lines.len() > PREVIEW_LINES {
-        Some(format!("Show all {} lines", detail.lines.len()))
+        Some(format!("Show all {} {unit}", detail.lines.len()))
     } else if detail.lines.is_empty() && text_lines > PREVIEW_LINES {
         Some(format!("Show all {text_lines} lines"))
     } else {
@@ -131,7 +162,12 @@ fn more_label(detail: &ToolDetail) -> Option<String> {
 
 pub fn tool_view(name: &str, detail: &ToolDetail) -> ToolView {
     let (target, target_dir) = split_target(detail.kind, &detail.target);
-    let lines: Vec<CodeLine> = detail.lines.iter().map(code_line).collect();
+    let to_row = if detail.kind == ToolKind::Glob {
+        file_line
+    } else {
+        code_line
+    };
+    let lines: Vec<CodeLine> = detail.lines.iter().map(to_row).collect();
     let preview = lines.iter().take(PREVIEW_LINES).cloned().collect();
     let hidden = detail.lines_total.saturating_sub(detail.lines.len());
     let more = more_label(detail);
@@ -140,7 +176,8 @@ pub fn tool_view(name: &str, detail: &ToolDetail) -> ToolView {
         name: name.into(),
         target: target.into(),
         target_dir: target_dir.into(),
-        chip_rows: model(chip_rows(&detail.chips)),
+        chip_rows: model(chip_rows(&detail.chips, CHIP_ROW_CHARS)),
+        chip_rows_wide: model(chip_rows(&detail.chips, CHIP_ROW_CHARS_WIDE)),
         fields: model(detail.fields.iter().map(field).collect()),
         lines: model(lines),
         lines_preview: model(preview),
@@ -160,13 +197,15 @@ pub fn tool_view(name: &str, detail: &ToolDetail) -> ToolView {
 
 /// The detail of a Trace entry: a call shows its arguments (the edit diff,
 /// the written file), a result its output; write and edit results only
-/// their message, since the call already shows the change.
+/// their message, since the call already shows the change. A result has
+/// the duration chip (the card replaces the entry's title line).
 pub fn entry_detail(kind: EntryKind, tool: &EntryTool, is_error: bool) -> ToolDetail {
     if kind != EntryKind::ToolResult {
         return tool_detail(&tool.name, &tool.arguments, None, false, None);
     }
     let output = tool.output.as_deref().unwrap_or("");
-    let mut detail = tool_detail(&tool.name, &tool.arguments, Some(output), is_error, None);
+    let (name, args) = (&tool.name, &tool.arguments);
+    let mut detail = tool_detail(name, args, Some(output), is_error, tool.duration_ms);
     detail.fields.clear();
     if matches!(detail.kind, ToolKind::Write | ToolKind::Edit) {
         detail.lines.clear();

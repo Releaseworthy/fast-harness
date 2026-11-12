@@ -9,13 +9,15 @@ import { Icons } from "icons.slint";
 
 // One line: number columns, the mark column and the wrapped text. A header
 // row (a grep file) shows the file mark and its path on the raised colour;
-// a gap row shows an ellipsis.
+// a file row (a glob path) the file mark, the dim folder and the name; a
+// gap row shows an ellipsis.
 export component CodeRow inherits Rectangle {
     in property <CodeLine> line;
     in property <bool> two-numbers;
     in property <bool> marks;
     in property <length> number-width;
     property <bool> header: line.kind == "header";
+    property <bool> file: line.kind == "file";
     property <bool> numbered: root.number-width > 0 && !root.header;
     // The diff tints are `theme::DIFF_ALPHA` (0.12): the theme tests check
     // text and dim on code blended with success and error at that alpha.
@@ -53,20 +55,31 @@ export component CodeRow inherits Rectangle {
             font-weight: 700;
             vertical-alignment: top;
         }
-        if root.header || line.kind == "gap": Mark {
-            text: root.header ? Icons.file : Icons.ellipsis;
-            color: root.header ? Theme.text : Theme.dim;
+        if root.header || root.file || line.kind == "gap": Mark {
+            text: line.kind == "gap" ? Icons.ellipsis : Icons.file;
+            color: line.kind == "gap" ? Theme.dim : Theme.text;
             font-size: Theme.font-s;
             vertical-alignment: center;
         }
-        Text {
-            text: line.text;
-            color: Theme.text;
-            font-family: Theme.mono;
-            font-size: Theme.font-s;
-            font-weight: root.header ? 600 : 400;
-            wrap: word-wrap;
+        // The folder and the name touch: their own layout has no spacing.
+        HorizontalLayout {
             horizontal-stretch: 1;
+            if root.file: Text {
+                text: line.old;
+                color: Theme.dim;
+                font-family: Theme.mono;
+                font-size: Theme.font-s;
+                vertical-alignment: top;
+            }
+            Text {
+                text: line.text;
+                color: Theme.text;
+                font-family: Theme.mono;
+                font-size: Theme.font-s;
+                font-weight: root.header ? 600 : 400;
+                wrap: word-wrap;
+                horizontal-stretch: 1;
+            }
         }
     }
 }

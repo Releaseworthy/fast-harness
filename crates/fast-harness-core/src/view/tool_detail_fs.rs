@@ -13,12 +13,8 @@ fn numbered(line: &str) -> Option<(u64, &str)> {
 }
 
 pub(crate) fn read(detail: &mut ToolDetail, call: &Call<'_>) {
+    // No offset or limit fields: the "lines A–B" chip says it.
     detail.target = call.str("path").unwrap_or_default().to_string();
-    for key in ["offset", "limit"] {
-        if let Some(value) = call.text(key) {
-            detail.field(key, value);
-        }
-    }
     let Some(out) = call.result() else { return };
     if out.trim() == "(empty file)" {
         return detail.chip("empty file", Tone::Plain);

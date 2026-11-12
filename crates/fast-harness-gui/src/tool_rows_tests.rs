@@ -4,7 +4,7 @@ use slint::Model;
 
 use super::*;
 use crate::trace_rows::entry_row;
-use crate::ToolView;
+use crate::{CodeLine, ToolView};
 
 fn view(name: &str, args: &str, output: Option<&str>, error: bool) -> ToolView {
     tool_view(name, &tool_detail(name, args, output, error, Some(41)))
@@ -108,10 +108,20 @@ fn glob_lists_files_without_numbers_and_shell_keeps_its_text() {
     let v = view(
         "glob",
         r#"{"pattern":"**/*.rs"}"#,
-        Some("a.rs\nb.rs"),
+        Some("a.rs\nsrc/ui/b.rs"),
         false,
     );
     assert_eq!((v.lines.row_count(), v.digits), (2, 0));
+    let row = |i: usize| v.lines.row_data(i).expect("a file row");
+    let parts = |l: CodeLine| (l.kind.to_string(), l.old.to_string(), l.text.to_string());
+    assert_eq!(parts(row(0)), ("file".into(), "".into(), "a.rs".into()));
+    assert_eq!(
+        parts(row(1)),
+        ("file".into(), "src/ui/".into(), "b.rs".into())
+    );
+    let many: Vec<String> = (0..14).map(|i| format!("d/f{i}.rs")).collect();
+    let v = view("glob", "{}", Some(&many.join("\n")), false);
+    assert_eq!(v.more_label.as_str(), "Show all 14 files");
     let v = view(
         "shell",
         r#"{"command":"cargo test"}"#,
@@ -196,7 +206,22 @@ fn paths_fields_lines_and_chips_are_cut_for_drawing() {
             tone: fast_harness_core::view::Tone::Plain,
         })
         .collect();
-    assert!(chip_rows(&many).len() >= 3);
+    assert!(chip_rows(&many, CHIP_ROW_CHARS).len() >= 3);
+}
+
+#[test]
+fn a_wide_card_fits_the_subagent_chips_on_one_line() {
+    let out = "Done.\n[subagent session 3f9c · model gemini-3-flash · 12 steps · 9 tool calls · 48.2k tokens]";
+    let v = view("subagent", r#"{"prompt":"go"}"#, Some(out), false);
+    assert_eq!(v.chip_rows.row_count(), 2);
+    assert_eq!(v.chip_rows_wide.row_count(), 1);
+    assert_eq!(chips(&v).len(), 6);
+}
+
+#[test]
+fn a_trace_result_has_the_duration_chip() {
+    let result = entry_row(&tool_entry(EntryKind::ToolResult, Some("ok")));
+    assert!(chips(&result.tool).contains(&"plain:3 ms".to_string()));
 }
 
 fn tool_entry(kind: EntryKind, output: Option<&str>) -> Entry {

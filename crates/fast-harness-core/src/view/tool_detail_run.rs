@@ -59,9 +59,7 @@ pub(crate) fn subagent(detail: &mut ToolDetail, call: &Call<'_>) {
         Some(text) => text.trim().to_string(),
         None => first_line(prompt),
     };
-    if let Some(text) = description {
-        detail.field("description", text);
-    }
+    // The description is the target: no field repeats it.
     detail.field("prompt", prompt);
     let Some(out) = call.output else { return };
     let mut kept = Vec::new();

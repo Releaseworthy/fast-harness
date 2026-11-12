@@ -104,7 +104,7 @@ fn read_numbers_lines_and_names_the_window() {
         false,
     );
     assert_eq!(chips(&part), [("lines 2\u{2013}2 of 3", Tone::Info)]);
-    assert_eq!(fields(&part), [("offset", "2"), ("limit", "1")]);
+    assert!(fields(&part).is_empty());
     let tail = card(
         "read",
         json!({"path": "a", "offset": 5}),
@@ -335,11 +335,7 @@ fn subagent_shows_the_answer_and_the_session_line() {
     let out = "The answer.\n\n[subagent session s1 · model m · 3 steps · tools read, grep · in 120 out 45]";
     let done = card("subagent", args, Some(out), false);
     assert_eq!(done.target, "Bug hunt");
-    let want = [
-        ("description", "Bug hunt"),
-        ("prompt", "Find the bug\nin x"),
-    ];
-    assert_eq!(fields(&done), want);
+    assert_eq!(fields(&done), [("prompt", "Find the bug\nin x")]);
     let want = [
         ("session s1", Tone::Plain),
         ("model m", Tone::Info),

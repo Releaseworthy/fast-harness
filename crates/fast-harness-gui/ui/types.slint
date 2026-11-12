@@ -19,8 +19,9 @@ export struct ToolField {
     preview: string,
 }
 
-// One line of the code view. `kind`: context, added, removed, header or
-// gap; `old` and `new` are line numbers as text, "" when none.
+// One line of the code view. `kind`: context, added, removed, header, gap
+// or file (a glob path: `old` its folder with the separator, `text` the
+// name); `old` and `new` are line numbers as text, "" when none.
 export struct CodeLine {
     kind: string,
     old: string,
@@ -39,7 +40,10 @@ export struct ToolView {
     // and the folder of a file target.
     target: string,
     target-dir: string,
+    // The chips split for a narrow card and for a wide one (ui/toolcard.slint
+    // picks by the real width).
     chip-rows: [ChipRow],
+    chip-rows-wide: [ChipRow],
     fields: [ToolField],
     // Every line (at most 200) and the first ones (collapsed card).
     lines: [CodeLine],

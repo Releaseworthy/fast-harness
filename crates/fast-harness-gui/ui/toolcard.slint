@@ -1,9 +1,9 @@
-// The tool card: a stripe and a tile in the colour of the tool's kind, the
-// name and target, the chips (line ranges, counts, exit codes: each says
-// what it means in words), the arguments, then the code view or the
+// The tool card: the kind's colour as the left border, a tile tinted with
+// it, the name and target, the chips (line ranges, counts, exit codes: each
+// says what it means in words), the arguments, then the code view or the
 // output text. Used by the chat transcript and the Trace page.
 import { ToolView, ToolChip, ChipRow, ToolField } from "types.slint";
-import { Theme, Mark, LinkText, AccentFill, Card } from "parts.slint";
+import { Theme, Mark, LinkText, Elevation } from "parts.slint";
 import { Icons } from "icons.slint";
 import { BusySpinner } from "widgets.slint";
 import { CodeBox } from "blocks.slint";
@@ -16,8 +16,8 @@ export global ToolStyle {
         if kind == "read" { return Theme.info; }
         if kind == "write" { return Theme.success; }
         if kind == "edit" { return Theme.warning; }
-        if kind == "grep" || kind == "glob" { return Theme.accent2; }
-        if kind == "shell" || kind == "find" || kind == "subagent" { return Theme.accent; }
+        if kind == "grep" || kind == "glob" || kind == "find" { return Theme.accent2; }
+        if kind == "shell" || kind == "subagent" { return Theme.accent; }
         return Theme.dim;
     }
     pure public function icon(kind: string) -> string {
@@ -31,10 +31,12 @@ export global ToolStyle {
         if kind == "find" { return Icons.tools; }
         return Icons.symbol-misc;
     }
-    pure public function tone(tone: string) -> color {
+    // Info chips take the kind's colour (`tint`), so a card shows one hue
+    // besides the status colours; plain chips are dim.
+    pure public function tone(tone: string, tint: color) -> color {
         if tone == "success" { return Theme.success; }
         if tone == "error" { return Theme.error; }
-        if tone == "info" { return Theme.info; }
+        if tone == "info" { return tint; }
         if tone == "warning" { return Theme.warning; }
         return Theme.dim;
     }
@@ -62,7 +64,11 @@ export component ToolStatus inherits Rectangle {
         padding-left: Theme.space-s;
         padding-right: Theme.space-s;
         spacing: Theme.space-xs;
-        if root.running: BusySpinner { label: "Running " + root.label; }
+        // The dots centred on the pill, not on the top of the line.
+        if root.running: VerticalLayout {
+            alignment: center;
+            BusySpinner { label: "Running " + root.label; }
+        }
         if !root.running: Mark {
             text: root.error ? Icons.error : Icons.check;
             color: root.tone;
@@ -78,17 +84,16 @@ export component ToolStatus inherits Rectangle {
     }
 }
 
-// The kind's mark on a tinted rounded tile. The tint is
+// The kind's mark on a rounded tile tinted with the kind's colour at
 // `theme::TILE_ALPHA` (0.16): the theme tests check each tone on the
-// surface blended with itself at that alpha. Subagents get the gradient.
+// surface blended with itself at that alpha.
 component ToolTile inherits Rectangle {
     in property <string> kind;
     property <color> tint: ToolStyle.color(root.kind);
-    property <bool> plain: root.kind != "subagent" && ToolStyle.color(root.kind) == Theme.dim;
+    property <bool> plain: root.tint == Theme.dim;
     width: 30px;
     height: 30px;
-    if root.kind == "subagent": AccentFill { radius: 9px; }
-    if root.kind != "subagent": Rectangle {
+    Rectangle {
         border-radius: 9px;
         background: root.plain ? Theme.raised : root.tint.with-alpha(0.16);
         border-width: 1px;
@@ -99,7 +104,7 @@ component ToolTile inherits Rectangle {
         height: parent.height;
         horizontal-alignment: center;
         text: ToolStyle.icon(root.kind);
-        color: root.kind == "subagent" ? Theme.on-accent : root.tint;
+        color: root.tint;
         font-size: Theme.font-m + 1px;
     }
 }
@@ -108,12 +113,13 @@ component ToolTile inherits Rectangle {
 // checked on bg, bg-end and surface, so the pill has no fill).
 component ChipPill inherits Rectangle {
     in property <ToolChip> chip;
-    property <color> tint: ToolStyle.tone(root.chip.tone);
+    in property <color> kind-color;
+    property <color> tint: ToolStyle.tone(root.chip.tone, root.kind-color);
     height: 20px;
     width: label.preferred-width + 16px;
     border-radius: 10px;
     border-width: 1px;
-    border-color: root.chip.tone == "plain" ? Theme.border.with-alpha(0.55) : root.tint.with-alpha(0.55);
+    border-color: root.chip.tone == "plain" ? Theme.line : root.tint.with-alpha(0.55);
     label := Text {
         text: root.chip.text;
         color: root.tint;
@@ -124,13 +130,24 @@ component ChipPill inherits Rectangle {
     }
 }
 
-component ChipLines inherits VerticalLayout {
+// The chip lines, split in Rust for a narrow and a wide card; the wide
+// split from (tool_rows::CHIP_ROW_CHARS_WIDE + 4) * 6 px. Placed by hand
+// with no width of its own, so the choice by width makes no layout loop.
+component ChipLines inherits Rectangle {
     in property <[ChipRow]> rows;
-    spacing: 6px;
-    for row in root.rows: HorizontalLayout {
+    in property <[ChipRow]> wide-rows;
+    in property <color> kind-color;
+    property <[ChipRow]> shown: root.width >= 696px ? root.wide-rows : root.rows;
+    min-width: 0px;
+    height: max(0px, root.shown.length * 26px - 6px);
+    for row[i] in root.shown: HorizontalLayout {
+        x: 0;
+        y: i * 26px;
+        width: root.width;
+        height: 20px;
         spacing: 6px;
         alignment: start;
-        for chip in row.chips: ChipPill { chip: chip; }
+        for chip in row.chips: ChipPill { chip: chip; kind-color: root.kind-color; }
     }
 }
 
@@ -160,21 +177,22 @@ component FieldRow {
     }
 }
 
-// Show all N lines / Show less: a chevron and the words.
+// Show all N lines / Show less: a chevron and the words in the kind's colour.
 component MoreLink inherits HorizontalLayout {
     in property <bool> expanded;
     in property <string> label;
+    in property <color> tint;
     callback clicked();
     spacing: Theme.space-xs;
     alignment: start;
     Mark {
         text: root.expanded ? Icons.chevron-up : Icons.chevron-down;
-        color: Theme.accent;
+        color: root.tint;
         font-size: Theme.font-s;
     }
     LinkText {
         text: root.expanded ? "Show less" : root.label;
-        color: Theme.accent;
+        color: root.tint;
         font-size: Theme.font-s;
         font-weight: 600;
         vertical-alignment: center;
@@ -182,20 +200,25 @@ component MoreLink inherits HorizontalLayout {
     }
 }
 
-// Chips, fields, then the lines or the text; collapsed it shows the
-// previews. `show-link` adds the Show all link (the Trace page has its own).
+// Chips (under the title, `indent` in), then at full width the fields and
+// the lines or the text; collapsed it shows the previews.
 export component ToolBody {
     in property <ToolView> tool;
     in property <bool> expanded;
-    in property <bool> error;
     in property <bool> show-link: true;
-    // Left padding: the body lines up with the name after the tile.
     in property <length> indent;
     callback toggle();
+    property <color> tint: ToolStyle.color(root.tool.kind);
     VerticalLayout {
-        padding-left: root.indent;
         spacing: Theme.space-s;
-        if root.tool.chip-rows.length > 0: ChipLines { rows: root.tool.chip-rows; }
+        if root.tool.chip-rows.length > 0: HorizontalLayout {
+            padding-left: root.indent;
+            ChipLines {
+                rows: root.tool.chip-rows;
+                wide-rows: root.tool.chip-rows-wide;
+                kind-color: root.tint;
+            }
+        }
         for field in root.tool.fields: FieldRow { field: field; expanded: root.expanded; }
         if root.tool.lines.length > 0: CodeView {
             lines: root.expanded ? root.tool.lines : root.tool.lines-preview;
@@ -203,9 +226,10 @@ export component ToolBody {
             marks: root.tool.kind == "write" || root.tool.kind == "edit";
             digits: root.tool.digits;
         }
+        // A failed tool's output keeps the normal box: the card's border
+        // and the failed pill say it.
         if root.tool.lines.length == 0 && root.tool.text != "": CodeBox {
             text: root.expanded ? root.tool.text : root.tool.text-preview;
-            error: root.error;
         }
         if root.expanded && root.tool.lines-note != "": Text {
             text: root.tool.lines-note;
@@ -215,27 +239,126 @@ export component ToolBody {
         if root.show-link && root.tool.more: MoreLink {
             expanded: root.expanded;
             label: root.tool.more-label;
+            tint: root.tint;
             clicked => { root.toggle(); }
         }
     }
 }
 
-// The stripe on the left edge of a card, between its rounded corners.
-component Stripe inherits Rectangle {
-    in property <string> kind;
+// The subagent's left border: accent to accent2 from top to bottom, as
+// solid rounded caps and a square gradient band (the software renderer
+// fills gradients with square corners).
+component GradientEdge inherits Rectangle {
     in property <length> radius;
-    x: 0;
-    y: root.radius;
-    width: 3px;
-    border-radius: 1.5px;
-    background: root.kind == "subagent" ? @linear-gradient(180deg, Theme.accent 0%, Theme.accent2 100%) : ToolStyle.color(root.kind);
+    Rectangle { y: 0; height: 2 * root.radius; border-radius: root.radius; background: Theme.accent; }
+    Rectangle {
+        y: root.height - 2 * root.radius;
+        height: 2 * root.radius;
+        border-radius: root.radius;
+        background: Theme.accent2;
+    }
+    Rectangle {
+        y: root.radius;
+        height: root.height - 2 * root.radius;
+        background: @linear-gradient(180deg, Theme.accent 0%, Theme.accent2 100%);
+    }
 }
 
-// The card: a raised surface with the kind's stripe, the tile, the name
-// and target (in the chat also the status and Copy), then
-// the body lined up with the name. The status and Copy are built in:
-// with them passed as children (`@children`) Slint 1.18.1 measured the
-// wrapped body at one line (src/layout_tests.rs).
+// The card's layers: the elevation, the kind's colour as a rounded fill on
+// the left, the surface with the same radius 3px in from the left (so the
+// colour is a left border that follows the corners), then the 1px edge
+// over both. A failed tool's edge and left border are the error colour.
+component EdgeCard inherits Rectangle {
+    in property <string> kind;
+    in property <bool> error;
+    in property <length> radius;
+    in property <float> elevation;
+    property <length> side: 2 * root.radius + 8px;
+    if root.elevation > 0: Elevation { radius: root.radius; level: root.elevation; }
+    if root.error || root.kind != "subagent": Rectangle {
+        x: 0;
+        width: root.side;
+        border-radius: root.radius;
+        background: root.error ? Theme.error : ToolStyle.color(root.kind);
+    }
+    if !root.error && root.kind == "subagent": GradientEdge { x: 0; width: root.side; radius: root.radius; }
+    Rectangle {
+        x: 3px;
+        width: root.width - 3px;
+        border-radius: root.radius;
+        background: Theme.surface;
+    }
+    Rectangle {
+        border-radius: root.radius;
+        border-width: 1px;
+        border-color: root.error ? Theme.error : Theme.line;
+    }
+}
+
+// The headline: the tile, the name, the target (a file's name and folder),
+// then `caption` (the Trace page), the status and Copy, all centred on the
+// 30px tile.
+component ToolHead inherits HorizontalLayout {
+    in property <ToolView> tool;
+    in property <bool> error;
+    in property <bool> status;
+    in property <bool> running;
+    in property <string> caption;
+    in property <bool> copy-link;
+    callback copy();
+    property <color> tint: ToolStyle.color(root.tool.kind);
+    property <bool> path: ToolStyle.path-kind(root.tool.kind);
+    spacing: Theme.space-s;
+    ToolTile { kind: root.tool.kind; }
+    Rectangle { width: Theme.space-xs; }
+    Text {
+        text: root.tool.name;
+        color: root.tint;
+        font-family: Theme.mono;
+        font-size: Theme.font-s;
+        font-weight: 600;
+        vertical-alignment: center;
+    }
+    Text {
+        text: root.tool.target;
+        color: Theme.text;
+        font-family: ToolStyle.mono-kind(root.tool.kind) ? Theme.mono : "";
+        font-size: Theme.font-s + 1px;
+        font-weight: 600;
+        overflow: elide;
+        vertical-alignment: center;
+        horizontal-stretch: root.path ? 0 : 1;
+    }
+    if root.path: Text {
+        text: root.tool.target-dir;
+        color: Theme.dim;
+        font-size: Theme.font-s;
+        overflow: elide;
+        vertical-alignment: center;
+        horizontal-stretch: 1;
+    }
+    if root.caption != "": Text {
+        text: root.caption;
+        color: Theme.dim;
+        font-size: Theme.font-xs;
+        vertical-alignment: center;
+    }
+    if root.status: VerticalLayout {
+        alignment: center;
+        horizontal-stretch: 0;
+        ToolStatus { running: root.running; error: root.error; label: root.tool.name; height: 20px; }
+    }
+    if root.copy-link: LinkText {
+        text: "Copy";
+        vertical-alignment: center;
+        clicked => { root.copy(); }
+    }
+}
+
+// The card, in the chat and on the Trace page (calls and results alike).
+// The status and Copy are built in: with them passed as children
+// (`@children`) Slint 1.18.1 measured the wrapped body at one line
+// (src/layout_tests.rs).
 export component ToolFrame inherits Rectangle {
     in property <ToolView> tool;
     in property <bool> error;
@@ -244,100 +367,36 @@ export component ToolFrame inherits Rectangle {
     in property <float> elevation: 0.7;
     in property <bool> status;
     in property <bool> running;
+    // The Trace page: "call" or "result" before the status, and Copy always.
+    in property <string> caption;
+    in property <bool> copy-link: root.status && !root.running;
     callback toggle();
     callback copy();
-    property <color> tint: ToolStyle.color(root.tool.kind);
-    property <length> radius: Theme.radius-l;
-    Card {
-        radius: root.radius;
-        edge: root.error ? Theme.error : Theme.line;
+    EdgeCard {
+        kind: root.tool.kind;
+        error: root.error;
+        radius: Theme.radius-l;
         elevation: root.elevation;
     }
-    Stripe { kind: root.tool.kind; radius: root.radius; height: root.height - 2 * root.radius; }
     VerticalLayout {
         padding: Theme.space-m;
-        padding-left: Theme.space-m + 2px;
+        padding-left: Theme.space-m + 3px;
         spacing: Theme.space-s;
-        HorizontalLayout {
-            spacing: Theme.space-s;
-            tile := ToolTile { kind: root.tool.kind; }
-            Rectangle { width: Theme.space-xs; }
-            Text {
-                text: root.tool.name;
-                color: root.tint;
-                font-family: Theme.mono;
-                font-size: Theme.font-s;
-                font-weight: 700;
-                vertical-alignment: center;
-            }
-            if ToolStyle.path-kind(root.tool.kind): Text {
-                text: root.tool.target;
-                color: Theme.text;
-                font-size: Theme.font-s;
-                font-weight: 600;
-                overflow: elide;
-                vertical-alignment: center;
-            }
-            if ToolStyle.path-kind(root.tool.kind): Text {
-                text: root.tool.target-dir;
-                color: Theme.dim;
-                font-size: Theme.font-xs;
-                overflow: elide;
-                vertical-alignment: center;
-                horizontal-stretch: 1;
-            }
-            if !ToolStyle.path-kind(root.tool.kind): Text {
-                text: root.tool.target;
-                color: Theme.text;
-                font-family: ToolStyle.mono-kind(root.tool.kind) ? Theme.mono : "";
-                font-size: Theme.font-s;
-                overflow: elide;
-                vertical-alignment: center;
-                horizontal-stretch: 1;
-            }
-            // The chat card: the status and Copy at the end of the line.
-            if root.status: VerticalLayout {
-                alignment: center;
-                horizontal-stretch: 0;
-                ToolStatus { running: root.running; error: root.error; label: root.tool.name; height: 20px; }
-            }
-            if root.status && !root.running: LinkText {
-                text: "Copy";
-                vertical-alignment: center;
-                clicked => { root.copy(); }
-            }
+        ToolHead {
+            tool: root.tool;
+            error: root.error;
+            status: root.status;
+            running: root.running;
+            caption: root.caption;
+            copy-link: root.copy-link;
+            copy => { root.copy(); }
         }
         ToolBody {
             tool: root.tool;
             expanded: root.expanded;
-            error: root.error;
             show-link: root.show-link;
             indent: 30px + Theme.space-s + Theme.space-xs + Theme.space-s;
             toggle => { root.toggle(); }
-        }
-    }
-}
-// A Trace result: the card without the headline (the entry's title names
-// the tool), only the output's chips and lines or text.
-export component ToolResultFrame inherits Rectangle {
-    in property <ToolView> tool;
-    in property <bool> error;
-    in property <bool> expanded;
-    Card {
-        radius: Theme.radius-l;
-        edge: root.error ? Theme.error : Theme.line;
-        elevation: 0;
-    }
-    Stripe { kind: root.tool.kind; radius: Theme.radius-l; height: root.height - 2 * Theme.radius-l; }
-
-    HorizontalLayout {
-        padding: Theme.space-m;
-        padding-left: Theme.space-m + 2px;
-        ToolBody {
-            tool: root.tool;
-            expanded: root.expanded;
-            error: root.error;
-            show-link: false;
         }
     }
 }

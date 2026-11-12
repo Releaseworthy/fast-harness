@@ -132,6 +132,8 @@ pub fn find() -> MsgRow {
 
 /// The window height of the tool shots: tall enough for every card.
 const TALL: u32 = 1400;
+/// The width of the narrow tool shot.
+const NARROW: u32 = 900;
 
 fn render(window: &MinimalSoftwareWindow, width: u32) -> Vec<u8> {
     let mut buffer = vec![Rgb8Pixel { r: 0, g: 0, b: 0 }; (width * TALL) as usize];
@@ -167,5 +169,11 @@ pub fn shot(
         let png = shots_png::encode(size.0, TALL, &render(window, size.0));
         std::fs::write(dir.join(format!("{theme}-{name}.png")), png).expect("write png");
     }
+    // A narrow window: the chips wrap inside the card.
+    window.set_size(PhysicalSize::new(NARROW, TALL));
+    let rows = vec![shell(), shell_failed(), subagent(), find()];
+    ui.set_messages(ModelRc::new(VecModel::from(rows)));
+    let png = shots_png::encode(NARROW, TALL, &render(window, NARROW));
+    std::fs::write(dir.join(format!("{theme}-tools-c-narrow.png")), png).expect("write png");
     window.set_size(PhysicalSize::new(size.0, size.1));
 }
