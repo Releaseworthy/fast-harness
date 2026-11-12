@@ -6,12 +6,14 @@
 pub mod detail;
 mod events;
 pub mod reader;
+pub mod record;
 pub mod report;
 pub mod wire;
 pub mod writer;
 
 pub use events::{header_data, kind, prefix_binding_mismatches, RequestContext};
 pub use reader::read;
+pub use record::Record;
 pub use writer::TraceWriter;
 
 use serde::{Deserialize, Serialize};
@@ -96,6 +98,14 @@ pub struct TraceEvent {
     /// Unix milliseconds.
     pub time: u64,
     pub data: Value,
+}
+
+impl TraceEvent {
+    /// The typed record of this line (PLAN.md D61); [`Record::Raw`] for a
+    /// type or shape this build does not know.
+    pub fn record(&self) -> Record {
+        Record::parse(&self.kind, &self.data)
+    }
 }
 
 /// Unix time in milliseconds; 0 if the clock is before 1970.

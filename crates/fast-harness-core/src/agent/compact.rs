@@ -3,8 +3,6 @@
 //! asking for a summary, then the history becomes the summary, the tools
 //! found so far and, mid-turn, `Continue the task.`. No old thinking stays.
 
-use serde_json::json;
-
 use crate::agent::repair;
 use crate::agent::turn::{outcome_word, traced, Res, Turn, OVERFLOW_NOTE};
 use crate::agent::Conversation;
@@ -238,11 +236,22 @@ impl Turn<'_> {
         let history = compacted::history(&summary.text, &loaded, &kept, &call_id, mid);
         let before = self.conv.last_context;
         let after = estimate(self.conv, &history);
-        let usage = serde_json::to_value(summary.usage).unwrap_or_default();
-        let data = json!({ "turn": self.turn, "step": self.steps, "summary": summary.text,
-            "facts": facts(&summary.text), "loaded": loaded, "kept": kept, "callId": call_id, "mid": mid,
-            "before": before, "after": after, "usage": usage, "auto": auto,
-            "model": summary.model, "instructions": instructions });
+        let data = crate::trace::record::Compaction {
+            turn: Some(self.turn),
+            step: Some(self.steps),
+            summary: summary.text.clone(),
+            facts: Some(facts(&summary.text)),
+            loaded: Some(loaded.clone()),
+            kept: Some(kept),
+            call_id: Some(call_id),
+            mid: Some(mid),
+            before: Some(before),
+            after: Some(after),
+            usage: Some(summary.usage),
+            auto: Some(auto),
+            model: Some(Some(summary.model.clone())),
+            instructions: Some(instructions.map(str::to_string)),
+        };
         traced(self.conv.trace.compaction(data))?;
         self.remember_facts(&summary.text);
         self.conv.messages = history;

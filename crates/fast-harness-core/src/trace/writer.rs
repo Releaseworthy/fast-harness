@@ -1,6 +1,6 @@
 //! Appends events to a session log, one flushed line per event.
 
-use crate::trace::{now_ms, reader, HeaderLine, SessionHeader, TraceEvent};
+use crate::trace::{now_ms, reader, HeaderLine, Record, SessionHeader, TraceEvent};
 use serde_json::Value;
 use std::fs::{self, File, OpenOptions};
 use std::io::{self, Read, Seek, SeekFrom, Write};
@@ -65,8 +65,14 @@ impl TraceWriter {
         Ok((TraceWriter { file, next_seq }, parsed, checked))
     }
 
+    /// Writes `record` as one event line; returns its seq.
+    pub fn write(&mut self, record: &Record) -> io::Result<u64> {
+        let data = record.data()?;
+        self.emit(record.kind(), data)
+    }
+
     /// Writes `{"type","seq","time","data"}` and a newline, flushes, and
-    /// returns the seq of the event.
+    /// returns the seq of the event: the untyped path of [`Record::Raw`].
     pub fn emit(&mut self, kind: &str, data: Value) -> io::Result<u64> {
         let seq = self.next_seq;
         let event = TraceEvent {

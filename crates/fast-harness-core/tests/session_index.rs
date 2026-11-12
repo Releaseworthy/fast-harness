@@ -65,8 +65,8 @@ fn seed(env: &Env) -> Vec<&'static str> {
     w.turn_start(1).unwrap();
     w.user_message(1, &Message::user("finished one\nsecond line"))
         .unwrap();
-    w.request_header_data(json!({"system": "sys", "tools": [{"name": "echo"}]}))
-        .unwrap();
+    let header = json!({"system": "sys", "tools": [{"name": "echo"}]});
+    w.emit("request/header", header).unwrap();
     answer(&mut w, 1, &Message::assistant("done"));
     w.turn_end(1, 1, &Usage::default(), 5, "done").unwrap();
     let mut w = writer(env, "20261113-100001-0002");
@@ -77,8 +77,11 @@ fn seed(env: &Env) -> Vec<&'static str> {
     w.turn_start(1).unwrap();
     w.user_message(1, &Message::user("compacted")).unwrap();
     answer(&mut w, 1, &Message::assistant("long"));
-    w.compaction(json!({"summary": "s", "after": 7, "mid": true}))
-        .unwrap();
+    w.emit(
+        "compaction",
+        json!({"summary": "s", "after": 7, "mid": true}),
+    )
+    .unwrap();
     w.turn_end(1, 1, &Usage::default(), 5, "paused").unwrap();
     drop(writer(env, "20261113-100003-0004"));
     let mut w = writer(env, "20261113-100004-0005");

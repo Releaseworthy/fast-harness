@@ -16,7 +16,6 @@ use crate::config::compaction::Compaction;
 use crate::events::{AgentEvent, TurnOutcome};
 use crate::tools::hooks::{self, Answer, HookEvent, HookRun};
 use crate::tools::{ToolCtx, ToolOutput};
-use crate::trace::kind;
 use crate::types::Role;
 
 /// `kind` of a traced user text added by a hook (context or continuation).
@@ -205,17 +204,32 @@ impl Turn<'_> {
 
     /// `hook` and `hook/error` events; a failure is also an error note.
     pub(super) fn log_hooks(&mut self, records: &[Record]) -> Res<()> {
+        use crate::trace::record::{self as log, Record as Logged};
         for record in records {
-            let mut data = json!({"turn": self.turn, "event": record.event.name(),
-                "command": record.command, "ms": record.ms});
+            let (turn, event) = (self.turn, record.event.name().to_string());
+            let (command, ms) = (record.command.clone(), record.ms);
             match &record.result {
                 Ok(decision) => {
-                    data["decision"] = json!(decision);
-                    traced(self.conv.trace.emit(kind::HOOK, data))?;
+                    let decision = decision.to_string();
+                    let hook = log::Hook {
+                        turn,
+                        event,
+                        command,
+                        ms,
+                        decision,
+                    };
+                    traced(self.conv.trace.write(&Logged::Hook(hook)))?;
                 }
                 Err(error) => {
-                    data["error"] = json!(error);
-                    traced(self.conv.trace.emit(kind::HOOK_ERROR, data))?;
+                    let error_text = error.to_string();
+                    let hook = log::HookError {
+                        turn,
+                        event,
+                        command,
+                        ms,
+                        error: error_text,
+                    };
+                    traced(self.conv.trace.write(&Logged::HookError(hook)))?;
                     let (event, command) = (record.event.name(), &record.command);
                     let note = format!("hook {event} `{command}` failed and was ignored: {error}");
                     (self.sink)(AgentEvent::Error(note));

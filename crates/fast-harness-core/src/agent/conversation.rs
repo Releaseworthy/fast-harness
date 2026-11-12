@@ -10,7 +10,8 @@ use super::context::Context;
 use crate::llm::ToolSpec;
 use crate::session;
 use crate::tools::ToolSession;
-use crate::trace::{self, SessionHeader, TraceWriter};
+use crate::trace::record::{HeaderTool, RequestHeader};
+use crate::trace::{self, Record, SessionHeader, TraceWriter};
 use crate::types::{Block, Message, Role};
 
 /// Content of the error result given to a tool call that has none.
@@ -28,7 +29,7 @@ pub struct Conversation {
     pub wire_dir: PathBuf,
     pub(crate) trace: TraceWriter,
     /// Data of the last `request/header` written in this log.
-    pub(crate) last_header: Option<Value>,
+    pub(crate) last_header: Option<RequestHeader>,
     /// The frozen system prompt (PLAN.md D36): set by the first turn of a
     /// new session, read from the last `request/header` on resume.
     pub system: Option<String>,
@@ -146,17 +147,27 @@ impl Conversation {
         events: &[trace::TraceEvent],
         trace: TraceWriter,
     ) -> Conversation {
-        let turn = events
+        let records: Vec<(u64, Record)> = events
             .iter()
-            .filter(|e| e.kind == trace::kind::TURN_START)
-            .filter_map(|e| e.data["turn"].as_u64())
+            .filter(|e| e.kind == trace::kind::TURN_START || e.kind == trace::kind::REQUEST_HEADER)
+            .map(|e| (e.seq, e.record()))
+            .collect();
+        let turn = records
+            .iter()
+            .filter_map(|(_, r)| match r {
+                Record::TurnStart(start) => Some(start.turn),
+                _ => None,
+            })
             .max()
-            .unwrap_or(0) as u32;
-        let last_header = events
-            .iter()
-            .filter(|e| e.kind == trace::kind::REQUEST_HEADER)
-            .max_by_key(|e| e.seq)
-            .map(|e| e.data.clone());
+            .unwrap_or(0);
+        let last_header = records
+            .into_iter()
+            .filter_map(|(seq, r)| match r {
+                Record::RequestHeader(header) => Some((seq, header)),
+                _ => None,
+            })
+            .max_by_key(|(seq, _)| *seq)
+            .map(|(_, header)| header);
         let header = last_header.as_ref();
         let (last_context, compacted) = last_context(events);
         Conversation {
@@ -171,11 +182,9 @@ impl Conversation {
             tool_session: ToolSession::new(Some(session::out_dir(app_home, cwd, id))),
             log_path: session::log_path(app_home, cwd, id),
             trace,
-            system: header
-                .and_then(|h| h["system"].as_str())
-                .map(str::to_string),
-            tools: header.map(|h| saved_tools(&h["tools"])),
-            context: header.and_then(|h| h.get("context")).cloned(),
+            system: header.map(|h| h.system.clone()),
+            tools: header.map(|h| saved_tools(&h.tools)),
+            context: header.and_then(|h| h.context.clone()),
             last_header,
             notes: Mutex::default(),
         }
@@ -227,12 +236,11 @@ impl Conversation {
 /// `compaction` (then `true`).
 fn last_context(events: &[trace::TraceEvent]) -> (u64, bool) {
     let mut out = (0, false);
-    for event in events {
-        match event.kind.as_str() {
-            trace::kind::ASSISTANT_MESSAGE => {
-                out = (event.data["context"].as_u64().unwrap_or(0), false);
-            }
-            trace::kind::COMPACTION => out = (event.data["after"].as_u64().unwrap_or(0), true),
+    let wanted = [trace::kind::ASSISTANT_MESSAGE, trace::kind::COMPACTION];
+    for event in events.iter().filter(|e| wanted.contains(&e.kind.as_str())) {
+        match event.record() {
+            Record::AssistantMessage(message) => out = (message.context.unwrap_or(0), false),
+            Record::Compaction(compaction) => out = (compaction.after.unwrap_or(0), true),
             _ => {}
         }
     }
@@ -240,17 +248,13 @@ fn last_context(events: &[trace::TraceEvent]) -> (u64, bool) {
 }
 
 /// The tools of a `request/header` (`[{name, description, schema}]`).
-fn saved_tools(tools: &Value) -> Vec<ToolSpec> {
-    let list = tools.as_array().map(Vec::as_slice).unwrap_or_default();
-    list.iter()
-        .filter_map(|tool| {
-            Some(ToolSpec {
-                name: tool["name"].as_str()?.to_string(),
-                description: tool["description"].as_str().unwrap_or_default().to_string(),
-                schema: tool.get("schema").cloned().unwrap_or(Value::Null),
-            })
-        })
-        .collect()
+fn saved_tools(tools: &[HeaderTool]) -> Vec<ToolSpec> {
+    let spec = |tool: &HeaderTool| ToolSpec {
+        name: tool.name.clone(),
+        description: tool.description.clone().unwrap_or_default(),
+        schema: tool.schema.clone().unwrap_or(Value::Null),
+    };
+    tools.iter().map(spec).collect()
 }
 
 /// Makes a replayed history valid for the model: consecutive tool messages
