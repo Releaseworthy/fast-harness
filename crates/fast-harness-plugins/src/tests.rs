@@ -65,7 +65,7 @@ fn deps_between_markers_must_match_the_list() {
 }
 
 #[test]
-fn the_official_list_is_empty() {
-    assert!(super::PLUGINS.is_empty());
-    assert!(!super::install());
+fn install_reports_whether_the_list_has_plugins() {
+    // Official builds have an empty list; a custom build (build-custom.yml) has its own.
+    assert_eq!(super::install(), !super::PLUGINS.is_empty());
 }

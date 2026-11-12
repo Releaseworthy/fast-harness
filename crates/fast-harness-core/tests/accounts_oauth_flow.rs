@@ -143,8 +143,10 @@ fn exchange_sends_the_pkce_grant_and_skews_the_expiry() {
         (tokens.access.as_str(), tokens.refresh.as_str()),
         ("test-access", "test-refresh")
     );
-    let lifetime = tokens.expires_at - before;
-    assert!((3_290_000..=3_300_000).contains(&lifetime), "{lifetime}");
+    let after = now_unix_ms();
+    // The expiry is "now + 3600 s - 300 s skew", taken between `before` and `after`.
+    let window = before + 3_290_000..=after + 3_300_000;
+    assert!(window.contains(&tokens.expires_at), "{window:?}");
     assert!(!format!("{tokens:?}").contains("test-access"));
     let req = &http.requests()[0];
     assert_eq!((req.method.as_str(), req.url.as_str()), ("POST", TOKEN_URL));
