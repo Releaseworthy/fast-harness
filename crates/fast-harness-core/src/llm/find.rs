@@ -20,6 +20,18 @@ pub const FIND_TOOLS: &str = "find_tools";
 /// Starts the first line of a successful find result.
 const LOADED: &str = "Loaded: ";
 
+/// The line after `Loaded: ...`: it says nothing the loaded tools do not.
+pub const CALL_NOW: &str = "You can call them now.";
+
+/// What a find result that loaded tools says beyond that: unknown names, MCP
+/// matches, skill bodies. Empty when it only loaded tools. Claude gets it as
+/// a text block after the results, because a result holding `tool_reference`
+/// blocks may hold nothing else.
+pub fn extra(content: &str) -> &str {
+    let rest = content.split_once('\n').map_or("", |(_, rest)| rest);
+    rest.strip_prefix(CALL_NOW).unwrap_or(rest).trim_start()
+}
+
 /// True when the tool list asks for deferred loading.
 pub fn deferring(tools: &[ToolSpec]) -> bool {
     tools.iter().any(|tool| tool.name == FIND_TOOLS)
@@ -140,6 +152,18 @@ mod tests {
         assert_eq!(found(&messages), ["read", "edit", "shell"]);
         assert!(loaded_names("No tool matched").is_empty());
         assert_eq!(loaded_line(&["a", "b"]), "Loaded: a, b");
+    }
+
+    #[test]
+    fn extra_is_what_follows_the_loaded_lines() {
+        assert_eq!(extra("Loaded: read"), "");
+        assert_eq!(extra("Loaded: read\nYou can call them now."), "");
+        assert_eq!(
+            extra("Loaded: read\nYou can call them now.\nUnknown: nope."),
+            "Unknown: nope."
+        );
+        let skill = "Loaded: read\nYou can call them now.\n\n[skill a: /s/a]\nbody\n";
+        assert_eq!(extra(skill), "[skill a: /s/a]\nbody\n");
     }
 
     #[test]

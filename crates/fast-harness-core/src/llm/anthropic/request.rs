@@ -210,13 +210,18 @@ struct Finds<'a> {
 
 impl Finds<'_> {
     /// The content of a successful find result: one `tool_reference` per
-    /// loaded tool that the request sends (any other name is a 400), then
-    /// the text; `None` for every other result.
-    fn content(&self, call_id: &str, text: &str) -> Option<Value> {
-        if !self.calls.contains(call_id) {
+    /// loaded tool that the request sends (any other name is a 400) and
+    /// nothing else, because the API rejects references next to a text block
+    /// ("Tool definitions/code execution functions cannot be mixed with
+    /// other content", HTTP 400, live 2026-11-12); what the result says
+    /// beyond its loaded tools goes after the results ([`user_blocks`]).
+    /// `None`, so the plain text, for an error, for every other result and
+    /// for a find that loaded no tool of the request.
+    fn content(&self, call_id: &str, text: &str, is_error: bool) -> Option<Value> {
+        if is_error || !self.calls.contains(call_id) {
             return None;
         }
-        let mut blocks: Vec<Value> = find::loaded_names(text)
+        let blocks: Vec<Value> = find::loaded_names(text)
             .into_iter()
             .filter_map(|name| self.tools.iter().find(|tool| tool.name == name))
             .map(|tool| {
@@ -228,8 +233,7 @@ impl Finds<'_> {
                 json!({"type": "tool_reference", "tool_name": name})
             })
             .collect();
-        blocks.push(json!({"type": "text", "text": text}));
-        Some(Value::Array(blocks))
+        (!blocks.is_empty()).then_some(Value::Array(blocks))
     }
 }
 
@@ -268,6 +272,7 @@ fn convert_messages(
         if is_tool && previous_was_tool {
             if let Some(Value::Array(content)) = out.last_mut().map(|m| &mut m["content"]) {
                 content.extend(blocks);
+                results_first(content);
                 continue;
             }
         }
@@ -293,8 +298,25 @@ fn mark_last_message(messages: &mut [Value], cache: &Value) {
     }
 }
 
+/// Opens the text block that carries the rest of a find result.
+const FIND_REST: &str = "[find_tools result, continued]";
+
+/// Tool results ahead of every other block, each group in its order: the API
+/// wants the results first in a user message, and merged tool messages may
+/// carry the text of a find result ([`user_blocks`]).
+fn results_first(content: &mut Vec<Value>) {
+    let is_result = |block: &Value| block["type"] == "tool_result";
+    if content.iter().skip_while(|b| is_result(b)).any(is_result) {
+        let (results, rest): (Vec<Value>, Vec<Value>) = content.drain(..).partition(is_result);
+        content.extend(results);
+        content.extend(rest);
+    }
+}
+
 fn user_blocks(content: &[Block], finds: &Finds<'_>) -> Vec<Value> {
     let mut out = Vec::new();
+    // What find results say beyond their references, sent after the results.
+    let mut after = Vec::new();
     for block in content {
         match block {
             Block::Text { text } if !text.trim().is_empty() => {
@@ -304,18 +326,27 @@ fn user_blocks(content: &[Block], finds: &Finds<'_>) -> Vec<Value> {
                 call_id,
                 content,
                 is_error,
-            } => out.push(json!({
-                "type": "tool_result",
-                "tool_use_id": normalize_tool_id(call_id),
-                "content": match is_error {
-                    false => finds.content(call_id, content).unwrap_or_else(|| json!(content)),
-                    true => json!(content),
-                },
-                "is_error": is_error,
-            })),
+            } => {
+                let references = finds.content(call_id, content, *is_error);
+                let extra = references.as_ref().map(|_| find::extra(content));
+                if let Some(text) = extra.filter(|text| !text.is_empty()) {
+                    // Labelled: unlabelled, the model did not tie the text
+                    // to the find result (live 2026-11-12).
+                    let text = format!("{FIND_REST}\n{text}");
+                    after.push(json!({"type": "text", "text": text}));
+                }
+                out.push(json!({
+                    "type": "tool_result",
+                    "tool_use_id": normalize_tool_id(call_id),
+                    "content": references.unwrap_or_else(|| json!(content)),
+                    "is_error": is_error,
+                }));
+            }
             _ => {}
         }
     }
+    out.extend(after);
+    results_first(&mut out);
     out
 }
 

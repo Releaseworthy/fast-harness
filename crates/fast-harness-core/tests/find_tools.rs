@@ -144,12 +144,14 @@ fn check_claude_bodies(transport: &ScriptedTransport) {
     }
     let result = &second["messages"][2]["content"][0];
     assert_eq!(result["tool_use_id"], "toolu_1");
+    // References only: with a text block next to them Claude answers HTTP 400
+    // "Tool definitions/code execution functions cannot be mixed with other
+    // content" (live 2026-11-12).
     assert_eq!(
         result["content"],
         json!([
             {"type": "tool_reference", "tool_name": "read"},
-            {"type": "tool_reference", "tool_name": "edit"},
-            {"type": "text", "text": "Loaded: read, edit\nYou can call them now."}
+            {"type": "tool_reference", "tool_name": "edit"}
         ])
     );
     // The not-loaded error stays a plain string.
@@ -158,6 +160,38 @@ fn check_claude_bodies(transport: &ScriptedTransport) {
         third["messages"][2]["content"][0]["content"],
         result["content"]
     );
+}
+
+/// What a find result says beyond its tools (an unknown name, MCP matches,
+/// a skill body) is a text block after every result of the message, never
+/// inside the result that holds the references (HTTP 400, live 2026-11-12).
+#[test]
+fn the_rest_of_a_find_result_follows_the_results() {
+    let env = env("find-extra");
+    let responses = vec![
+        tool_reply(&[
+            ("toolu_1", "find_tools", r#"{"names":["read","nope"]}"#),
+            ("toolu_2", "glob", r#"{"pattern":"*"}"#),
+        ]),
+        text_reply("done"),
+    ];
+    let transport = Arc::new(ScriptedTransport::new(responses));
+    let mut conv = Conversation::create(&env.home, &env.cwd, None).unwrap();
+    assert_eq!(run(&agent(&transport, &env), &mut conv), TurnOutcome::Done);
+    let content = &body(&transport, 1)["messages"][2]["content"];
+    assert_eq!(
+        content[0]["content"],
+        json!([{"type": "tool_reference", "tool_name": "read"}])
+    );
+    assert_eq!(content[1]["type"], "tool_result");
+    assert_eq!(content[1]["tool_use_id"], "toolu_2");
+    assert_eq!(content[2]["type"], "text");
+    assert_eq!(
+        content[2]["text"],
+        "[find_tools result, continued]\nUnknown: nope."
+    );
+    assert_eq!(content.as_array().unwrap().len(), 3);
+    drop(env);
 }
 
 #[test]

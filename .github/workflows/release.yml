@@ -1,6 +1,8 @@
 # Official releases: a `v*` tag builds the official binaries with the same
 # reusable workflow plugin repositories use, with an empty plugin list
-# (PLAN.md D52), and attaches them to the tag's release.
+# (PLAN.md D52), and attaches them to the tag's release. The tag must be the
+# workspace version of Cargo.toml, which is what `fast-harness --version` prints.
+# Before tagging: `pwsh scripts/live-smoke.ps1` (real calls, not part of CI).
 name: release
 
 on:
@@ -8,7 +10,18 @@ on:
     tags: ["v*"]
 
 jobs:
+  version:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+      - name: The tag is the workspace version
+        run: |
+          version=$(grep -m1 '^version = ' Cargo.toml | cut -d'"' -f2)
+          test "v$version" = "$GITHUB_REF_NAME" || { echo "tag $GITHUB_REF_NAME, Cargo.toml version $version"; exit 1; }
   build:
+    needs: version
     permissions:
       contents: write
     uses: ./.github/workflows/build-custom.yml

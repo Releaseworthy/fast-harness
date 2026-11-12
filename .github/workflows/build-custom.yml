@@ -5,8 +5,8 @@
 # In a called workflow the `github` context is the caller's: the caller's
 # repository is checked out next to Fast Harness, and on a tag the binaries
 # are attached to the caller's release with the caller's GITHUB_TOKEN.
-# Unverified until the first run: that windows-latest has the MSVC
-# toolchain `ring` needs, the Linux packages Slint needs, and the minutes.
+# Each archive holds the two binaries, plugins.toml, the commit, the README
+# and the licences, and comes with a `.sha256` file. Run results: docs/plugins.md.
 name: build-custom
 
 on:
@@ -116,15 +116,21 @@ jobs:
           test -d "caller/$UI" || { echo "ui folder $UI not found in the caller repository"; exit 1; }
           cp -R "caller/$UI/." fast-harness/crates/fast-harness-gui/ui/
           find fast-harness/crates/fast-harness-gui/ui -name '*.slint' -exec touch {} +
+      # Without plugins the dependency set is the committed Cargo.lock, so the
+      # official build is held to it; a plugin adds crates and cannot be.
       - name: Gates
         working-directory: fast-harness
+        env:
+          LOCKED: ${{ inputs.plugins == '' && '--locked' || '' }}
         run: |
           cargo fmt --all -- --check
-          cargo clippy --workspace --all-targets -- -D warnings
-          cargo test --workspace
+          cargo clippy --workspace --all-targets $LOCKED -- -D warnings
+          cargo test --workspace $LOCKED
       - name: Build release binaries
         working-directory: fast-harness
-        run: cargo build --release --target "$TARGET" -p fast-harness -p fast-harness-gui
+        env:
+          LOCKED: ${{ inputs.plugins == '' && '--locked' || '' }}
+        run: cargo build --release $LOCKED --target "$TARGET" -p fast-harness -p fast-harness-gui
       - name: Package
         run: |
           ext=""; case "$TARGET" in *windows*) ext=".exe";; esac
@@ -133,12 +139,14 @@ jobs:
           for bin in fast-harness fast-harness-gui; do
             cp "fast-harness/target/$TARGET/release/$bin$ext" "dist/$name/"
           done
-          cp fast-harness/plugins.toml "dist/$name/"
+          cp fast-harness/plugins.toml fast-harness/README.md fast-harness/LICENSE-MIT fast-harness/LICENSE-APACHE "dist/$name/"
           (cd fast-harness && git rev-parse HEAD) > "dist/$name/fast-harness-commit.txt"
           case "$TARGET" in
-            *windows*) (cd dist && 7z a -tzip "$name.zip" "$name" > /dev/null && echo "ASSET=dist/$name.zip" >> "$GITHUB_ENV");;
-            *) tar -C dist -czf "dist/$name.tar.gz" "$name" && echo "ASSET=dist/$name.tar.gz" >> "$GITHUB_ENV";;
+            *windows*) asset="$name.zip"; (cd dist && 7z a -tzip "$asset" "$name" > /dev/null);;
+            *) asset="$name.tar.gz"; tar -C dist -czf "dist/$asset" "$name";;
           esac
+          (cd dist && sha256sum "$asset" > "$asset.sha256" && cat "$asset.sha256")
+          echo "ASSET=dist/$asset" >> "$GITHUB_ENV"
       - uses: actions/upload-artifact@v7
         with:
           name: fast-harness-${{ matrix.target }}
@@ -150,5 +158,5 @@ jobs:
           TAG: ${{ github.ref_name }}
           REPO: ${{ github.repository }}
         run: |
-          gh release view "$TAG" --repo "$REPO" > /dev/null 2>&1 || gh release create "$TAG" --repo "$REPO" --title "$TAG" --notes "Built by build-custom.yml" || true
-          gh release upload "$TAG" "$ASSET" --repo "$REPO" --clobber
+          gh release view "$TAG" --repo "$REPO" > /dev/null 2>&1 || gh release create "$TAG" --repo "$REPO" --title "$TAG" --generate-notes || true
+          gh release upload "$TAG" "$ASSET" "$ASSET.sha256" --repo "$REPO" --clobber

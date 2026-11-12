@@ -4,7 +4,7 @@
 
 use serde_json::{json, Value};
 
-use crate::llm::find::{loaded_line, FIND_TOOLS};
+use crate::llm::find::{loaded_line, CALL_NOW, FIND_TOOLS};
 use crate::llm::ToolSpec;
 use crate::tools::skills::{self, Skill, MAX_SKILLS};
 use crate::tools::ToolOutput;
@@ -197,7 +197,7 @@ fn answer(picked: &[usize], unknown: &[&str], others: &[ToolSpec], skills: bool)
     } else {
         let found: Vec<&str> = picked.iter().map(|&i| others[i].name.as_str()).collect();
         lines.push(loaded_line(&found));
-        lines.push("You can call them now.".to_string());
+        lines.push(CALL_NOW.to_string());
     }
     if !unknown.is_empty() {
         lines.push(format!("Unknown: {}.", unknown.join(", ")));

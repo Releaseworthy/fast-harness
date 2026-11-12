@@ -207,7 +207,7 @@ Run `pdftotext -layout file.pdf -` and read the result; forms: see references/fo
 ```
 
 - The system prompt of a new session gets one line, `Skills: a, b, c (load one with find_tools)`: names only, at most 1 KB of names, then `and n more`. The line is part of the frozen system prompt: a skill added or removed later does not change a running session's prompt and sends no context update, but `find_tools` matches it as soon as the settings are reloaded.
-- `find_tools` matches skills by exact name in `names` and by `query` (the best match scoring a name hit or two description words). The result keeps its `Loaded: ...` line for tools and adds, per skill (at most 3 per call), a block starting `[skill <name>: <folder>]` with the body after the front matter, cut at 20 KB. On Claude the body is text next to the `tool_reference` blocks. This result is not cut by `toolOutputBytes`.
+- `find_tools` matches skills by exact name in `names` and by `query` (the best match scoring a name hit or two description words). The result keeps its `Loaded: ...` line for tools and adds, per skill (at most 3 per call), a block starting `[skill <name>: <folder>]` with the body after the front matter, cut at 20 KB. On Claude a result that loaded tools holds only `tool_reference` blocks (the API rejects any other content beside them), so the body follows as a text block after the results of that message, opened by `[find_tools result, continued]`. This result is not cut by `toolOutputBytes`.
 - Skills loaded so far are rebuilt from the session log (the `[skill ...]` lines), and a compaction summary lists them.
 - Untrusted projects load no skills; a project skill replaces a user skill of the same name.
 
