@@ -7,7 +7,7 @@ use std::path::Path;
 
 use agent_support::env;
 use fast_harness_core::config::approvals::{
-    command_allowed, covered, path_allowed, simple_command, Allow, Approvals,
+    command_allowed, covered, path_allowed, simple_command, subject, Allow, Approvals,
 };
 use fast_harness_core::config::layers::{self, Layers};
 use fast_harness_core::tools::Effect;
@@ -186,4 +186,19 @@ fn a_project_cannot_turn_approvals_off_or_widen_the_allow_list() {
         Approvals::Off,
         "untrusted: nothing"
     );
+}
+
+#[test]
+fn a_long_summary_keeps_the_end_of_the_command() {
+    let filler = "a".repeat(600);
+    let command = format!("echo {filler}\nrm -rf C:\\important");
+    let raw = serde_json::json!({ "command": command }).to_string();
+    let summary = subject("shell", &raw, Path::new(".")).summary;
+    assert!(summary.chars().count() <= 320, "{summary}");
+    assert!(!summary.contains('\n'), "one line: {summary}");
+    assert!(summary.starts_with("run: echo aaa"), "{summary}");
+    assert!(summary.ends_with(r"rm -rf C:\important"), "{summary}");
+    assert!(summary.contains("characters left out"), "{summary}");
+    let short = subject("shell", r#"{"command":"ls"}"#, Path::new(".")).summary;
+    assert!(!short.contains("left out"), "{short}");
 }

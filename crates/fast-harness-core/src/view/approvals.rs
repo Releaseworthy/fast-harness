@@ -2,6 +2,7 @@
 //! request events are never traced, so a replayed transcript has none (the
 //! declined, cancelled, paused and refused calls say so in their result).
 
+use crate::config::approvals::LEFT_OUT;
 use crate::events::ApprovalRequest;
 
 /// The words of the calls that asked, by tool call id.
@@ -29,16 +30,16 @@ pub fn outcome_word(answer: &str) -> &'static str {
     }
 }
 
-/// What a prompt shows of `request`, never cut: `summary` is one line of at
-/// most 300 characters, so a longer command (whose end may be what matters)
-/// comes whole from the arguments, line breaks kept.
+/// What a prompt shows of `request`, never cut: `summary` is one line that
+/// leaves out the middle of a long text, so a longer command comes whole
+/// from the arguments, line breaks kept.
 pub fn prompt_text(request: &ApprovalRequest) -> String {
     let args: serde_json::Value =
         serde_json::from_str(&request.arguments).unwrap_or(serde_json::Value::Null);
     let command = args.get("command").and_then(serde_json::Value::as_str);
     match command {
         Some(command) if request.tool == "shell" => format!("run: {command}"),
-        _ if request.summary.ends_with("...") => {
+        _ if request.summary.contains(LEFT_OUT) => {
             format!("{} {}", request.tool, request.arguments)
         }
         _ => request.summary.clone(),

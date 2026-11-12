@@ -165,13 +165,25 @@ pub fn subject(tool: &str, raw: &str, cwd: &Path) -> Subject {
     }
 }
 
-/// At most 300 characters on one line.
+/// The words in the middle of a clipped summary, after the count.
+pub const LEFT_OUT: &str = "characters left out";
+
+/// The characters a summary keeps from each end of a long text.
+const KEEP: usize = 140;
+
+/// One line of at most about 320 characters: a longer text keeps its first
+/// and last [`KEEP`] characters around a count of the rest, so the end of a
+/// command (often the dangerous part) is never what is hidden (D64).
 fn clip(text: &str) -> String {
     let flat = text.replace(['\r', '\n'], " ");
-    match flat.char_indices().nth(300) {
-        Some((cut, _)) => format!("{}...", &flat[..cut]),
-        None => flat,
+    let chars: Vec<char> = flat.chars().collect();
+    if chars.len() <= 2 * KEEP + 20 {
+        return flat;
     }
+    let head: String = chars[..KEEP].iter().collect();
+    let tail: String = chars[chars.len() - KEEP..].iter().collect();
+    let hidden = chars.len() - 2 * KEEP;
+    format!("{head} [... {hidden} {LEFT_OUT} ...] {tail}")
 }
 
 /// True when the allow list covers a call: `Read` always, a tool named in
