@@ -5,6 +5,7 @@
 use std::path::{Path, PathBuf};
 
 use super::prompt_store::{self, Source};
+use crate::config::layers;
 use crate::session;
 use crate::trace;
 
@@ -34,15 +35,16 @@ pub struct Rendered {
 pub fn render(home: &Path, cwd: &Path, model: &str) -> Rendered {
     let template = prompt_store::template(home, cwd);
     Rendered {
-        text: preview(&template.text, cwd, model),
+        text: preview(home, &template.text, cwd, model),
         source: template.source,
         notes: template.notes,
     }
 }
 
-/// `template` filled for `cwd` and `model`, with the AGENTS.md section after it.
-pub fn preview(template: &str, cwd: &Path, model: &str) -> String {
-    compose(fill(template, cwd, model), &agents_files(cwd))
+/// `template` filled for `cwd` and `model`, with the AGENTS.md section of
+/// the trusted projects (D62) after it.
+pub fn preview(home: &Path, template: &str, cwd: &Path, model: &str) -> String {
+    compose(fill(template, cwd, model), &trusted_agents_files(home, cwd))
 }
 
 /// A filled template with the AGENTS.md section of `files` after it.
@@ -76,9 +78,10 @@ pub fn compose_with(
     out
 }
 
-/// The built-in prompt for `cwd` without a model name (no prompt file read).
+/// The built-in prompt for `cwd` without a model name (no prompt file read,
+/// no home folder: every AGENTS.md, trust not checked).
 pub fn system_prompt(cwd: &Path) -> String {
-    preview(DEFAULT_TEMPLATE, cwd, "")
+    compose(fill(DEFAULT_TEMPLATE, cwd, ""), &agents_files(cwd))
 }
 
 /// `template` with the [`PLACEHOLDERS`] replaced for `cwd` and `model`.
@@ -119,27 +122,28 @@ pub fn fill_with(template: &str, values: &[String; 4]) -> String {
 /// from the nearest ancestor of `cwd` (itself included) holding a `.git`
 /// entry (directory or file) down to `cwd`; only `cwd` without one.
 pub fn project_dirs(cwd: &Path) -> Vec<&Path> {
-    let mut dirs = Vec::new();
-    for dir in cwd.ancestors() {
-        dirs.push(dir);
-        if std::fs::symlink_metadata(dir.join(".git")).is_ok() {
-            dirs.reverse();
-            return dirs;
-        }
-    }
-    vec![cwd]
+    layers::agents_dirs(cwd)
 }
 
-/// `(path, text)` of every readable `AGENTS.md` of [`project_dirs`], outermost first.
+/// `(path, text)` of every readable `AGENTS.md` of [`project_dirs`],
+/// outermost first, trusted or not (a session uses [`trusted_agents_files`]).
 pub fn agents_files(cwd: &Path) -> Vec<(PathBuf, String)> {
     let dirs = project_dirs(cwd);
     dirs.into_iter()
         .filter_map(|dir| {
-            let path = dir.join("AGENTS.md");
+            let path = dir.join(layers::AGENTS_FILE);
             let text = std::fs::read_to_string(&path).ok()?;
             Some((path, text))
         })
         .collect()
+}
+
+/// [`agents_files`] of the trusted projects only (D62): an untrusted
+/// project supplies nothing; its files are named by `Layers::untrusted_note`.
+pub fn trusted_agents_files(home: &Path, cwd: &Path) -> Vec<(PathBuf, String)> {
+    let mut files = agents_files(cwd);
+    files.retain(|(path, _)| layers::agents_trusted(home, path.parent().unwrap_or(cwd)));
+    files
 }
 
 fn agents_section(files: &[(PathBuf, String)]) -> String {

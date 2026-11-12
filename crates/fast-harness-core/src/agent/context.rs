@@ -68,7 +68,7 @@ impl Context {
             prompt: prompt::fill_with(&template.text, &values(date)),
             prompt_key: format!("{}\n{keyed}", template.source),
             source: template.source,
-            agents: prompt::agents_files(cwd),
+            agents: prompt::trusted_agents_files(home, cwd),
             skills: String::new(),
             agents_bytes: MAX_AGENTS_BYTES,
             memory: Some(Memory::read(home, cwd)),

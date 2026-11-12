@@ -57,6 +57,9 @@ pub struct Layers {
     /// `.fast-harness` folder other than `home`.
     pub project: Option<PathBuf>,
     pub trusted: bool,
+    /// The `AGENTS.md` files of `cwd` left out because their project is not
+    /// trusted (D62), outermost first; named in [`Layers::untrusted_note`].
+    pub agents_skipped: Vec<PathBuf>,
 }
 
 impl Layers {
@@ -66,6 +69,7 @@ impl Layers {
             home: home.to_path_buf(),
             project: None,
             trusted: false,
+            agents_skipped: Vec::new(),
         }
     }
 
@@ -75,10 +79,17 @@ impl Layers {
         let trusted = project
             .as_deref()
             .is_some_and(|root| trust::is_trusted(home, root));
+        let agents_skipped = agents_dirs(cwd)
+            .into_iter()
+            .map(|dir| dir.join(AGENTS_FILE))
+            .filter(|file| file.is_file())
+            .filter(|file| !agents_trusted(home, file.parent().unwrap_or(cwd)))
+            .collect();
         Layers {
             home: home.to_path_buf(),
             project,
             trusted,
+            agents_skipped,
         }
     }
 
@@ -92,14 +103,73 @@ impl Layers {
         out
     }
 
-    /// The one-time note of an untrusted project; `None` otherwise.
+    /// The one-time note of an untrusted project (D62): its `.fast-harness`
+    /// folder and the `AGENTS.md` files left out; `None` otherwise.
     pub fn untrusted_note(&self) -> Option<String> {
-        let root = self.project.as_ref().filter(|_| !self.trusted)?;
+        let folder = self.project.as_ref().filter(|_| !self.trusted);
+        let first = self.agents_skipped.first();
+        let root = match (folder, first) {
+            (Some(root), _) => root.clone(),
+            (None, Some(file)) => trust_root(&self.home, file.parent()?),
+            (None, None) => return None,
+        };
+        let mut what = Vec::new();
+        if folder.is_some() {
+            what.push("nothing in its .fast-harness folder was loaded".to_string());
+        }
+        if !self.agents_skipped.is_empty() {
+            let files: Vec<String> = (self.agents_skipped.iter())
+                .map(|file| file.display().to_string())
+                .collect();
+            what.push(format!(
+                "its AGENTS.md files were left out of the system prompt ({})",
+                files.join(", ")
+            ));
+        }
         Some(format!(
-            "project {} is not trusted: nothing in its .fast-harness folder was loaded; type /trust or run `fast-harness trust` to load it",
-            root.display()
+            "project {} is not trusted: {}; type /trust or run `fast-harness trust` to load it (AGENTS.md joins the system prompt of the next session; a running session gets it as a context update)",
+            root.display(),
+            what.join(" and ")
         ))
     }
+}
+
+/// The file name of the project instructions.
+pub const AGENTS_FILE: &str = "AGENTS.md";
+
+/// The nearest folder at or above `cwd` holding a `.git` entry.
+pub fn repo_root(cwd: &Path) -> Option<PathBuf> {
+    cwd.ancestors()
+        .find(|dir| std::fs::symlink_metadata(dir.join(".git")).is_ok())
+        .map(Path::to_path_buf)
+}
+
+/// The folders whose `AGENTS.md` belongs to `cwd`, outermost first: from
+/// [`repo_root`] down to `cwd`; only `cwd` outside a repository.
+pub fn agents_dirs(cwd: &Path) -> Vec<&Path> {
+    let mut dirs = Vec::new();
+    for dir in cwd.ancestors() {
+        dirs.push(dir);
+        if std::fs::symlink_metadata(dir.join(".git")).is_ok() {
+            dirs.reverse();
+            return dirs;
+        }
+    }
+    vec![cwd]
+}
+
+/// The folder `/trust` trusts for `dir` (D62): its project folder
+/// ([`project_root`]), else its repository root, else `dir` itself.
+pub fn trust_root(home: &Path, dir: &Path) -> PathBuf {
+    project_root(home, dir)
+        .or_else(|| repo_root(dir))
+        .unwrap_or_else(|| dir.to_path_buf())
+}
+
+/// True when the `AGENTS.md` of `dir` may load (D62): the project of `dir`
+/// ([`trust_root`]) is trusted. An untrusted project supplies nothing.
+pub fn agents_trusted(home: &Path, dir: &Path) -> bool {
+    trust::is_trusted(home, &trust_root(home, dir))
 }
 
 /// The nearest folder at or above `cwd` with a `.fast-harness` folder that

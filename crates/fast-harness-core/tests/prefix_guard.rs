@@ -80,6 +80,9 @@ fn strip(value: &Value) -> Value {
 /// system kept). Returns the model call bodies and the session id.
 fn session(case: Case, change: Change) -> (Vec<Value>, String) {
     let env = env(&format!("prefix-{}-{change:?}", case.name));
+    // D62: AGENTS.md of a trusted project only.
+    let root = fast_harness_core::config::layers::trust_root(&env.home, &env.cwd);
+    fast_harness_core::config::trust::trust(&env.home, &root).unwrap();
     let transport = Arc::new(ScriptedTransport::new(case.responses));
     let mut conv = Conversation::create(&env.home, &env.cwd, None).unwrap();
     let cancel = AtomicBool::new(false);

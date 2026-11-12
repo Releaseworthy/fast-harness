@@ -14,6 +14,7 @@ use std::path::{Component, Path, PathBuf};
 
 use serde_json::Value;
 
+use crate::config::layers;
 use crate::tools::skills::{marked_lines, MARK as SKILL_MARK};
 use crate::tools::ToolOutput;
 use crate::types::Message;
@@ -43,14 +44,25 @@ pub fn instruction_lines(messages: &[Message]) -> Vec<String> {
 }
 
 /// Appends to each output the nested AGENTS.md files its call (`args`, the
-/// raw arguments) reaches for the first time in the session.
-pub fn attach(messages: &[Message], cwd: &Path, args: &[&str], outputs: &mut [ToolOutput]) {
+/// raw arguments) reaches for the first time in the session. With a `home`
+/// (D62) a file of an untrusted project is never read.
+pub fn attach(
+    messages: &[Message],
+    cwd: &Path,
+    home: Option<&Path>,
+    args: &[&str],
+    outputs: &mut [ToolOutput],
+) {
     let mut known: Option<Vec<String>> = None;
+    let allowed = |file: &Path| {
+        let dir = file.parent().unwrap_or(cwd);
+        home.is_none_or(|home| layers::agents_trusted(home, dir))
+    };
     for (raw, output) in args.iter().zip(outputs.iter_mut()) {
         let Some(path) = touched(cwd, raw) else {
             continue;
         };
-        for file in candidates(cwd, &path) {
+        for file in candidates(cwd, &path).into_iter().filter(|f| allowed(f)) {
             let key = file.display().to_string();
             let known = known.get_or_insert_with(|| loaded(messages));
             if known.contains(&key) {

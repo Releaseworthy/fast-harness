@@ -51,7 +51,7 @@ Change one only together with every user of it.
 - Files under the home folder are written only through `store::write_atomic` or `store::update`; a read-change-write is always `store::update` (it re-reads inside `<file>.lock`).
 - Tool calls of one step run by effect (see Threads).
 - `AgentEvent::ToolProgress` is live only: never traced, never sent to the model.
-- Trust gates project files: nothing in `<project>/.fast-harness/` is read until the user trusts the project once (`config/trust.rs`, `trusted.json`).
+- Trust gates project files: nothing in `<project>/.fast-harness/` and no project `AGENTS.md` (root to cwd or nested) is read until the user trusts the project once (`config/trust.rs`, `trusted.json`, `layers::agents_trusted`, D62).
 - Thinking goes back only to the model that made it (`Message.model`).
 - Colours come only from `theme` roles; built-in themes are JSON in the user format ([docs/themes.md](docs/themes.md)).
 - The full list (sizes, panics, secrets, tests) is in `AGENTS.md`.
@@ -71,7 +71,7 @@ Full text: [docs/formats.md](docs/formats.md#files-on-disk). Home folder `~/.fas
 - `sessions/<cwd slug>/<id>.jsonl`: one log per session (transcript and trace); `<id>.out/<callId>.txt`: full tool results; `<id>.wire/`: raw requests and responses, only with wire capture on; `index.json`: the cache of the session list (D60).
 - `ui/*.slint`: the UI files of `fast-harness-gui-live`.
 
-Project folder `<project>/.fast-harness/`, read only when trusted: `config.json`, `providers/*.json`, `keys.json`, `panels/*.json`. The `AGENTS.md` files from the repository root down to the working folder join the system prompt.
+Project folder `<project>/.fast-harness/`, read only when trusted: `config.json`, `providers/*.json`, `keys.json`, `panels/*.json`. The `AGENTS.md` files from the repository root down to the working folder join the system prompt, also only when trusted (D62).
 
 ## Where the formats are
 
@@ -87,7 +87,7 @@ By decision title; each is `docs/decisions/Dnn.md`.
 | area | decisions |
 |---|---|
 | dependencies, HTTP, JSON, threads | D01 D02 D03 D04 |
-| scope, repo, name | D12 D14 D21 D22 |
+| scope, repo, name | D12 D14 D21 D22 D62 |
 | trace, sessions, measuring | D07 D35 D48 D49 |
 | accounts, credentials | D08 D09 D10 D11 D26 D32 D56 |
 | Google Antigravity (branch `antigravity`) | D23 D24 D25 D53 |

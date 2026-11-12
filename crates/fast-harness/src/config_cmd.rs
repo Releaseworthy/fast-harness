@@ -95,7 +95,8 @@ fn nest(current: Option<Value>, path: &[&str], value: Value) -> Value {
 pub fn trust(path: Option<PathBuf>) -> Result<ExitCode, String> {
     let home = crate::home()?;
     let dir = crate::work_dir(path)?;
-    let root = project_root(&home, &dir).unwrap_or(dir);
+    // The same folder `/trust` trusts (D62).
+    let root = fast_harness_core::config::layers::trust_root(&home, &dir);
     let path = trusted::trust(&home, &root)?;
     println!("trusted {}", path.display());
     Ok(ExitCode::SUCCESS)

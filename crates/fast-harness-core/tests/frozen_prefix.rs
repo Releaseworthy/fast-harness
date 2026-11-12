@@ -137,6 +137,9 @@ fn resume_after_a_prompt_edit_sends_the_logged_system_once_noted() {
 fn context_update_names_added_changed_and_removed_files() {
     let env = env("frozen-agents");
     std::fs::create_dir_all(env.cwd.join(".git")).unwrap();
+    // D62: AGENTS.md of a trusted project only.
+    let root = fast_harness_core::config::layers::trust_root(&env.home, &env.cwd);
+    fast_harness_core::config::trust::trust(&env.home, &root).unwrap();
     let agents = env.cwd.join("AGENTS.md");
     let (before, _) = Context::read_at(&env.home, &env.cwd, MODEL, "2026-11-12");
     assert_eq!(before.update(&before.stamp()), None);

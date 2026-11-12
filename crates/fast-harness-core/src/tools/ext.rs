@@ -30,6 +30,9 @@ pub struct Extensions {
     native_tools: Vec<Arc<dyn Tool>>,
     /// In-process hooks of native plugins (D52), run after `hooks`.
     pub native_hooks: Vec<Arc<dyn NativeHook>>,
+    /// The home folder whose `trusted.json` gates nested `AGENTS.md` (D62);
+    /// `None` (extensions built without settings): no gate.
+    pub trust_home: Option<std::path::PathBuf>,
 }
 
 impl Extensions {
@@ -50,7 +53,14 @@ impl Extensions {
             mcp: McpServers::default(),
             native_tools: Vec::new(),
             native_hooks: Vec::new(),
+            trust_home: None,
         }
+    }
+
+    /// These extensions gating nested `AGENTS.md` by the trust of `home` (D62).
+    pub fn with_trust(mut self, home: &std::path::Path) -> Extensions {
+        self.trust_home = Some(home.to_path_buf());
+        self
     }
 
     /// These extensions with the tools and hooks of native plugins.

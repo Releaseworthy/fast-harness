@@ -130,10 +130,16 @@ fn preview_appends_agents_md() {
     let (home, work) = (temp.home(), temp.work());
     std::fs::write(work.join("AGENTS.md"), "RULE-ONE").unwrap();
     store::save(&home, &work, Scope::Workspace, "Model {model}.").unwrap();
+    // D62: an untrusted project supplies nothing.
+    assert!(!prompt::render(&home, &work, "opus")
+        .text
+        .contains("RULE-ONE"));
+    let root = fast_harness_core::config::layers::trust_root(&home, &work);
+    fast_harness_core::config::trust::trust(&home, &root).unwrap();
     let text = prompt::render(&home, &work, "opus").text;
     assert!(text.starts_with("Model opus.\n"), "{text}");
     let agents = text.find("# Project instructions (AGENTS.md)").unwrap();
     assert!(text[agents..].contains("RULE-ONE"));
-    let preview = prompt::preview("X", &work, "opus");
+    let preview = prompt::preview(&home, "X", &work, "opus");
     assert!(preview.starts_with("X\n") && preview.contains("RULE-ONE"));
 }

@@ -118,7 +118,8 @@ fn show_preview(app: &App, ui: &MainWindow) {
     if !state.get_show_preview() {
         return;
     }
-    let text = prompt::preview(&state.get_text(), &app.cwd, &app.rt.config.model);
+    let (home, model) = (&app.rt.home, &app.rt.config.model);
+    let text = prompt::preview(home, &state.get_text(), &app.cwd, model);
     state.set_preview(text.into());
 }
 

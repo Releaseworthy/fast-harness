@@ -41,6 +41,8 @@ The list lives in `~/.fast-harness/trusted.json`:
 
 Untrusted, the front ends say so once: a note in the TUI and the GUI with the first message, a `[note]` line on stderr in print mode.
 
+An untrusted project supplies nothing (D62), and that includes its `AGENTS.md` files: the ones from the repository root down to the working folder stay out of the system prompt and nested ones are never attached. The note lists their paths. For `AGENTS.md` the project of a folder is its `.fast-harness` project, else its repository root (the nearest folder with `.git`), else the folder itself; `/trust` trusts that folder. A file above a trusted `.fast-harness` project (between it and the repository root) loads only when the repository root is trusted too. After `/trust` a new session has the files in its system prompt; a running session gets them once as a `[context update]` note at its next message. Your own home files (`system-prompt.md`, `prompts/`) are not project files and always load.
+
 ## Providers and models: `providers/*.json`
 
 The DeepSeek, OpenRouter and local server examples on this page are unverified live: the adapter is tested only against scripted responses, and model ids, windows and prices must be checked in each service's documentation.

@@ -68,7 +68,8 @@ impl Turn<'_> {
         }
         let args: Vec<&str> = calls.iter().map(|call| call.arguments.as_str()).collect();
         let cwd = &self.agent.parts.cwd;
-        nested::attach(&self.conv.messages, cwd, &args, &mut outputs);
+        let gate = self.agent.parts.extensions.trust_home.as_deref();
+        nested::attach(&self.conv.messages, cwd, gate, &args, &mut outputs);
         self.push_results(step, &calls, outputs, durations)
     }
 

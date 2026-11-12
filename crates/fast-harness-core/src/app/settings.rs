@@ -156,7 +156,7 @@ impl Runtime {
 
     /// Trusts the project of `cwd` (else `cwd` itself) and reloads it.
     pub fn trust_project(&mut self, cwd: &Path) -> Result<String, String> {
-        let root = layers::project_root(&self.home, cwd).unwrap_or_else(|| cwd.to_path_buf());
+        let root = layers::trust_root(&self.home, cwd);
         let path = trust::trust(&self.home, &root)?;
         self.use_project(cwd)?;
         Ok(format!(
@@ -183,6 +183,7 @@ impl Runtime {
         let extensions = Extensions::new(index)
             .with_hooks(hooks)
             .with_mcp(mcp)
+            .with_trust(&self.home)
             .with_native(plugins.tools().to_vec(), plugins.hooks().to_vec());
         // A tool file's `outputBytes` unless `toolOutput` names the tool.
         for (name, bytes) in extensions.output_bytes() {
