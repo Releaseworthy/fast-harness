@@ -129,6 +129,9 @@ pub struct Ui {
     /// The TUI bindings of `keys.json` (PLAN.md D45); defaults until the
     /// controller sets them.
     pub keys: Keymap,
+    /// The open panel screen (`/panel <id>`, PLAN.md D46): drawn in place of
+    /// the transcript, and it takes the keys.
+    pub panel: Option<super::panel_screen::PanelScreen>,
 }
 
 impl Ui {
@@ -167,6 +170,7 @@ impl Ui {
             palette: theme::by_id(theme::DEFAULT_THEME).palette,
             icons: &icons::PLAIN,
             keys: Keymap::defaults(Front::Tui),
+            panel: None,
         }
     }
 

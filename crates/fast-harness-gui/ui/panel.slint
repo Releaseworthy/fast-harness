@@ -3,6 +3,7 @@
 import { Theme, Mark, Card } from "parts.slint";
 import { Icons } from "icons.slint";
 import { ActionButton, IconButton } from "widgets.slint";
+import { PanelUi } from "panel_view.slint";
 
 // One tab: an icon and a word. The selected tab reads in the text colour,
 // bold, with a 2px accent underline (never colour alone).
@@ -68,7 +69,7 @@ component Tab inherits Rectangle {
 export component TabStrip inherits Rectangle {
     in property <string> page;
     callback open-page(string);
-    property <bool> extra: root.page == "settings" || root.page == "about" || root.page == "accounts";
+    property <bool> extra: root.page == "settings" || root.page == "about" || root.page == "accounts" || root.page == "panel";
     height: 44px;
     accessible-role: tab-list;
     Rectangle { y: parent.height - 1px; height: 1px; background: Theme.line; }
@@ -91,8 +92,8 @@ export component TabStrip inherits Rectangle {
             clicked => { root.open-page("trace"); }
         }
         if root.extra: Tab {
-            icon: root.page == "settings" ? Icons.settings-gear : root.page == "about" ? Icons.info : Icons.account;
-            text: root.page == "settings" ? "Settings" : root.page == "about" ? "About" : "Accounts";
+            icon: root.page == "panel" ? PanelUi.icon : root.page == "settings" ? Icons.settings-gear : root.page == "about" ? Icons.info : Icons.account;
+            text: root.page == "panel" ? PanelUi.title : root.page == "settings" ? "Settings" : root.page == "about" ? "About" : "Accounts";
             selected: true;
             closable: true;
             close => { root.open-page("chat"); }

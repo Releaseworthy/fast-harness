@@ -21,6 +21,9 @@ mod keys;
 mod layout_tests;
 mod mirror;
 mod model_refresh;
+mod panels;
+#[cfg(test)]
+mod panels_tests;
 mod pickers;
 mod prompt_settings;
 #[cfg(test)]
@@ -121,6 +124,8 @@ fn main() {
             let _ = fast_harness_core::platform::set_big_window_icon();
         });
         let _ = slint::run_event_loop();
+        // Every panel's process tree ends with the window (PLAN.md D46).
+        app::with_app(|app, _| app.panels.stop_all());
         let _ = ui.hide();
     }
     stop.store(true, Ordering::SeqCst);

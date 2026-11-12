@@ -101,6 +101,10 @@ fn start_text(app: &mut App, ui: &MainWindow, text: String) -> bool {
         }
         return false;
     }
+    // `/panel [id]` opens a panel or lists them (PLAN.md D46).
+    if crate::panels::slash(app, ui, &text) {
+        return false;
+    }
     // `/help` and the user's commands/*.md (PLAN.md D42).
     let text = match app.rt.slash(&text) {
         Slash::Send(text) => text,
@@ -229,6 +233,8 @@ fn deliver(id: &str, event: AgentEvent) {
             return;
         };
         run.apply(&event);
+        // Panels subscribed to turn, tool or usage events (PLAN.md D46).
+        app.panels.session(&event);
         if app.runs.is_shown(id) {
             app.sync_rows();
             app.refresh_status(ui);

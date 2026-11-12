@@ -70,7 +70,9 @@ pub fn show(app: &App, ui: &MainWindow) {
             key: key.into(),
             value: value.into(),
             source: source.into(),
+            action: SharedString::new(),
         })
+        .chain(crate::panels::config_rows(app))
         .collect();
     let g = ui.global::<ConfigUi>();
     g.set_rows(ModelRc::new(VecModel::from(rows)));
@@ -80,6 +82,10 @@ pub fn show(app: &App, ui: &MainWindow) {
 }
 
 pub fn connect(ui: &MainWindow) {
+    // "Open" on a panels.<id> row (PLAN.md D46).
+    ui.global::<ConfigUi>().on_action(|key| {
+        with_app(|app, ui| crate::panels::config_action(app, ui, &key));
+    });
     ui.global::<ConfigUi>().on_open_folder(|| {
         with_app(|app, ui| {
             if let Err(err) = platform::open_folder(&app.rt.home) {

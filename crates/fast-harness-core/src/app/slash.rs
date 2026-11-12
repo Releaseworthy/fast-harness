@@ -9,12 +9,16 @@ use crate::config::index::read_md;
 use crate::tools::Extensions;
 
 /// Slash commands the harness itself handles; a file cannot replace them.
-const BUILT_IN: [(&str, &str); 3] = [
+const BUILT_IN: [(&str, &str); 4] = [
     (
         "compact [instructions]",
         "summarise the conversation so far",
     ),
     ("trust", "trust this project's .fast-harness folder"),
+    (
+        "panel [id]",
+        "open a panel of panels/*.json (docs/panels.md), or list them",
+    ),
     ("help", "this list"),
 ];
 

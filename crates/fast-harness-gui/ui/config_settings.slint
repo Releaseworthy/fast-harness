@@ -6,11 +6,13 @@ import { Icons } from "icons.slint";
 import { ActionButton } from "widgets.slint";
 
 // One resolved key: `value` is JSON, `source` default, user, project, env
-// or command line.
+// or command line. A panel row (`panels.<id>`, PLAN.md D46) has the
+// action "Open".
 export struct ConfigRow {
     key: string,
     value: string,
     source: string,
+    action: string,
 }
 
 export global ConfigUi {
@@ -19,6 +21,8 @@ export global ConfigUi {
     in property <string> folder;
     in property <string> files;
     callback open-folder();
+    // The action of a row, with its key.
+    callback action(string);
 }
 
 export component ConfigSettings {
@@ -26,7 +30,7 @@ export component ConfigSettings {
         spacing: Theme.space-m;
         Text { text: "Configuration"; color: Theme.text; font-size: Theme.font-m; font-weight: 600; }
         Text {
-            text: "Every setting with its value and where it came from. Edit config.json, providers, tools, agents and commands in the config folder; a new session picks them up.";
+            text: "Every setting with its value and where it came from. Edit config.json, providers, tools, agents, commands and panels in the config folder; a panels.<id> row opens its panel; a new session picks them up.";
             color: Theme.dim;
             font-size: Theme.font-s;
             wrap: word-wrap;
@@ -44,6 +48,15 @@ export component ConfigSettings {
                 Text { text: row.key; color: Theme.text; font-size: Theme.font-s; width: 34%; overflow: elide; }
                 Text { text: row.value; color: Theme.dim; font-size: Theme.font-s; horizontal-stretch: 1; overflow: elide; }
                 Text { text: row.source; color: row.source == "default" ? Theme.dim : Theme.text; font-size: Theme.font-xs; width: 13%; horizontal-alignment: right; overflow: elide; }
+                // The word says it acts (not colour alone).
+                Text {
+                    visible: row.action != "";
+                    width: row.action != "" ? self.preferred-width : 0px;
+                    text: row.action;
+                    color: Theme.accent;
+                    font-size: Theme.font-s;
+                    TouchArea { mouse-cursor: pointer; clicked => { ConfigUi.action(row.key); } }
+                }
             }
         }
     }

@@ -33,6 +33,8 @@ pub enum Msg {
     Polled(usize),
     /// The live model list, or why it could not be read.
     Models(Result<Vec<ModelInfo>, String>),
+    /// A panel process queued messages (PLAN.md D46).
+    Panel,
 }
 
 pub struct Tui {
@@ -52,6 +54,8 @@ pub struct Tui {
     /// Makes the job of one live model list fetch (tests swap it).
     pub fetcher: fn(&Runtime) -> worker::FetchJob,
     pub quit: bool,
+    /// The panels of `panels/*.json`; a process starts on `/panel <id>`.
+    pub panels: fast_harness_core::panels::Panels,
 }
 
 /// The transcript of a saved session: its trace, else its messages.
@@ -78,7 +82,9 @@ impl Tui {
         ui.catalog = rt.models().cached();
         ui.icons = super::icons::by_id(&rt.config.icons);
         ui.keys = rt.keys.tui.clone();
+        let panels = fast_harness_core::panels::Panels::new(&rt.panels);
         let mut tui = Tui {
+            panels,
             rt,
             cwd,
             session: String::new(),
@@ -150,8 +156,10 @@ impl Tui {
                         .steering
                         .retain(|sent| !text.contains(sent.as_str()));
                 }
+                self.panels.session(&event);
                 self.transcript.apply(&event);
             }
+            Msg::Panel => self.panel_poll(),
             Msg::TurnDone(conv, outcome, leftover) => self.turn_done(*conv, outcome, leftover),
             Msg::Login(result) => self.login_done(result),
             Msg::Models(result) => self.ui.models_fetched(result),
@@ -168,6 +176,10 @@ impl Tui {
 
     fn term_event(&mut self, event: Event) -> bool {
         match event {
+            Event::Key(key) if self.ui.panel.is_some() => {
+                self.panel_key(key);
+                true
+            }
             Event::Key(key) => {
                 let action = self.ui.key(key);
                 self.act(action);
@@ -236,6 +248,10 @@ impl Tui {
                 Ok(note) => self.note(NoteKind::Info, note),
                 Err(err) => self.note(NoteKind::Error, err),
             }
+            return;
+        }
+        // `/panel [id]` (PLAN.md D46).
+        if self.panel_command(&text) {
             return;
         }
         // `/help` and the user's commands/*.md (PLAN.md D42).

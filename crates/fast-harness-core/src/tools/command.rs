@@ -97,7 +97,7 @@ impl Tool for CommandTool {
 
 /// `command` as given, or joined to the tool file's folder when it is a
 /// relative path (`./run.exe`).
-pub(super) fn program(command: &str, dir: &Path) -> PathBuf {
+pub(crate) fn program(command: &str, dir: &Path) -> PathBuf {
     let path = Path::new(command);
     let has_dir = command.contains(['/', '\\']);
     match has_dir && path.is_relative() {

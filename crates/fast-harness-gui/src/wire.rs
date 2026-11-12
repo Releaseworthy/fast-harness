@@ -65,6 +65,7 @@ pub fn connect(ui: &MainWindow) {
     });
     appearance::connect(ui);
     crate::config_page::connect(ui);
+    crate::panels::connect(ui);
     crate::keys::connect(ui);
     connect_accounts(ui);
     prompt_settings::connect(ui);

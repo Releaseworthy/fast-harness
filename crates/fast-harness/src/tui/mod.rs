@@ -11,6 +11,9 @@ mod keys;
 #[cfg(test)]
 mod keys_tests;
 mod markdown;
+mod panel_screen;
+#[cfg(test)]
+mod panel_screen_tests;
 mod panels;
 mod picker;
 #[cfg(test)]
@@ -79,7 +82,10 @@ pub fn run(args: TuiArgs) -> Result<ExitCode, String> {
     let mut terminal = enter().map_err(|err| format!("terminal: {err}"))?;
     let _guard = Guard;
     worker::start_reader(tx).map_err(|err| format!("input thread: {err}"))?;
-    event_loop(&mut terminal, &mut tui, &rx).map_err(|err| format!("terminal: {err}"))?;
+    let looped = event_loop(&mut terminal, &mut tui, &rx);
+    // Every panel's process tree ends with the TUI (PLAN.md D46).
+    tui.panels.stop_all();
+    looped.map_err(|err| format!("terminal: {err}"))?;
     drop(_guard);
     println!(
         "session {} (resume with `fast-harness tui --resume {}`)",

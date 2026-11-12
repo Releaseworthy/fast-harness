@@ -55,7 +55,7 @@ Unverified: every Anthropic beta above on a subscription (OAuth) account (no Cla
 3. Lazy by index: a tool, MCP tool, skill, agent or memory note costs at most one name in the context until it is used.
 4. Data, not code: an extension is a file under `~/.fast-harness/` or `<project>/.fast-harness/`; code runs as an external process speaking JSON on stdio. No plugin runtime inside the default binary and no new crate (D1); the UI plugin work the owner asked for (phase 21) keeps the default binaries unchanged.
 5. One path that works on every provider first; a provider-only shortcut later, behind a capability flag, after it is measured.
-6. Every phase ships its counter and its test, and stays inside the budgets: `fast-harness.exe` at most 8 MB, harness time at most 3 ms per step at 200 steps, TUI idle private memory at most 8 MB, zero work at start for an extension kind that has no files.
+6. Every phase ships its counter and its test, and stays inside the budgets: `fast-harness.exe` at most 8 MB, harness time at most 3 ms per step at 200 steps, TUI idle private memory at most 8 MB, zero work at start for an extension kind that has no files. GUI (owner, 2026-11-12: "size của file exe không quan trọng bằng goal là harness gui chạy nhẹ tài nguyên ram,cpu,gpu"): the budgets are RAM, CPU and GPU use, measured idle and in use (`docs/perf.md`) and held from phase to phase; `fast-harness-gui.exe` size is secondary (a few hundred KB for a feature, up to 600 KB, is acceptable).
 
 Each phase is one fresh session of at most 60 steps: read `PLAN.md`, `AGENTS.md` and its section here; end with `cargo fmt --all -- --check`, `cargo clippy --workspace --all-targets -- -D warnings`, `cargo test --workspace`, the `PLAN.md` rows, one commit.
 
@@ -191,7 +191,7 @@ Owner, 2026-11-12: "ui plugin thì bắt buộc người dùng phải build lạ
 21A, panels (no build, in the default binaries):
 - `panels/*.json`: `{"id", "title", "icon", "where": "tab" | "sidebar", "command", "args"}`. The command starts when its panel is first opened and speaks JSON lines: it sends a view tree made of a fixed widget set (text, markdown, button, input, select, checkbox, list, table, progress, row, column) and receives the events (click, submit, change) and the session events it subscribes to.
 - One generic Slint component compiled into the GUI draws the tree with the theme's roles; the TUI draws the same tree as text. Settings lists every panel with an "Open" action.
-- Budget: at most 150 KB more in `fast-harness-gui.exe`; no process before a panel opens.
+- Budget: no process before a panel opens; GUI idle RAM, CPU and GPU use held (measured before and after in `docs/perf.md`). Exe size is secondary: the first budget was 150 KB more in `fast-harness-gui.exe`; the shipped +328,192 bytes was accepted by the owner on 2026-11-12 (PLAN.md D46).
 - Tests: a scripted panel process; an unknown widget type shows as a note; a process that dies shows its last stderr line.
 
 21B, `.slint` files (no build, a second GUI binary):

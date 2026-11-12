@@ -32,6 +32,8 @@ pub struct Settings {
     pub keys: crate::keys::Keys,
     /// The servers of `mcp.json` in the same folders (D47).
     pub mcp: Vec<ServerSpec>,
+    /// `panels/*.json` of the same folders (D46); no process starts here.
+    pub panels: Vec<crate::panels::PanelFile>,
 }
 
 /// Every layer for `cwd` (the user layer only without one), then the
@@ -63,6 +65,9 @@ pub fn load_settings(
     let (mcp, loaded, skipped) = mcp_config::load(&layered.layers);
     layered.report.loaded.extend(loaded);
     layered.report.skipped.extend(skipped);
+    let (panels, loaded, skipped) = crate::panels::load(&layered.layers);
+    layered.report.loaded.extend(loaded);
+    layered.report.skipped.extend(skipped);
     Ok(Settings {
         layered,
         providers,
@@ -70,6 +75,7 @@ pub fn load_settings(
         hooks,
         keys,
         mcp,
+        panels,
     })
 }
 
@@ -167,7 +173,9 @@ impl Runtime {
             hooks,
             keys,
             mcp,
+            panels,
         } = settings;
+        self.panels = panels;
         let transport: Arc<dyn Transport> = self.transport.clone();
         let mcp = McpServers::new(&self.home, mcp, Some(transport));
         let extensions = Extensions::new(index).with_hooks(hooks).with_mcp(mcp);
