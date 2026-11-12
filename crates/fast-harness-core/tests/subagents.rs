@@ -338,3 +338,39 @@ fn the_view_keeps_one_note_per_child_session() {
         .collect();
     assert_eq!(notes, ["Subagent s1 finished", "Subagent s2 started"]);
 }
+
+/// A resumed session's child takes the session's frozen system prompt, not
+/// the freshly rendered one its parts were built with (phase 15 fix, D41).
+#[test]
+fn a_resumed_sessions_child_takes_the_frozen_system() {
+    let env = env("sub-frozen");
+    let call = r#"{"prompt":"say hi"}"#;
+    let responses = vec![
+        text_reply("first turn"),
+        tool_reply(&[("t0", "find_tools", FIND_SUBAGENT)]),
+        tool_reply(&[("t1", "subagent", call)]),
+        text_reply("child hi"),
+        text_reply("parent done"),
+    ];
+    let transport = Arc::new(ScriptedTransport::new(responses));
+    let mut conv = Conversation::create(&env.home, &env.cwd, None).unwrap();
+    let mut first = parts(&transport, key_auth(), &env.cwd);
+    first.system = "FROZEN-SYSTEM".into();
+    let agent = Agent::with_subagent(first, &env.home, &conv.id);
+    let cancel = AtomicBool::new(false);
+    assert_eq!(
+        agent.run_turn(&mut conv, "one", &cancel, &mut |_| {}),
+        TurnOutcome::Done
+    );
+    let mut resumed = Conversation::resume(&env.home, &env.cwd, &conv.id).unwrap();
+    let mut fresh = parts(&transport, key_auth(), &env.cwd);
+    fresh.system = "FRESH-SYSTEM".into();
+    let agent = Agent::with_subagent(fresh, &env.home, &resumed.id);
+    let outcome = agent.run_turn(&mut resumed, "two", &cancel, &mut |_| {});
+    assert_eq!(outcome, TurnOutcome::Done);
+    let requests = transport.requests();
+    assert_eq!(requests.len(), 5);
+    let child = json(&requests[3].body)["system"].to_string();
+    assert!(child.contains("FROZEN-SYSTEM"), "{child}");
+    assert!(!child.contains("FRESH-SYSTEM"));
+}

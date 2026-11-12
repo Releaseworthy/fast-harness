@@ -229,6 +229,14 @@ impl Tui {
     }
 
     pub(super) fn send(&mut self, text: String) {
+        // `/trust` trusts the project's .fast-harness folder (PLAN.md D41).
+        if text.trim() == "/trust" {
+            match self.rt.trust_project(&self.cwd) {
+                Ok(note) => self.note(NoteKind::Info, note),
+                Err(err) => self.note(NoteKind::Error, err),
+            }
+            return;
+        }
         if self.conv.is_none() {
             self.ui.status = "a turn is running".into();
             return;

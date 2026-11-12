@@ -25,11 +25,13 @@ const NOTE_CHARS: usize = 120;
 pub fn run(args: PrintArgs) -> Result<ExitCode, String> {
     let mut rt = runtime()?;
     let cwd = crate::work_dir(args.cwd.clone())?;
+    // The project layer, then the flags as the top layer (PLAN.md D41).
+    rt.use_project(&cwd)?;
     if let Some(model) = &args.model {
-        rt.config.model = model.clone();
+        rt.set_cli("model", model);
     }
     if let Some(effort) = &args.effort {
-        rt.config.set_effort(effort);
+        rt.set_cli("effort", effort);
     }
     if args.continue_latest && args.resume.is_none() {
         let latest = session::latest(&rt.home, &cwd).map_err(|err| format!("sessions: {err}"))?;

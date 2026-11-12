@@ -91,6 +91,15 @@ pub fn resume(app: &mut App, ui: &MainWindow) {
 
 /// Starts a turn with `text` in the shown session (created on the first message).
 fn start_text(app: &mut App, ui: &MainWindow, text: String) -> bool {
+    // `/trust` trusts the project's .fast-harness folder (PLAN.md D41).
+    if text.trim() == "/trust" {
+        let cwd = app.cwd.clone();
+        match app.rt.trust_project(&cwd) {
+            Ok(note) => ui.set_error_text(note.into()),
+            Err(err) => show_error(ui, err),
+        }
+        return false;
+    }
     // Checked first so a refused send leaves no empty session behind; the
     // model picks Claude's credential or the Google accounts.
     if let Err(err) = app.rt.route(&app.rt.config.model) {

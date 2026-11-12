@@ -51,6 +51,14 @@ fn tokens_lines(out: &mut String, s: &Stats) {
         w => format!("{}% of {}", s.peak_context * 100 / w, short_tokens(w)),
     };
     let _ = writeln!(out, "peak context {} ({window})", grouped(s.peak_context));
+    if s.priced_steps > 0 {
+        let dollars = s.cost_micro_usd as f64 / 1_000_000.0;
+        let _ = writeln!(
+            out,
+            "cost ${dollars:.4} ({} of {} steps priced)",
+            s.priced_steps, s.steps
+        );
+    }
 }
 
 fn count_lines(out: &mut String, s: &Stats) {

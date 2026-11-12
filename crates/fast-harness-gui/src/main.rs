@@ -84,13 +84,20 @@ fn main() {
     match Runtime::load() {
         Ok(mut rt) => {
             rt.interactive = true;
+            let cwd = working_dir();
+            // The project layer of the start folder (PLAN.md D41); its
+            // untrusted note comes with the first agent.
+            let project = cwd.as_deref().map_or(Ok(()), |cwd| rt.use_project(cwd));
             let notes = theme::load(&rt.home);
             theme::apply_config(&ui, &rt.config);
             if let Some(note) = notes.first() {
                 ui.set_error_text(format!("Themes: {note}").into());
             }
+            if let Err(err) = project {
+                ui.set_error_text(format!("Project settings: {err}").into());
+            }
             let (pool, google, http) = (rt.pool.clone(), rt.google.clone(), rt.transport.clone());
-            app::install(app::App::new(&ui, rt, working_dir()));
+            app::install(app::App::new(&ui, rt, cwd));
             wire::connect(&ui);
             wire::first_paint();
             accounts::start_poller(pool, google, http, stop.clone());

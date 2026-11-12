@@ -1,11 +1,13 @@
 //! The model boundary: one streaming call in, one assembled message out.
 //! Providers: Claude (`anthropic`) and Google Antigravity (`antigravity`,
-//! models named `antigravity/<id>`); `catalog` picks one by model id.
+//! models named `antigravity/<id>`) and the providers of `providers/*.json``n//! (`custom`, `openai`: models named `<provider id>/<id>`); `catalog` picks one by model id.
 
 pub mod anthropic;
 pub mod antigravity;
 pub mod catalog;
+pub mod custom;
 pub mod find;
+pub mod openai;
 
 pub use catalog::{efforts, fit_effort};
 

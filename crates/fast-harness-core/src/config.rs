@@ -4,12 +4,14 @@
 //! the file. [`save_setting`] writes one key back for the front ends.
 
 pub mod compaction;
+pub mod layers;
+pub mod trust;
 
 use std::collections::BTreeMap;
 use std::io;
 use std::path::Path;
 
-use serde::{Deserialize, Deserializer};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::{Map, Value};
 
 use crate::theme;
@@ -20,7 +22,7 @@ pub const DEFAULT_TOOL_OUTPUT_BYTES: usize = 8 * 1024;
 /// The smallest budget: room for the spill note and some text.
 pub const MIN_TOOL_OUTPUT_BYTES: usize = 1024;
 
-#[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(default, rename_all = "camelCase")]
 pub struct Config {
     pub model: String,
@@ -29,7 +31,7 @@ pub struct Config {
     pub max_tokens: u32,
     /// `cacheTtl` (PLAN.md D36): `"5m"`, `"1h"` or `"auto"`; `None` when the
     /// file has no valid value (then `cacheLong` decides, else `auto`).
-    #[serde(deserialize_with = "ttl_word")]
+    #[serde(deserialize_with = "ttl_word", serialize_with = "ttl_out")]
     pub cache_ttl: Option<CacheTtl>,
     /// The older `cacheLong` key, still read: `true` means `cacheTtl: "1h"`.
     pub cache_long: bool,
@@ -71,7 +73,7 @@ pub struct Config {
 }
 
 /// The `subagent` settings; a `null` model or effort inherits the parent's.
-#[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(default, rename_all = "camelCase")]
 pub struct SubagentConfig {
     pub model: Option<String>,
@@ -243,6 +245,16 @@ fn ttl_word<'de, D: Deserializer<'de>>(de: D) -> Result<Option<CacheTtl>, D::Err
         Some("auto") => Some(CacheTtl::Auto),
         _ => None,
     })
+}
+
+/// `cacheTtl` as its word (`null` when absent).
+fn ttl_out<S: Serializer>(ttl: &Option<CacheTtl>, out: S) -> Result<S::Ok, S::Error> {
+    match ttl {
+        Some(CacheTtl::Short) => out.serialize_str("5m"),
+        Some(CacheTtl::Long) => out.serialize_str("1h"),
+        Some(CacheTtl::Auto) => out.serialize_str("auto"),
+        None => out.serialize_none(),
+    }
 }
 
 /// The `greyscale` key: a JSON number rounded and clamped to 0..=100;

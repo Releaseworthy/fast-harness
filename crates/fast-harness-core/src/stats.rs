@@ -69,6 +69,10 @@ pub struct Stats {
     pub compactions: u64,
     pub transformations: u64,
     pub prefix_binding_mismatches: u64,
+    /// Cost in millionths of a US dollar of the steps whose model has a
+    /// `price` in `providers/*.json` (PLAN.md D41), and how many steps that is.
+    pub cost_micro_usd: u64,
+    pub priced_steps: u64,
 }
 
 /// One pass over one session's events.
@@ -128,6 +132,11 @@ impl Pass {
     fn answer(&mut self, data: &Value) {
         let usage: Usage = serde_json::from_value(data["usage"].clone()).unwrap_or_default();
         self.stats.usage.add(&usage);
+        let model = data["message"]["model"].as_str().unwrap_or("");
+        if let Some(price) = crate::llm::custom::price(model) {
+            self.stats.cost_micro_usd += (price.cost(&usage) * 1_000_000.0).round() as u64;
+            self.stats.priced_steps += 1;
+        }
         let context = data["context"].as_u64().unwrap_or(usage.context());
         self.stats.peak_context = self.stats.peak_context.max(context);
         if let Some(window) = data["window"].as_u64().filter(|w| *w > 0) {
@@ -233,6 +242,8 @@ impl Stats {
         self.compactions += other.compactions;
         self.transformations += other.transformations;
         self.prefix_binding_mismatches += other.prefix_binding_mismatches;
+        self.cost_micro_usd += other.cost_micro_usd;
+        self.priced_steps += other.priced_steps;
         tidy(self);
     }
 }

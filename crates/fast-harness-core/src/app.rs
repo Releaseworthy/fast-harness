@@ -4,17 +4,19 @@
 //! with the Google accounts, any other id to Claude.
 
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use crate::accounts::google::GoogleAuth;
 use crate::accounts::pool::AccountPool;
 use crate::agent::{prompt, Agent, AgentParts, Context, Conversation, Router};
 use crate::auth::{AuthSource, StaticAuth};
+use crate::config::layers::Layered;
 use crate::config::Config;
 use crate::http::Transport;
 use crate::llm::anthropic::Anthropic;
 use crate::llm::antigravity::Antigravity;
 use crate::llm::catalog::{provider_of, ANTIGRAVITY};
+use crate::llm::custom::ProviderFile;
 use crate::llm::{Auth, Provider};
 use crate::net::UreqTransport;
 use crate::{platform, session};
@@ -36,6 +38,13 @@ pub struct Runtime {
     /// Set by the TUI and the GUI: `cacheTtl: auto` then caches the
     /// messages for 1 hour (5 minutes in print mode), PLAN.md D36.
     pub interactive: bool,
+    /// The settings layers with the source of every key and the report of
+    /// what loaded (PLAN.md D41).
+    pub layered: Layered,
+    /// The providers of `providers/*.json` with their adapters.
+    custom: Vec<(Arc<dyn Provider>, ProviderFile)>,
+    /// Notes handed out once with the next agent (an untrusted project).
+    notes: Mutex<Vec<String>>,
 }
 
 /// The provider and the credential source of one model.
@@ -66,20 +75,25 @@ impl Runtime {
     }
 
     pub fn load_at(home: PathBuf) -> Result<Runtime, String> {
-        let config = Config::load(&home)?;
+        let loaded = settings::load_settings(&home, None, &env_value)?;
         models::load_cache(&home);
         let pool = Arc::new(open_pool(&home)?);
         let google = Arc::new(GoogleAuth::new(Arc::clone(&pool), &home));
-        Ok(Runtime {
+        let mut runtime = Runtime {
             home,
-            config,
+            config: loaded.layered.config.clone(),
+            layered: loaded.layered.clone(),
             pool,
             google,
             transport: Arc::new(UreqTransport::new()),
             provider: Arc::new(Anthropic::default()),
             antigravity: Arc::new(Antigravity::default()),
             interactive: false,
-        })
+            custom: Vec::new(),
+            notes: Mutex::default(),
+        };
+        runtime.apply(loaded);
+        Ok(runtime)
     }
 
     /// `ANTHROPIC_API_KEY`, else `FAST_HARNESS_OAUTH_TOKEN`, else the account pool when
@@ -112,6 +126,9 @@ impl Runtime {
 
     /// The provider and credential source of `model`.
     pub fn route(&self, model: &str) -> Result<Route, String> {
+        if let Some(route) = self.custom_route(model) {
+            return route;
+        }
         if provider_of(model) == ANTIGRAVITY {
             return Ok((self.antigravity.clone(), self.google_auth()?));
         }
@@ -153,7 +170,9 @@ impl Runtime {
     /// sources only for a new session; a session keeps the one it froze, and
     /// a later change of the sources reaches it as a context update (D36).
     pub fn agent(&self, cwd: &Path, conv: &Conversation) -> Result<(Agent, Vec<String>), String> {
-        let (context, notes) = Context::read(&self.home, cwd, &self.config.model);
+        let (context, read_notes) = Context::read(&self.home, cwd, &self.config.model);
+        let mut notes = self.take_notes();
+        notes.extend(read_notes);
         let system = conv.system.clone().unwrap_or_else(|| context.system());
         let parts = self.parts_with(cwd, system)?;
         let router = Some(self.router());
@@ -173,9 +192,23 @@ impl Runtime {
             let provider: Arc<dyn Provider> = self.antigravity.clone();
             (provider, auth)
         });
-        Arc::new(move |model: &str| match provider_of(model) == ANTIGRAVITY {
-            true => google.clone(),
-            false => claude.clone(),
+        let custom: Vec<(String, Result<Route, String>)> = (self.custom.iter())
+            .map(|(_, file)| {
+                let model = format!("{}/", file.id);
+                (
+                    model.clone(),
+                    self.custom_route(&model).unwrap_or_else(|| Err(model)),
+                )
+            })
+            .collect();
+        Arc::new(move |model: &str| {
+            if let Some((_, route)) = custom.iter().find(|(p, _)| model.starts_with(p.as_str())) {
+                return route.clone();
+            }
+            match provider_of(model) == ANTIGRAVITY {
+                true => google.clone(),
+                false => claude.clone(),
+            }
         })
     }
     /// `resume` when given, else the newest session of `cwd` when
@@ -206,6 +239,9 @@ impl Runtime {
 // `app/ag_models.rs`).
 mod ag_models;
 mod models;
+mod settings;
+
+pub use settings::{doctor, load_settings, provider_for, Settings};
 
 pub use ag_models::{read_ag_cache, write_ag_cache, AG_CACHE_FILE, AG_CACHE_VERSION};
 pub use models::{read_cache, write_cache, ModelSource, CACHE_FILE, CACHE_VERSION};

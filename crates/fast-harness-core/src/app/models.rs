@@ -114,6 +114,7 @@ impl ModelSource {
     pub fn cached(&self) -> Vec<ModelInfo> {
         let mut list = self.cached_of(ANTHROPIC);
         list.extend(self.cached_of(ANTIGRAVITY));
+        list.extend(custom_models());
         list
     }
 
@@ -160,6 +161,7 @@ impl ModelSource {
         }
         let mut list = self.live_or_cached(ANTHROPIC, claude);
         list.extend(self.live_or_cached(ANTIGRAVITY, google));
+        list.extend(custom_models());
         Ok(list)
     }
 
@@ -203,4 +205,24 @@ impl ModelSource {
         let _ = write_ag_cache(&self.home, &entries);
         Ok(list)
     }
+}
+
+/// The models of the custom providers of `providers/*.json` (PLAN.md
+/// D41), named `<provider id>/<model id>`, in file order.
+pub fn custom_models() -> Vec<ModelInfo> {
+    let providers = crate::llm::custom::providers();
+    let custom = providers.iter().filter(|p| p.is_custom());
+    let pairs = custom.flat_map(|p| p.models.iter().map(move |m| (p, m)));
+    pairs
+        .map(|(provider, model)| ModelInfo {
+            id: format!("{}/{}", provider.id, model.id),
+            display_name: model.name.clone().unwrap_or_else(|| model.id.clone()),
+            context_window: model.context_window.unwrap_or(0),
+            max_output: model.max_output.unwrap_or(0),
+            reasoning: !model.efforts.is_empty(),
+            efforts: model.efforts.clone(),
+            deprecated: false,
+            live: None,
+        })
+        .collect()
 }

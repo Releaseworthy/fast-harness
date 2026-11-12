@@ -3,7 +3,7 @@
 
 use fast_harness_core::llm::anthropic::ModelInfo;
 use fast_harness_core::llm::catalog::{
-    group_title, label as provider_label, provider_of, PROVIDERS,
+    group_title, label as provider_label, provider_of, providers,
 };
 use fast_harness_core::llm::{efforts, fit_effort};
 
@@ -14,7 +14,7 @@ use fast_harness_core::llm::{efforts, fit_effort};
 /// after the label of a deprecated model.
 pub fn model_list(models: &[ModelInfo], configured: &str) -> Vec<(String, String)> {
     let mut list = Vec::new();
-    for provider in PROVIDERS {
+    for provider in providers() {
         let table: Vec<(String, String)> = models
             .iter()
             .filter(|m| provider_of(&m.id) == provider)

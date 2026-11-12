@@ -168,7 +168,16 @@ impl Turn<'_> {
             system: conv.system.as_deref().unwrap_or(&parts.system),
             messages: &conv.messages,
             tools: conv.tools.as_deref().unwrap_or(agent.tools.specs()),
-            max_tokens: parts.config.max_tokens,
+            // A `maxOutput` in `providers/*.json` caps it (PLAN.md D41).
+            max_tokens: crate::llm::catalog::max_output_override(model).map_or(
+                parts.config.max_tokens,
+                |cap| {
+                    parts
+                        .config
+                        .max_tokens
+                        .min(u32::try_from(cap).unwrap_or(u32::MAX))
+                },
+            ),
             effort,
             cache: Cache {
                 system_1h,

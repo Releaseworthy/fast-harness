@@ -34,6 +34,9 @@ struct State {
     kids: Vec<Kid>,
     notices: Vec<String>,
     events: Vec<AgentEvent>,
+    /// The session's frozen system prompt, set at each turn start: a child
+    /// takes it (a resumed session keeps its own, not a fresh render).
+    system: Option<String>,
 }
 
 #[derive(Default)]
@@ -68,6 +71,16 @@ pub(super) struct KidView {
 }
 
 impl Children {
+    /// Remembers the parent session's frozen system prompt.
+    pub fn set_system(&self, system: &str) {
+        self.lock().system = Some(system.to_string());
+    }
+
+    /// The parent session's frozen system prompt, once a turn started.
+    pub fn system(&self) -> Option<String> {
+        self.lock().system.clone()
+    }
+
     fn lock(&self) -> MutexGuard<'_, State> {
         self.state
             .lock()

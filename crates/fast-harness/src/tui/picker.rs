@@ -3,7 +3,7 @@
 //! current model; Enter picks, Esc closes, other keys are ignored.
 
 use fast_harness_core::llm::anthropic::ModelInfo;
-use fast_harness_core::llm::catalog::{display_name, group_title, label, provider_of, PROVIDERS};
+use fast_harness_core::llm::catalog::{display_name, group_title, label, provider_of, providers};
 use fast_harness_core::llm::{efforts, fit_effort};
 use ratatui::crossterm::event::{KeyCode, KeyEvent};
 use ratatui::layout::Rect;
@@ -63,7 +63,7 @@ pub fn is_header(item: &(String, String)) -> bool {
 /// first in its group when it is not listed.
 fn model_items(catalog: &[ModelInfo], model: &str) -> Vec<(String, String)> {
     let mut items = Vec::new();
-    for provider in PROVIDERS {
+    for provider in providers() {
         let mut group: Vec<(String, String)> = catalog
             .iter()
             .filter(|m| provider_of(&m.id) == provider)

@@ -3,6 +3,7 @@
 mod accounts_cmd;
 mod args;
 mod auth_choice;
+mod config_cmd;
 mod info;
 mod models_cmd;
 mod print;
@@ -50,6 +51,9 @@ fn main() -> ExitCode {
         Command::Stats { id, all, json, cwd } => stats_cmd::run(id, all, json, cwd),
         Command::Accounts(action) => accounts_cmd::run(action),
         Command::Models { json } => models_cmd::run(json),
+        Command::Config { action, cwd } => config_cmd::config(action, cwd),
+        Command::Trust { path } => config_cmd::trust(path),
+        Command::Doctor { cwd } => config_cmd::doctor(cwd),
         Command::Print(print_args) => print::run(print_args),
         Command::Tui(tui_args) => tui::run(tui_args),
     };

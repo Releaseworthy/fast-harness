@@ -5,7 +5,7 @@
 
 use std::collections::BTreeMap;
 
-use serde::{Deserialize, Deserializer};
+use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::Value;
 
 pub const DEFAULT_TRIGGER: Trigger = Trigger::Percent(50);
@@ -15,7 +15,7 @@ pub const DEFAULT_RESERVE: u64 = 16_000;
 pub const DEFAULT_EFFORT: &str = "low";
 
 /// One layer of settings; `None` keeps the value of the layer below.
-#[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(default, rename_all = "camelCase")]
 pub struct CompactionPatch {
     pub auto: Option<bool>,
@@ -32,7 +32,7 @@ pub struct CompactionPatch {
 }
 
 /// One entry of `models`.
-#[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(default)]
 pub struct ModelEntry {
     pub compaction: CompactionPatch,

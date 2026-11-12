@@ -7,7 +7,7 @@ use std::time::{Duration, Instant};
 use serde_json::json;
 
 use super::child_tools;
-use super::children::{Children, Slot};
+use super::children::{self, Children, Slot};
 use super::subagent::{Spec, SubagentTool, NAME};
 use crate::agent::{Agent, AgentParts, Conversation, Inbox};
 use crate::events::{AgentEvent, TurnOutcome};
@@ -51,6 +51,10 @@ pub(super) fn start(
 fn build(tool: &SubagentTool, spec: &Spec) -> Result<(Agent, Conversation), String> {
     let depth = tool.depth + 1;
     let mut parts = tool.parts.clone();
+    // The parent's frozen system, not the one its parts were built with.
+    if let Some(system) = children::of_session(&tool.session).system() {
+        parts.system = system;
+    }
     // A subagent session is short: `cacheTtl: auto` gives its messages the
     // 5 minute cache (PLAN.md D36).
     parts.config.interactive = false;

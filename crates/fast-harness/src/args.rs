@@ -41,6 +41,13 @@ Usage:
   fast-harness accounts remove ID|EMAIL      Remove an account from fast-harness.
   fast-harness accounts add-key [LABEL]      Add an Anthropic API key (read from stdin).
   fast-harness accounts usage                Read the usage of every account now.
+  fast-harness config path|get KEY|set KEY VALUE [--project] [--cwd DIR]
+      The settings files; a key's value and the layer it came from (default, user, project,
+      env, command line); set writes the user config.json (--project: the project's). KEY may
+      be dotted (compaction.trigger); VALUE is JSON, else a string.
+  fast-harness trust [PATH]                  Trust the project of PATH (default the current
+      directory): its .fast-harness folder (config.json, providers/) loads from then on.
+  fast-harness doctor [--cwd DIR]            What loaded, from where, and what was skipped and why.
   fast-harness --version                     Print the version.
   fast-harness help                          Print this text.
 
@@ -134,8 +141,45 @@ pub enum Command {
     Models {
         json: bool,
     },
+    Config {
+        action: ConfigAction,
+        cwd: Option<PathBuf>,
+    },
+    Trust {
+        path: Option<PathBuf>,
+    },
+    Doctor {
+        cwd: Option<PathBuf>,
+    },
     Version,
     Help,
+}
+
+/// `fast-harness config` actions (PLAN.md D41).
+#[derive(Debug, PartialEq, Eq)]
+pub enum ConfigAction {
+    Path,
+    Get(String),
+    Set {
+        key: String,
+        value: String,
+        project: bool,
+    },
+}
+
+const CONFIG_USAGE: &str = "usage: fast-harness config path|get KEY|set KEY VALUE [--project]";
+
+fn config_action(args: &[String], project: bool) -> Result<ConfigAction, String> {
+    match args {
+        [verb] if verb == "path" => Ok(ConfigAction::Path),
+        [verb, key] if verb == "get" => Ok(ConfigAction::Get(key.clone())),
+        [verb, key, value] if verb == "set" => Ok(ConfigAction::Set {
+            key: key.clone(),
+            value: value.clone(),
+            project,
+        }),
+        _ => Err(CONFIG_USAGE.into()),
+    }
 }
 
 #[derive(Default)]
@@ -147,6 +191,7 @@ struct Opts {
     all: bool,
     no_browser: bool,
     google: bool,
+    project: bool,
     id: Option<String>,
     help: bool,
     version: bool,
@@ -173,6 +218,7 @@ fn read_opts(args: Vec<String>) -> Result<Opts, String> {
             "--all" => opts.all = true,
             "--no-browser" => opts.no_browser = true,
             "--google" => opts.google = true,
+            "--project" => opts.project = true,
             "--id" => opts.id = Some(value(&mut args, &arg)?),
             "-h" | "--help" => opts.help = true,
             "-V" | "--version" => opts.version = true,
@@ -214,6 +260,15 @@ pub fn parse(args: Vec<String>) -> Result<Command, String> {
         Some("sessions") if opts.positional.len() == 1 => return Ok(Command::Sessions { cwd }),
         Some("prompt") if opts.positional.len() == 1 => return Ok(Command::Prompt { cwd }),
         Some("tui") if opts.positional.len() == 1 => return tui_args(opts),
+        Some("config") => {
+            let action = config_action(&opts.positional[1..], opts.project)?;
+            return Ok(Command::Config { action, cwd });
+        }
+        Some("trust") if opts.positional.len() <= 2 => {
+            let path = opts.positional.get(1).map(PathBuf::from);
+            return Ok(Command::Trust { path });
+        }
+        Some("doctor") if opts.positional.len() == 1 => return Ok(Command::Doctor { cwd }),
         Some("accounts") => {
             let action = accounts_action(&opts.positional[1..], &opts)?;
             return Ok(Command::Accounts(action));

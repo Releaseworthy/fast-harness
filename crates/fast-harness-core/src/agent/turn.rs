@@ -127,6 +127,9 @@ impl Turn<'_> {
         let agent = self.agent;
         let specs = agent.tools.specs();
         let note = (self.conv).freeze(&agent.parts.system, specs, agent.context.as_ref());
+        if let (Some(children), Some(system)) = (&agent.children, &self.conv.system) {
+            children.set_system(system);
+        }
         // The header (with the new context stamp) goes first: a crash before
         // the user message then cannot repeat the context update on resume.
         traced(self.conv.header_if_changed())?;

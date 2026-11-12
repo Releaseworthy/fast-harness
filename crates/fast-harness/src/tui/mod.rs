@@ -62,6 +62,7 @@ pub fn run(args: TuiArgs) -> Result<ExitCode, String> {
     let mut rt = runtime()?;
     rt.interactive = true;
     let cwd = crate::work_dir(args.cwd.clone())?;
+    rt.use_project(&cwd)?;
     let conv = rt.open_conversation(&cwd, args.resume.as_deref(), args.continue_latest)?;
     let (tx, rx) = mpsc::channel();
     let mut tui = Tui::new(rt, cwd, conv, tx.clone());
