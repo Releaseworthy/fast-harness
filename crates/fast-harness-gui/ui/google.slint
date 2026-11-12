@@ -3,6 +3,7 @@ import { GoogleRow, GoogleQuotaRow } from "types.slint";
 import { Theme, UsageBar, Badge, Mark } from "parts.slint";
 import { Icons } from "icons.slint";
 import { ActionButton } from "widgets.slint";
+import { MarkLine } from "blocks.slint";
 
 component QuotaGroup inherits VerticalLayout {
     in property <GoogleQuotaRow> info;
@@ -57,21 +58,17 @@ component GoogleCard inherits Rectangle {
             overflow: elide;
         }
         for group in info.quota: QuotaGroup { info: group; }
-        if info.hold != "": HorizontalLayout {
-            spacing: Theme.space-s;
-            Mark { text: Icons.debug-pause; color: Theme.warning; font-size: Theme.font-s; }
-            Text { text: info.hold; color: Theme.warning; font-size: Theme.font-s; wrap: word-wrap; horizontal-stretch: 1; vertical-alignment: center; }
+        if info.hold != "": MarkLine {
+            icon: Icons.debug-pause;
+            tint: Theme.warning;
+            text: info.hold;
             if info.verify-url != "": ActionButton {
                 icon: Icons.link-external;
                 text: "Verify";
                 clicked => { root.open-url(info.verify-url); }
             }
         }
-        if info.error != "": HorizontalLayout {
-            spacing: Theme.space-s;
-            Mark { text: Icons.error; color: Theme.error; font-size: Theme.font-s; }
-            Text { text: info.error; color: Theme.error; font-size: Theme.font-s; wrap: word-wrap; horizontal-stretch: 1; }
-        }
+        if info.error != "": MarkLine { icon: Icons.error; tint: Theme.error; text: info.error; }
         Text { text: info.read; color: Theme.dim; font-size: Theme.font-s; }
     }
 }

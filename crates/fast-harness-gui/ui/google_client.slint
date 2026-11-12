@@ -4,6 +4,7 @@
 import { Theme, Badge, Mark } from "parts.slint";
 import { Icons } from "icons.slint";
 import { ActionButton, KeyInput } from "widgets.slint";
+import { MarkLine } from "blocks.slint";
 
 export component ClientForm inherits Rectangle {
     in property <bool> ready;
@@ -59,20 +60,11 @@ export component ClientForm inherits Rectangle {
             color: Theme.dim;
             font-size: Theme.font-xs;
         }
-        if root.note != "": HorizontalLayout {
-            spacing: Theme.space-s;
-            Mark {
-                text: root.error ? Icons.error : Icons.check;
-                color: root.error ? Theme.error : Theme.success;
-                font-size: Theme.font-s;
-            }
-            Text {
-                text: root.note;
-                color: root.error ? Theme.error : Theme.text;
-                font-size: Theme.font-s;
-                wrap: word-wrap;
-                horizontal-stretch: 1;
-            }
+        if root.note != "": MarkLine {
+            icon: root.error ? Icons.error : Icons.check;
+            tint: root.error ? Theme.error : Theme.success;
+            text: root.note;
+            text-color: root.error ? Theme.error : Theme.text;
         }
     }
 }

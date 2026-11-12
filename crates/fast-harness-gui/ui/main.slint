@@ -10,6 +10,7 @@ import { SettingsPage, AboutPage } from "pages.slint";
 export { PromptUi } from "prompt_settings.slint";
 export { AppearanceUi, ThemeCard } from "appearance.slint";
 import { TracePage } from "trace.slint";
+export { TraceProbe } from "trace.slint";
 import { TitleBar } from "titlebar.slint";
 import { TabStrip, StatusBar, ErrorBanner } from "panel.slint";
 // The icon font (Symbols Nerd Font subset); `Theme.symbols` names it.
@@ -39,6 +40,8 @@ export component MainWindow inherits Window {
     // The transcript scroll bar's thumb centre (read by the tests).
     out property <length> transcript-thumb-x: transcript.thumb-x;
     out property <length> transcript-thumb-y: transcript.thumb-y;
+    // The transcript rows' measured height (read by the layout tests).
+    out property <length> transcript-content-height: transcript.content-height;
     in property <[SideRow]> side-rows;
     in property <[AccountRow]> accounts;
     in property <[GoogleRow]> google-accounts;

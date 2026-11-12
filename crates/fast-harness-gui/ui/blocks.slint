@@ -1,0 +1,76 @@
+// Blocks of wrapped text that sit under an `if` or a `for`. Slint 1.18.1
+// measures the height of a repeated plain element (a Rectangle or a layout as
+// the root of an `if` or `for`) at its preferred, unwrapped width, so its
+// wrapped text gets one line and draws over the next row
+// (https://github.com/slint-ui/slint/issues/13655, fixed after 1.18.1). A
+// component as the root keeps the real width: every `if` or `for` that holds
+// wrapped text uses one of these, or another component
+// (src/layout_guard_tests.rs checks the .slint files).
+import { Theme, Mark } from "parts.slint";
+
+// Thinking: a gradient bar and the dim italic text.
+export component ThinkingQuote inherits Rectangle {
+    in property <string> text;
+    HorizontalLayout {
+        spacing: Theme.space-m;
+        Rectangle {
+            width: 2px;
+            background: @linear-gradient(180deg, Theme.accent 0%, Theme.accent2 100%);
+        }
+        Text {
+            text: root.text;
+            color: Theme.dim;
+            font-size: Theme.font-s;
+            font-italic: true;
+            wrap: word-wrap;
+        }
+    }
+}
+
+// Monospace text on the code colour: tool arguments and output, the system
+// prompt. An error draws the edge in the error colour.
+export component CodeBox inherits Rectangle {
+    in property <string> text;
+    in property <bool> error;
+    border-radius: Theme.radius-m;
+    border-width: 1px;
+    border-color: root.error ? Theme.error : Theme.line;
+    background: Theme.code;
+    HorizontalLayout {
+        padding: Theme.space-s + 2px;
+        padding-left: Theme.space-m;
+        Text {
+            text: root.text;
+            color: Theme.text;
+            font-family: Theme.mono;
+            font-size: Theme.font-s;
+            wrap: word-wrap;
+        }
+    }
+}
+
+// A mark and a wrapped line (hold, error and note lines); children go after
+// the text (a Verify button).
+export component MarkLine inherits Rectangle {
+    in property <string> icon;
+    in property <color> tint;
+    in property <string> text;
+    in property <color> text-color: root.tint;
+    HorizontalLayout {
+        spacing: Theme.space-s;
+        Mark {
+            text: root.icon;
+            color: root.tint;
+            font-size: Theme.font-s;
+        }
+        Text {
+            text: root.text;
+            color: root.text-color;
+            font-size: Theme.font-s;
+            wrap: word-wrap;
+            vertical-alignment: center;
+            horizontal-stretch: 1;
+        }
+        @children
+    }
+}

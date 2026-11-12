@@ -4,6 +4,7 @@ import { Theme, LinkText, Columns, Mark, AccentFill, Elevation, Card, Halo } fro
 import { Icons } from "icons.slint";
 import { BusySpinner, IconButton } from "widgets.slint";
 import { ScrollBar } from "scrollbar.slint";
+import { ThinkingQuote, CodeBox } from "blocks.slint";
 
 // The user's message: a bubble on the right, at most 80% of the column.
 component UserBubble {
@@ -79,20 +80,8 @@ component AssistantBlock {
                 clicked => { root.toggle(); }
             }
         }
-        if msg.thinking != "" && msg.expanded: HorizontalLayout {
-            spacing: Theme.space-m;
-            Rectangle {
-                width: 2px;
-                background: @linear-gradient(180deg, Theme.accent 0%, Theme.accent2 100%);
-            }
-            Text {
-                text: msg.thinking;
-                wrap: word-wrap;
-                color: Theme.dim;
-                font-size: Theme.font-s;
-                font-italic: true;
-            }
-        }
+        // Wrapped text under an `if` sits in a component (ui/blocks.slint).
+        if msg.thinking != "" && msg.expanded: ThinkingQuote { text: msg.thinking; }
         if msg.text != "": StyledText {
             text: msg.body;
             default-color: Theme.text;
@@ -198,22 +187,7 @@ component ToolCard inherits Rectangle {
                 clicked => { root.copy(msg.text); }
             }
         }
-        if msg.expanded && !msg.running: Rectangle {
-            border-radius: Theme.radius-m;
-            background: Theme.code;
-            border-width: 1px;
-            border-color: Theme.line;
-            HorizontalLayout {
-                padding: Theme.space-s + 2px;
-                Text {
-                    text: msg.output;
-                    wrap: word-wrap;
-                    font-family: Theme.mono;
-                    font-size: Theme.font-s;
-                    color: Theme.text;
-                }
-            }
-        }
+        if msg.expanded && !msg.running: CodeBox { text: msg.output; }
     }
 }
 
@@ -249,7 +223,8 @@ component MessageView {
         padding-left: Columns.side(root.width, Theme.column-width);
         padding-right: Columns.side(root.width, Theme.column-width);
         padding-top: msg.kind == "footer" ? 0px : msg.kind == "user" ? Theme.space-l : Theme.space-s;
-        padding-bottom: msg.kind == "footer" ? Theme.space-s : 2px;
+        // A tool card keeps room for its elevation above the step line.
+        padding-bottom: msg.kind == "footer" ? Theme.space-s : msg.kind == "tool" ? Theme.space-s + 2px : 2px;
         if msg.kind == "user": UserBubble {
             msg: msg;
             copy(t) => { root.copy(t); }
@@ -300,6 +275,8 @@ export component TranscriptView {
     // The themed bar's thumb centre in window coordinates (for the tests).
     out property <length> thumb-x: bar.thumb-x;
     out property <length> thumb-y: bar.thumb-y;
+    // The rows' height as the list measured it (for the layout tests).
+    out property <length> content-height: list.content-height;
 
     public function to-bottom() {
         root.follow = true;

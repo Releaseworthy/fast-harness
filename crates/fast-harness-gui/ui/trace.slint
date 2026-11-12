@@ -7,7 +7,14 @@ import { TraceRow } from "types.slint";
 import { Theme, Columns, LinkText, Mark, AccentFill, PageTitle } from "parts.slint";
 import { Icons } from "icons.slint";
 import { ActionButton, FocusRing } from "widgets.slint";
+import { ThinkingQuote, CodeBox } from "blocks.slint";
 import { StepsTable } from "steps.slint";
+
+// The timeline rows' height as the list measured it (read by the layout
+// tests: the page sits under an `if`, so a global carries it out).
+export global TraceProbe {
+    in-out property <length> content-height;
+}
 
 // The mark and its colour for each entry kind.
 global TraceStyle {
@@ -70,24 +77,19 @@ component EntryHead {
     }
 }
 
-// Tool arguments, tool output and the system prompt: monospace on `code`.
-component CodeBody inherits Rectangle {
+// The user's message on the bubble colour. Every `if` below that holds
+// wrapped text has a component as its root (ui/blocks.slint says why).
+component UserBody inherits Rectangle {
     in property <string> text;
-    in property <bool> error;
-    border-radius: Theme.radius-m;
+    border-radius: Theme.radius-xl;
+    background: Theme.bubble;
     border-width: 1px;
-    border-color: root.error ? Theme.error : Theme.line;
-    background: Theme.code;
+    border-color: Theme.accent.with-alpha(0.3);
     HorizontalLayout {
         padding: Theme.space-s + 2px;
-        padding-left: Theme.space-m;
-        Text {
-            text: root.text;
-            color: Theme.text;
-            font-family: Theme.mono;
-            font-size: Theme.font-s;
-            wrap: word-wrap;
-        }
+        padding-left: Theme.space-l - 2px;
+        padding-right: Theme.space-l - 2px;
+        Text { text: root.text; color: Theme.text; font-size: Theme.font-m; wrap: word-wrap; }
     }
 }
 
@@ -95,30 +97,16 @@ component EntryBody {
     in property <TraceRow> entry;
     in property <string> shown;
     VerticalLayout {
-        if entry.kind == "user": Rectangle {
-            border-radius: Theme.radius-xl;
-            background: Theme.bubble;
-            border-width: 1px;
-            border-color: Theme.accent.with-alpha(0.3);
-            HorizontalLayout {
-                padding: Theme.space-s + 2px;
-                padding-left: Theme.space-l - 2px;
-                padding-right: Theme.space-l - 2px;
-                Text { text: root.shown; color: Theme.text; font-size: Theme.font-m; wrap: word-wrap; }
-            }
-        }
-        if entry.kind == "thinking": HorizontalLayout {
-            spacing: Theme.space-m;
-            Rectangle { width: 2px; background: @linear-gradient(180deg, Theme.accent 0%, Theme.accent2 100%); }
-            Text { text: root.shown; color: Theme.dim; font-size: Theme.font-s; font-italic: true; wrap: word-wrap; }
-        }
+        if entry.kind == "user": UserBody { text: root.shown; }
+        if entry.kind == "thinking": ThinkingQuote { text: root.shown; }
         if entry.kind == "response": Text {
             text: root.shown;
             color: Theme.text;
             font-size: Theme.font-m;
             wrap: word-wrap;
         }
-        if entry.kind == "call" || entry.kind == "result" || entry.kind == "header": CodeBody {
+        // Tool arguments, tool output and the system prompt.
+        if entry.kind == "call" || entry.kind == "result" || entry.kind == "header": CodeBox {
             text: root.shown;
             error: entry.error;
         }
@@ -278,6 +266,7 @@ export component TracePage inherits Rectangle {
                     toggle => { root.toggle(i); }
                     copy(t) => { root.copy(t); }
                 }
+                changed content-height => { TraceProbe.content-height = self.content-height; }
             }
             ScrollBar {
                 x: parent.width - self.width;

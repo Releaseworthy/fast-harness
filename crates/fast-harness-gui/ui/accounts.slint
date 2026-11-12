@@ -6,6 +6,7 @@ import { ProviderGrid, ProviderHeader } from "providers.slint";
 import { Theme, UsageBar, Badge, Columns, Mark } from "parts.slint";
 import { Icons } from "icons.slint";
 import { ActionButton, KeyInput } from "widgets.slint";
+import { MarkLine } from "blocks.slint";
 
 component AccountCard inherits Rectangle {
     in property <AccountRow> info;
@@ -46,11 +47,7 @@ component AccountCard inherits Rectangle {
         }
         UsageBar { label: "5h"; value: info.five; caption: info.five-text; }
         UsageBar { label: "7d"; value: info.seven; caption: info.seven-text; }
-        if info.hold != "": HorizontalLayout {
-            spacing: Theme.space-s;
-            Mark { text: Icons.debug-pause; color: Theme.warning; font-size: Theme.font-s; }
-            Text { text: info.hold; color: Theme.warning; font-size: Theme.font-s; wrap: word-wrap; horizontal-stretch: 1; }
-        }
+        if info.hold != "": MarkLine { icon: Icons.debug-pause; tint: Theme.warning; text: info.hold; }
         if !info.token-ok: HorizontalLayout {
             spacing: Theme.space-s;
             Mark { text: Icons.error; color: Theme.error; font-size: Theme.font-s; }

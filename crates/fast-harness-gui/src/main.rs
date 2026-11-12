@@ -15,6 +15,8 @@ mod google;
 #[cfg(test)]
 mod google_fixtures;
 mod google_rows;
+#[cfg(test)]
+mod layout_tests;
 mod mirror;
 mod model_refresh;
 mod pickers;
