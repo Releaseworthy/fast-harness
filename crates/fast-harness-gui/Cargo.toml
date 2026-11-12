@@ -10,10 +10,23 @@ description = "Fast Harness desktop GUI (Slint)."
 name = "fast-harness-gui"
 path = "src/main.rs"
 
+# The variant that loads its UI from ~/.fast-harness/ui (PLAN.md D51). Build it
+# alone: `cargo build -p fast-harness-gui --features ui-files --bin fast-harness-gui-live`.
+[[bin]]
+name = "fast-harness-gui-live"
+path = "src/live_main.rs"
+required-features = ["ui-files"]
+
+[features]
+# Slint live preview (the interpreter) for fast-harness-gui-live only: the
+# default binary includes the ahead-of-time code and never references it.
+ui-files = ["slint/live-preview", "dep:slint-interpreter"]
+
 [dependencies]
 fast-harness-core.workspace = true
 slint.workspace = true
 serde_json.workspace = true
+slint-interpreter = { workspace = true, optional = true }
 
 [build-dependencies]
 slint-build.workspace = true

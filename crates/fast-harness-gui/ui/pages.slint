@@ -66,6 +66,9 @@ export component SettingsPage inherits Rectangle {
     // The model or effort list opened (the app refetches the models).
     callback pickers-opened();
     in property <bool> refreshing;
+    // fast-harness-gui-live: the UI comes from ~/.fast-harness/ui (PLAN.md D51).
+    in property <bool> ui-files;
+    callback reload-ui();
     background: transparent;
     // Scrolls: the System prompt section is taller than the window.
     page-flick := Flickable { content-height: max(self.height, page-column.preferred-height);
@@ -105,6 +108,12 @@ export component SettingsPage inherits Rectangle {
         } }
         Section { PromptSettings { } }
         Section { ConfigSettings { } }
+        if root.ui-files: Section { VerticalLayout {
+            spacing: Theme.space-m;
+            Eyebrow { text: "UI FILES"; }
+            Text { text: "This window is built from ~/.fast-harness/ui. Edit a file, then reload (F5). A file that does not compile or misses the contract (docs/ui-contract.md) is reported and the current UI stays."; color: Theme.dim; font-size: Theme.font-s; wrap: word-wrap; }
+            HorizontalLayout { alignment: start; ActionButton { text: "Reload UI files"; clicked => { root.reload-ui(); } } }
+        } }
     }
     }
 }

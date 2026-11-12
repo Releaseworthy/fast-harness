@@ -108,6 +108,10 @@ export component MainWindow inherits Window {
     callback open-page(string);
     callback toggle(int);
     callback open-url(string);
+    // keys.json `reload_ui` and Settings: reload ~/.fast-harness/ui (fast-harness-gui-live, PLAN.md D51).
+    callback reload-ui();
+    // True in fast-harness-gui-live: Settings shows the UI files section.
+    in property <bool> ui-files;
     callback sign-in();
     callback cancel-sign-in();
     callback add-key(string, string);
@@ -149,6 +153,7 @@ export component MainWindow inherits Window {
         if (name == "open_accounts") { root.open-page("accounts"); return true; }
         if (name == "open_trace") { root.open-page("trace"); return true; }
         if (name == "open_settings") { root.open-page("settings"); return true; }
+        if (name == "reload_ui") { root.reload-ui(); return true; }
         if (name == "focus_composer") { root.open-page("chat"); composer.focus-input(); return true; }
         return false;
     }
@@ -390,6 +395,8 @@ export component MainWindow inherits Window {
                             effort-picked(i) => { root.effort-picked(i); }
                             pickers-opened => { root.pickers-opened(); }
                             refreshing: root.models-refreshing;
+                            ui-files: root.ui-files;
+                            reload-ui => { root.reload-ui(); }
                         }
                         // The one panel view (PLAN.md D46): Settings > Configuration
                         // or /panel opens it; the status line says "process ended"

@@ -297,6 +297,13 @@ pub const GUI_ACTIONS: &[ActionDef] = &[
     act("open_accounts", "window", Always, &["f2"], "accounts page"),
     act("open_trace", "window", Always, &["f3"], "trace page"),
     act(
+        "reload_ui",
+        "window",
+        Always,
+        &["f5"],
+        "reload ~/.fast-harness/ui (fast-harness-gui-live)",
+    ),
+    act(
         "open_settings",
         "window",
         Always,

@@ -79,3 +79,21 @@ The GUI budgets are RAM, CPU and GPU use, not exe size (owner, 2026-11-12, PLAN.
 | GPU engine use | no `GPU Engine` instance for the pid (no GPU engine used) | the same |
 
 The renderer is Slint's software renderer (the default, `SLINT_BACKEND` unset); `opengl32.dll` is loaded but no GPU engine instance appears, while other processes' instances do. With one panel open: unmeasured, because a panel opens only from Settings > Configuration "Open" or by typing `/panel <id>` in the composer; there is no command-line or environment hook to open one without input.
+
+## Phase 21B: UI files spike, precompiled vs live (2026-11-12)
+
+Question (a), Slint's `live-preview` feature reading a user folder: not by itself. In 1.18.1 the choice is made at build time (`i-slint-compiler` `generator/rust.rs` switches to `rust_live_preview` when `SLINT_LIVE_PREVIEW` is set in the build script's environment) and the generated `MainWindow::new` passes the build machine's absolute path of `ui/main.slint` as a string literal to `LiveReloadingComponent::new`; there is no run-time variable for it. It works with one change: `build/live.rs` replaces that literal with `crate::live::main_file()`. That keeps the typed Rust API (`set_*`, `on_*`, `global::<T>()`), so the whole crate compiled unchanged against it (one missing `use`), where (b), bindings by name with `slint-interpreter` directly, would rewrite every one of the 147 contract uses. Path (a) with the patch is the one shipped (PLAN.md D51); it links `slint-interpreter` all the same (live preview is built on it).
+
+`cargo build --release -p fast-harness-gui` and `cargo build --release -p fast-harness-gui --features ui-files --bin fast-harness-gui-live` at this commit, same script as phase 21A (`fh-measure-21b.ps1`, outside the repo): fresh empty `FAST_HARNESS_HOME`, start to the visible top-level window titled "Fast Harness" (`EnumWindows` + `IsWindowVisible`, so window shown, not first frame), then 10 s idle, then CPU time over 30 s, then `WM_CLOSE`. Two runs each, alternated; the live variant once without `~/.fast-harness/ui` (built-in files staged and compiled once) and once with the folder from `--export-ui` (checked, then compiled again by the preview).
+
+| Measure | `fast-harness-gui` (precompiled) | `fast-harness-gui-live`, no ui folder | `fast-harness-gui-live`, exported ui folder |
+|---|---|---|---|
+| exe size | 31,363,584 bytes | 29,807,104 bytes | (same exe) |
+| start to window shown | 57 to 95 ms | 273 to 688 ms | 601 to 1,189 ms |
+| CPU time at window shown | 47 to 78 ms | 219 to 266 ms | 469 to 531 ms |
+| private working set after 10 s idle | 18.1 to 18.2 MB | 96.5 to 96.8 MB | 96.7 to 96.8 MB |
+| working set after 10 s idle | 44.7 to 44.9 MB | 125.9 to 126.0 MB | 126.0 to 126.3 MB |
+| private bytes after 10 s idle | 74.9 MB | 155.9 to 156.0 MB | 156.3 MB |
+| CPU time over 30 s idle | 0 ms (2 of 2) | 0 and 15.6 ms | 15.6 and 78.1 ms |
+
+The live variant costs about 79 MB more private memory at idle (the interpreter keeps the compiled document and its type loader) and 3 to 10 times the start time; idle CPU stays near zero (the 78 ms run is unexplained, one run). The precompiled exe now carries the 27 `.slint` sources for `--export-ui` (203,824 bytes of text). `cargo tree -p fast-harness-gui -e normal -i slint-interpreter` without the feature finds no such package: the default binaries never link it. GPU: both use the software renderer; not measured again.

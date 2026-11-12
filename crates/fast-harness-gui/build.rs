@@ -1,3 +1,5 @@
+#[path = "build/live.rs"]
+mod live;
 #[path = "build/res.rs"]
 mod res;
 #[path = "build/version.rs"]
@@ -8,8 +10,13 @@ use std::path::PathBuf;
 const ICON: &str = "assets/fast-harness.ico";
 
 fn main() {
+    live::generate("ui/main.slint");
+    // The default binary is always compiled ahead of time, whatever the
+    // environment says (PLAN.md D51).
+    std::env::remove_var("SLINT_LIVE_PREVIEW");
     slint_build::compile("ui/main.slint").expect("Slint UI must compile");
     println!("cargo:rerun-if-changed={ICON}");
+    println!("cargo:rerun-if-changed=build/live.rs");
     println!("cargo:rerun-if-changed=build/res.rs");
     println!("cargo:rerun-if-changed=build/version.rs");
     let windows = std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("windows");
