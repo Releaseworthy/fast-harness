@@ -1,4 +1,4 @@
-# Efficiency and extensibility plan (phases 10 to 20)
+# Efficiency and extensibility plan (phases 10 to 21)
 
 Written 2026-11-12 from a review of the code at commit `e80be14` and of the provider documents read that day. This file is the brief for the sessions that implement it. `PLAN.md` stays the home of decisions and formats: each phase adds its decision rows and format changes there in the same commit.
 
@@ -43,6 +43,8 @@ Do not change: the breakpoint layout, thinking and signatures sent back unchange
 - Claude Code: subagents nest three layers by default; nested and path-scoped instruction files load when a tool touches their folder; in `auto` mode MCP tools defer once their definitions reach 10% of the window. [sub-agents](https://code.claude.com/docs/en/sub-agents), [context-window](https://code.claude.com/docs/en/context-window), [mcp](https://code.claude.com/docs/en/mcp)
 - Pi: steering and follow-up queues over an RPC mode; auto compaction at `contextWindow - reserveTokens` (16,384) keeping 20,000 recent tokens. [rpc-commands](https://pi.dev/docs/latest/rpc-commands), [compaction](https://pi.dev/docs/latest/compaction)
 - Agent Client Protocol v2: JSON-RPC with `session/new`, `session/resume`, `session/prompt`, `session/cancel`, `session/update`. [overview](https://agentclientprotocol.com/protocol/v2/overview)
+- Slint: the `slint-interpreter` crate (1.18.1 on crates.io, the version of `slint` in `Cargo.toml`) loads a `.slint` file at runtime (`Compiler::build_from_path`); the `live-preview` feature reloads `.slint` files in a running application with the Rust logic connected, and is documented as a debugging and development feature. [slint_interpreter](https://docs.rs/slint-interpreter/latest/slint_interpreter), [live preview](https://docs.slint.dev/latest/docs/slint/guide/tooling/live-preview)
+- GitHub Actions: standard GitHub-hosted runners are free in public repositories; a workflow can call a reusable workflow of another repository (`uses: owner/repo/.github/workflows/file.yml@ref`). [billing](https://docs.github.com/en/billing/concepts/product-billing/github-actions), [reuse workflows](https://docs.github.com/en/actions/how-tos/reuse-automations/reuse-workflows)
 
 Unverified: every Anthropic beta above on a subscription (OAuth) account (no Claude account on the review machine); whether Antigravity caches implicitly and what its key is; Gemini minimum cache sizes (from an earlier subagent report, not read here).
 
@@ -51,13 +53,13 @@ Unverified: every Anthropic beta above on a subscription (OAuth) account (no Cla
 1. Frozen prefix: `system` and the tool list are rendered once per session, saved, and replayed. `messages` is append-only. Anything that changes goes to the tail.
 2. Shrink before the first send, never after.
 3. Lazy by index: a tool, MCP tool, skill, agent or memory note costs at most one name in the context until it is used.
-4. Data, not code: an extension is a file under `~/.fast-harness/` or `<project>/.fast-harness/`; code runs as an external process speaking JSON on stdio. No plugin runtime inside the binary, no new crate (D1).
+4. Data, not code: an extension is a file under `~/.fast-harness/` or `<project>/.fast-harness/`; code runs as an external process speaking JSON on stdio. No plugin runtime inside the default binary and no new crate (D1); the UI plugin work the owner asked for (phase 21) keeps the default binaries unchanged.
 5. One path that works on every provider first; a provider-only shortcut later, behind a capability flag, after it is measured.
 6. Every phase ships its counter and its test, and stays inside the budgets: `fast-harness.exe` at most 8 MB, harness time at most 3 ms per step at 200 steps, TUI idle private memory at most 8 MB, zero work at start for an extension kind that has no files.
 
 Each phase is one fresh session of at most 60 steps: read `PLAN.md`, `AGENTS.md` and its section here; end with `cargo fmt --all -- --check`, `cargo clippy --workspace --all-targets -- -D warnings`, `cargo test --workspace`, the `PLAN.md` rows, one commit.
 
-Order: 10, 11, 12, 13, 14, 15, 17A, 19, 17B, 18, 16, 20. Phases 10 to 13 give most of the token saving.
+Order: 10, 11, 12, 13, 14, 15, 17A, 19, 17B, 21A, 18, 16, 20, 21B, 21C. Phases 10 to 13 give most of the token saving.
 
 ## 4. Phases
 
@@ -79,7 +81,7 @@ Order: 10, 11, 12, 13, 14, 15, 17A, 19, 17B, 18, 16, 20. Phases 10 to 13 give mo
 - Antigravity `sessionId` derives from the conversation id (E1 decides whether it matters; it costs nothing).
 - `Managed` models keep `drop_block` until `stats --all` shows zero `prefix_binding_mismatch`; then the tests send `"error"`.
 - Stop reasons: `MaxTokens` ends the turn as a new outcome `Truncated` with a visible note, and continues once automatically when the cut message holds a tool call with incomplete JSON; `model_context_window_exceeded` and a 400 or 413 "prompt is too long" go to phase 13's overflow path; `pause_turn` continues the turn.
-- Cache TTL: `cacheTtl` is `"5m"`, `"1h"` or `"auto"` (replaces `cacheLong`, still read). `auto`: 1 hour on the system breakpoint always (it is shared by every session of the workspace), 1 hour on the message breakpoint in the TUI and the GUI, 5 minutes in print mode and subagents. Reason: a 1 hour write costs 0.75x more on each new token once; a 5 minute cache that expires during a pause costs 1.15x of the whole history again. Owner gate G3.
+- Cache TTL: `cacheTtl` is `"5m"`, `"1h"` or `"auto"` (replaces `cacheLong`, still read). `auto`: 1 hour on the system breakpoint always (it is shared by every session of the workspace), 1 hour on the message breakpoint in the TUI and the GUI, 5 minutes in print mode and subagents. Reason: a 1 hour write costs 0.75x more on each new token once; a 5 minute cache that expires during a pause costs 1.15x of the whole history again. Decided by the owner 2026-11-12 (G3).
 - Tests: `prefix_guard` passes across a date change, an AGENTS.md edit and a resume after a prompt file change; a Sonnet 5.5 golden resume sends the logged system text.
 
 ### Phase 12: output diet
@@ -100,8 +102,8 @@ Order: 10, 11, 12, 13, 14, 15, 17A, 19, 17B, 18, 16, 20. Phases 10 to 13 give mo
 ```json
 "compaction": {
   "auto": true,
-  "trigger": "75%",
-  "maxTokens": 180000,
+  "trigger": "50%",
+  "maxTokens": 500000,
   "reserve": 16000,
   "model": null,
   "effort": "low",
@@ -109,7 +111,7 @@ Order: 10, 11, 12, 13, 14, 15, 17A, 19, 17B, 18, 16, 20. Phases 10 to 13 give mo
 }
 ```
 
-  The threshold is the lowest of `trigger` (a percent of the window or a token count such as `"150k"`), `maxTokens`, and `window - reserve - max output of the request`. Example overrides: `"models": {"claude-haiku-4-5": {"compaction": {"trigger": "70%"}}, "antigravity/*": {"compaction": {"maxTokens": 120000}}}`. Owner gate G2 for the defaults: every step reads the whole context again, at a tenth of the price when cached and at full price when not, so a low cap is cheaper than a full 1M window.
+  Compaction starts at whichever bound the context reaches first: `trigger` (a percent of the window or a token count such as `"150k"`), `maxTokens`, or the safety bound `window - reserve - max output of the request`. Defaults decided by the owner 2026-11-12 (G2): 50% of the window, capped at 500,000 tokens, so a 1M model compacts at 500,000 and a 200K model at 100,000. Example overrides: `"models": {"claude-haiku-4-5": {"compaction": {"trigger": "70%"}}, "antigravity/*": {"compaction": {"maxTokens": 120000}}}`. Every step reads the whole context again (at a tenth of the input price when cached, at full price when not); `stats` shows the tokens read per step, so the bounds can be tuned per provider and model.
 - When: after a step whose tool results are complete and before the next model call, and at turn start, when `context` of the last step is above the threshold. Never between a call and its result.
 - How (simple compaction, the same on every provider): one extra request with the unchanged `system`, tools and messages plus one user message asking for the summary (task, decisions, files touched with paths, current state, next action, durable facts; no tool call). The prefix is read from the cache. `tool_choice` is not set (it would invalidate the message cache); a summary request that returns a tool call is retried once with the tool answered by an error. `compaction.model` may name a cheaper model, at the price of no cache hit.
 - The new history is: a user message `[summary of the session so far] ...`; a synthetic `find_tools` call and result naming the tools found so far (so Claude gets its `tool_reference` blocks and Antigravity its declarations again); then, mid-turn, a user message `Continue the task.` No old thinking is sent.
@@ -146,7 +148,7 @@ Order: 10, 11, 12, 13, 14, 15, 17A, 19, 17B, 18, 16, 20. Phases 10 to 13 give mo
 - `providers/*.json`: `{"id", "api": "anthropic-messages" | "openai-chat", "baseUrl", "keyEnv" or an account, "headers", "models": [{"id", "contextWindow", "maxOutput", "efforts", "price": {"input", "output", "cacheRead", "cacheWrite"}, "compaction", "cache": "anthropic" | "implicit" | "none"}]}`. Models are named `<provider id>/<model id>`. `openai-chat` is a new adapter for every OpenAI-compatible endpoint (DeepSeek, OpenRouter, a local server). A model entry may also override a built-in model's numbers.
 - `tools/*.json`: a command tool `{"name", "description", "schema", "command", "args", "stdin": "json", "timeoutMs", "outputBytes"}`; the arguments go in on stdin, stdout is the result, a non-zero exit is an error. A file named after a built-in tool overrides its `description`, `outputBytes` or sets `"disabled": true`.
 - `agents/*.md` and `commands/*.md`: front matter (`name`, `description`, `model`, `effort`, `tools`, `maxDepth`) and a prompt body; commands are `/name args` in the TUI, the GUI and `-p`.
-- `"tools": {"preload": []}`: names loaded from the start. Empty by default, which keeps D30; the owner or a user may set it (owner gate G1, with E3's numbers).
+- `"tools": {"preload": []}`: names loaded from the start. Empty by default, which keeps D30; a user may set it (decided by the owner 2026-11-12, G1; E3 gives the numbers).
 - Index: at session creation the folders are listed and only names and descriptions are read into the tool index, cached in `index.json` by path, size and modified time. Bodies are read on use. No folder, no work.
 - `fast-harness config path|get|set`, `fast-harness doctor` (what loaded, from where, what was skipped and why). GUI: Settings lists every key with its value and source, and "Open config folder".
 - Tests: layering order, an untrusted project loads nothing, a command tool round trip, an override of `read`'s budget, a custom provider against the scripted transport.
@@ -182,14 +184,42 @@ Order: 10, 11, 12, 13, 14, 15, 17A, 19, 17B, 18, 16, 20. Phases 10 to 13 give mo
 - `fast-harness reflect [ID]` and `/reflect`: one subagent on the cheapest configured model reads the stats and a digest of the trace (not the transcript) and proposes edits to memory notes, AGENTS.md lines, skills and tool overrides as a diff; `"selfImprove": "ask" | "auto" | "off"` (default `ask`). Nothing runs by itself at turn end.
 - The `Stop` and `PreCompact` hooks let a user plug in another memory system.
 
-## 5. Owner gates
+### Phase 21: UI plugins
 
-| Gate | Question | Default in this plan |
+Owner, 2026-11-12: "ui plugin thì bắt buộc người dùng phải build lại hả (nếu phải build lại thì có thể tạo github action chuyên build cho người dùng tạo plugin được không)". Three levels. The first two need no build; the third needs one, and a GitHub Action does it.
+
+21A, panels (no build, in the default binaries):
+- `panels/*.json`: `{"id", "title", "icon", "where": "tab" | "sidebar", "command", "args"}`. The command starts when its panel is first opened and speaks JSON lines: it sends a view tree made of a fixed widget set (text, markdown, button, input, select, checkbox, list, table, progress, row, column) and receives the events (click, submit, change) and the session events it subscribes to.
+- One generic Slint component compiled into the GUI draws the tree with the theme's roles; the TUI draws the same tree as text. Settings lists every panel with an "Open" action.
+- Budget: at most 150 KB more in `fast-harness-gui.exe`; no process before a panel opens.
+- Tests: a scripted panel process; an unknown widget type shows as a note; a process that dies shows its last stderr line.
+
+21B, `.slint` files (no build, a second GUI binary):
+- `fast-harness-gui --export-ui <dir>` writes the built-in `ui/*.slint` files. The variant `fast-harness-gui-live` (cargo feature `ui-files`) loads the UI from `~/.fast-harness/ui/` at start and on Reload, so a user changes any layout, widget or page in a text editor.
+- `docs/ui-contract.md` lists every property and callback of `MainWindow` the Rust side uses. A file that does not compile, or misses part of the contract, is reported and the built-in UI is used.
+- Spike first, numbers into `docs/perf.md`: (1) a build with Slint's `live-preview` feature, which keeps the typed Rust API; check whether it can read a user folder instead of the source path of the build machine, since Slint documents it for development; (2) otherwise `slint-interpreter` with bindings by name. Measure exe size, cold start and idle memory against the precompiled GUI.
+- `slint-interpreter` is a new crate: a D1 row with the spike numbers. `fast-harness-gui.exe` never links it.
+
+21C, native plugins built by a GitHub Action (for what files cannot do: a tool, provider or panel written in Rust, `.slint` components compiled in):
+- `fast_harness_core::ext`: a plugin crate exposes `pub fn register(ext: &mut Ext)` and adds tools, providers, in-process hooks and panels. `Ext` carries an API version; a plugin written for another major version fails to compile.
+- `plugins.toml` lists the plugins (`name`, `git` or `path`, `rev`); the `build.rs` of a small `fast-harness-plugins` crate generates `register_all` from it. An empty list generates nothing, so the official binaries stay as they are.
+- `.github/workflows/build-custom.yml` in this repo, a reusable workflow (`workflow_call` and `workflow_dispatch`) with inputs `ref` (a Fast Harness tag), `plugins`, `ui` (a folder of `.slint` overrides) and `targets`: it checks out Fast Harness at `ref`, writes `plugins.toml`, runs the gates, builds the release binaries, uploads them as artifacts and, on a tag, attaches them to the caller's release.
+- A template repository `fast-harness-plugin-template`: one plugin crate, a workflow of about ten lines that calls `build-custom.yml`, a README. A user presses "Use this template", pushes, and downloads the binaries from the run or the release, with no Rust toolchain or MSVC on their machine.
+- Standard hosted runners are free for a public plugin repository (section 2); a private one uses its owner's included minutes.
+- The same workflow builds the official releases; the repo has no workflow today.
+- Not checked: that the `windows-latest` runner has the MSVC toolchain `ring` needs, and how many minutes a release build takes there. The first run answers both.
+- Safety: a native plugin runs inside the process with the user's rights; the workflow builds only what the caller's repository lists, pinned by `rev`.
+
+## 5. Owner decisions (2026-11-12)
+
+| Gate | Decision | His words |
 |---|---|---|
-| G1 | May `tools.preload` exist as a setting, empty by default? D30 says no tool loads at start; with seven tools of 4,180 characters the find step costs one model call per session and per subagent, and Anthropic's guidance is to defer from ten tools up | yes, empty; subagents get `tools` |
-| G2 | Compaction defaults | 75% of the window, at most 180,000 tokens, per provider and model override |
-| G3 | Cache TTL | `auto` (1 hour for interactive sessions) |
-| G4 | UI extension | files only (themes, keys, commands) plus `serve` for other front ends; Slint's runtime interpreter for user-edited `.slint` files is a new crate of unmeasured size and needs a spike and a D1 decision |
+| G1 | `tools.preload` exists as a setting, empty by default (D30 stays the default); subagents get `tools` | "G1 theo plan" |
+| G2 | Compact at 50% of the window or at 500,000 tokens, whichever comes first; per provider and model override | "G2 50% windows đi và capped 500000 token (1 trong 2 cái này cái nào tới trước thì compact ở đó được không)" |
+| G3 | `cacheTtl: "auto"` (1 hour for interactive sessions, 5 minutes for print mode and subagents) | "G3 theo plan" |
+| G4 | UI plugins in three levels (phase 21): panels and `.slint` files without a build, native plugins built by a GitHub Action | see phase 21 |
+
+Still open: whether `slint-interpreter` enters the optional `fast-harness-gui-live` build, after the 21B spike gives its size and start time.
 
 ## 6. Not planned, with the reason
 
