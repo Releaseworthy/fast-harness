@@ -111,15 +111,18 @@ pub fn draw(frame: &mut Frame, ui: &mut Ui, view: &mut View<'_>, now_ms: u64) {
         0
     };
     let queue_rows = if chat { ui.queue_rows() } else { Vec::new() };
-    let [head, tabs, body, queue, input, hint] = Layout::vertical([
+    let prompt = super::approval::lines(ui, &st, width, usize::from(area.height / 2));
+    let [head, tabs, body, queue, asked, input, hint] = Layout::vertical([
         Constraint::Length(1),
         Constraint::Length(1),
         Constraint::Min(1),
         Constraint::Length(queue_rows.len() as u16),
+        Constraint::Length(super::approval::height(&prompt)),
         Constraint::Length(input_height),
         Constraint::Length(1),
     ])
     .areas(area);
+    super::approval::draw(frame, &st, prompt, asked);
     let header = clip(&header_text(ui, view, now_ms), width);
     frame.render_widget(Paragraph::new(header).style(st.bar()), head);
     frame.render_widget(Paragraph::new(tab_line(ui, &st)).style(st.base()), tabs);
@@ -140,13 +143,18 @@ pub fn draw(frame: &mut Frame, ui: &mut Ui, view: &mut View<'_>, now_ms: u64) {
         }
         _ => panels::draw(frame, ui, body, now_ms),
     }
-    let hint_style = if ui.status.is_empty() {
+    draw_hint(frame, ui, &st, hint);
+}
+
+/// The bottom line: the status when one is set, else the key hints.
+fn draw_hint(frame: &mut Frame, ui: &Ui, st: &Styles, area: Rect) {
+    let style = if ui.status.is_empty() {
         st.hint()
     } else {
         st.status()
     };
-    let text = clip(&hint_text(ui), width);
-    frame.render_widget(Paragraph::new(text).style(hint_style), hint);
+    let text = clip(&hint_text(ui), usize::from(area.width));
+    frame.render_widget(Paragraph::new(text).style(style), area);
 }
 
 fn draw_transcript(frame: &mut Frame, ui: &mut Ui, view: &mut View<'_>, area: Rect) {
@@ -157,7 +165,8 @@ fn draw_transcript(frame: &mut Frame, ui: &mut Ui, view: &mut View<'_>, area: Re
         frame: ui.frame,
         styles: Styles::of(ui),
     };
-    let lines = view.cache.lines(&view.transcript.items, opts);
+    let t = view.transcript;
+    let lines = view.cache.lines_with(&t.items, &t.approvals, opts);
     let height = usize::from(area.height);
     let first = ui.first_line(lines.len(), height);
     let visible: Vec<Line<'static>> = lines

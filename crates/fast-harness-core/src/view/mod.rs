@@ -3,6 +3,7 @@
 //! [`Transcript::apply`] or from a saved conversation with
 //! [`Transcript::from_messages`] and [`Transcript::from_trace`].
 
+pub mod approvals;
 pub mod diff;
 mod live_tail;
 mod replay;
@@ -11,6 +12,7 @@ pub mod tool_detail;
 mod tool_detail_fs;
 mod tool_detail_run;
 
+pub use approvals::Approvals;
 pub use live_tail::{LiveTail, LIVE_LINES, LIVE_LINE_BYTES};
 pub use summary::tool_summary;
 pub use tool_detail::{
@@ -105,6 +107,8 @@ pub struct Transcript {
     pub window: u64,
     /// Usage of the current (or last) turn.
     pub turn_usage: Usage,
+    /// How the calls that asked for approval ended (D64), live only.
+    pub approvals: Approvals,
 }
 
 /// `1M`, `1.5M`, `200K` or `999` for a token count.
@@ -236,6 +240,8 @@ impl Transcript {
                 arguments,
             } => self.tool_call(id, name, arguments),
             AgentEvent::ToolProgress { id, chunk } => self.progress(id, chunk),
+            AgentEvent::ApprovalRequest(request) => self.approvals.asked(request),
+            AgentEvent::ApprovalDone { id, answer } => self.approvals.done(id, answer),
             AgentEvent::ToolResult {
                 id,
                 content,

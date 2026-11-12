@@ -160,3 +160,18 @@ pub struct ApprovalRequest {
     /// session itself.
     pub agent: Option<String>,
 }
+
+/// Empty texts and `Effect::Run` (front end tests set the fields).
+impl Default for ApprovalRequest {
+    fn default() -> ApprovalRequest {
+        ApprovalRequest {
+            id: String::new(),
+            call_id: String::new(),
+            tool: String::new(),
+            effect: Effect::Run,
+            summary: String::new(),
+            arguments: String::new(),
+            agent: None,
+        }
+    }
+}

@@ -120,6 +120,7 @@ pub fn hint_text(ui: &Ui) -> String {
     }
     let back = &[("back", "back")];
     match ui.screen {
+        Screen::Chat if super::approval::shown(ui) => super::approval::keys_text(ui),
         Screen::Chat if ui.picker.is_some() => {
             "↑↓ PgUp PgDn choose · Enter pick · Esc close".into()
         }

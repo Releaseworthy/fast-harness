@@ -1,7 +1,7 @@
 //! A [`Transcript`]'s items as wrapped, styled lines, cached per item so a
 //! redraw only re-renders the items that changed.
 
-use fast_harness_core::view::{Item, NoteKind};
+use fast_harness_core::view::{Approvals, Item, NoteKind};
 use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 
@@ -196,15 +196,36 @@ fn spaced(item: &Item) -> bool {
     matches!(item, Item::User { .. } | Item::Assistant { .. })
 }
 
+/// The approval word of a tool item (D64), `None` for other items.
+fn word_of(item: &Item, approvals: &Approvals) -> Option<&'static str> {
+    match item {
+        Item::Tool { id, .. } => approvals.word(id),
+        _ => None,
+    }
+}
+
+type Entry = (Item, Option<&'static str>, Vec<Line<'static>>);
+
 #[derive(Default)]
 pub struct Cache {
     opts: Option<Opts>,
-    entries: Vec<(Item, Vec<Line<'static>>)>,
+    entries: Vec<Entry>,
 }
 
 impl Cache {
     /// Brings the cache up to date with `items` and returns all lines.
+    #[cfg(test)]
     pub fn lines(&mut self, items: &[Item], o: Opts) -> Vec<&Line<'static>> {
+        self.lines_with(items, &Approvals::default(), o)
+    }
+
+    /// [`Cache::lines`] with each tool row's approval word (D64).
+    pub fn lines_with(
+        &mut self,
+        items: &[Item],
+        approvals: &Approvals,
+        o: Opts,
+    ) -> Vec<&Line<'static>> {
         let static_opts = Opts { frame: 0, ..o };
         if self.opts != Some(static_opts) {
             self.entries.clear();
@@ -213,7 +234,9 @@ impl Cache {
         self.entries.truncate(items.len());
         for (index, item) in items.iter().enumerate() {
             let spinning = matches!(item, Item::Tool { output: None, .. }) && o.running;
-            let fresh = self.entries.get(index).is_some_and(|(old, _)| old == item);
+            let word = word_of(item, approvals);
+            let fresh =
+                (self.entries.get(index)).is_some_and(|(old, w, _)| old == item && *w == word);
             if fresh && !spinning {
                 continue;
             }
@@ -222,12 +245,20 @@ impl Cache {
                 lines.push(Line::default());
             }
             lines.extend(item_lines(item, &o));
-            let entry = (item.clone(), lines);
+            // After the state mark, so a long head line cannot hide it.
+            if let (Some(word), Some(head)) = (word, lines.iter_mut().find(|l| l.spans.len() > 1)) {
+                let span = Span::styled(format!("{word} · "), o.styles.warning());
+                head.spans.insert(1, span);
+            }
+            let entry = (item.clone(), word, lines);
             match self.entries.get_mut(index) {
                 Some(slot) => *slot = entry,
                 None => self.entries.push(entry),
             }
         }
-        self.entries.iter().flat_map(|(_, lines)| lines).collect()
+        self.entries
+            .iter()
+            .flat_map(|(_, _, lines)| lines)
+            .collect()
     }
 }

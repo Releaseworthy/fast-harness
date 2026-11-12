@@ -34,16 +34,21 @@ pub struct Keymap {
 /// Whether one key can reach actions of both scopes.
 fn scopes_overlap(a: &str, b: &str) -> bool {
     let screen = |s: &str| matches!(s, "screens" | "accounts" | "trace" | "models");
+    // The approval prompt takes its keys before the message box (D64).
+    let typing = |s: &str| matches!(s, "chat" | "composer");
     a == b
         || matches!(a, "global" | "window")
         || matches!(b, "global" | "window")
         || (a == "screens" && screen(b))
         || (b == "screens" && screen(a))
+        || (a == "approval" && typing(b))
+        || (b == "approval" && typing(a))
 }
 
 /// Whether a lookup in `scope` reaches actions of `action_scope`.
 fn in_scope(scope: &str, action_scope: &str) -> bool {
-    scope == action_scope || (action_scope == "screens" && scope != "chat" && scope != "composer")
+    let typing = matches!(scope, "chat" | "composer" | "approval");
+    scope == action_scope || (action_scope == "screens" && !typing)
 }
 
 impl Keymap {

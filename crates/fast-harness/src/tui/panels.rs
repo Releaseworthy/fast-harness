@@ -219,10 +219,17 @@ fn draw_sessions(frame: &mut Frame, ui: &mut Ui, area: Rect) {
     let st = Styles::of(ui);
     let block = st.block("Sessions of this directory, newest first");
     let inner = block.inner(area);
-    let rows: Vec<String> = ui
-        .sessions
-        .iter()
-        .map(|s| format!("{:<28} {:>3} turns  {}", s.id, s.turns, s.title))
+    // The shown session with a request waiting says so (D64): a mark and words.
+    let waits = |id: &str| id == ui.current && !ui.approvals.is_empty();
+    let rows: Vec<String> = (ui.sessions.iter())
+        .map(|s| {
+            let mark = if waits(&s.id) {
+                "[! waiting for your answer] "
+            } else {
+                ""
+            };
+            format!("{:<28} {:>3} turns  {mark}{}", s.id, s.turns, s.title)
+        })
         .collect();
     let lines = if rows.is_empty() && ui.sessions_loading {
         vec![Line::styled("Loading sessions...", st.dim())]

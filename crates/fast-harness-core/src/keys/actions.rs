@@ -58,6 +58,7 @@ pub struct ActionDef {
     pub name: &'static str,
     /// TUI: `global` (every screen), `chat`, `screens` (every screen but
     /// the chat), `accounts`, `trace`, `models`. GUI: `window`, `composer`.
+    /// Both: `approval`, only while an approval prompt shows (D64).
     pub scope: &'static str,
     pub when: When,
     pub keys: &'static [&'static str],
@@ -241,6 +242,27 @@ pub const TUI_ACTIONS: &[ActionDef] = &[
         Always,
         &["e", "tab", "right", "left"],
         "next effort",
+    ),
+    act(
+        "approve_once",
+        "approval",
+        Always,
+        &["alt+y"],
+        "approval prompt: allow this call once",
+    ),
+    act(
+        "approve_session",
+        "approval",
+        Always,
+        &["alt+a"],
+        "approval prompt: allow it for this session",
+    ),
+    act(
+        "decline",
+        "approval",
+        Always,
+        &["alt+n"],
+        "approval prompt: decline the call",
     ),
 ];
 

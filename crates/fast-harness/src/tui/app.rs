@@ -102,6 +102,8 @@ impl Tui {
         let (session, unfinished) = (conv.id.clone(), conv.unfinished);
         let log_path = conv.log_path.clone();
         let current = service.open(conv, &cwd).map_err(|err| format!("{err:?}"))?;
+        // The TUI shows approval requests and answers them (D64).
+        current.set_answering(true);
         let mut tui = Tui {
             panels,
             host,
@@ -151,6 +153,7 @@ impl Tui {
     fn shown(&mut self, unfinished: Option<fast_harness_core::session::Unfinished>) {
         self.transcript.revision += 1;
         self.ui.top = None;
+        self.ui.current.clone_from(&self.session);
         self.show_queue();
         if let Some(state) = unfinished {
             self.ui.status = format!("the last turn was {}: /resume continues it", state.word());
@@ -180,19 +183,7 @@ impl Tui {
                 self.ui.status = format!("terminal input failed: {err}");
                 self.quit = true;
             }
-            Msg::Agent(event) => {
-                if matches!(
-                    event,
-                    AgentEvent::UsageUpdate { .. } | AgentEvent::AccountSwitch { .. }
-                ) {
-                    self.refresh_accounts();
-                }
-                if matches!(event, AgentEvent::UserInput { steer: true, .. }) {
-                    self.show_queue();
-                }
-                self.panels.session(&event);
-                self.transcript.apply(&event);
-            }
+            Msg::Agent(event) => self.agent_event(event),
             Msg::Panel => self.panel_poll(),
             Msg::Reflected(Ok(text)) => self.note(NoteKind::Info, text),
             Msg::Reflected(Err(err)) => self.note(NoteKind::Error, err),
@@ -215,6 +206,28 @@ impl Tui {
             }
         }
         true
+    }
+
+    fn agent_event(&mut self, event: AgentEvent) {
+        if matches!(
+            event,
+            AgentEvent::UsageUpdate { .. } | AgentEvent::AccountSwitch { .. }
+        ) {
+            self.refresh_accounts();
+        }
+        if matches!(event, AgentEvent::UserInput { steer: true, .. }) {
+            self.show_queue();
+        }
+        // The prompt follows the gate (D64): an answer from anywhere, a
+        // cancel or a pause ends a request and its `ApprovalDone` comes.
+        if matches!(
+            event,
+            AgentEvent::ApprovalRequest(_) | AgentEvent::ApprovalDone { .. }
+        ) {
+            self.ui.approvals = self.current.approvals();
+        }
+        self.panels.session(&event);
+        self.transcript.apply(&event);
     }
 
     fn term_event(&mut self, event: Event) -> bool {
@@ -275,6 +288,13 @@ impl Tui {
                 let home = self.rt().home.clone();
                 let level = super::theme::step_greyscale(&mut self.ui, &home, delta);
                 self.rt().config.greyscale = level;
+            }
+            Action::Answer(id, answer) => {
+                if !self.current.answer(&id, answer) {
+                    self.ui.status = "that request has already ended".into();
+                }
+                // Gone at once; `ApprovalDone` brings the gate's list back.
+                self.ui.approvals.retain(|r| r.id != id);
             }
             other => self.account_action(other),
         }
@@ -343,6 +363,8 @@ impl Tui {
         let log_path = conv.log_path.clone();
         match self.service.open(conv, &self.cwd) {
             Ok(current) => {
+                current.set_answering(true);
+                self.ui.approvals = current.approvals();
                 self.service.close(&self.session);
                 (self.current, self.session) = (current, session);
                 (self.transcript, self.log_path) = (transcript, log_path);

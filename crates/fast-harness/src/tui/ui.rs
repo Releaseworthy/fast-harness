@@ -70,6 +70,8 @@ pub enum Action {
     CycleTheme,
     /// Step the greyscale level by this much (wrapping) and save it.
     StepGreyscale(i16),
+    /// Answer approval request `id` (D64).
+    Answer(String, fast_harness_core::agent::Answer),
 }
 
 pub struct Ui {
@@ -127,6 +129,11 @@ pub struct Ui {
     /// The open panel screen (`/panel <id>`, PLAN.md D46): drawn in place of
     /// the transcript, and it takes the keys.
     pub panel: Option<super::panel_screen::PanelScreen>,
+    /// The shown session's approval requests, oldest first (D64): the
+    /// first one is the prompt above the input box.
+    pub approvals: Vec<fast_harness_core::events::ApprovalRequest>,
+    /// The shown session's id (the Sessions screen marks it when it waits).
+    pub current: String,
 }
 
 impl Ui {
@@ -165,6 +172,8 @@ impl Ui {
             icons: &icons::PLAIN,
             keys: Keymap::defaults(Front::Tui),
             panel: None,
+            approvals: Vec::new(),
+            current: String::new(),
         }
     }
 
@@ -251,6 +260,10 @@ impl Ui {
         self.status.clear();
         if self.action_of("global", &key) != Some("interrupt") {
             self.quit_armed = false;
+        }
+        // The approval keys first while the prompt shows (D64).
+        if let Some(action) = super::approval::key(self, &key) {
+            return action;
         }
         if self.picker.is_some() && self.screen == Screen::Chat {
             return self.picker_key(&key);

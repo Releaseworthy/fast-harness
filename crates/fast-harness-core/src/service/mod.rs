@@ -189,7 +189,7 @@ impl Session {
     }
 
     /// A front end that shows approval requests and answers them says so;
-    /// until then pprovals: ask refuses at once (D64).
+    /// until then `approvals: ask` refuses at once (D64).
     pub fn set_answering(&self, on: bool) {
         self.gate.set_answering(on);
     }

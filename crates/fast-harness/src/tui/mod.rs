@@ -4,6 +4,9 @@
 //! through one channel.
 
 mod app;
+mod approval;
+#[cfg(test)]
+mod approval_tests;
 mod draw;
 mod icons;
 mod input;
