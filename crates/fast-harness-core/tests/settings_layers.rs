@@ -155,14 +155,15 @@ fn stats_prices_steps_of_models_with_a_price() {
         seq: 0,
         time: 0,
         data: json!({"turn": 1, "step": 1, "message": {"role": "assistant", "content": [], "model": model},
-            "usage": {"inputTokens": input, "outputTokens": 100_000, "cacheReadTokens": 1_000_000}}),
+            "usage": {"inputTokens": input, "outputTokens": 100_000, "cacheReadTokens": 1_000_000},
+            "stop": "end", "timing": {}}),
     };
     let events = [
         TraceEvent {
             kind: "step/start".into(),
             seq: 0,
             time: 0,
-            data: json!({}),
+            data: json!({"turn": 1, "step": 1}),
         },
         answer("priced/m1", 500_000),
         answer("claude-opus-5-5", 1),
