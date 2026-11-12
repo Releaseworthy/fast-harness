@@ -185,6 +185,9 @@ pub fn tool_detail(
         is_error,
     };
     fill(&mut detail, &call, name, arguments);
+    if let Some(path) = output.and_then(crate::tools::budget::spill_path) {
+        detail.field("full output", path);
+    }
     detail.lines_total = detail.lines_total.max(detail.lines.len());
     detail.lines.truncate(MAX_LINES);
     if let Some(ms) = duration_ms.filter(|&ms| ms >= 1) {

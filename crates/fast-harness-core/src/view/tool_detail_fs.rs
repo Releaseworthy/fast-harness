@@ -21,7 +21,10 @@ pub(crate) fn read(detail: &mut ToolDetail, call: &Call<'_>) {
     }
     let mut note = None;
     for line in out.lines() {
-        if let Some(rest) = line.strip_prefix("[showing lines ") {
+        if let Some(rest) = line.strip_prefix("[lines ") {
+            let range = rest.split(';').next().unwrap_or_default();
+            note = Some(range.replacen(" to ", "-", 1));
+        } else if let Some(rest) = line.strip_prefix("[showing lines ") {
             note = rest.split(';').next().map(str::to_string);
         } else if let Some((number, text)) = numbered(line) {
             detail.line(LineKind::Context, None, Some(number), text);
@@ -152,32 +155,52 @@ pub(crate) fn grep(detail: &mut ToolDetail, call: &Call<'_>) {
     let files = count(groups.len(), "file", "files");
     let found = count(matches, "match", "matches");
     detail.chip(format!("{found} in {files}"), Tone::Info);
-    if let Some(cut) = cut {
-        detail.chip(format!("cut at {cut}"), Tone::Warning);
+    match cut {
+        Some(more) if more.contains(' ') => detail.chip(more, Tone::Warning),
+        Some(cut) => detail.chip(format!("cut at {cut}"), Tone::Warning),
+        None => {}
     }
 }
 
 type Group<'a> = (&'a str, Vec<(Option<u64>, &'a str)>);
 
 /// Matches grouped by path in first-seen order, and the cut note's number.
+/// Reads both shapes: `path` lines with indented `N: text` lines (trace
+/// version 6) and `path:N: text` lines (older logs).
 fn grep_groups(out: &str) -> (Vec<Group<'_>>, Option<String>) {
     let mut groups: Vec<Group<'_>> = Vec::new();
     let mut cut = None;
+    let mut more = None;
+    let mut current = "";
     for line in out.lines().filter(|l| !l.is_empty()) {
         if let Some(rest) = line.strip_prefix("[results cut at ") {
             cut = rest.split(' ').next().map(str::to_string);
             continue;
         }
-        let (path, number, text) = match match_line(line) {
-            Some((path, number, text)) => (path, Some(number), text),
-            None => ("", None, line),
+        if let Some(rest) = line
+            .strip_prefix('[')
+            .filter(|r| r.contains(" more matches in "))
+        {
+            more = rest.split(';').next().map(str::to_string);
+            continue;
+        }
+        let (path, number, text) = match (match_line(line), line.strip_prefix("  ")) {
+            (_, Some(entry)) => match numbered(entry) {
+                Some((number, text)) => (current, Some(number), text),
+                None => (current, None, entry),
+            },
+            (Some((path, number, text)), None) => (path, Some(number), text),
+            (None, None) => {
+                current = line;
+                continue;
+            }
         };
         match groups.iter_mut().find(|(p, _)| *p == path) {
             Some((_, lines)) => lines.push((number, text)),
             None => groups.push((path, vec![(number, text)])),
         }
     }
-    (groups, cut)
+    (groups, more.or(cut))
 }
 
 pub(crate) fn glob(detail: &mut ToolDetail, call: &Call<'_>) {

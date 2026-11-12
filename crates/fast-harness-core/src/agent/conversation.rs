@@ -8,6 +8,7 @@ use serde_json::Value;
 use super::context::Context;
 use crate::llm::ToolSpec;
 use crate::session;
+use crate::tools::ToolSession;
 use crate::trace::{self, SessionHeader, TraceWriter};
 use crate::types::{Block, Message, Role};
 
@@ -31,6 +32,9 @@ pub struct Conversation {
     pub tools: Option<Vec<ToolSpec>>,
     /// The context stamp of the prompt sources ([`super::context::Context::stamp`]).
     pub context: Option<Value>,
+    /// Spill folder and read ranges of this session's tools (PLAN.md D37);
+    /// a resume starts with no read ranges.
+    pub tool_session: ToolSession,
 }
 
 impl Conversation {
@@ -42,6 +46,7 @@ impl Conversation {
         let trace = TraceWriter::create(&log_path, &header)?;
         Ok(Conversation {
             wire_dir: session::wire_dir(app_home, cwd, &id),
+            tool_session: ToolSession::new(Some(session::out_dir(app_home, cwd, &id))),
             id,
             messages: Vec::new(),
             turn: 0,
@@ -79,6 +84,7 @@ impl Conversation {
             messages,
             turn,
             wire_dir: session::wire_dir(app_home, cwd, id),
+            tool_session: ToolSession::new(Some(session::out_dir(app_home, cwd, id))),
             log_path,
             trace,
             system: header

@@ -55,7 +55,7 @@ fn tokens_lines(out: &mut String, s: &Stats) {
 
 fn count_lines(out: &mut String, s: &Stats) {
     let _ = writeln!(out, "find_tools steps {}", s.find_steps);
-    let _ = writeln!(out, "clipped results {}", s.clipped);
+    let _ = writeln!(out, "clipped or spilled results {}", s.clipped);
     let _ = writeln!(out, "compactions {}", s.compactions);
     let _ = writeln!(
         out,

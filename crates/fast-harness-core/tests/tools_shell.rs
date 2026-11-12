@@ -32,7 +32,7 @@ impl Drop for TempDir {
 }
 
 fn run_with(dir: &Path, args: Value, cancel: &AtomicBool) -> ToolOutput {
-    let ctx = ToolCtx { cwd: dir, cancel };
+    let ctx = ToolCtx::new(dir, cancel);
     builtin().run("shell", &args.to_string(), &ctx)
 }
 

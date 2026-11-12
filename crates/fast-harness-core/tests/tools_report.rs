@@ -34,10 +34,7 @@ impl Drop for TempDir {
 
 fn run(dir: &Path, name: &str, args: Value) -> ToolOutput {
     let cancel = AtomicBool::new(false);
-    let ctx = ToolCtx {
-        cwd: dir,
-        cancel: &cancel,
-    };
+    let ctx = ToolCtx::new(dir, &cancel);
     builtin().run(name, &args.to_string(), &ctx)
 }
 

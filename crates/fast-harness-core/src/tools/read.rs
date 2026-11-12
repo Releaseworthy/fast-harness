@@ -3,6 +3,7 @@
 use serde_json::{json, Value};
 
 use super::args::{cut_chars, looks_binary, object_schema, opt_positive, req_str, resolve};
+use super::budget::ReadKey;
 use super::{Tool, ToolCtx, ToolOutput};
 use crate::llm::ToolSpec;
 
@@ -16,8 +17,9 @@ impl Tool for ReadTool {
         ToolSpec {
             name: "read".into(),
             description: "Read a UTF-8 text file. Lines come numbered as \"N: text\" (1-based). \
-                Use offset and limit to page through large files; the output says when more \
-                lines remain. Directories and binary files are refused."
+                Whole lines from offset fit one result budget; the last line names \
+                the range and where to continue. A range already returned and unchanged answers \
+                \"[unchanged since call ID]\". Directories and binary files are refused."
                 .into(),
             schema: object_schema(
                 json!({
@@ -38,6 +40,9 @@ impl Tool for ReadTool {
     }
 }
 
+/// Room kept for the range line at the end.
+const RANGE_ROOM: usize = 96;
+
 fn read(args: &Value, ctx: &ToolCtx<'_>) -> Result<String, String> {
     let path_arg = req_str(args, "path")?;
     let offset = opt_positive(args, "offset", 1)?;
@@ -49,6 +54,17 @@ fn read(args: &Value, ctx: &ToolCtx<'_>) -> Result<String, String> {
             "{path_arg} is a directory, not a file; use glob to list files"
         ));
     }
+    let key = ReadKey {
+        path: std::fs::canonicalize(&path).unwrap_or_else(|_| path.clone()),
+        offset,
+        limit,
+        size: meta.len(),
+        modified: meta.modified().ok(),
+    };
+    let session = ctx.session.filter(|_| !ctx.call_id.is_empty());
+    if let Some(earlier) = session.and_then(|s| s.read_by(&key)) {
+        return Ok(format!("[unchanged since call {earlier}]"));
+    }
     let bytes = std::fs::read(&path).map_err(|err| format!("cannot read {path_arg}: {err}"))?;
     if looks_binary(&bytes) {
         return Err(format!(
@@ -56,10 +72,18 @@ fn read(args: &Value, ctx: &ToolCtx<'_>) -> Result<String, String> {
         ));
     }
     let text = String::from_utf8_lossy(&bytes);
-    number_lines(&text, offset, limit)
+    let room = ctx.budget.saturating_sub(RANGE_ROOM);
+    let out = number_lines(&text, offset, limit, room)?;
+    if let Some(session) = session {
+        session.remember_read(key, ctx.call_id);
+    }
+    Ok(out)
 }
 
-fn number_lines(text: &str, offset: u64, limit: u64) -> Result<String, String> {
+/// Whole lines from `offset`, at most `limit` of them and `room` bytes (at
+/// least one line), then `[lines a to b of n; continue with offset b+1]`
+/// when lines remain.
+fn number_lines(text: &str, offset: u64, limit: u64, room: usize) -> Result<String, String> {
     let lines: Vec<&str> = text.lines().collect();
     let total = lines.len() as u64;
     if total == 0 {
@@ -71,16 +95,20 @@ fn number_lines(text: &str, offset: u64, limit: u64) -> Result<String, String> {
         ));
     }
     let start = offset - 1;
-    let end = total.min(start.saturating_add(limit));
+    let last = total.min(start.saturating_add(limit));
     let mut out = String::new();
-    for (index, line) in lines[start as usize..end as usize].iter().enumerate() {
-        let number = start + index as u64 + 1;
-        out.push_str(&format!("{number}: {}\n", cut_chars(line, MAX_LINE_CHARS)));
+    let mut end = start;
+    for line in &lines[start as usize..last as usize] {
+        let entry = format!("{}: {}\n", end + 1, cut_chars(line, MAX_LINE_CHARS));
+        if end > start && out.len() + entry.len() > room {
+            break;
+        }
+        out.push_str(&entry);
+        end += 1;
     }
     if end < total {
         out.push_str(&format!(
-            "[showing lines {offset}-{end} of {total}; {} more lines, continue with offset={}]\n",
-            total - end,
+            "[lines {offset} to {end} of {total}; continue with offset {}]\n",
             end + 1
         ));
     }

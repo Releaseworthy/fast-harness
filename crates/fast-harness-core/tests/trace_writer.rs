@@ -73,8 +73,8 @@ fn header_line_is_exactly_the_plan_format() {
         made.harness,
         format!("fast-harness {}", env!("CARGO_PKG_VERSION"))
     );
-    assert_eq!((made.version, made.parent.as_deref()), (5, Some("x")));
-    assert_eq!((trace::VERSION, trace::MIN_VERSION), (5, 1));
+    assert_eq!((made.version, made.parent.as_deref()), (6, Some("x")));
+    assert_eq!((trace::VERSION, trace::MIN_VERSION), (6, 1));
 }
 
 #[test]
@@ -177,7 +177,7 @@ const EXPECTED: [(&str, &str); 13] = [
         "turn step message usage context window stop timing account",
     ),
     ("tool/call", "turn step callId name arguments"),
-    ("tool/result", "turn step message durationMs"),
+    ("tool/result", "turn step message durationMs bytes"),
     ("step/end", "turn step durationMs"),
     ("turn/end", "turn steps usage durationMs outcome"),
 ];
@@ -264,9 +264,9 @@ fn open_append_continues_seq_and_cuts_a_torn_line() {
 }
 
 #[test]
-fn reader_accepts_versions_1_to_5_only() {
+fn reader_accepts_versions_1_to_6_only() {
     let tmp = TempDir::new("versions");
-    for version in [1, 2, 3, 4, 5, 6, 0] {
+    for version in [1, 2, 3, 4, 5, 6, 7, 0] {
         let path = tmp.0.join(format!("v{version}.jsonl"));
         let mut head = header("v");
         head.version = version;
@@ -275,11 +275,11 @@ fn reader_accepts_versions_1_to_5_only() {
         drop(writer);
         match trace::read(&path) {
             Ok((read, events)) => {
-                assert!((1..=5).contains(&version), "read version {version}");
+                assert!((1..=6).contains(&version), "read version {version}");
                 assert_eq!((read.version, events.len()), (version, 1));
             }
             Err(err) => {
-                assert!(version == 6 || version == 0, "{err}");
+                assert!(version == 7 || version == 0, "{err}");
                 assert!(err.to_string().contains("unsupported trace version"));
             }
         }

@@ -39,10 +39,7 @@ impl Drop for TempDir {
 
 fn run(dir: &Path, name: &str, args: Value) -> ToolOutput {
     let cancel = AtomicBool::new(false);
-    let ctx = ToolCtx {
-        cwd: dir,
-        cancel: &cancel,
-    };
+    let ctx = ToolCtx::new(dir, &cancel);
     builtin().run(name, &args.to_string(), &ctx)
 }
 
@@ -68,11 +65,11 @@ fn grep_honours_gitignore_and_skips_hidden_and_binary() {
     let out = run(&tmp.0, "grep", json!({"pattern": "needle"}));
     assert!(!out.is_error, "{}", out.content);
     assert!(
-        out.content.contains("notes.txt:1: a needle here"),
+        out.content.contains("notes.txt\n  1: a needle here\n"),
         "{}",
         out.content
     );
-    assert!(out.content.contains("src/lib.rs:1: // needle in lib"));
+    assert!(out.content.contains("src/lib.rs\n  1: // needle in lib\n"));
     for absent in ["ignored.txt", "build/", ".hidden", "blob.bin", "main.rs"] {
         assert!(!out.content.contains(absent), "{absent} in {}", out.content);
     }
@@ -81,7 +78,7 @@ fn grep_honours_gitignore_and_skips_hidden_and_binary() {
         "grep",
         json!({"pattern": "NEEDLE", "ignore_case": true, "glob": "*.rs"}),
     );
-    assert!(out.content.contains("src/main.rs:2:"), "{}", out.content);
+    assert!(out.content.contains("src/main.rs\n  2:"), "{}", out.content);
     assert!(!out.content.contains("notes.txt"));
     let out = run(
         &tmp.0,
@@ -102,13 +99,14 @@ fn grep_cuts_results_and_long_lines() {
         out.content.lines().filter(|l| l.contains(": hit")).count(),
         3
     );
-    assert!(out.content.contains("results cut at 3"), "{}", out.content);
+    let more = "[8 more matches in 1 file;";
+    assert!(out.content.contains(more), "{}", out.content);
     let out = run(
         &tmp.0,
         "grep",
         json!({"pattern": "hitx", "path": "long.txt"}),
     );
-    let line = out.content.lines().next().unwrap();
+    let line = out.content.lines().nth(1).unwrap();
     assert!(line.len() < 400 && line.ends_with("[line cut]"), "{line}");
 }
 

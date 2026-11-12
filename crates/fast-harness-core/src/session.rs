@@ -97,6 +97,11 @@ pub fn wire_dir(app_home: &Path, cwd: &Path, id: &str) -> PathBuf {
     dir(app_home, cwd).join(format!("{id}.wire"))
 }
 
+/// Spill files of the session's cut tool results (PLAN.md D37).
+pub fn out_dir(app_home: &Path, cwd: &Path, id: &str) -> PathBuf {
+    dir(app_home, cwd).join(format!("{id}.out"))
+}
+
 /// Sessions of `cwd`, newest first. A missing folder is an empty list;
 /// a log that cannot be read is left out.
 pub fn list(app_home: &Path, cwd: &Path) -> io::Result<Vec<SessionSummary>> {

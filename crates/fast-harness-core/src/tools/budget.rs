@@ -1,0 +1,177 @@
+//! The output diet (PLAN.md D37): every tool result fits one byte budget
+//! before it is first sent. A longer result keeps a cut of its text and
+//! sends the whole text to `<session>.out/<callId>.txt`, named by a note at
+//! the end of the result.
+
+use std::collections::HashMap;
+use std::path::PathBuf;
+use std::sync::Mutex;
+use std::time::SystemTime;
+
+use super::{ToolCtx, ToolOutput};
+
+/// Start of the note a spilled result ends with.
+pub const SPILL_MARK: &str = "[full output: ";
+/// The shell keeps a quarter of the room as head (2 KB of 8 KB), the rest
+/// as tail: errors are at the end.
+const SHELL_HEAD_SHARE: usize = 4;
+
+/// What the tools of one session share: where spill files go and the read
+/// ranges already returned. A resumed session starts with no ranges.
+#[derive(Debug, Default)]
+pub struct ToolSession {
+    /// `<session>.out`; `None` keeps nothing on disk.
+    pub out_dir: Option<PathBuf>,
+    reads: Mutex<HashMap<ReadKey, String>>,
+}
+
+/// A returned read: path, offset, limit, file size and modified time.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct ReadKey {
+    pub path: PathBuf,
+    pub offset: u64,
+    pub limit: u64,
+    pub size: u64,
+    pub modified: Option<SystemTime>,
+}
+
+impl ToolSession {
+    pub fn new(out_dir: Option<PathBuf>) -> ToolSession {
+        ToolSession {
+            out_dir,
+            reads: Mutex::new(HashMap::new()),
+        }
+    }
+
+    /// The call that already returned `key`, if any.
+    pub fn read_by(&self, key: &ReadKey) -> Option<String> {
+        let reads = self.reads.lock().unwrap_or_else(|e| e.into_inner());
+        reads.get(key).cloned()
+    }
+
+    /// Records that `call_id` returned `key` (the first call keeps it).
+    pub fn remember_read(&self, key: ReadKey, call_id: &str) {
+        let mut reads = self.reads.lock().unwrap_or_else(|e| e.into_inner());
+        reads.entry(key).or_insert_with(|| call_id.to_string());
+    }
+}
+
+/// Fits `output` of tool `name` into `ctx.budget`: sets `bytes` to the full
+/// size and, when cut, writes the spill file and sets `spilled`.
+pub fn fit(name: &str, mut output: ToolOutput, ctx: &ToolCtx<'_>) -> ToolOutput {
+    output.bytes = output.content.len();
+    if output.content.len() <= ctx.budget {
+        return output;
+    }
+    let full = std::mem::take(&mut output.content);
+    let lines = full.lines().count();
+    let spilled = spill(ctx, &full);
+    let note = match &spilled {
+        Some(path) => format!(
+            "\n{SPILL_MARK}{}, {} bytes, {lines} lines; read it with offset and limit or grep it]",
+            path.display(),
+            full.len()
+        ),
+        None => format!(
+            "\n[output cut: {} bytes, {lines} lines in full]",
+            full.len()
+        ),
+    };
+    let room = ctx.budget.saturating_sub(note.len());
+    let body = match name {
+        "shell" => head_tail(&full, room),
+        "subagent" => head_and_last_line(&full, room),
+        _ => head(&full, room).to_string(),
+    };
+    output.content = body + &note;
+    output.spilled = spilled.map(|path| path.display().to_string());
+    output
+}
+
+/// Writes `<out_dir>/<callId>.txt`; `None` outside a session or on failure.
+fn spill(ctx: &ToolCtx<'_>, full: &str) -> Option<PathBuf> {
+    let dir = ctx.session?.out_dir.as_ref()?;
+    let name: String = ctx
+        .call_id
+        .chars()
+        .map(
+            |c| match c.is_ascii_alphanumeric() || c == '-' || c == '_' {
+                true => c,
+                false => '_',
+            },
+        )
+        .collect();
+    let name = if name.is_empty() { "call".into() } else { name };
+    std::fs::create_dir_all(dir).ok()?;
+    let path = dir.join(format!("{name}.txt"));
+    std::fs::write(&path, full).ok()?;
+    Some(path)
+}
+
+/// The longest start of `text` within `room` bytes, ending after a newline
+/// when one is in reach, else on a character boundary.
+pub fn head(text: &str, room: usize) -> &str {
+    if text.len() <= room {
+        return text;
+    }
+    let mut end = room;
+    while !text.is_char_boundary(end) {
+        end -= 1;
+    }
+    match text[..end].rfind('\n') {
+        Some(newline) if newline > 0 => &text[..=newline],
+        _ => &text[..end],
+    }
+}
+
+/// The longest end of `text` within `room` bytes, starting on a line when
+/// one is in reach.
+fn tail(text: &str, room: usize) -> &str {
+    if text.len() <= room {
+        return text;
+    }
+    let mut start = text.len() - room;
+    while !text.is_char_boundary(start) {
+        start += 1;
+    }
+    match text[start..].find('\n') {
+        Some(newline) if start + newline + 1 < text.len() => &text[start + newline + 1..],
+        _ => &text[start..],
+    }
+}
+
+/// A quarter of `room` from the start and the rest from the end, with a
+/// marker naming the bytes left out.
+fn head_tail(text: &str, room: usize) -> String {
+    let marker_room = 48;
+    let usable = room.saturating_sub(marker_room);
+    let first = head(text, usable / SHELL_HEAD_SHARE);
+    let last = tail(text, usable - usable / SHELL_HEAD_SHARE);
+    let cut = text.len().saturating_sub(first.len() + last.len());
+    let mut out = first.to_string();
+    if !out.ends_with('\n') {
+        out.push('\n');
+    }
+    out.push_str(&format!("[... {cut} bytes cut ...]\n"));
+    out.push_str(last);
+    out
+}
+
+/// The answer cut to fit with its last line (the subagent stats) kept.
+fn head_and_last_line(text: &str, room: usize) -> String {
+    let trimmed = text.trim_end();
+    let (body, last) = trimmed.rsplit_once('\n').unwrap_or(("", trimmed));
+    let keep = room.saturating_sub(last.len() + 2);
+    let mut out = head(body, keep).trim_end().to_string();
+    out.push_str("\n\n");
+    out.push_str(last);
+    out
+}
+
+/// The spill path named in a result's note, if it has one.
+pub fn spill_path(content: &str) -> Option<&str> {
+    let start = content.rfind(SPILL_MARK)? + SPILL_MARK.len();
+    let rest = &content[start..];
+    let end = rest.rfind(" bytes, ")?;
+    rest[..end].rsplit_once(", ").map(|(path, _)| path)
+}

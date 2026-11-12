@@ -8,8 +8,10 @@ use crate::llm::find::{loaded_line, FIND_TOOLS};
 use crate::llm::ToolSpec;
 use crate::tools::ToolOutput;
 
-/// Most tools one call loads.
+/// Tools one call loads unless it passes `limit`.
 pub const MAX_RESULTS: usize = 5;
+/// The largest `limit` a call may pass.
+pub const MAX_LIMIT: usize = 20;
 
 /// The spec, whose description names the `others` without their schemas.
 pub fn spec(others: &[ToolSpec]) -> ToolSpec {
@@ -19,7 +21,8 @@ pub fn spec(others: &[ToolSpec]) -> ToolSpec {
         description: format!(
             "Load tools: only loaded tools can be called. Tools: {}. Pass `names` \
             (exact tool names) or `query` (words matched against tool names, \
-            descriptions and parameter names); at most {MAX_RESULTS} tools per call. \
+            descriptions and parameter names); at most {MAX_RESULTS} tools per call \
+            unless you pass `limit` (up to {MAX_LIMIT}). \
             A loaded tool stays loaded for the session.",
             names.join(", ")
         ),
@@ -27,7 +30,8 @@ pub fn spec(others: &[ToolSpec]) -> ToolSpec {
             "type": "object",
             "properties": {
                 "query": {"type": "string", "description": "Words describing the tools you need."},
-                "names": {"type": "array", "items": {"type": "string"}, "description": "Exact tool names."}
+                "names": {"type": "array", "items": {"type": "string"}, "description": "Exact tool names."},
+                "limit": {"type": "integer", "minimum": 1, "maximum": MAX_LIMIT, "description": "Most tools to load. Default 5."}
             }
         }),
     }
@@ -61,7 +65,11 @@ pub fn run(args: &Value, others: &[ToolSpec]) -> ToolOutput {
             picked.push(index);
         }
     }
-    picked.truncate(MAX_RESULTS);
+    let limit = args
+        .get("limit")
+        .and_then(Value::as_u64)
+        .unwrap_or(MAX_RESULTS as u64);
+    picked.truncate((limit as usize).clamp(1, MAX_LIMIT));
     ToolOutput::ok(answer(&picked, &unknown, others))
 }
 

@@ -3,7 +3,7 @@
 
 use crate::llm::{Timing, ToolSpec};
 use crate::trace::TraceWriter;
-use crate::types::{Message, StopReason, Usage};
+use crate::types::{Block, Message, StopReason, Usage};
 use serde::Serialize;
 use serde_json::{json, Value};
 use std::io;
@@ -59,6 +59,14 @@ struct AssistantData<'a> {
     stop: StopReason,
     timing: &'a Timing,
     account: &'a str,
+}
+
+/// Bytes of a tool result block's content.
+fn result_len(block: &Block) -> usize {
+    match block {
+        Block::ToolResult { content, .. } => content.len(),
+        _ => 0,
+    }
 }
 
 fn value(data: impl Serialize) -> io::Result<Value> {
@@ -224,8 +232,25 @@ impl TraceWriter {
         message: &Message,
         duration_ms: u64,
     ) -> io::Result<u64> {
-        let data = json!({ "turn": turn, "step": step, "message": value(message)?,
-            "durationMs": duration_ms });
+        let bytes = message.content.iter().map(result_len).sum();
+        self.tool_result_sized(turn, step, message, duration_ms, (bytes, None))
+    }
+
+    /// `tool/result` with `bytes` (the full output size) and `spilled` (the
+    /// spill file, left out when the result was not cut; trace version 6).
+    pub fn tool_result_sized(
+        &mut self,
+        turn: u32,
+        step: u32,
+        message: &Message,
+        duration_ms: u64,
+        (bytes, spilled): (usize, Option<&str>),
+    ) -> io::Result<u64> {
+        let mut data = json!({ "turn": turn, "step": step, "message": value(message)?,
+            "durationMs": duration_ms, "bytes": bytes });
+        if let Some(path) = spilled {
+            data["spilled"] = json!(path);
+        }
         self.emit(kind::TOOL_RESULT, data)
     }
 

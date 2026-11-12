@@ -253,8 +253,5 @@ fn render(capture: Capture, ending: Ending, timeout_ms: u64) -> ToolOutput {
         Some(code) => text.push_str(&format!("[exit code: {code}]")),
         None => text.push_str("[exit code: none]"),
     }
-    ToolOutput {
-        content: text,
-        is_error: killed.is_some() || code != Some(0),
-    }
+    ToolOutput::new(text, killed.is_some() || code != Some(0))
 }

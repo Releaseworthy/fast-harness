@@ -140,8 +140,5 @@ fn result(text: String, last: &str, outcome: TurnOutcome, errors: &[String]) -> 
         content.push_str(&format!("\n\nsubagent ended {outcome:?}{detail}"));
     }
     content.push_str(&format!("\n\n{last}"));
-    ToolOutput {
-        content: content.trim_start().to_string(),
-        is_error: outcome != TurnOutcome::Done,
-    }
+    ToolOutput::new(content.trim_start(), outcome != TurnOutcome::Done)
 }

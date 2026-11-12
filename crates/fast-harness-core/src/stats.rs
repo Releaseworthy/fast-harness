@@ -14,6 +14,7 @@ use serde::Serialize;
 use serde_json::Value;
 
 use crate::llm::find::FIND_TOOLS;
+use crate::tools::budget::SPILL_MARK;
 use crate::trace::{kind, prefix_binding_mismatches, TraceEvent};
 use crate::types::Usage;
 
@@ -22,7 +23,7 @@ pub const IDLE_LIMIT_MS: u64 = 5 * 60 * 1000;
 pub const IDLE_LIMIT_1H_MS: u64 = 60 * 60 * 1000;
 /// How many of the largest tool results are kept.
 pub const LARGEST: usize = 5;
-/// The mark `tools::clip` leaves in a clipped result.
+/// The mark the 32 KB clip of trace versions 1 to 5 left in a result.
 const CLIP_MARK: &str = "bytes clipped ...]";
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize)]
@@ -166,7 +167,9 @@ impl Pass {
             let entry = self.tools.entry(name.clone()).or_default();
             entry.results += 1;
             entry.bytes += bytes;
-            self.stats.clipped += u64::from(content.contains(CLIP_MARK));
+            // Version 6 names the spill file of a result cut to its budget.
+            let spilled = data["spilled"].is_string() || content.contains(SPILL_MARK);
+            self.stats.clipped += u64::from(spilled || content.contains(CLIP_MARK));
             self.results.push(ResultSize {
                 session: self.session.clone(),
                 turn: int(data, "turn"),

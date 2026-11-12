@@ -14,7 +14,7 @@ use super::walk::files;
 use super::{Tool, ToolCtx, ToolOutput};
 use crate::llm::ToolSpec;
 
-const DEFAULT_MAX_RESULTS: u64 = 200;
+const DEFAULT_MAX_RESULTS: u64 = 50;
 const MAX_LINE_CHARS: usize = 300;
 
 pub(crate) struct GrepTool;
@@ -25,7 +25,8 @@ impl Tool for GrepTool {
             name: "grep".into(),
             description: "Search file contents with a regular expression (Rust regex syntax), \
                 line by line. Respects .gitignore and skips hidden and binary files. Output: \
-                \"path:line: text\" with paths relative to the working directory."
+                matches grouped by file, a path line (relative to the working directory) then \
+                \"  line: text\" lines; at most max_results matches, then a count of the rest."
                 .into(),
             schema: object_schema(
                 json!({
@@ -33,7 +34,7 @@ impl Tool for GrepTool {
                     "path": {"type": "string", "description": "File or directory to search. Default: the working directory."},
                     "glob": {"type": "string", "description": "Only search files matching this glob, e.g. \"*.rs\" or \"src/**/*.ts\"."},
                     "ignore_case": {"type": "boolean", "description": "Case-insensitive match. Default false."},
-                    "max_results": {"type": "integer", "minimum": 1, "description": "Maximum matching lines. Default 200."}
+                    "max_results": {"type": "integer", "minimum": 1, "description": "Maximum matching lines shown. Default 50."}
                 }),
                 &["pattern"],
             ),
@@ -51,8 +52,11 @@ impl Tool for GrepTool {
 struct Search {
     regex: Regex,
     max: usize,
-    lines: Vec<String>,
-    cut: bool,
+    /// Shown matches grouped by file, in walk order.
+    groups: Vec<(String, Vec<String>)>,
+    shown: usize,
+    more: usize,
+    more_files: usize,
 }
 
 fn grep(args: &Value, ctx: &ToolCtx<'_>) -> Result<String, String> {
@@ -71,21 +75,21 @@ fn grep(args: &Value, ctx: &ToolCtx<'_>) -> Result<String, String> {
     let mut search = Search {
         regex,
         max: usize::try_from(max).unwrap_or(usize::MAX),
-        lines: Vec::new(),
-        cut: false,
+        groups: Vec::new(),
+        shown: 0,
+        more: 0,
+        more_files: 0,
     };
     for entry in files(&root, glob)? {
         if ctx.cancel.load(Ordering::Relaxed) {
             return Err("grep cancelled".to_string());
         }
         search_file(&mut search, ctx.cwd, entry.path());
-        if search.cut {
-            break;
-        }
     }
     Ok(render(&search))
 }
 
+/// Adds the matches of one file: shown up to `max`, counted after it.
 fn search_file(search: &mut Search, cwd: &Path, path: &Path) {
     let Ok(bytes) = std::fs::read(path) else {
         return;
@@ -94,31 +98,50 @@ fn search_file(search: &mut Search, cwd: &Path, path: &Path) {
         return;
     }
     let text = String::from_utf8_lossy(&bytes);
-    let shown = display_rel(cwd, path);
+    let mut shown = Vec::new();
+    let mut hidden = 0;
     for (index, line) in text.lines().enumerate() {
         if !search.regex.is_match(line) {
             continue;
         }
-        if search.lines.len() >= search.max {
-            search.cut = true;
-            return;
+        if search.shown >= search.max {
+            hidden += 1;
+            continue;
         }
-        let number = index + 1;
+        search.shown += 1;
         let line = cut_chars(line, MAX_LINE_CHARS);
-        search.lines.push(format!("{shown}:{number}: {line}"));
+        shown.push(format!("  {}: {line}", index + 1));
+    }
+    if hidden > 0 {
+        search.more += hidden;
+        search.more_files += 1;
+    }
+    if !shown.is_empty() {
+        search.groups.push((display_rel(cwd, path), shown));
     }
 }
 
 fn render(search: &Search) -> String {
-    if search.lines.is_empty() {
+    if search.groups.is_empty() {
         return "No matches.".to_string();
     }
-    let mut out = search.lines.join("\n");
-    out.push('\n');
-    if search.cut {
+    let mut out = String::new();
+    for (path, lines) in &search.groups {
+        out.push_str(path);
+        out.push('\n');
+        for line in lines {
+            out.push_str(line);
+            out.push('\n');
+        }
+    }
+    if search.more > 0 {
+        let files = match search.more_files {
+            1 => "1 file".to_string(),
+            n => format!("{n} files"),
+        };
         out.push_str(&format!(
-            "[results cut at {} matches; narrow the pattern, path or glob, or raise max_results]\n",
-            search.max
+            "[{} more matches in {files}; narrow the pattern, path or glob, or raise max_results]\n",
+            search.more
         ));
     }
     out

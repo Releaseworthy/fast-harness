@@ -10,8 +10,10 @@ use std::sync::atomic::AtomicBool;
 use serde_json::Value;
 
 use crate::llm::ToolSpec;
+pub use budget::ToolSession;
 
 mod args;
+pub mod budget;
 mod edit;
 pub mod find;
 mod glob;
@@ -26,27 +28,54 @@ pub struct ToolCtx<'a> {
     pub cwd: &'a Path,
     /// Set from another thread to stop a long-running tool.
     pub cancel: &'a AtomicBool,
+    /// Byte budget of this result (`Config::tool_budget`, PLAN.md D37).
+    pub budget: usize,
+    /// Id of the call; names its spill file and its read ranges.
+    pub call_id: &'a str,
+    /// State shared by the tools of one session; `None` outside a session.
+    pub session: Option<&'a ToolSession>,
+}
+
+impl<'a> ToolCtx<'a> {
+    /// A context outside a session with the default budget.
+    pub fn new(cwd: &'a Path, cancel: &'a AtomicBool) -> ToolCtx<'a> {
+        ToolCtx {
+            cwd,
+            cancel,
+            budget: crate::config::DEFAULT_TOOL_OUTPUT_BYTES,
+            call_id: "",
+            session: None,
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct ToolOutput {
     pub content: String,
     pub is_error: bool,
+    /// Size of the full output before the budget cut it.
+    pub bytes: usize,
+    /// The spill file holding the full output, when it was cut.
+    pub spilled: Option<String>,
 }
 
 impl ToolOutput {
-    pub fn ok(content: impl Into<String>) -> ToolOutput {
+    pub fn new(content: impl Into<String>, is_error: bool) -> ToolOutput {
+        let content = content.into();
         ToolOutput {
-            content: content.into(),
-            is_error: false,
+            bytes: content.len(),
+            content,
+            is_error,
+            spilled: None,
         }
     }
 
+    pub fn ok(content: impl Into<String>) -> ToolOutput {
+        ToolOutput::new(content, false)
+    }
+
     pub fn err(content: impl Into<String>) -> ToolOutput {
-        ToolOutput {
-            content: content.into(),
-            is_error: true,
-        }
+        ToolOutput::new(content, true)
     }
 }
 
@@ -56,32 +85,6 @@ pub trait Tool: Send + Sync {
     /// `args` is the parsed arguments object. Invalid arguments produce an
     /// error output that tells the model what to fix.
     fn run(&self, args: &Value, ctx: &ToolCtx<'_>) -> ToolOutput;
-}
-
-/// Largest tool output handed to the model; longer output is cut by [`clip`].
-pub const MAX_OUTPUT_BYTES: usize = 32 * 1024;
-
-/// Keeps the head and the tail of an oversized output with a marker between
-/// them, cutting only on character boundaries.
-pub fn clip(content: String, max_bytes: usize) -> String {
-    if content.len() <= max_bytes {
-        return content;
-    }
-    let half = max_bytes / 2;
-    let mut head_end = half;
-    while !content.is_char_boundary(head_end) {
-        head_end -= 1;
-    }
-    let mut tail_start = content.len() - half;
-    while !content.is_char_boundary(tail_start) {
-        tail_start += 1;
-    }
-    let dropped = tail_start - head_end;
-    format!(
-        "{}\n[... {dropped} bytes clipped ...]\n{}",
-        &content[..head_end],
-        &content[tail_start..]
-    )
 }
 
 #[derive(Default)]
@@ -145,13 +148,12 @@ impl Registry {
                 return ToolOutput::err(format!("tool arguments are not valid JSON: {err}"))
             }
         };
-        let mut output = match (self.find, index) {
+        let output = match (self.find, index) {
             (true, 0) => find::run(&args, &self.specs[1..]),
             (true, index) => self.tools[index - 1].run(&args, ctx),
             (false, index) => self.tools[index].run(&args, ctx),
         };
-        output.content = clip(output.content, MAX_OUTPUT_BYTES);
-        output
+        budget::fit(name, output, ctx)
     }
 }
 
@@ -192,14 +194,7 @@ mod tests {
         let mut registry = Registry::new();
         registry.add(Box::new(Echo));
         let cancel = AtomicBool::new(false);
-        registry.run(
-            name,
-            raw,
-            &ToolCtx {
-                cwd: Path::new("."),
-                cancel: &cancel,
-            },
-        )
+        registry.run(name, raw, &ToolCtx::new(Path::new("."), &cancel))
     }
 
     #[test]
@@ -209,14 +204,5 @@ mod tests {
         assert!(run("[1]", "echo").is_error);
         assert!(run("{oops", "echo").content.contains("not valid JSON"));
         assert!(run("{}", "nope").content.contains("unknown tool"));
-    }
-
-    #[test]
-    fn clip_keeps_head_and_tail_on_char_boundaries() {
-        let text = "\u{1EBF}".repeat(100);
-        let clipped = clip(text.clone(), 50);
-        assert!(clipped.starts_with('\u{1EBF}') && clipped.ends_with('\u{1EBF}'));
-        assert!(clipped.contains("bytes clipped"));
-        assert_eq!(clip(text.clone(), 1000), text);
     }
 }

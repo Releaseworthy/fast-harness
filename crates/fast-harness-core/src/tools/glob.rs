@@ -10,7 +10,7 @@ use super::walk::files;
 use super::{Tool, ToolCtx, ToolOutput};
 use crate::llm::ToolSpec;
 
-const MAX_FILES: usize = 200;
+const MAX_FILES: usize = 100;
 
 pub(crate) struct GlobTool;
 
@@ -20,7 +20,7 @@ impl Tool for GlobTool {
             name: "glob".into(),
             description: "Find files whose path matches a glob pattern (gitignore syntax: \
                 \"*.rs\" matches at any depth, \"src/**/*.ts\" is anchored to `path`). \
-                Respects .gitignore and skips hidden files. Returns at most 200 paths, newest \
+                Respects .gitignore and skips hidden files. Returns at most 100 paths, newest \
                 modification first, relative to the working directory."
                 .into(),
             schema: object_schema(

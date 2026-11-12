@@ -31,10 +31,7 @@ impl Drop for TempDir {
 
 fn run(dir: &Path, name: &str, args: Value) -> ToolOutput {
     let cancel = AtomicBool::new(false);
-    let ctx = ToolCtx {
-        cwd: dir,
-        cancel: &cancel,
-    };
+    let ctx = ToolCtx::new(dir, &cancel);
     builtin().run(name, &args.to_string(), &ctx)
 }
 
@@ -74,7 +71,9 @@ fn write_creates_parents_and_read_numbers_lines() {
         json!({"path": abs.to_string_lossy(), "offset": 2, "limit": 1}),
     );
     assert!(out.content.starts_with("2: two\n"), "{}", out.content);
-    assert!(out.content.contains("1 more lines, continue with offset=3"));
+    assert!(out
+        .content
+        .contains("[lines 2 to 2 of 3; continue with offset 3]"));
 }
 
 #[test]

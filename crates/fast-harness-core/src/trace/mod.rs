@@ -25,7 +25,9 @@ use serde_json::Value;
 /// Version 5: `request/header` may carry `context` (the context stamp of
 /// PLAN.md D36) and is the frozen system and tools replayed on resume; a
 /// user message may start with a `[context update]` text block.
-pub const VERSION: u32 = 5;
+/// Version 6: `tool/result` has `bytes` (the full output size) and, for a
+/// result cut to its budget, `spilled` (the spill file, PLAN.md D37).
+pub const VERSION: u32 = 6;
 
 /// The oldest version the reader accepts; a resumed log keeps its own header.
 pub const MIN_VERSION: u32 = 1;

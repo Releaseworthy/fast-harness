@@ -3,6 +3,7 @@
 //! are ignored. `FAST_HARNESS_MODEL`, `FAST_HARNESS_EFFORT`, `FAST_HARNESS_THEME`, `FAST_HARNESS_GREYSCALE`, `FAST_HARNESS_ICONS` and `FAST_HARNESS_WIRE` override
 //! the file. [`save_setting`] writes one key back for the front ends.
 
+use std::collections::BTreeMap;
 use std::io;
 use std::path::Path;
 
@@ -12,6 +13,10 @@ use serde_json::{Map, Value};
 use crate::theme;
 
 pub const FILE_NAME: &str = "config.json";
+/// Default byte budget of one tool result (`toolOutputBytes`).
+pub const DEFAULT_TOOL_OUTPUT_BYTES: usize = 8 * 1024;
+/// The smallest budget: room for the spill note and some text.
+pub const MIN_TOOL_OUTPUT_BYTES: usize = 1024;
 
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
@@ -51,6 +56,10 @@ pub struct Config {
     /// Raw wire capture of every model call (redacted request and raw
     /// response stream) under `<session>.wire/`. Off by default.
     pub wire: bool,
+    /// `toolOutputBytes` (PLAN.md D37): the byte budget of one tool result.
+    pub tool_output_bytes: usize,
+    /// `toolOutput`: budgets per tool name, e.g. `{"read": 16384}`.
+    pub tool_output: BTreeMap<String, usize>,
 }
 
 impl Default for Config {
@@ -69,6 +78,8 @@ impl Default for Config {
             greyscale: 0,
             icons: "nerd".into(),
             wire: false,
+            tool_output_bytes: DEFAULT_TOOL_OUTPUT_BYTES,
+            tool_output: BTreeMap::new(),
         }
     }
 }
@@ -136,6 +147,18 @@ impl Config {
     pub fn set_effort(&mut self, effort: &str) {
         let effort = effort.trim();
         self.effort = (effort != "default").then(|| effort.to_string());
+    }
+
+    /// The byte budget of one result of `tool` (PLAN.md D37): the
+    /// `toolOutput` entry of the tool, else `toolOutputBytes`, never below
+    /// [`MIN_TOOL_OUTPUT_BYTES`]. The one place every budget is looked up.
+    pub fn tool_budget(&self, tool: &str) -> usize {
+        let bytes = self
+            .tool_output
+            .get(tool)
+            .copied()
+            .unwrap_or(self.tool_output_bytes);
+        bytes.max(MIN_TOOL_OUTPUT_BYTES)
     }
 
     /// The cache TTL in effect: `cacheTtl`, else `"1h"` for `cacheLong: true`, else `auto`.
