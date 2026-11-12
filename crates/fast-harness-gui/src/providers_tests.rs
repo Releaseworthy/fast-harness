@@ -47,6 +47,10 @@ fn ready_google_card_shows_the_lowest_left() {
 }
 
 #[test]
+#[cfg_attr(
+    not(windows),
+    ignore = "secrets are encrypted with DPAPI, which only Windows has"
+)]
 fn saving_the_client_never_echoes_the_secret() {
     let home = temp_home("client");
     let (error, note) = save_client(&home, " client-id.apps ", &format!(" {SECRET}\n"));
@@ -64,6 +68,10 @@ fn saving_the_client_never_echoes_the_secret() {
 }
 
 #[test]
+#[cfg_attr(
+    not(windows),
+    ignore = "secrets are encrypted with DPAPI, which only Windows has"
+)]
 fn needs_setup_stops_after_a_save() {
     let home = temp_home("setup");
     let before = ClientState::of(&home);
@@ -71,7 +79,8 @@ fn needs_setup_stops_after_a_save() {
     if std::env::var("FAST_HARNESS_GOOGLE_CLIENT_ID").is_err() {
         assert_eq!(before, ClientState::Missing);
     }
-    save_client(&home, "client-id", SECRET);
+    let (error, note) = save_client(&home, "client-id", SECRET);
+    assert!(!error, "{note}");
     let after = google::client_from(None, None, &home).map(|c| c.id);
     assert_eq!(after.ok().as_deref(), Some("client-id"));
     let summary = &summaries(&[], &[], &ClientState::Ready("client-id".into()), NOW)[1];

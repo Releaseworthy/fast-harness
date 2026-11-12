@@ -21,6 +21,10 @@ fn reads(n: usize) -> ScriptedTransport {
 }
 
 #[test]
+#[cfg_attr(
+    not(windows),
+    ignore = "secrets are encrypted with DPAPI, which only Windows has"
+)]
 fn idle_accounts_every_ten_minutes_and_after_a_turn() {
     let home = home();
     let a = add(&home, "a", NOW + 24 * HOUR);
@@ -47,6 +51,10 @@ fn idle_accounts_every_ten_minutes_and_after_a_turn() {
 }
 
 #[test]
+#[cfg_attr(
+    not(windows),
+    ignore = "secrets are encrypted with DPAPI, which only Windows has"
+)]
 fn quota_429_backs_off_five_minutes_doubling_to_an_hour() {
     let home = home();
     add(&home, "a", NOW + 24 * HOUR);
@@ -75,6 +83,10 @@ fn quota_429_backs_off_five_minutes_doubling_to_an_hour() {
 }
 
 #[test]
+#[cfg_attr(
+    not(windows),
+    ignore = "secrets are encrypted with DPAPI, which only Windows has"
+)]
 fn usage_file_round_trip_and_corrupt_file() {
     let home = home();
     add(&home, "a", NOW + 24 * HOUR);

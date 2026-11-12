@@ -46,6 +46,10 @@ fn add_google(rt: &Runtime) {
 }
 
 #[test]
+#[cfg_attr(
+    not(windows),
+    ignore = "secrets are encrypted with DPAPI, which only Windows has"
+)]
 fn parts_follow_the_model_id() {
     let home = Home::new("both");
     let mut rt = Runtime::load_at(home.0.clone()).unwrap();
@@ -63,6 +67,10 @@ fn parts_follow_the_model_id() {
 }
 
 #[test]
+#[cfg_attr(
+    not(windows),
+    ignore = "secrets are encrypted with DPAPI, which only Windows has"
+)]
 fn antigravity_without_a_google_account_names_the_way_to_add_one() {
     let home = Home::new("no-google");
     let mut rt = Runtime::load_at(home.0.clone()).unwrap();

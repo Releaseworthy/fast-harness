@@ -1,4 +1,6 @@
-//! Fallback for an OS without a backend yet: every item reports `Unsupported`.
+//! Fallback for an OS without a backend yet: every item reports `Unsupported`,
+//! except `random_fill`, which reads `/dev/urandom` on Unix. `protect` and `unprotect` stay
+//! `Unsupported` on purpose: secrets are never stored in plaintext (PLAN.md D9).
 
 mod folder;
 mod interrupt;

@@ -22,6 +22,10 @@ fn lease(home: &Home) -> Lease {
 }
 
 #[test]
+#[cfg_attr(
+    not(windows),
+    ignore = "secrets are encrypted with DPAPI, which only Windows has"
+)]
 fn lease_refreshes_an_expiring_token_and_saves_it() {
     let home = home();
     let a = add(&home, "a", NOW + 60_000);
@@ -54,6 +58,10 @@ fn lease_again(home: &Home) -> Lease {
 }
 
 #[test]
+#[cfg_attr(
+    not(windows),
+    ignore = "secrets are encrypted with DPAPI, which only Windows has"
+)]
 fn lease_explains_a_missing_account_or_client() {
     let home = home();
     let err = lease_err(&home);
@@ -73,6 +81,10 @@ fn lease_err(home: &Home) -> String {
 }
 
 #[test]
+#[cfg_attr(
+    not(windows),
+    ignore = "secrets are encrypted with DPAPI, which only Windows has"
+)]
 fn auth_error_refreshes_once_then_switches() {
     let home = home();
     let a = add(&home, "a", NOW + HOUR);
@@ -102,6 +114,10 @@ fn auth_error_refreshes_once_then_switches() {
 }
 
 #[test]
+#[cfg_attr(
+    not(windows),
+    ignore = "secrets are encrypted with DPAPI, which only Windows has"
+)]
 fn rate_limit_holds_until_the_group_reset_and_switches() {
     let home = home();
     let a = add(&home, "a", NOW + HOUR);
@@ -137,6 +153,10 @@ fn rate_limit_holds_until_the_group_reset_and_switches() {
 }
 
 #[test]
+#[cfg_attr(
+    not(windows),
+    ignore = "secrets are encrypted with DPAPI, which only Windows has"
+)]
 fn every_account_held_waits_for_the_soonest_hold() {
     let home = home();
     let a = add(&home, "a", NOW + HOUR);
@@ -161,6 +181,10 @@ fn every_account_held_waits_for_the_soonest_hold() {
 }
 
 #[test]
+#[cfg_attr(
+    not(windows),
+    ignore = "secrets are encrypted with DPAPI, which only Windows has"
+)]
 fn unknown_reset_uses_retry_after_then_fifteen_minutes() {
     let home = home();
     let a = add(&home, "a", NOW + HOUR);
@@ -175,6 +199,10 @@ fn unknown_reset_uses_retry_after_then_fifteen_minutes() {
 }
 
 #[test]
+#[cfg_attr(
+    not(windows),
+    ignore = "secrets are encrypted with DPAPI, which only Windows has"
+)]
 fn validation_hold_keeps_the_url() {
     let home = home();
     let a = add(&home, "a", NOW + HOUR);
@@ -207,6 +235,10 @@ const TOS_MESSAGE: &str = "account disabled by the provider: PERMISSION_DENIED (
 This service has been disabled in this account for violation of Terms of Service.";
 
 #[test]
+#[cfg_attr(
+    not(windows),
+    ignore = "secrets are encrypted with DPAPI, which only Windows has"
+)]
 fn disabled_only_account_fails_at_once_without_a_hold_wait() {
     let home = home();
     let a = add(&home, "a", NOW + HOUR);
@@ -229,6 +261,10 @@ fn disabled_only_account_fails_at_once_without_a_hold_wait() {
 }
 
 #[test]
+#[cfg_attr(
+    not(windows),
+    ignore = "secrets are encrypted with DPAPI, which only Windows has"
+)]
 fn disabled_account_hands_over_to_another() {
     let home = home();
     let a = add(&home, "a", NOW + HOUR);
@@ -255,6 +291,10 @@ fn disabled_account_hands_over_to_another() {
 }
 
 #[test]
+#[cfg_attr(
+    not(windows),
+    ignore = "secrets are encrypted with DPAPI, which only Windows has"
+)]
 fn other_errors_and_foreign_leases_fail() {
     let home = home();
     add(&home, "a", NOW + HOUR);

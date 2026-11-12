@@ -102,6 +102,10 @@ fn usage_head(status: u16, five: f64, seven: f64) -> HttpHead {
 }
 
 #[test]
+#[cfg_attr(
+    not(windows),
+    ignore = "secrets are encrypted with DPAPI, which only Windows has"
+)]
 fn lease_refreshes_an_expiring_own_account_and_saves_the_pair() {
     let fx = Fixture::new("refresh");
     let id = fx.add_own("aaaa", "test-access-old", now_unix_ms() + 30_000);
@@ -120,6 +124,10 @@ fn lease_refreshes_an_expiring_own_account_and_saves_the_pair() {
 }
 
 #[test]
+#[cfg_attr(
+    not(windows),
+    ignore = "secrets are encrypted with DPAPI, which only Windows has"
+)]
 fn a_dead_refresh_holds_the_account_and_moves_on() {
     let fx = Fixture::new("dead");
     let a = fx.add_own("aaaa", "test-access-a", now_unix_ms() + 10_000);
@@ -143,6 +151,10 @@ fn a_dead_refresh_holds_the_account_and_moves_on() {
 }
 
 #[test]
+#[cfg_attr(
+    not(windows),
+    ignore = "secrets are encrypted with DPAPI, which only Windows has"
+)]
 fn api_keys_lease_the_key_and_fail_on_auth() {
     let fx = Fixture::new("apikey");
     let pool = fx.pool();
@@ -164,6 +176,10 @@ fn api_keys_lease_the_key_and_fail_on_auth() {
 }
 
 #[test]
+#[cfg_attr(
+    not(windows),
+    ignore = "secrets are encrypted with DPAPI, which only Windows has"
+)]
 fn observe_records_header_usage_and_saves_the_snapshot() {
     let fx = Fixture::new("observe");
     let id = fx.add_own("aaaa", "test-access-a", now_unix_ms() + 8 * HOUR);
@@ -184,6 +200,10 @@ fn observe_records_header_usage_and_saves_the_snapshot() {
 }
 
 #[test]
+#[cfg_attr(
+    not(windows),
+    ignore = "secrets are encrypted with DPAPI, which only Windows has"
+)]
 fn poll_reads_idle_accounts_and_backs_off_after_429() {
     let fx = Fixture::new("poll");
     let now = now_unix_ms();

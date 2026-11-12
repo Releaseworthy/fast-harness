@@ -69,6 +69,10 @@ fn client_from_env_file_or_none() {
 }
 
 #[test]
+#[cfg_attr(
+    not(windows),
+    ignore = "secrets are encrypted with DPAPI, which only Windows has"
+)]
 fn saved_client_is_encrypted_and_read_back() {
     let home = TempHome::new();
     save_client(&home.0, CLIENT_ID, &format!(" {CLIENT_SECRET}\n")).unwrap();

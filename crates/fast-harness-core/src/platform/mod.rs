@@ -3,7 +3,8 @@
 //! Every backend exports the same items (one file per feature):
 //! - `secret`: `protect(&[u8]) -> Result<Vec<u8>>`, `unprotect(&[u8]) -> Result<Vec<u8>>`
 //!   (data only the current OS user can decrypt: DPAPI on Windows).
-//! - `random`: `random_fill(&mut [u8]) -> Result<()>` (the OS CSPRNG).
+//! - `random`: `random_fill(&mut [u8]) -> Result<()>` (the OS CSPRNG: BCryptGenRandom on Windows,
+//!   `/dev/urandom` on other Unix-like systems).
 //! - `open`: `open_url(&str) -> Result<()>` (the default browser),
 //!   `open_folder(&Path) -> Result<()>` (Explorer).
 //! - `process`: `ProcessGroup` (a process and every process it starts, killed together).
@@ -14,7 +15,8 @@
 //!   dialog owned by window `owner`; `Ok(None)` when cancelled; IFileOpenDialog on Windows).
 //!
 //! An OS without a backend uses `unsupported`, whose items return
-//! `PlatformError::Unsupported`, so the core still builds there.
+//! `PlatformError::Unsupported`, so the core still builds there (except `random_fill` on Unix).
+//! `protect` stays `Unsupported` off Windows on purpose: no plaintext secrets (PLAN.md D9).
 
 use std::fmt;
 use std::path::{Path, PathBuf};

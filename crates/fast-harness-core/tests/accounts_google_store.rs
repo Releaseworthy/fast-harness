@@ -86,6 +86,10 @@ fn version_2_records_load_as_anthropic_and_save_as_version_3() {
 }
 
 #[test]
+#[cfg_attr(
+    not(windows),
+    ignore = "secrets are encrypted with DPAPI, which only Windows has"
+)]
 fn google_record_round_trips_with_its_secret_encrypted() {
     let home = TempHome::new();
     let mut store = AccountStore::load(home.file()).unwrap();
@@ -158,6 +162,10 @@ fn a_pointer_at_the_other_provider_is_not_active() {
 }
 
 #[test]
+#[cfg_attr(
+    not(windows),
+    ignore = "secrets are encrypted with DPAPI, which only Windows has"
+)]
 fn the_anthropic_pool_skips_google_accounts() {
     use fast_harness_core::accounts::pool::AccountPool;
     use fast_harness_core::auth::AuthSource;

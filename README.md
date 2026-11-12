@@ -2,7 +2,7 @@
 
 A barebone coding agent harness in native Rust: an agent loop with tools, Claude as the model, a trace of every turn and every step, a terminal UI and a desktop GUI. Windows first; the core is portable. The repository is `fast-harness`; the binaries are `fast-harness` and `fast-harness-gui`.
 
-Status: working on Windows. See [PLAN.md](PLAN.md) for the design and the decisions, [docs/perf.md](docs/perf.md) for measurements.
+Status: working on Windows. The core also builds and is tested on Linux, but stored account secrets are encrypted with DPAPI, so there sign-in accounts, pooled API keys and the saved Google OAuth client are unavailable: use `providers/*.json` files with `keyEnv` keys and the `FAST_HARNESS_GOOGLE_CLIENT_*` variables (PLAN.md D9, D41). See [PLAN.md](PLAN.md) for the design and the decisions, [docs/perf.md](docs/perf.md) for measurements.
 
 ## Build
 

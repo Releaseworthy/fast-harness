@@ -175,6 +175,10 @@ fn retrieve_quota_posts_the_project() {
 }
 
 #[test]
+#[cfg_attr(
+    not(windows),
+    ignore = "secrets are encrypted with DPAPI, which only Windows has"
+)]
 fn complete_sign_in_stores_an_active_google_account() {
     let dir =
         std::env::temp_dir().join(format!("fast-harness-google-signin-{}", std::process::id()));

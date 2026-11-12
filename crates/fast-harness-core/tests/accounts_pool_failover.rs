@@ -127,6 +127,10 @@ fn active(pool: &AccountPool) -> String {
 }
 
 #[test]
+#[cfg_attr(
+    not(windows),
+    ignore = "secrets are encrypted with DPAPI, which only Windows has"
+)]
 fn rate_limit_fails_over_in_switch_order_with_the_48_hour_rule() {
     let fx = Fixture::new("order");
     let a = fx.add_own("aaaa");
@@ -168,6 +172,10 @@ fn rate_limit_fails_over_in_switch_order_with_the_48_hour_rule() {
 }
 
 #[test]
+#[cfg_attr(
+    not(windows),
+    ignore = "secrets are encrypted with DPAPI, which only Windows has"
+)]
 fn wait_is_the_soonest_hold_when_under_a_minute() {
     let fx = Fixture::new("wait");
     let a = fx.add_own("aaaa");
@@ -188,6 +196,10 @@ fn wait_is_the_soonest_hold_when_under_a_minute() {
 }
 
 #[test]
+#[cfg_attr(
+    not(windows),
+    ignore = "secrets are encrypted with DPAPI, which only Windows has"
+)]
 fn own_auth_failure_forces_one_refresh_then_fails_over() {
     let fx = Fixture::new("own-auth");
     let a = fx.add_own("aaaa");
@@ -215,6 +227,10 @@ fn own_auth_failure_forces_one_refresh_then_fails_over() {
 }
 
 #[test]
+#[cfg_attr(
+    not(windows),
+    ignore = "secrets are encrypted with DPAPI, which only Windows has"
+)]
 fn own_auth_failure_with_a_refused_refresh_and_nobody_left_waits() {
     let fx = Fixture::new("own-dead");
     let a = fx.add_own("aaaa");
