@@ -8,6 +8,7 @@ Rules for anyone (human or agent) changing this repo. Read `ARCHITECTURE.md` fir
 - Every change ends green: `cargo fmt --all -- --check`, `cargo clippy --workspace --all-targets -- -D warnings`, `cargo test --workspace`.
 - Network tests that call real services are `#[ignore]` and run by hand.
 - A change to a request body, the find tool, compaction or subagents, and every release tag, also passes `pwsh scripts/live-smoke.ps1` (six small live calls): scripted tests cannot tell that the API accepts a body (the `find_tools` result was an HTTP 400 on Claude until 2026-11-12).
+- The live smoke runs whatever `target/debug/fast-harness.exe` exists and `cargo test` does not rebuild it: `cargo build -p fast-harness` first.
 
 ## Code
 
@@ -19,22 +20,22 @@ Rules for anyone (human or agent) changing this repo. Read `ARCHITECTURE.md` fir
 - No panics on input from the network, files or the model: return errors. `unwrap` and `expect` only in tests or on invariants with a comment.
 - Secrets: never in code, tests, fixtures, logs, traces or wire capture. Redact `authorization`, `x-api-key` and token fields. `Auth` prints as `<redacted>`.
 - Formats in `docs/formats.md` (trace, accounts) change only with a version bump and an update there in the same commit. A decision is `docs/decisions/Dnn.md` plus its `PLAN.md` index line; `ARCHITECTURE.md` stays under 12,000 bytes.
-- Colours come only from `fast_harness_core::theme` roles (TUI `tui/theme.rs` Styles, GUI `Theme` global): no literal colours besides the neutral popup shadow. A palette change must keep `theme_tests.rs` green (WCAG 2.2 and APCA levels for every built-in theme at greyscale 0 to 100, pure grey at 100), and every status colour comes with a mark or a word. Built-in themes are JSON files (`crates/fast-harness-core/src/theme/builtin/`) in the same format users write (`docs/themes.md`, D33): a new or renamed role is a format change.
 
 ## Tests
 
 - Model calls are tested with `http::ScriptedTransport`, including bodies split into tiny chunks.
 - Filesystem tests use a fresh temporary directory under `std::env::temp_dir()` and remove it.
 - Every bug fix comes with a test that failed before it.
+- An approvals test needs a tool with `Effect::Write` or `Effect::Run`: `approvals::covered` passes `Effect::Read` without asking.
+- Tool panics already become error results (`agent/tool_run.rs`): a test of the `service/turn.rs` panic guard needs a panicking transport.
+- Before scripting a tool call, read the tool's argument parser (`subagent` takes `description`, not `label`) and reuse a test builder (`hooks_support::bodies`, `approving` in `view_parity.rs`).
 
 ## Pitfalls
 
 - Two branches that add crates both touch Cargo.lock: on conflict take one side, run cargo metadata, commit, then build with --locked.
 - The ring crate (rustls) needs the MSVC C compiler.
 - Wire capture (off by default, `"wire": true` or `FAST_HARNESS_WIRE=1`) stores every request body: its size grows with the square of the step count.
-- TUI Nerd Font glyphs must be one cell wide (the width test in `tui/icons.rs`): U+26A1 is double width.
-- GUI, Slint, window and icon pitfalls: docs/pitfalls-gui.md, read before touching crates/fast-harness-gui
-- Opening the TUI creates a session file even if nothing is sent.
+- GUI, TUI glyph, colour, Slint, window and icon rules and pitfalls: docs/pitfalls-gui.md, read before touching crates/fast-harness-gui, the TUI or a colour
 - Google Antigravity (provider, Google accounts, OAuth client, quota, its pitfalls and live test) lives on branch `antigravity` at a143cfa, not on main: PLAN.md D53 says how to bring it back.
 - Thinking and thought signatures go back only to the model that made them (`Message.model`, trace version 3): Anthropic drops foreign thinking.
 - Never share one `CARGO_TARGET_DIR` between worktrees of this repo: cargo gives the members the same unit hash everywhere and judges freshness by file times, so a build silently tested another worktree's core (2026-11-12). One target per worktree; touch a source copied with `Copy-Item`.
