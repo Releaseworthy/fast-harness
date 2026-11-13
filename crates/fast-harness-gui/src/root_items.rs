@@ -15,6 +15,7 @@ mod keys;
 mod listings;
 mod mirror;
 mod model_refresh;
+mod open_load;
 mod panels;
 mod pickers;
 mod prompt_settings;

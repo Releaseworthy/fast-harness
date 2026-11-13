@@ -8,6 +8,9 @@ import { ActionButton, TextArea } from "widgets.slint";
 export component Composer inherits Rectangle {
     in-out property <string> text <=> area.text;
     in property <bool> busy;
+    // A session is opening on a worker (D60): Send waits for it, and the
+    // hint says so in words.
+    in property <bool> loading;
     // The keys bound to send and queue (keys.json, PLAN.md D45).
     in property <string> send-key: "Enter";
     in property <string> queue-key: "Alt+Enter";
@@ -27,7 +30,8 @@ export component Composer inherits Rectangle {
     // A key in the message box: true when the app ran its action.
     callback shortcut(KeyEvent) -> bool;
     property <string> busy-hint: root.send-key + " steers · " + root.queue-key + " queues";
-    property <string> shown-hint: root.busy ? root.busy-hint
+    property <string> shown-hint: root.loading ? "Loading the session…"
+        : root.busy ? root.busy-hint
         : root.resume-word != "" ? "Last turn " + root.resume-word + ": Resume continues it"
         : root.hint;
     public function focus-input() { area.focus(); }
@@ -84,6 +88,7 @@ export component Composer inherits Rectangle {
                 text: root.busy ? "Stop" : "Send";
                 variant: root.busy ? "secondary" : "primary";
                 min-width: 96px;
+                enabled: !root.loading;
                 clicked => {
                     if (root.busy) {
                         root.stop();

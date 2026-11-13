@@ -84,3 +84,23 @@ export component MarkLine inherits Rectangle {
         }
     }
 }
+
+// A session's log is opening on a worker (D60, gate G10): the word, then
+// nothing else. A component root, so its wrapped line measures its real
+// width (see the note at the top of this file).
+export component LoadingLine inherits Rectangle {
+    in property <string> text: "Loading the session…";
+    height: self.preferred-height;
+    HorizontalLayout {
+        padding-left: Theme.space-l;
+        padding-right: Theme.space-l;
+        padding-top: Theme.space-m;
+        Text {
+            text: root.text;
+            color: Theme.dim;
+            font-size: Theme.font-s;
+            vertical-alignment: center;
+            wrap: word-wrap;
+        }
+    }
+}

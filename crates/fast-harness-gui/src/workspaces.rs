@@ -201,6 +201,8 @@ fn switch(app: &mut App, ui: &MainWindow, path: &Path) -> bool {
     app.cwd = path.to_path_buf();
     app.side.list.touch(path, now_ms());
     app.side.expanded.insert(slug(path));
+    // An open for the workspace left behind is dropped when it comes (D60).
+    crate::open_load::clear(app, ui);
     if let Some(err) = save_error(&app.side) {
         show_error(ui, err);
     }

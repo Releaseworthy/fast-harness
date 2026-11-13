@@ -6,6 +6,7 @@
 pub mod approvals;
 pub mod diff;
 mod live_tail;
+pub mod opened;
 mod replay;
 mod summary;
 pub mod tool_detail;

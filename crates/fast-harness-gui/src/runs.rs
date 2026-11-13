@@ -123,6 +123,25 @@ impl Runs {
         self.parked.get_mut(id)
     }
 
+    /// The parked run of `id`, taken out: it is no longer parked.
+    pub fn unpark(&mut self, id: &str) -> Option<Run> {
+        self.parked.remove(id)
+    }
+
+    /// Shows `run` of session `id`, whose log a worker opened (D60): the run
+    /// shown before is parked while live and dropped otherwise; its id comes
+    /// back so the caller can close its session.
+    pub fn take(&mut self, id: String, run: Run) -> Option<String> {
+        self.parked.remove(&id);
+        let old = mem::replace(&mut self.shown, run);
+        let old_id = self.id.replace(id)?;
+        if old.live() {
+            self.parked.insert(old_id, old);
+            return None;
+        }
+        Some(old_id)
+    }
+
     /// One event of session `id`'s turn, applied to that session's own
     /// transcript only. `Some(true)` when it is the shown session (only
     /// then may the rows, the status and the panels change), `None` when

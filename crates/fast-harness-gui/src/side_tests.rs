@@ -79,8 +79,17 @@ fn lists_and_the_trace_page_load_off_the_ui_thread_and_stale_results_drop() {
     let list = list_off_ui(&home, &cwd);
     with_app(|app, ui| workspaces::listed(app, ui, &key, 2, list));
     assert_eq!(kinds(&ui), ["workspace"]);
-    // Opening a session parses its log once, in the reopen.
+    // Opening a session parses its log on a worker (D60, gate G10): the
+    // result is handed in here, as the event loop would.
     with_app(|app, ui| app.open_session(ui, &first));
+    let opened = {
+        ui_thread::mark(false);
+        let opened = fast_harness_core::view::opened::load(&home, &cwd, &first);
+        ui_thread::mark(true);
+        opened
+    };
+    with_app(|app, ui| crate::open_load::arrived(app, ui, 1, &cwd, opened));
+    assert_eq!(with_app(|app, _| app.runs.is_shown(&first)), Some(true));
     ui.set_page("trace".into());
     with_app(|app, ui| app.refresh_trace(ui));
     assert_eq!(ui.get_trace_message(), trace_load::LOADING);

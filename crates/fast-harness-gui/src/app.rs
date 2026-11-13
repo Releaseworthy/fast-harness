@@ -42,6 +42,8 @@ pub struct App {
     pub panels: fast_harness_core::panels::Panels,
     /// The Trace page's read on a worker (D60).
     pub trace_load: crate::trace_load::TraceLoad,
+    /// The session open on a worker (D60, gate G10).
+    pub opens: crate::open_load::Opens,
 }
 
 thread_local! {
@@ -96,6 +98,7 @@ impl App {
             models_fetching: false,
             side,
             trace_load: Default::default(),
+            opens: Default::default(),
         }
     }
 
@@ -177,25 +180,19 @@ impl App {
         let cwd = self.cwd.clone();
         let fresh = || Ok(Run::new(cwd, None, Transcript::new()));
         let shown = self.runs.show(None, fresh);
+        // An open still running for another session is dropped when it comes.
+        crate::open_load::clear(self, ui);
         self.shown(ui, shown);
     }
 
-    /// Shows session `id`: its live run when it has one, else its log.
+    /// Shows session `id`: its live run when it has one, else its log, which
+    /// a worker opens (D60): the UI thread never parses a log (gate G10).
     pub fn open_session(&mut self, ui: &MainWindow, id: &str) {
-        let (rt, service, cwd) = (&self.rt, &self.service, self.cwd.clone());
-        let load = || {
-            // One parse: the events come from the reopen (D60); a damaged
-            // line's note shows now, once.
-            let (conv, events) = rt.open_with_events(&cwd, Some(id), false)?;
-            let view = Transcript::opened(&events, &conv.messages, conv.take_notes());
-            drop(events);
-            let session = service.open(conv, &cwd).map_err(crate::turn::error_text)?;
-            // The window shows approval requests and answers them (D64).
-            session.set_answering(true);
-            Ok(Run::new(cwd.clone(), Some(session), view))
-        };
-        let shown = self.runs.show(Some(id.to_string()), load);
-        self.shown(ui, shown);
+        if let Some(run) = self.runs.unpark(id) {
+            let shown = self.runs.take(id.to_string(), run);
+            return self.shown(ui, Ok(shown));
+        }
+        crate::open_load::open(self, ui, id);
     }
 
     /// After `Runs::show`: closes the session of a dropped idle run, then

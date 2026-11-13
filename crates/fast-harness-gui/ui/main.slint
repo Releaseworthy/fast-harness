@@ -72,6 +72,9 @@ export component MainWindow inherits Window {
     in-out property <string> page: "chat";
     // The shown session runs a turn (D39: each session has its own).
     in property <bool> busy;
+    // A session's log is being opened on a worker (D60, gate G10): the
+    // transcript says so in a word and the composer holds until it comes.
+    in property <bool> loading;
     // Steers not yet read and queued follow-ups of the shown session.
     in property <[QueueChip]> queue-chips;
     // How the shown session's last turn stopped when Resume applies.
@@ -286,6 +289,7 @@ export component MainWindow inherits Window {
                             transcript := TranscriptView {
                                 vertical-stretch: 1;
                                 rows: root.messages;
+                                loading: root.loading;
                                 toggle(i) => { root.toggle(i); }
                                 copy(t) => { root.copy-text(t); }
                                 link(u) => { root.open-url(u); }
@@ -321,6 +325,7 @@ export component MainWindow inherits Window {
                                     width: chat.column;
                                     height: self.preferred-height;
                                     busy: root.busy;
+                                    loading: root.loading;
                                     note: root.picker-note;
                                     resume-word: root.resume-word;
                                     submit => { root.submit(); }

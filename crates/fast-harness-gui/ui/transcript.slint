@@ -4,7 +4,7 @@ import { Theme, LinkText, Columns, Mark, AccentFill, Elevation, Card, Halo } fro
 import { Icons } from "icons.slint";
 import { BusySpinner, IconButton } from "widgets.slint";
 import { ScrollBar } from "scrollbar.slint";
-import { ThinkingQuote } from "blocks.slint";
+import { ThinkingQuote, LoadingLine } from "blocks.slint";
 import { ToolFrame } from "toolcard.slint";
 
 // The user's message: a bubble on the right, at most 80% of the column.
@@ -173,6 +173,9 @@ component MessageView {
 // the bottom sets it again; "Jump to latest" does it in one click.
 export component TranscriptView {
     in property <[MsgRow]> rows;
+    // A session's log is opening on a worker (D60): the list says so in a
+    // word, above the rows shown until its result comes.
+    in property <bool> loading;
     in-out property <bool> follow: true;
     property <length> bottom: min(0px, list.visible-height - list.content-height);
     // How far the view is above the bottom: exact while the last row is
@@ -195,6 +198,17 @@ export component TranscriptView {
         root.follow = true;
         list.content-y = root.bottom;
         root.last-height = list.content-height;
+    }
+
+    // The word shown while a session opens: a word, never colour only. It is
+    // a component (blocks.slint), since a plain layout under an `if` measures
+    // its wrapped text at its unwrapped width (pitfalls-gui).
+    if root.loading: Rectangle {
+        x: 0;
+        y: 0;
+        width: parent.width;
+        height: min(parent.height, loading-line.preferred-height);
+        loading-line := LoadingLine {}
     }
 
     list := ListView {

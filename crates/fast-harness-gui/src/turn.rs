@@ -22,6 +22,11 @@ pub fn send(app: &mut App, ui: &MainWindow, text: &str) -> bool {
     if text.trim().is_empty() {
         return false;
     }
+    // A session still opening has no history to send with (D60, G10).
+    if app.opens.loading() {
+        crate::app::show_error(ui, crate::open_load::LOADING);
+        return false;
+    }
     if app.runs.shown.busy {
         // A turn that ended meanwhile: the session queues the text.
         if let Some(session) = &app.runs.shown.session {

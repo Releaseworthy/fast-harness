@@ -17,6 +17,8 @@ mod approval_focus_tests;
 #[cfg(test)]
 mod layout_tests;
 #[cfg(test)]
+mod open_tests;
+#[cfg(test)]
 mod panels_tests;
 #[cfg(test)]
 mod prompt_settings_tests;
