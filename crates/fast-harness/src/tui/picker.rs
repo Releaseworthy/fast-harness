@@ -2,8 +2,10 @@
 //! above the input. Ctrl+P opens the models, Ctrl+E the efforts of the
 //! current model; Enter picks, Esc closes, other keys are ignored.
 
+use fast_harness_core::app::pickers::{effort_list, fetched, kept_row, model_list, Fetched};
+use fast_harness_core::app::words::Voice;
 use fast_harness_core::llm::anthropic::ModelInfo;
-use fast_harness_core::llm::catalog::{display_name, group_title, label, provider_of, providers};
+use fast_harness_core::llm::catalog::{display_name, label};
 use fast_harness_core::llm::{efforts, fit_effort};
 use ratatui::crossterm::event::{KeyCode, KeyEvent};
 use ratatui::layout::Rect;
@@ -52,36 +54,17 @@ pub fn next_effort(model: &str, current: Option<&str>) -> Option<String> {
     list.get(next).cloned()
 }
 
-/// True for a provider title row (empty value): never highlighted or picked.
-pub fn is_header(item: &(String, String)) -> bool {
-    item.0.is_empty()
+pub use fast_harness_core::app::pickers::is_header;
+
+/// The model rows of `catalog` in the terminal's words (`app::pickers`).
+fn model_rows(catalog: &[ModelInfo], model: &str) -> Vec<(String, String)> {
+    model_list(catalog, model, Voice::Terminal)
 }
 
-/// The model rows of `catalog` grouped by provider (PLAN.md D24): a title row
-/// ("Claude", a providers/*.json title) before each non-empty group, and `model`
-/// first in its group when it is not listed.
-fn model_items(catalog: &[ModelInfo], model: &str) -> Vec<(String, String)> {
-    let mut items = Vec::new();
-    for provider in providers() {
-        let mut group: Vec<(String, String)> = catalog
-            .iter()
-            .filter(|m| provider_of(&m.id) == provider)
-            .map(|m| {
-                let tag = if m.deprecated { "  deprecated" } else { "" };
-                let label = format!("{:<18} {}{tag}", m.display_name, m.id);
-                (m.id.clone(), label)
-            })
-            .collect();
-        let listed = catalog.iter().any(|m| m.id == model);
-        if !listed && !model.is_empty() && provider_of(model) == provider {
-            group.insert(0, (model.to_string(), model.to_string()));
-        }
-        if !group.is_empty() {
-            items.push((String::new(), group_title(provider).to_string()));
-            items.extend(group);
-        }
-    }
-    items
+/// The efforts `catalog` lists for `model`, else the known ones.
+fn effort_rows(catalog: &[ModelInfo], model: &str) -> Vec<(String, String)> {
+    let list = effort_list(catalog, model);
+    list.into_iter().map(|e| (e.clone(), e)).collect()
 }
 
 /// The nearest pickable row from `index`, looking `forward` first, then back.
@@ -98,17 +81,6 @@ fn settle(items: &[(String, String)], index: usize, forward: bool) -> usize {
     found.unwrap_or(index)
 }
 
-/// The efforts `catalog` lists for `model`, else the known ones.
-fn effort_items(catalog: &[ModelInfo], model: &str) -> Vec<(String, String)> {
-    let listed = catalog
-        .iter()
-        .find(|m| m.id == model)
-        .map(|m| m.efforts.clone())
-        .filter(|list| !list.is_empty());
-    let list = listed.unwrap_or_else(|| efforts(model));
-    list.into_iter().map(|e| (e.clone(), e)).collect()
-}
-
 impl Picker {
     pub fn new(
         kind: PickerKind,
@@ -117,8 +89,8 @@ impl Picker {
         effort: Option<&str>,
     ) -> Picker {
         let (items, current) = match kind {
-            PickerKind::Model => (model_items(catalog, model), Some(model.to_string())),
-            PickerKind::Effort => (effort_items(catalog, model), effort.map(String::from)),
+            PickerKind::Model => (model_rows(catalog, model), Some(model.to_string())),
+            PickerKind::Effort => (effort_rows(catalog, model), effort.map(String::from)),
         };
         let found = items
             .iter()
@@ -167,25 +139,22 @@ impl Ui {
     /// The fetch ended: a list replaces the catalog and refreshes the open
     /// picker in place (same highlighted value); an error is shown in its
     /// title and the list stays.
-    pub fn models_fetched(&mut self, result: Result<Vec<ModelInfo>, String>) {
+    pub fn models_fetched(&mut self, result: Fetched) {
         self.fetching = false;
-        let list = match result {
-            Ok(list) => list,
-            Err(err) => {
+        match fetched(result, Voice::Terminal) {
+            Ok(list) => self.catalog = list,
+            Err(note) => {
                 if let Some(picker) = self.picker.as_mut() {
-                    picker.note = Some(format!("error: {err}"));
+                    picker.note = Some(note);
                 }
                 return;
             }
-        };
-        self.catalog = list;
+        }
         let Some(old) = self.picker.take() else {
             return;
         };
         let mut picker = Picker::new(old.kind, &self.catalog, &self.model, self.effort.as_deref());
-        let keep = old.items.get(old.selected).map(|item| &item.0);
-        let kept = picker.items.iter().position(|i| Some(&i.0) == keep);
-        if let Some(index) = kept.filter(|i| !is_header(&picker.items[*i])) {
+        if let Some(index) = kept_row(&old.items, old.selected, &picker.items) {
             picker.selected = index;
         }
         picker.rows = old.rows;

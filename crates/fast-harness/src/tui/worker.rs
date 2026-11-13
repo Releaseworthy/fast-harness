@@ -11,8 +11,7 @@ use std::time::Duration;
 
 use fast_harness_core::accounts::oauth;
 use fast_harness_core::accounts::pool::{AccountPool, USAGE_EVERY_MS};
-use fast_harness_core::app::Runtime;
-use fast_harness_core::llm::anthropic::ModelInfo;
+use fast_harness_core::app::{pickers, Runtime};
 use fast_harness_core::net::UreqTransport;
 use fast_harness_core::platform;
 use ratatui::crossterm::event;
@@ -25,7 +24,7 @@ use crate::accounts_cmd::label;
 const LOGIN_TIMEOUT: Duration = Duration::from_secs(600);
 
 /// One live model list read, run off the UI thread.
-pub type FetchJob = Box<dyn FnOnce() -> Result<Vec<ModelInfo>, String> + Send>;
+pub type FetchJob = Box<dyn FnOnce() -> pickers::Fetched + Send>;
 
 /// The real fetch: GET /v1/models with the credential of this moment.
 pub fn live_fetch(rt: &Runtime) -> FetchJob {
@@ -35,12 +34,10 @@ pub fn live_fetch(rt: &Runtime) -> FetchJob {
 
 /// Runs job on a thread; the result comes back in Msg::Models.
 pub fn start_fetch(job: FetchJob, tx: Sender<Msg>) -> io::Result<()> {
-    thread::Builder::new()
-        .name("fast-harness-models".into())
-        .spawn(move || {
-            let _ = tx.send(Msg::Models(job()));
-        })
-        .map(|_| ())
+    let deliver = move |fetched| {
+        let _ = tx.send(Msg::Models(fetched));
+    };
+    pickers::spawn_fetch(job, deliver).map(|_| ())
 }
 
 /// Forwards terminal events until the UI is gone.

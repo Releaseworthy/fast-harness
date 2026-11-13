@@ -289,6 +289,7 @@ impl Runtime {
 mod ext_list;
 mod host;
 mod models;
+pub mod pickers;
 mod plugins;
 pub mod reflect;
 mod settings;
