@@ -106,6 +106,7 @@ One file per decision in [docs/decisions/](docs/decisions/), moved there unchang
 - D74 [GUI subagents: a pill, a popover and a read-only child view](docs/decisions/D74.md)
 - D75 [The window renders at a fixed scale on the vsync renderer](docs/decisions/D75.md)
 - D76 [Settings and About are dialogs; Subagents and Jobs are tabs](docs/decisions/D76.md): modal dialogs over the window; the two popover triggers sit after Trace
+- D77 [Turn navigator in the chat's right gutter, wider chat margins](docs/decisions/D77.md)
 
 ## Architecture
 

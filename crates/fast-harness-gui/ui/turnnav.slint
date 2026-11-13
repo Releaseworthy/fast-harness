@@ -1,0 +1,139 @@
+// The turn navigator (PLAN.md D77): a column of short ticks in the chat's
+// right gutter, one per user turn. The tick of the turn at the top of the
+// view is longer and darker; hovering a tick shows a card with the prompt
+// and the start of the reply; a click, Enter or Space scrolls to the turn.
+// The rows come from Rust (src/turn_nav.rs) once per transcript change.
+import { Theme, Card } from "parts.slint";
+import { FocusRing } from "widgets.slint";
+
+// One turn: its number (from 1), its user row, the prompt's first line and
+// the start of the reply, both already shortened.
+export struct TurnTick {
+    number: int,
+    row: int,
+    prompt: string,
+    preview: string,
+}
+
+export global TurnsUi {
+    // At most 60 ticks: a long session is sampled (turn_nav.rs).
+    in property <[TurnTick]> turns;
+    // The row at the top of the transcript view (set by transcript.slint).
+    in-out property <int> top-row;
+    // The hovered tick (-1: none) and the column's geometry, in window
+    // coordinates (for the tests).
+    in-out property <int> hovered: -1;
+    in-out property <length> nav-x;
+    in-out property <length> nav-top;
+    in-out property <length> nav-step;
+    in-out property <bool> nav-shown;
+    in-out property <length> column-right;
+}
+
+// The card left of a hovered tick: the prompt in bold on one line, the
+// reply's start in dim text on at most three.
+component TurnCard inherits Card {
+    in property <TurnTick> tick;
+    radius: Theme.radius-l;
+    elevation: 1.5;
+    height: 98px;
+    VerticalLayout {
+        padding-left: Theme.space-l;
+        padding-right: Theme.space-l;
+        padding-top: Theme.space-m;
+        padding-bottom: Theme.space-m;
+        spacing: Theme.space-xs;
+        Text {
+            text: root.tick.prompt;
+            color: Theme.text;
+            font-size: Theme.font-m;
+            font-weight: 700;
+            overflow: elide;
+        }
+        Text {
+            vertical-stretch: 1;
+            text: root.tick.preview == "" ? "No reply yet" : root.tick.preview;
+            color: Theme.dim;
+            font-size: Theme.font-s;
+            wrap: word-wrap;
+            overflow: elide;
+        }
+    }
+}
+
+export component TurnNav {
+    in property <int> top-row;
+    // The card's width: at most half the view.
+    in property <length> card-width: 320px;
+    // The view's height: the card stays inside it.
+    in property <length> room;
+    callback go(int);
+    property <int> count: TurnsUi.turns.length;
+    property <length> step: min(12px, (root.height - 16px) / max(1, root.count));
+    property <length> top: (root.height - root.step * root.count) / 2;
+    width: 20px;
+    // The first tick's centre in window coordinates, for the tests.
+    property <length> probe-x: self.absolute-position.x + self.width - 8px;
+    property <length> probe-y: self.absolute-position.y + root.top + root.step / 2;
+    function probe() {
+        TurnsUi.nav-step = root.step;
+        TurnsUi.nav-x = root.probe-x;
+        TurnsUi.nav-top = root.probe-y;
+    }
+    init => { root.probe(); }
+    changed step => { root.probe(); }
+    changed probe-x => { root.probe(); }
+    changed probe-y => { root.probe(); }
+    for tick[i] in TurnsUi.turns: Rectangle {
+        // The turn shown at the top: its row is above the top and the next
+        // turn's is not.
+        property <bool> current: tick.row <= root.top-row
+            && (i + 1 >= root.count || TurnsUi.turns[i + 1].row > root.top-row);
+        property <bool> lit: ta.has-hover || fs.has-focus;
+        x: 0;
+        y: root.top + i * root.step;
+        width: root.width;
+        height: root.step;
+        accessible-role: button;
+        accessible-label: "Go to turn " + tick.number + ": " + tick.prompt;
+        accessible-action-default => { root.go(tick.row); }
+        Rectangle {
+            x: parent.width - self.width - 2px;
+            y: (parent.height - self.height) / 2;
+            width: current ? 16px : lit ? 13px : 10px;
+            height: current ? 3px : 2px;
+            border-radius: 1px;
+            background: current ? Theme.text : lit ? Theme.dim : Theme.border;
+            animate width { duration: Theme.quick; }
+        }
+        ta := TouchArea {
+            mouse-cursor: pointer;
+            clicked => { root.go(tick.row); }
+            changed has-hover => {
+                if self.has-hover {
+                    TurnsUi.hovered = i;
+                } else if TurnsUi.hovered == i {
+                    TurnsUi.hovered = -1;
+                }
+            }
+        }
+        fs := FocusScope {
+            focus-on-click: false;
+            key-pressed(event) => {
+                if event.text == Key.Return || event.text == " " {
+                    root.go(tick.row);
+                    return accept;
+                }
+                return reject;
+            }
+        }
+        if fs.has-focus: FocusRing { radius: 2px; }
+        if TurnsUi.hovered == i || fs.has-focus: TurnCard {
+            tick: tick;
+            width: root.card-width;
+            x: -self.width - Theme.space-xs;
+            // Centred on the tick, kept inside the view.
+            y: max(-parent.y - root.y, min(root.room - root.y - parent.y - self.height, (parent.height - self.height) / 2));
+        }
+    }
+}

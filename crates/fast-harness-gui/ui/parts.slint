@@ -76,6 +76,12 @@ export global Columns {
     pure public function side(width: length, max-width: length) -> length {
         return max(Theme.space-l, (width - max-width) / 2);
     }
+    // The chat column's side margin (D77): the right one holds the turn
+    // navigator, the left one matches so the column stays centred. A
+    // narrow view shrinks the margins before the content.
+    pure public function chat(width: length) -> length {
+        return max(max(Theme.space-l, min(48px, (width - 480px) / 6)), (width - Theme.column-width) / 2);
+    }
 }
 
 // A small clickable text (keyboard reachable through the accessibility

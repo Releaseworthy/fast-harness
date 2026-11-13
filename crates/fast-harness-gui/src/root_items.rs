@@ -37,6 +37,7 @@ mod images_view;
 mod thumbs;
 mod trace_rows;
 mod turn;
+mod turn_nav;
 mod window_events;
 mod window_state;
 mod wire;
