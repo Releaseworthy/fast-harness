@@ -142,10 +142,13 @@ pub fn subject(tool: &str, raw: &str, cwd: &Path) -> Subject {
         if let Some(command) = text("command") {
             let key = command.split_whitespace().collect::<Vec<_>>().join(" ");
             // A background job outlives the call: its own words and grants.
+            // Its key starts with a newline, which no other key of this tool
+            // can (commands are whitespace collapsed, the raw fallback is
+            // trimmed), so a command typed as "background: x" is not it.
             if args.get("background").and_then(Value::as_bool) == Some(true) {
                 return Subject {
                     summary: clip(&format!("run in the background: {command}")),
-                    key: format!("background: {key}"),
+                    key: format!("\nbackground\n{key}"),
                 };
             }
             return Subject {

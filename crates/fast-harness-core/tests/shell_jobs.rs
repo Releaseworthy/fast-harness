@@ -225,6 +225,9 @@ fn a_background_start_asks_like_shell_and_reads_never_ask() {
         asked.key,
         subject("shell", r#"{"command":"npm run dev"}"#, &cwd).key
     );
+    let typed = r#"{"command":"background: npm run dev"}"#;
+    let typed = subject("shell", typed, &cwd).key;
+    assert_ne!(asked.key, typed, "a typed prefix is not a background grant");
     let registry = tools::builtin();
     assert_eq!(registry.effect("job_output"), Some(Effect::Read));
     assert_eq!(registry.effect("job_list"), Some(Effect::Read));
