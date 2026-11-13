@@ -148,6 +148,8 @@ component MessageView {
     // rows of an open step 20px more, right of the step's rail.
     property <length> indent: msg.turn-rail ? 20px : 0px;
     property <bool> turn-line: msg.turn-line != "";
+    // The row's own content draws: not inside a folded turn.
+    property <bool> shown: !msg.turn-hidden;
     property <bool> line: msg.step-summary != "" && !msg.turn-hidden;
     property <bool> blank: root.spacer || msg.turn-hidden ? !root.turn-line : msg.folded && !root.line && (msg.kind != "assistant" || msg.text == "");
     property <length> top: root.blank || msg.kind == "footer" ? 0px : msg.kind == "user" ? Theme.space-l : Theme.space-s;
@@ -173,21 +175,24 @@ component MessageView {
             failed: msg.step-failed;
             toggled => { root.step-toggle(msg.step-head); }
         }
+        // A folded turn's rows build no content at all: `visible: false`
+        // with `max-height: 0` kept each row's min height (wrapped text
+        // wins over max-height), so the rows after the fold drew blank
+        // (D80, 2026-11-14). The parts are components, so `if` is safe
+        // from slint#13655.
         VerticalLayout {
-            visible: !msg.turn-hidden;
-            max-height: msg.turn-hidden ? 0px : 1000000px;
             padding-left: msg.rail ? 20px : 0px;
-            if msg.kind == "user": UserBubble {
+            if root.shown && msg.kind == "user": UserBubble {
                 msg: msg;
                 copy(t) => { root.copy(t); }
             }
-            if msg.kind == "assistant": AssistantBlock {
+            if root.shown && msg.kind == "assistant": AssistantBlock {
                 msg: msg;
                 copy(t) => { root.copy(t); }
                 toggle => { root.toggle(); }
                 link(u) => { root.link(u); }
             }
-            if msg.kind == "tool" && !msg.folded: ToolFrame {
+            if root.shown && msg.kind == "tool" && !msg.folded: ToolFrame {
                 tool: msg.tool;
                 error: msg.error;
                 not-run: msg.not-run;
@@ -199,9 +204,9 @@ component MessageView {
                 approval: msg.approval;
                 copy => { root.copy(msg.text); }
             }
-            if msg.kind == "note": Note { msg: msg; }
+            if root.shown && msg.kind == "note": Note { msg: msg; }
             if root.spacer: Rectangle { height: root.pad; }
-            if msg.kind == "footer" && !msg.folded: Text {
+            if root.shown && msg.kind == "footer" && !msg.folded: Text {
                 text: msg.text;
                 font-size: Theme.font-xs;
                 color: Theme.dim;
@@ -304,6 +309,21 @@ export component TranscriptView {
             TurnsUi.top-row = i;
         }
     }
+    // The row at the top is not the target and the target is not laid out
+    // (a laid out target pins the view to itself): the list's estimate put
+    // the view past it, as after a fold the estimate lags the rows' real
+    // heights (go(0) landed at the end of turn 1, 2026-11-14). Half a view
+    // toward it at a time; once laid out, its own pin takes over.
+    function seek(i: int) {
+        if root.target < 0 || i == root.target {
+            return;
+        }
+        if i > root.target {
+            list.content-y = min(0px, list.content-y + list.visible-height / 2);
+        } else if list.content-y > root.bottom + 1px {
+            list.content-y = max(root.bottom, list.content-y - list.visible-height / 2);
+        }
+    }
     list := ListView {
         width: 100%;
         height: root.height;
@@ -322,9 +342,11 @@ export component TranscriptView {
             changed y => {
                 if self.pinned { root.pin(i, self.y); }
                 if self.at-top && root.target < 0 { TurnsUi.top-row = i; }
+                if self.at-top { root.seek(i); }
             }
             changed at-top => {
                 if self.at-top && root.target < 0 { TurnsUi.top-row = i; }
+                if self.at-top { root.seek(i); }
             }
             copy(t) => { root.copy(t); }
             toggle => { root.toggle(i); }

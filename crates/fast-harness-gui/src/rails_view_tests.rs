@@ -247,9 +247,9 @@ fn rails_sit_at_their_indents_and_run_unbroken() {
 
 /// The rails shot's order (2026-11-14: rows after the fold stayed blank
 /// until a scroll): a navigator click to turn 2, the fold of turn 2, a
-/// click back to turn 1. Fails: D80 to-follow (not fixed yet).
+/// click back to turn 1. The folded rows kept their height (max-height 0
+/// lost to their wrapped text's min height): they now build no content.
 #[test]
-#[ignore = "known bug, D80 to-follow: rows after a turn folded while scrolled stay blank"]
 fn the_rows_after_a_turn_folded_while_scrolled_draw_at_once() {
     use crate::turn_nav_view_tests::tick;
     use slint::platform::{PointerEventButton, WindowEvent};

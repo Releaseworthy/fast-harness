@@ -23,6 +23,8 @@ mod drafts_tests;
 #[cfg(test)]
 mod dropdown_tests;
 #[cfg(test)]
+mod fold_view_tests;
+#[cfg(test)]
 mod jobs_layout_tests;
 #[cfg(test)]
 mod layout_tests;
