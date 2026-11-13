@@ -15,18 +15,34 @@ use fast_harness_core::view::opened::{self, Opened};
 use super::app::{Msg, Tui};
 use super::ui::Action;
 
+/// Fields drop in order: the TUI first, then `clean`, so no session or
+/// worker still holds or writes the folder when it is removed.
 struct Env {
     tui: Tui,
-    rx: Receiver<Msg>,
-    root: PathBuf,
     home: PathBuf,
     cwd: PathBuf,
     a: String,
     b: String,
+    clean: Clean,
 }
 
-impl Drop for Env {
+/// Removes the test folder once every sender of the TUI's channel is gone:
+/// the open workers and turn threads write the session index and
+/// `workspaces.json` before they drop theirs.
+struct Clean {
+    rx: Receiver<Msg>,
+    root: PathBuf,
+}
+
+impl Drop for Clean {
     fn drop(&mut self) {
+        let start = std::time::Instant::now();
+        while start.elapsed() < Duration::from_secs(30) {
+            match self.rx.recv_timeout(Duration::from_millis(100)) {
+                Err(mpsc::RecvTimeoutError::Disconnected) => break,
+                _ => continue,
+            }
+        }
         let _ = std::fs::remove_dir_all(&self.root);
     }
 }
@@ -56,12 +72,11 @@ fn setup(tag: &str) -> Env {
     let tui = Tui::new(rt, cwd.clone(), opened, tx).unwrap();
     Env {
         tui,
-        rx,
-        root,
         home,
         cwd,
         a,
         b,
+        clean: Clean { rx, root },
     }
 }
 
@@ -133,6 +148,7 @@ fn a_sent_draft_is_gone_from_its_session_and_from_new_session() {
     // The turn fails on the refused connection; wait for its end.
     while env.tui.ui.running {
         let msg = env
+            .clean
             .rx
             .recv_timeout(Duration::from_secs(20))
             .expect("turn end");
@@ -168,6 +184,21 @@ fn a_dropped_or_failed_open_never_swaps_the_draft_shown() {
     open(&mut env, "20990101-000000-0000", 5);
     assert_eq!(env.tui.session, env.b);
     assert_eq!(text(&env), "typed while B loads");
+}
+
+#[test]
+fn a_prompt_refused_while_a_session_loads_stays_as_its_draft() {
+    let mut env = setup("refused");
+    let b = env.b.clone();
+    env.tui.act(Action::Resume(b.clone()));
+    env.tui.ui.input.insert("typed while B loads");
+    let action = env.tui.ui.key(enter());
+    env.tui.act(action);
+    assert_eq!(env.tui.ui.status, "a session is loading");
+    assert_eq!(text(&env), "typed while B loads", "kept in the composer");
+    arrive(&mut env, &b, 1);
+    assert_eq!(env.tui.session, b);
+    assert_eq!(text(&env), "typed while B loads", "B's draft once B opened");
 }
 
 fn enter() -> ratatui::crossterm::event::KeyEvent {

@@ -167,6 +167,10 @@ fn a_sent_draft_is_gone_from_its_session_and_from_new_session() {
     assert_eq!(draft(&env), "next for it");
     open(&env.a);
     assert_eq!(draft(&env), "for A");
+    // The turn thread writes the session index and `workspaces.json` as it
+    // ends: wait for it, or the folder comes back after its removal.
+    let session = with_app(|app, _| app.runs.get_mut(&created)?.session.clone()).flatten();
+    session.expect("the created session stays open").wait();
 }
 
 #[test]

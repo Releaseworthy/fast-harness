@@ -378,17 +378,13 @@ impl Tui {
         }
         // `/help` and the user's commands/*.md (PLAN.md D42).
         let expanded = self.rt().slash(&text);
+        let typed = text;
         let text = match expanded {
             Slash::Send(text) => text,
             Slash::Help(help) => return self.note(NoteKind::Info, help),
             Slash::Error(err) => return self.note(NoteKind::Error, err),
         };
-        if self.ui.loading {
-            self.ui.status = "a session is loading".into();
-            return;
-        }
-        if self.current.running() {
-            self.ui.status = "a turn is running".into();
+        if self.refused(&typed) {
             return;
         }
         // The new session's prompt now belongs to its id (D65).
@@ -400,6 +396,24 @@ impl Tui {
         self.transcript.push_user_images(&text, images);
         self.ui.images.clear();
         self.start(Start::Text(text));
+    }
+
+    /// A prompt that cannot start now (a session loads, a turn runs) goes
+    /// back to the empty composer: the draft of the session it was typed
+    /// for (D65), never lost.
+    fn refused(&mut self, typed: &str) -> bool {
+        let why = if self.ui.loading {
+            "a session is loading"
+        } else if self.current.running() {
+            "a turn is running"
+        } else {
+            return false;
+        };
+        self.ui.status = why.into();
+        if self.ui.input.text().is_empty() {
+            self.ui.input.insert(typed);
+        }
+        true
     }
 
     fn open(&mut self, screen: Screen) {
