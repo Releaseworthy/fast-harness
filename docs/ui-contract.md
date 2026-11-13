@@ -90,6 +90,8 @@ With `"approvals": "ask"` a call can wait for an answer (PLAN.md D64). Both fron
 - `MainWindow.adding-key`: property <bool>
 - `MainWindow.answer-approval`: callback
 - `MainWindow.approval`: property <ApprovalView>
+- `MainWindow.ask-id`: property <string>
+- `MainWindow.ask-toggle`: callback
 - `MainWindow.attach-image`: callback
 - `MainWindow.attached`: property <[ImageChip]>
 - `MainWindow.busy`: property <bool>
@@ -117,6 +119,7 @@ With `"approvals": "ask"` a call can wait for an answer (PLAN.md D64). Both fron
 - `MainWindow.picker-note`: property <string>
 - `MainWindow.pickers-opened`: callback
 - `MainWindow.providers`: property <[ProviderCard]>
+- `MainWindow.questions`: property <[AskQuestion]>
 - `MainWindow.queue`: callback
 - `MainWindow.queue-chips`: property <[QueueChip]>
 - `MainWindow.queue-key`: property <string>

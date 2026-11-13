@@ -236,6 +236,9 @@ export component TranscriptView {
     // word, above the rows shown until its result comes.
     in property <bool> loading;
     in-out property <bool> follow: true;
+    // Empty space after the last row: the session popup's height (D81).
+    in property <length> pad;
+    changed pad => { if root.follow { list.content-y = root.bottom; } }
     property <length> bottom: min(0px, list.visible-height - list.content-height);
     // How far the view is above the bottom: exact while the last row is
     // laid out, whatever the ListView's height estimate.
@@ -285,7 +288,9 @@ export component TranscriptView {
     }
     list := ListView {
         width: 100%;
-        height: 100%;
+        // The frame keeps its size; the rows end above the popup (a ListView
+        // takes no child after its `for`, so the pad is cut from the list).
+        height: root.height - root.pad;
         vertical-scrollbar-policy: ScrollBarPolicy.always-off;
         for item[i] in root.rows: MessageView {
             // The row under the view's top edge: the navigator's current turn.

@@ -128,6 +128,7 @@ pub fn connect(ui: &MainWindow) {
     });
     // What the `approval` keys and the prompt's buttons answer (D64).
     crate::approval::connect(ui);
+    crate::ask::connect(ui);
 }
 
 /// The composer hint shows the keys bound to send and queue.

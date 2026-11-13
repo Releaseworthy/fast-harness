@@ -1,0 +1,197 @@
+import { Theme, Mark } from "parts.slint";
+import { Icons } from "icons.slint";
+import { ActionButton } from "widgets.slint";
+import { ScrollBar } from "scrollbar.slint";
+
+// One option of a question (PLAN.md D81); the recommended one comes first.
+export struct AskOption { label: string, description: string, recommended: bool, chosen: bool }
+// One question of an `ask_user_question` call; `other` is the custom answer.
+export struct AskQuestion {
+    id: string, header: string, question: string, multi: bool,
+    options: [AskOption], other-chosen: bool, other-text: string,
+}
+
+// A radio button (round) or a check box (square) with its mark.
+component Choice inherits Rectangle {
+    in property <bool> multi;
+    in property <bool> chosen;
+    width: 16px;
+    height: 16px;
+    border-radius: root.multi ? 3px : 8px;
+    border-width: 2px;
+    border-color: root.chosen ? Theme.accent : Theme.dim;
+    if root.chosen && !root.multi: Rectangle {
+        width: 8px; height: 8px; border-radius: 4px; background: Theme.accent;
+    }
+    if root.chosen && root.multi: Mark { text: Icons.check; color: Theme.accent; font-size: 11px; }
+}
+
+// One option row: the mark, the label, "Recommended" with its icon, and
+// the description dim under it. The cursor row has the selection fill.
+component OptionRow inherits Rectangle {
+    in property <AskOption> option;
+    in property <bool> multi;
+    in property <bool> current;
+    callback picked();
+    border-radius: Theme.radius-s;
+    background: root.current ? Theme.selection : transparent;
+    accessible-role: checkbox;
+    accessible-checked: root.option.chosen;
+    accessible-label: root.option.label + (root.option.recommended ? ", Recommended" : "");
+    accessible-action-default => { root.picked(); }
+    TouchArea { clicked => { root.picked(); } }
+    HorizontalLayout {
+        padding: Theme.space-xs;
+        spacing: Theme.space-s;
+        Choice { multi: root.multi; chosen: root.option.chosen; y: 2px; }
+        VerticalLayout {
+            horizontal-stretch: 1;
+            HorizontalLayout {
+                spacing: Theme.space-s;
+                Text { text: root.option.label; color: Theme.text; font-size: Theme.font-s; wrap: word-wrap; horizontal-stretch: 1; }
+                if root.option.recommended: Mark { text: Icons.lightning-bolt; color: Theme.accent; font-size: Theme.font-xs; vertical-alignment: center; }
+                if root.option.recommended: Text { text: "Recommended"; color: Theme.accent; font-size: Theme.font-xs; vertical-alignment: center; }
+            }
+            Text {
+                text: root.option.description;
+                height: root.option.description == "" ? 0px : self.preferred-height;
+                color: Theme.dim;
+                font-size: Theme.font-xs;
+                wrap: word-wrap;
+            }
+        }
+    }
+}
+
+// One question: its header, its text, the options and the "Other…" row
+// with its box (typing chooses it).
+component QuestionBlock inherits VerticalLayout {
+    in property <AskQuestion> q;
+    in property <int> cursor: -2;
+    callback toggle(int);
+    callback other(string);
+    callback submit();
+    spacing: 2px;
+    Text {
+        text: root.q.header;
+        height: root.q.header == "" ? 0px : self.preferred-height;
+        color: Theme.accent;
+        font-size: Theme.font-xs;
+        font-weight: 700;
+    }
+    Text { text: root.q.question + (root.q.multi ? "  (choose any)" : ""); color: Theme.text; font-size: Theme.font-m; font-weight: 600; wrap: word-wrap; }
+    for o[oi] in root.q.options: OptionRow {
+        option: o; multi: root.q.multi; current: root.cursor == oi;
+        picked => { root.toggle(oi); }
+    }
+    Rectangle {
+        border-radius: Theme.radius-s;
+        background: root.cursor == root.q.options.length ? Theme.selection : transparent;
+        height: other-row.preferred-height;
+        accessible-role: checkbox;
+        accessible-checked: root.q.other-chosen;
+        accessible-label: "Other, type your own answer";
+        other-row := HorizontalLayout {
+            padding: Theme.space-xs;
+            spacing: Theme.space-s;
+            Choice { multi: root.q.multi; chosen: root.q.other-chosen; y: 6px; }
+            Rectangle {
+                horizontal-stretch: 1;
+                height: 28px;
+                border-radius: Theme.radius-s;
+                background: Theme.code;
+                border-width: 1px;
+                border-color: field.has-focus ? Theme.accent : Theme.line;
+                field := TextInput {
+                    x: Theme.space-s;
+                    width: parent.width - 2 * Theme.space-s;
+                    vertical-alignment: center;
+                    text: root.q.other-text;
+                    color: Theme.text;
+                    font-size: Theme.font-s;
+                    single-line: true;
+                    accessible-label: "Other answer";
+                    edited => { root.other(self.text); }
+                    accepted => { root.submit(); }
+                }
+                if field.text == "" && !field.has-focus: Text {
+                    x: Theme.space-s; text: "Other…"; color: Theme.dim; font-size: Theme.font-s; vertical-alignment: center;
+                }
+                TouchArea { enabled: !field.has-focus; clicked => { field.focus(); root.toggle(-1); } }
+            }
+        }
+    }
+    public function focus-other() { field.focus(); }
+}
+
+// The questions (PLAN.md D81) in the session popup: all of them stacked,
+// scrolling inside past `most`. Keys: Up and Down move the cursor, Space
+// chooses, Tab goes to the next question, Enter submits, Esc skips.
+export component AskPrompt inherits Rectangle {
+    in property <[AskQuestion]> questions;
+    in property <length> most: 400px;
+    callback toggle(int, int);
+    callback other(int, string);
+    callback submit();
+    callback skip();
+    property <int> cur-q: 0;
+    property <int> cur-o: 0;
+    property <length> footer: buttons.preferred-height + Theme.space-s;
+    border-radius: Theme.radius-m;
+    background: Theme.raised;
+    border-width: 2px;
+    border-color: Theme.accent;
+    accessible-role: groupbox;
+    accessible-label: "Questions from the agent";
+    preferred-height: min(list.preferred-height, root.most - root.footer - 2 * Theme.space-m) + root.footer + 2 * Theme.space-m;
+    public function grab() { keys.focus(); }
+    keys := FocusScope {
+        key-pressed(e) => {
+            let count = root.questions[root.cur-q].options.length;
+            if e.text == Key.Escape { root.skip(); return accept; }
+            if e.text == Key.Return { root.submit(); return accept; }
+            if e.text == Key.UpArrow { root.cur-o = max(0, root.cur-o - 1); return accept; }
+            if e.text == Key.DownArrow { root.cur-o = min(count, root.cur-o + 1); return accept; }
+            if e.text == Key.Tab { root.cur-q = mod(root.cur-q + 1, max(1, root.questions.length)); root.cur-o = 0; return accept; }
+            if e.text == Key.Backtab { root.cur-q = mod(root.cur-q + root.questions.length - 1, max(1, root.questions.length)); root.cur-o = 0; return accept; }
+            if e.text == " " { root.toggle(root.cur-q, root.cur-o == count ? -1 : root.cur-o); return accept; }
+            reject
+        }
+    VerticalLayout {
+        padding: Theme.space-m;
+        spacing: Theme.space-s;
+        Rectangle {
+            height: min(list.preferred-height, root.most - root.footer - 2 * Theme.space-m);
+            flick := Flickable {
+                width: parent.width - Theme.space-s;
+                content-height: list.preferred-height;
+                list := VerticalLayout {
+                    width: flick.width;
+                    spacing: Theme.space-m;
+                    for q[qi] in root.questions: QuestionBlock {
+                        q: q;
+                        cursor: qi == root.cur-q && keys.has-focus ? root.cur-o : -2;
+                        toggle(oi) => { root.cur-q = qi; root.toggle(qi, oi); }
+                        other(t) => { root.cur-q = qi; root.other(qi, t); }
+                        submit => { root.submit(); }
+                    }
+                }
+            }
+            if list.preferred-height > flick.height: ScrollBar {
+                x: parent.width - Theme.space-s;
+                width: Theme.space-s;
+                content-y: flick.content-y;
+                content-height: list.preferred-height;
+                visible-height: flick.height;
+                scroll-to(y) => { flick.content-y = y; }
+            }
+        }
+        buttons := HorizontalLayout {
+            spacing: Theme.space-s;
+            alignment: start;
+            ActionButton { text: "Submit (Enter)"; icon: Icons.send; clicked => { root.submit(); } }
+            ActionButton { text: "Skip (Esc)"; icon: Icons.close; clicked => { root.skip(); } }
+        }
+    }
+}
+}

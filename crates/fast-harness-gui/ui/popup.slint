@@ -1,0 +1,53 @@
+import { ApprovalPrompt } from "approval.slint";
+import { AskPrompt, AskQuestion } from "ask.slint";
+import { ApprovalView } from "types.slint";
+
+// The session popup (PLAN.md D81): one frame at the bottom of the chat
+// column, over the composer, for an approval request (D64) or for the
+// questions of `ask_user_question`. An approval comes first. The chat
+// keeps its size: the transcript gets this height as bottom padding, so
+// its end sits right above the popup.
+export component SessionPopup inherits Rectangle {
+    in property <ApprovalView> approval;
+    in property <[AskQuestion]> questions;
+    in property <bool> asking;
+    in property <length> most: 400px;
+    callback answer(string);
+    callback toggle(int, int);
+    callback other(int, string);
+    // true: skipped.
+    callback reply(bool);
+    callback stop();
+    property <bool> approving: root.approval.id != "";
+    preferred-height: root.approving ? prompt.preferred-height : root.asking ? ask.preferred-height : 0px;
+    // The popup takes the focus: the composer under it is hidden. With an
+    // approval the scope only maps Esc to Stop; the allow answers keep
+    // their chords (main.slint `approval-key`) and Enter or Space never
+    // allow (D64).
+    public function grab() {
+        if root.approving { scope.focus(); } else { ask.grab(); }
+    }
+    scope := FocusScope {
+        key-pressed(e) => {
+            if e.text == Key.Escape { root.stop(); return accept; }
+            if e.text == Key.Return || e.text == " " { return accept; }
+            reject
+        }
+    }
+    prompt := ApprovalPrompt {
+        visible: root.approving;
+        height: root.approving ? root.height : 0px;
+        request: root.approval;
+        answer(name) => { root.answer(name); }
+    }
+    ask := AskPrompt {
+        visible: !root.approving && root.asking;
+        height: self.visible ? root.height : 0px;
+        questions: root.questions;
+        most: root.most;
+        toggle(q, o) => { root.toggle(q, o); }
+        other(q, t) => { root.other(q, t); }
+        submit => { root.reply(false); }
+        skip => { root.reply(true); }
+    }
+}

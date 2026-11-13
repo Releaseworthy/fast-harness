@@ -5,7 +5,8 @@ import { AttachRow } from "attach.slint";
 import { JobsUi, SubagentsUi } from "subagents.slint";
 export { JobsUi, SubagentsUi, SubagentRow } from "subagents.slint";
 import { UndoRow } from "undo.slint";
-import { ApprovalPrompt } from "approval.slint";
+import { SessionPopup } from "popup.slint";
+import { AskQuestion } from "ask.slint";
 import { Theme, Columns } from "parts.slint";
 import { Dropdown } from "widgets.slint";
 import { Composer, Caret } from "composer.slint";
@@ -158,6 +159,15 @@ export component MainWindow inherits Window {
     // Answers request `id` with a keys.json action name: approve_once,
     // approve_session or decline.
     callback answer-approval(string, string);
+    // The oldest question request (D81): its id ("" for none) and questions.
+    in property <string> ask-id;
+    in-out property <[AskQuestion]> questions;
+    callback ask-toggle(int, int); callback ask-other(int, string); callback ask-reply(string, bool);
+    property <bool> popup-shown: root.approval.id != "" || root.ask-id != "";
+    out property <length> popup-height: popup.height;
+    out property <length> chat-pad: transcript.pad;
+    changed popup-shown => { if self.popup-shown { popup.grab(); } else { composer.focus-input(); } }
+    changed ask-id => { if self.ask-id != "" { popup.grab(); } }
 
     // The approval keys, read before the window keys and only while the
     // prompt shows; true when the key answered.
@@ -312,6 +322,7 @@ export component MainWindow inherits Window {
                             transcript := TranscriptView {
                                 vertical-stretch: 1;
                                 rows: root.messages;
+                                pad: root.popup-shown ? popup.height + Theme.space-l + Theme.space-s : 0px;
                                 loading: root.loading;
                                 toggle(i) => { root.toggle(i); }
                                 step-toggle(i) => { root.step-toggle(i); }
@@ -319,31 +330,20 @@ export component MainWindow inherits Window {
                                 copy(t) => { root.copy-text(t); }
                                 link(u) => { root.open-url(u); }
                             }
-                            if root.queue-chips.length > 0: QueueRow {
+                            if root.queue-chips.length > 0 && !root.popup-shown: QueueRow {
                                 column: chat.column; chips: root.queue-chips; remove(i) => { root.remove-queued(i); }
                             }
-                            if root.attached.length > 0: AttachRow {
+                            if root.attached.length > 0 && !root.popup-shown: AttachRow {
                                 column: chat.column; chips: root.attached; remove(i) => { root.remove-image(i); }
                             }
-                            if root.undo.turn > 0: UndoRow {
+                            if root.undo.turn > 0 && !root.popup-shown: UndoRow {
                                 column: chat.column; bar: root.undo; busy: root.busy;
                                 undo(force) => { root.undo-turn(force); }
                             }
-                            // Only while a request waits: no row otherwise.
-                            if root.approval.id != "": Rectangle {
-                                height: prompt.preferred-height + Theme.space-s;
-                                prompt := ApprovalPrompt {
-                                    x: (parent.width - self.width) / 2;
-                                    y: Theme.space-s;
-                                    width: chat.column;
-                                    height: self.preferred-height;
-                                    request: root.approval;
-                                    answer(name) => { root.answer-approval(root.approval.id, name); }
-                                }
-                            }
                             Rectangle {
-                                height: composer.preferred-height + Theme.space-s + Theme.space-l;
+                                height: root.popup-shown ? 0px : composer.preferred-height + Theme.space-s + Theme.space-l;
                                 composer := Composer {
+                                    visible: !root.popup-shown;
                                     x: (parent.width - self.width) / 2;
                                     y: Theme.space-s;
                                     width: chat.column;
@@ -390,6 +390,15 @@ export component MainWindow inherits Window {
                                     }
                                 }
                             }
+                        }
+                        popup := SessionPopup {
+                            x: (parent.width - chat.column) / 2; width: chat.column; visible: root.popup-shown;
+                            height: root.popup-shown ? min(self.preferred-height, root.height * 0.6) : 0px;
+                            y: parent.height - self.height - Theme.space-l; most: root.height * 0.6;
+                            approval: root.approval; questions: root.questions; asking: root.ask-id != "";
+                            answer(n) => { root.answer-approval(root.approval.id, n); } stop => { root.stop(); }
+                            toggle(q, o) => { root.ask-toggle(q, o); } other(q, t) => { root.ask-other(q, t); }
+                            reply(skip) => { root.ask-reply(root.ask-id, skip); }
                         }
                         }
                         if root.page == "accounts": AccountsPage {

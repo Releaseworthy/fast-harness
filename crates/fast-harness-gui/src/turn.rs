@@ -180,6 +180,7 @@ pub(crate) fn shown_session(app: &mut App) -> Result<String, String> {
     let session = app.service.open(conv, &app.cwd).map_err(error_text)?;
     // The window shows approval requests and answers them (D64).
     session.set_answering(true);
+    session.set_asking(true);
     app.runs.id = Some(session.id.clone());
     // The new session's composer now belongs to its id (D65).
     app.drafts.created(&session.id);
@@ -299,7 +300,10 @@ pub(crate) fn deliver(id: &str, event: AgentEvent) {
         // The prompt and the sidebar's waiting mark follow the gate (D64).
         if matches!(
             event,
-            AgentEvent::ApprovalRequest(_) | AgentEvent::ApprovalDone { .. }
+            AgentEvent::ApprovalRequest(_)
+                | AgentEvent::ApprovalDone { .. }
+                | AgentEvent::QuestionRequest(_)
+                | AgentEvent::QuestionDone { .. }
         ) {
             if shown {
                 app.refresh_run(ui);

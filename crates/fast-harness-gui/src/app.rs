@@ -178,6 +178,7 @@ impl App {
         };
         ui.set_resume_word(word.into());
         ui.set_approval(crate::approval::view(run, &self.rt.keys.gui));
+        crate::ask::show(run, ui);
         // The undo row follows turn ends, switches and undos (D69).
         crate::undo_view::show(self, ui);
     }

@@ -5,10 +5,11 @@
 use std::path::Path;
 
 /// Every file of `ui/`, by name (a test compares the list with the folder).
-pub const FILES: [(&str, &str); 38] = [
+pub const FILES: [(&str, &str); 40] = [
     ("accounts.slint", include_str!("../ui/accounts.slint")),
     ("appearance.slint", include_str!("../ui/appearance.slint")),
     ("approval.slint", include_str!("../ui/approval.slint")),
+    ("ask.slint", include_str!("../ui/ask.slint")),
     ("attach.slint", include_str!("../ui/attach.slint")),
     ("blocks.slint", include_str!("../ui/blocks.slint")),
     ("codeview.slint", include_str!("../ui/codeview.slint")),
@@ -23,6 +24,7 @@ pub const FILES: [(&str, &str); 38] = [
     ("panel.slint", include_str!("../ui/panel.slint")),
     ("parts.slint", include_str!("../ui/parts.slint")),
     ("pill.slint", include_str!("../ui/pill.slint")),
+    ("popup.slint", include_str!("../ui/popup.slint")),
     ("prompt_settings.slint", include_str!("../ui/prompt_settings.slint")),
     ("providers.slint", include_str!("../ui/providers.slint")),
     ("queue.slint", include_str!("../ui/queue.slint")),

@@ -103,6 +103,7 @@ fn shown(app: &mut App, ui: &MainWindow, cwd: &Path, result: Result<Opened, Stri
         Ok(session) => {
             // The window shows approval requests and answers them (D64).
             session.set_answering(true);
+        session.set_asking(true);
             let run = Run::new(cwd.to_path_buf(), Some(session), view);
             let dropped = app.runs.take(session_id.clone(), run);
             // A reload replaced the same session: nothing to close.
