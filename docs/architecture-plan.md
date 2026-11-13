@@ -213,9 +213,13 @@ Phases 22 and 23 touch no format and no contract and can start as soon as G5 and
 | 26 | done 2026-11-13 | 50e1c80 (index, one-pass resume, damaged line), ae31d39 (lists and trace off the UI threads) | docs/decisions/D60.md |
 | 28 | done 2026-11-13 (a and b; c not taken). Inside `trace/`, `detail.rs` and `report.rs` still read `data` by key, which the rule allows | 3df3752 (parity table), c0055ba and a73a7b6 (`Record`, writer, byte proof, first readers), d433f9e to f4622af (the other readers), and the guard-rail commit after them | docs/decisions/D61.md |
 | 31 (G11) | done 2026-11-13 | e0bef02 (core, service, serve, -p), 078c395 and 1e66f10 (TUI prompt, summary rule), 79f5554 (GUI prompt), 65ddc40 (real window pass) | docs/decisions/D64.md |
-| 31 (D5) | done 2026-11-13; a Stop click in the real window not tried | c4d17ba (cancel flag on `HttpRequest`, call thread and socket shutdown in `net`, silent `ScriptedTransport`, model list 20 s) | docs/decisions/D66.md |
+| 31 (D5) | done 2026-11-13; Stop on a held request ended the turn in the real window within 566 ms of the click script starting (release build of c017a25, out/fh-final/04-stop-2-566ms.png) | c4d17ba (cancel flag on `HttpRequest`, call thread and socket shutdown in `net`, silent `ScriptedTransport`, model list 20 s) | docs/decisions/D66.md |
 | 29 | done 2026-11-13 | e4320c3 (G12), 17b2617 (one name rule, version, enabled, ext list), 8caec32 (PreModelRequest, hook budget, MCP expiry) | docs/decisions/D62.md, D63.md |
-| 27 | done 2026-11-13 | 5b3aac1 (`Catalog` owned by `Runtime`, live table shared with its Claude provider, children dropped on close) | docs/decisions/D67.md |
+| 27 | done 2026-11-13 | 5b3aac1 (`Catalog` owned by `Runtime`, live table shared with its Claude provider, children dropped on close), acdacb7 (the GUI reloads the project on a workspace switch) | docs/decisions/D67.md |
+| 31 (drafts) | done 2026-11-13 | 6db4ccf, 5f0ba96, 06d4696 (each session keeps its own draft, also the new session) | docs/decisions/D65.md |
+| 31 (jobs) | done 2026-11-13 | c0342d4 (core), 572eece (views), 293a81f, 7bf976c, c1104a3, 9efac3c (review fixes) | docs/decisions/D68.md |
+| 31 (undo) | done 2026-11-13 | 44d2763 (core, trace v12), a3bf1e9 (views), f16d8a1, 679b327 (review fixes) | docs/decisions/D69.md |
+| 31 (images) | done 2026-11-13 | 0e29165 (core, trace v13), 3da77b9 (TUI), b844c38, f463c64 (GUI), 106cfa7, aa2750b, 465cd70, c017a25 (review fixes) | docs/decisions/D70.md |
 
 Checked for both: `fmt`, `clippy`, 590 tests passed, 0 failed, 9 ignored on Windows; CI green on Windows and Linux at da69164 (run 43269200480); `tests/parallel_edits.rs` passes un-ignored; `fast-harness accounts` with the new binary reads the real store and rewrites nothing.
 
@@ -244,11 +248,12 @@ Closed on 2026-11-13 after that list was written (chunks by DeepSeek reviewed by
 Open after phases 25 to 31 (2026-11-13; each phase's decision file has the detail):
 - 25 (D59): a panic while `-p` builds its agent is still unguarded (the build stays on the main thread to keep its output bytes); Ctrl+C in `-p` through the service not tried by hand; a crash log line written by a real panic in the window was not checked.
 - 26 (D60): the index has a threads test but no two-process test; the sidebar's "Loading sessions…" row was not caught in a real capture; the TUI's waiting mark on the Sessions screen cannot be reached for the shown session's own turn (Ctrl+O is refused while a turn waits); the TUI open on a worker was not seen in a real terminal.
-- GUI, seen in the real window and not decided: one composer per window, so an unsent draft carries into the next session (owner's choice: keep or clear per session); a session closed while a call waited for approval replays that row as "running" (not investigated).
+- GUI: a session closed while a call waited for approval replays that row as "running" (not investigated); once, after a workspace switch, a session's transcript stayed empty after a turn with 11 tool calls (out/fh-final/13-jobs-later.png), not reproduced in four tries at 9efac3c.
+- Later the same day (D65 to D70, all reviewed by Opus high, 847 passed at 625a3c6): idle CPU with the composer focused after 10 turns went from 125 to 172 ms per 30 s to 0 (the caret rests after the system caret timeout, the 200 ms window-state timer is gone, 625a3c6; docs/perf.md); a thumbnail decodes only up to 12 MP (465cd70), yet a 4000x3000 png still peaks near 147 MB private while it decodes (Slint decodes full size; a row-by-row decode needs the `png` crate as a direct dependency, owner's call); images over the caps are refused, not downscaled (a downscale needs an image crate, owner's call); the caret rest is unchecked with an IME and with the approval prompt arriving during a rest; drag-and-drop and the file dialog not clicked in a real window; no real terminal pass of the TUI views.
 - 28 (D61): `trace/detail.rs` and `trace/report.rs` read `data` by key (inside `trace/`, allowed); a log line that lacks a required key is skipped where the untyped readers half-read it.
 - 29 (D62, D63): themes are not on the shared `version` and `enabled` header and each loader still does its own walk; panel ids and MCP server names are now held to 64 characters; `Extensions` built without a home (library and test use) is not gated by trust; a `PreModelRequest` hook cannot add headers.
 - 31, approvals (D64): Shift+Tab in the approval prompt checked only on the software backend; the TUI marks a kept call in the warning role, the GUI in dim (both with mark and word); the PNG captures of `scripts/console.ps1` are cut at 900 x 480 (the text captures are whole).
-- Not started: phase 27 (no gate, waits for the owner); the other items of phase 31 (cancel of a silent stream, undo and image input; background shell jobs: core done (D68), views next), each its own yes; the Unix backend (G13 a: after the first tag).
+- Not started: the Unix backend (G13 a: after the first tag).
 - Drive F: ran out of space once during phase 29 (`target/` was about 48 GB): only cargo's incremental caches were deleted.
 
 Open from phases 22 and 23:
