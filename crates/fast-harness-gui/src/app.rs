@@ -102,8 +102,8 @@ impl App {
     /// Pushes the shown transcript's changes from its turn start into the model.
     pub fn sync_rows(&mut self) {
         let run = &self.runs.shown;
-        self.mirror
-            .sync(&run.view.items, &*self.rows, run.turn_from);
+        let (items, approvals) = (&run.view.items, &run.view.approvals);
+        (self.mirror).sync_with(items, approvals, &*self.rows, run.turn_from);
     }
 
     pub fn refresh_status(&self, ui: &MainWindow) {
@@ -148,6 +148,7 @@ impl App {
             _ => "",
         };
         ui.set_resume_word(word.into());
+        ui.set_approval(crate::approval::view(run, &self.rt.keys.gui));
     }
 
     /// Asks the workers for the sidebar's lists and redraws it (D60).
@@ -162,7 +163,8 @@ impl App {
 
     /// Shows the shown run from its first row.
     pub fn show_run(&mut self, ui: &MainWindow) {
-        self.mirror.reset(&self.runs.shown.view.items, &*self.rows);
+        let view = &self.runs.shown.view;
+        (self.mirror).reset_with(&view.items, &view.approvals, &*self.rows);
         self.refresh_status(ui);
         self.refresh_run(ui);
         self.refresh_sessions(ui);
@@ -188,6 +190,8 @@ impl App {
             let view = Transcript::opened(&events, &conv.messages, conv.take_notes());
             drop(events);
             let session = service.open(conv, &cwd).map_err(crate::turn::error_text)?;
+            // The window shows approval requests and answers them (D64).
+            session.set_answering(true);
             Ok(Run::new(cwd.clone(), Some(session), view))
         };
         let shown = self.runs.show(Some(id.to_string()), load);

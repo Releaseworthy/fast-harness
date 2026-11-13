@@ -4,7 +4,7 @@ use fast_harness_core::accounts::model::{Account, AccountKind};
 use fast_harness_core::accounts::pool::AccountStatus;
 use fast_harness_core::accounts::usage::{current_usage, Window};
 use fast_harness_core::session::SessionSummary;
-use fast_harness_core::view::{tool_detail, Item, NoteKind};
+use fast_harness_core::view::{tool_detail, Approvals, Item, NoteKind};
 use slint::{SharedString, StyledText};
 
 use crate::format::{ago, duration, fraction, tokens, window_caption};
@@ -20,7 +20,24 @@ pub fn markdown(text: &str) -> StyledText {
 /// Every drawn text goes through [xpanded]: the software renderer lays a
 /// Text out in `i16` pixels, so a longer one draws its lines over each other
 /// (`trace_rows::EXPANDED_LINES`). Copy takes the whole `text`.
+#[cfg(test)]
 pub fn msg_row(item: &Item) -> MsgRow {
+    msg_row_with(item, &Approvals::default())
+}
+
+/// [`msg_row`] with a tool call's approval word (D64), live only.
+pub fn msg_row_with(item: &Item, approvals: &Approvals) -> MsgRow {
+    let row = msg_row_plain(item);
+    match item {
+        Item::Tool { id, .. } => MsgRow {
+            approval: approvals.word(id).unwrap_or_default().into(),
+            ..row
+        },
+        _ => row,
+    }
+}
+
+fn msg_row_plain(item: &Item) -> MsgRow {
     let row = |kind: &str, text: &str| MsgRow {
         kind: kind.into(),
         text: text.into(),

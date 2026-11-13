@@ -136,6 +136,8 @@ fn shown_session(app: &mut App) -> Result<String, String> {
     }
     let conv = app.rt.open_conversation(&app.cwd, None, false)?;
     let session = app.service.open(conv, &app.cwd).map_err(error_text)?;
+    // The window shows approval requests and answers them (D64).
+    session.set_answering(true);
     app.runs.id = Some(session.id.clone());
     app.runs.shown.cwd = app.cwd.clone();
     app.runs.shown.session = Some(session.clone());
@@ -242,6 +244,16 @@ fn deliver(id: &str, event: AgentEvent) {
             if matches!(event, AgentEvent::UserInput { steer: true, .. }) {
                 app.refresh_run(ui);
             }
+        }
+        // The prompt and the sidebar's waiting mark follow the gate (D64).
+        if matches!(
+            event,
+            AgentEvent::ApprovalRequest(_) | AgentEvent::ApprovalDone { .. }
+        ) {
+            if shown {
+                app.refresh_run(ui);
+            }
+            crate::workspaces::render(app, ui);
         }
         if matches!(
             event,

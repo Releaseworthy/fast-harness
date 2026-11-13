@@ -6,6 +6,7 @@
 mod accounts;
 mod app;
 mod appearance;
+mod approval;
 mod config_page;
 mod crash;
 mod format;

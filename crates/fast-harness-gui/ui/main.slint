@@ -1,6 +1,7 @@
 import { Palette } from "std-widgets.slint";
-import { MsgRow, SessionRow, SideRow, AccountRow, TraceRow, ProviderCard, QueueChip } from "types.slint";
+import { MsgRow, SessionRow, SideRow, AccountRow, TraceRow, ProviderCard, QueueChip, ApprovalView } from "types.slint";
 import { QueueChips } from "queue.slint";
+import { ApprovalPrompt } from "approval.slint";
 import { Theme } from "parts.slint";
 import { Dropdown } from "widgets.slint";
 import { Composer } from "composer.slint";
@@ -20,7 +21,7 @@ import { TabStrip, StatusBar, ErrorBanner } from "panel.slint";
 // The icon font (Symbols Nerd Font subset); `Theme.symbols` names it.
 import "../fonts/FastHarnessIcons.ttf";
 
-export { MsgRow, SessionRow, SideRow, AccountRow, TraceRow, ProviderCard, QueueChip, Theme }
+export { MsgRow, SessionRow, SideRow, AccountRow, TraceRow, ProviderCard, QueueChip, ApprovalView, Theme }
 
 // No native frame: the title bar (titlebar.slint) draws the window
 // controls; a 1px line edges the window while it is not maximized.
@@ -130,6 +131,21 @@ export component MainWindow inherits Window {
     // The bound keys shown in the composer hint.
     in property <string> send-key: "Enter";
     in property <string> queue-key: "Alt+Enter";
+    // The shown session's oldest approval request (D64); empty `id` for none.
+    in property <ApprovalView> approval;
+    // Answers request `id` with a keys.json action name: approve_once,
+    // approve_session or decline.
+    callback answer-approval(string, string);
+
+    // The approval keys, read before the window keys and only while the
+    // prompt shows; true when the key answered.
+    function approval-key(e: KeyEvent) -> bool {
+        if (root.approval.id == "") { return false; }
+        let name = root.key-action("approval", e.text, e.modifiers.control, e.modifiers.alt, e.modifiers.shift, e.modifiers.meta, root.busy);
+        if (name == "") { return false; }
+        root.answer-approval(root.approval.id, name);
+        return true;
+    }
 
     // Runs a keys.json action; false for a name it does not know.
     function run-action(name: string) -> bool {
@@ -203,6 +219,7 @@ export component MainWindow inherits Window {
     // which names the action; text keys without Ctrl, Alt or Meta pass on.
     FocusScope {
     capture-key-pressed(e) => {
+        if (root.approval-key(e)) { return accept; }
         return root.run-action(root.key-action("window", e.text, e.modifiers.control, e.modifiers.alt, e.modifiers.shift, e.modifiers.meta, root.busy)) ? accept : reject;
     }
     VerticalLayout {
@@ -282,6 +299,18 @@ export component MainWindow inherits Window {
                                     height: self.preferred-height;
                                     chips: root.queue-chips;
                                     remove(i) => { root.remove-queued(i); }
+                                }
+                            }
+                            // Only while a request waits: no row otherwise.
+                            if root.approval.id != "": Rectangle {
+                                height: prompt.preferred-height + Theme.space-s;
+                                prompt := ApprovalPrompt {
+                                    x: (parent.width - self.width) / 2;
+                                    y: Theme.space-s;
+                                    width: chat.column;
+                                    height: self.preferred-height;
+                                    request: root.approval;
+                                    answer(name) => { root.answer-approval(root.approval.id, name); }
                                 }
                             }
                             Rectangle {

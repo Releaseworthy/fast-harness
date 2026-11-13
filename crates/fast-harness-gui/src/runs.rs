@@ -48,9 +48,10 @@ impl Run {
         (self.session.as_ref()).map_or_else(Status::default, |s| s.status())
     }
 
-    /// Kept when not shown: a turn runs or texts wait.
+    /// Kept when not shown: a turn runs, texts or approval requests wait.
     fn live(&self) -> bool {
-        self.busy || !self.status().queued.is_empty()
+        let status = self.status();
+        self.busy || !status.queued.is_empty() || !status.waiting.is_empty()
     }
 
     /// True when the Resume action applies (whether the history allows it
@@ -69,12 +70,17 @@ impl Run {
         steers.chain(queued).collect()
     }
 
-    /// The sidebar word: running, or how the last turn stopped.
+    /// The sidebar word: waiting (an approval request, D64), running, or
+    /// how the last turn stopped.
     pub fn mark(&self) -> &'static str {
+        let status = self.status();
+        if !status.waiting.is_empty() {
+            return "waiting";
+        }
         if self.busy {
             return "running";
         }
-        self.status().unfinished.map(Unfinished::word).unwrap_or_default()
+        status.unfinished.map(Unfinished::word).unwrap_or_default()
     }
 }
 

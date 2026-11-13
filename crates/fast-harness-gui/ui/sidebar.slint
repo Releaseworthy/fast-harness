@@ -169,11 +169,12 @@ component WorkspaceEntry inherits Rectangle {
 component RunMark inherits HorizontalLayout {
     in property <string> word;
     property <color> tint: root.word == "running" ? Theme.info
-        : root.word == "paused" ? Theme.warning
+        : root.word == "paused" || root.word == "waiting" ? Theme.warning
         : root.word == "interrupted" ? Theme.error : Theme.dim;
     spacing: 3px;
     Mark {
         text: root.word == "running" ? Icons.pulse
+            : root.word == "waiting" ? Icons.watch
             : root.word == "paused" ? Icons.debug-pause
             : root.word == "interrupted" ? Icons.warning : Icons.circle-slash;
         color: root.tint;

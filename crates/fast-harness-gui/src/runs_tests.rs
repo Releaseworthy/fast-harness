@@ -70,16 +70,25 @@ fn text_reply(text: &str) -> ScriptedResponse {
 }
 
 fn agent(model: Model, cwd: &Path) -> Agent {
+    agent_with(model, cwd, Default::default(), Registry::new())
+}
+
+fn agent_with(
+    model: Model,
+    cwd: &Path,
+    config: fast_harness_core::config::Config,
+    tools: Registry,
+) -> Agent {
     let parts = AgentParts {
         extensions: Default::default(),
         provider: Arc::new(Anthropic::new("http://scripted.invalid")),
         transport: Arc::new(model),
         auth: Arc::new(StaticAuth::new("acct-1", "test", Auth::ApiKey("k".into()))),
-        config: Default::default(),
+        config,
         cwd: cwd.to_path_buf(),
         system: "test system".into(),
     };
-    Agent::new(parts, Arc::new(Registry::new()))
+    Agent::new(parts, Arc::new(tools))
 }
 
 /// What the turn threads hand to the "UI thread" (the test).
@@ -120,6 +129,8 @@ impl Window {
     fn show_new(&mut self) -> String {
         let conv = Conversation::create(&self.dir, &self.dir, None).unwrap();
         let session = self.service.open(conv, &self.dir).unwrap();
+        // As the window does: it answers approval requests (D64).
+        session.set_answering(true);
         let id = session.id.clone();
         let run = Run::new(self.dir.clone(), Some(session), Transcript::new());
         self.show(&id, run);
@@ -134,6 +145,11 @@ impl Window {
     }
 
     fn start(&mut self, id: &str, start: Start, model: Model) -> Result<(), String> {
+        let agent = agent(model, &self.dir);
+        self.start_agent(id, start, agent)
+    }
+
+    fn start_agent(&mut self, id: &str, start: Start, agent: Agent) -> Result<(), String> {
         let (events, ended) = (self.tx.clone(), self.tx.clone());
         let tag = id.to_string();
         let sink: Sink = Box::new(move |e| {
@@ -143,7 +159,7 @@ impl Window {
         let done: Done = Box::new(move |end: &Finished| {
             let _ = ended.send(Msg::Done(tag.clone(), Box::new(end.clone())));
         });
-        let built = (agent(model, &self.dir), Vec::new());
+        let built = (agent, Vec::new());
         let wiring = (&self.service, &*self.host);
         start_run(&mut self.runs, wiring, id, built, start, (sink, done))
     }
@@ -208,3 +224,6 @@ fn users(run: &Run) -> Vec<String> {
 
 #[path = "runs_turn_tests.rs"]
 mod turn_tests;
+
+#[path = "approval_tests.rs"]
+mod approval_tests;

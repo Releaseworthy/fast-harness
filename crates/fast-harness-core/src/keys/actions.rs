@@ -332,4 +332,25 @@ pub const GUI_ACTIONS: &[ActionDef] = &[
         &["ctrl+l"],
         "focus the message box",
     ),
+    act(
+        "approve_once",
+        "approval",
+        Always,
+        &["alt+y"],
+        "approval prompt: allow this call once",
+    ),
+    act(
+        "approve_session",
+        "approval",
+        Always,
+        &["alt+a"],
+        "approval prompt: allow it for this session",
+    ),
+    act(
+        "decline",
+        "approval",
+        Always,
+        &["alt+n"],
+        "approval prompt: decline the call",
+    ),
 ];

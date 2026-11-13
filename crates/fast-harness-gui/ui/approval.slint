@@ -1,0 +1,108 @@
+import { Theme, Mark } from "parts.slint";
+import { Icons } from "icons.slint";
+import { ActionButton } from "widgets.slint";
+import { ScrollBar } from "scrollbar.slint";
+import { ApprovalView } from "types.slint";
+
+// The approval prompt (PLAN.md D64) above the composer: what the oldest
+// request of the shown session will do, who asks, and three answers. It is
+// not a modal window: the transcript stays readable. No answer has the focus
+// or a default: the composer keeps it, Enter steers and Space types there.
+// Tab reaches the buttons (Decline first), and the keys.json `approval` keys
+// (Alt+Y, Alt+A, Alt+N by default) answer from anywhere in the window.
+export component ApprovalPrompt inherits Rectangle {
+    in property <ApprovalView> request;
+    // "approve_once", "approve_session" or "decline".
+    callback answer(string);
+    // The command box grows to this height, then scrolls.
+    property <length> most: 168px;
+    border-radius: Theme.radius-m;
+    background: Theme.raised;
+    border-width: 2px;
+    border-color: Theme.warning;
+    accessible-role: groupbox;
+    accessible-label: root.request.title;
+    VerticalLayout {
+        padding: Theme.space-m;
+        spacing: Theme.space-s;
+        HorizontalLayout {
+            spacing: Theme.space-s;
+            Mark { text: Icons.warning; color: Theme.warning; font-size: Theme.font-m; vertical-alignment: center; }
+            Text {
+                text: root.request.title;
+                color: Theme.text;
+                font-size: Theme.font-m;
+                font-weight: 700;
+                vertical-alignment: center;
+                wrap: word-wrap;
+                horizontal-stretch: 1;
+            }
+        }
+        Text {
+            visible: root.request.agent != "";
+            height: root.request.agent != "" ? self.preferred-height : 0px;
+            text: root.request.agent;
+            color: Theme.text;
+            font-size: Theme.font-s;
+            wrap: word-wrap;
+        }
+        // The whole command, wrapped; a long one scrolls here (wheel or the
+        // bar) so its end is always reachable.
+        Rectangle {
+            background: Theme.code;
+            border-radius: Theme.radius-s;
+            height: min(command.preferred-height, root.most) + 2 * Theme.space-s;
+            flick := Flickable {
+                x: Theme.space-s;
+                y: Theme.space-s;
+                width: parent.width - 3 * Theme.space-s;
+                height: parent.height - 2 * Theme.space-s;
+                content-height: command.preferred-height;
+                command := Text {
+                    width: flick.width;
+                    text: root.request.text;
+                    color: Theme.text;
+                    font-family: Theme.mono;
+                    font-size: Theme.font-s;
+                    wrap: char-wrap;
+                }
+            }
+            if command.preferred-height > root.most: ScrollBar {
+                x: parent.width - Theme.space-s - 2px;
+                y: Theme.space-s;
+                width: Theme.space-s;
+                height: parent.height - 2 * Theme.space-s;
+                content-y: flick.content-y;
+                content-height: command.preferred-height;
+                visible-height: flick.height;
+                scroll-to(y) => { flick.content-y = y; }
+            }
+        }
+        HorizontalLayout {
+            spacing: Theme.space-s;
+            alignment: start;
+            ActionButton {
+                text: "Decline (" + root.request.decline-key + ")";
+                icon: Icons.close;
+                clicked => { root.answer("decline"); }
+            }
+            ActionButton {
+                text: "Allow once (" + root.request.once-key + ")";
+                icon: Icons.check;
+                clicked => { root.answer("approve_once"); }
+            }
+            ActionButton {
+                text: "Allow for this session (" + root.request.session-key + ")";
+                clicked => { root.answer("approve_session"); }
+            }
+            Text {
+                text: root.request.more;
+                color: Theme.dim;
+                font-size: Theme.font-xs;
+                vertical-alignment: center;
+                horizontal-stretch: 1;
+                horizontal-alignment: right;
+            }
+        }
+    }
+}

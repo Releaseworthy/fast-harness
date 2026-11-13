@@ -310,6 +310,7 @@ component ToolHead inherits HorizontalLayout {
     in property <bool> running;
     in property <string> caption;
     in property <bool> copy-link;
+    in property <string> approval;
     callback copy();
     property <color> tint: ToolStyle.color(root.tool.kind);
     property <bool> path: ToolStyle.path-kind(root.tool.kind);
@@ -353,6 +354,23 @@ component ToolHead inherits HorizontalLayout {
         horizontal-stretch: 0;
         ToolStatus { running: root.running; error: root.error; label: root.tool.name; height: 20px; }
     }
+    if root.approval != "": HorizontalLayout {
+        spacing: Theme.space-xs;
+        horizontal-stretch: 0;
+        Mark {
+            text: root.approval == "waiting for your answer" ? Icons.watch : Icons.warning;
+            color: Theme.warning;
+            font-size: Theme.font-s;
+            vertical-alignment: center;
+        }
+        Text {
+            text: root.approval;
+            color: Theme.warning;
+            font-size: Theme.font-xs;
+            font-weight: 700;
+            vertical-alignment: center;
+        }
+    }
     if root.copy-link: LinkText {
         text: "Copy";
         vertical-alignment: center;
@@ -377,6 +395,8 @@ export component ToolFrame inherits Rectangle {
     in property <bool> copy-link: root.status && !root.running;
     // The newest lines of a running tool's output (the chat only).
     in property <string> live;
+    // The call's approval word (D64, the chat only): a mark and the word.
+    in property <string> approval;
     property <length> indent: 30px + Theme.space-s + Theme.space-xs + Theme.space-s;
     callback toggle();
     callback copy();
@@ -397,6 +417,7 @@ export component ToolFrame inherits Rectangle {
             running: root.running;
             caption: root.caption;
             copy-link: root.copy-link;
+            approval: root.approval;
             copy => { root.copy(); }
         }
         // One line per output line, never wrapped: the row grows by whole

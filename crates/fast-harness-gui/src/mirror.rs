@@ -2,10 +2,10 @@
 //! appends new rows and replaces only the rows whose item changed (on a
 //! text delta that is the last row), never rebuilding the whole list.
 
-use fast_harness_core::view::Item;
+use fast_harness_core::view::{Approvals, Item};
 use slint::{Model, VecModel};
 
-use crate::rows::msg_row;
+use crate::rows::msg_row_with;
 use crate::MsgRow;
 
 /// The row operations the mirror needs; `VecModel` in the app, a recorder
@@ -38,37 +38,60 @@ impl Rows for VecModel<MsgRow> {
 
 #[derive(Default)]
 pub struct Mirror {
-    /// The items the model rows were made from.
-    items: Vec<Item>,
+    /// The items the model rows were made from, with each tool row's
+    /// approval word (D64).
+    items: Vec<(Item, Option<&'static str>)>,
+}
+
+fn word(item: &Item, approvals: &Approvals) -> Option<&'static str> {
+    match item {
+        Item::Tool { id, .. } => approvals.word(id),
+        _ => None,
+    }
 }
 
 impl Mirror {
-    /// Replaces every row (a session was opened or a new one started).
-    pub fn reset(&mut self, items: &[Item], model: &dyn Rows) {
-        model.replace(items.iter().map(msg_row).collect());
-        self.items = items.to_vec();
+    /// Replaces every row (a session was opened or a new one started),
+    /// with the approval words of the tool rows.
+    pub fn reset_with(&mut self, items: &[Item], approvals: &Approvals, model: &dyn Rows) {
+        model.replace(items.iter().map(|i| msg_row_with(i, approvals)).collect());
+        self.items = (items.iter()).map(|i| (i.clone(), word(i, approvals))).collect();
     }
 
     /// Applies the changes of `items` from index `from` on (items before it
     /// do not change during a turn). Returns the number of rows written.
+    #[cfg(test)]
     pub fn sync(&mut self, items: &[Item], model: &dyn Rows, from: usize) -> usize {
+        self.sync_with(items, &Approvals::default(), model, from)
+    }
+
+    /// [`Mirror::sync`] with the approval words of the tool rows (D64): a
+    /// changed word rewrites only its own row.
+    pub fn sync_with(
+        &mut self,
+        items: &[Item],
+        approvals: &Approvals,
+        model: &dyn Rows,
+        from: usize,
+    ) -> usize {
         if items.len() < self.items.len() || model.count() != self.items.len() {
-            self.reset(items, model);
+            self.reset_with(items, approvals, model);
             return items.len();
         }
         let mut written = 0;
         for (index, item) in items.iter().enumerate().skip(from) {
+            let entry = (item, word(item, approvals));
             match self.items.get(index) {
-                Some(old) if old == item => continue,
+                Some((old, w)) if old == entry.0 && *w == entry.1 => continue,
                 Some(_) => {
-                    let mut row = msg_row(item);
+                    let mut row = msg_row_with(item, approvals);
                     row.expanded = model.expanded(index);
                     model.set(index, row);
-                    self.items[index] = item.clone();
+                    self.items[index] = (item.clone(), entry.1);
                 }
                 None => {
-                    model.push(msg_row(item));
-                    self.items.push(item.clone());
+                    model.push(msg_row_with(item, approvals));
+                    self.items.push((item.clone(), entry.1));
                 }
             }
             written += 1;

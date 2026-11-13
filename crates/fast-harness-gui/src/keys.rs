@@ -99,9 +99,10 @@ pub fn key_of(text: &str, [ctrl, alt, shift, meta]: Mods) -> Option<Key> {
     Some(Key::from_char(c, ctrl, alt, shift, meta))
 }
 
-/// The action of a key in `scope` (`window` or `composer`). The window
-/// takes only keys with Ctrl, Alt or Meta, or function keys, so typing and
-/// list keys reach the focused control.
+/// The action of a key in `scope` (`window`, `composer` or `approval`).
+/// The window and the approval prompt take only keys with Ctrl, Alt or
+/// Meta, or function keys, so typing and list keys reach the focused
+/// control: Enter and Space never answer an approval (D64).
 pub fn resolve(
     map: &Keymap,
     scope: &str,
@@ -112,7 +113,8 @@ pub fn resolve(
     let key = key_of(text, mods)?;
     let function =
         key.name.len() > 1 && key.name.starts_with('f') && key.name[1..].parse::<u8>().is_ok();
-    if scope == "window" && !(key.ctrl || key.alt || key.meta || function) {
+    let chord = key.ctrl || key.alt || key.meta || function;
+    if matches!(scope, "window" | "approval") && !chord {
         return None;
     }
     map.lookup(scope, &key, busy)
@@ -124,6 +126,8 @@ pub fn connect(ui: &MainWindow) {
         let name = with_app(|app, _| resolve(&app.rt.keys.gui, &scope, &text, mods, busy));
         name.flatten().unwrap_or_default().into()
     });
+    // What the `approval` keys and the prompt's buttons answer (D64).
+    crate::approval::connect(ui);
 }
 
 /// The composer hint shows the keys bound to send and queue.

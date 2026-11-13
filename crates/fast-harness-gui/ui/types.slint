@@ -87,6 +87,23 @@ export struct MsgRow {
     tone: string,
     // The tool card (kind "tool").
     tool: ToolView,
+    // How the call's approval went (D64): "waiting for your answer",
+    // "allowed once", "declined", ...; empty when it never asked. Live only.
+    approval: string,
+}
+
+// The approval prompt (D64); an empty `id` for none. `title` says what the
+// call will do, `text` the whole command or path, `agent` the subagent that
+// asks, `more` how many requests wait after it, and the keys of the answers.
+export struct ApprovalView {
+    id: string,
+    title: string,
+    text: string,
+    agent: string,
+    more: string,
+    once-key: string,
+    session-key: string,
+    decline-key: string,
 }
 
 // One entry of the trace timeline (src/trace_rows.rs). `kind`: turn, user,
@@ -110,7 +127,8 @@ export struct TraceRow {
 
 // A sidebar row: kind "workspace" (id and detail: the folder path; title: its name)
 // or "session" (id: the session id; workspace: its folder; detail: the time;
-// run: "running", "paused", "interrupted", "cancelled" or empty, D39).
+// run: "waiting" (an approval request, D64), "running", "paused",
+// "interrupted", "cancelled" or empty, D39).
 export struct SideRow {
     kind: string,
     id: string,
