@@ -95,6 +95,7 @@ One file per decision in [docs/decisions/](docs/decisions/), moved there unchang
 - D63 [PreModelRequest hook, hook budget, MCP session expiry](docs/decisions/D63.md)
 - D64 [Approvals](docs/decisions/D64.md)
 - D65 [Each session keeps its own draft](docs/decisions/D65.md)
+- D66 [Cancel of a silent stream](docs/decisions/D66.md)
 
 ## Architecture
 

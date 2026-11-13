@@ -35,7 +35,7 @@ The test `crates/fast-harness-core/tests/guard_rails.rs` holds this list and fai
 
 Change one only together with every user of it.
 
-- `http::Transport`: `send` streams the response body through `on_chunk` on the calling thread; any status is `Ok` at this layer (the caller reads `head.status`); `Flow::Stop` ends the transfer and still returns `Ok(head)`. Tests use `http::ScriptedTransport`.
+- `http::Transport`: `send` streams the response body through `on_chunk` on the calling thread; any status is `Ok` at this layer (the caller reads `head.status`); `Flow::Stop` ends the transfer and still returns `Ok(head)`. `HttpRequest::cancel` (set by both providers and MCP over HTTP) ends a call in any state with `HttpErrorKind::Cancelled`: `UreqTransport` runs such a call on its own thread and shuts its sockets down (D66). Tests use `http::ScriptedTransport` (`with_silence` for a silent stream).
 - `llm::Provider`: `id()` is a short stable id written to the trace; `stream` runs one streaming call to completion, shows every increment to `on_delta` and returns the assembled `Completion`. On main: Claude (`anthropic`) and the providers of `providers/*.json` (`llm/custom.rs`; api `openai-chat` or `anthropic-messages`, models named `<provider id>/<id>`); `llm::catalog` picks one by model id.
 - `tools::Tool`: `run` never panics and reports failure through `ToolOutput::is_error`; invalid arguments give an error that tells the model what to fix; `effect()` is `Run` unless the tool says otherwise, `parallel()` is true for `Effect::Read`.
 - `auth::AuthSource`: `lease` gives the credential (may refresh first), `observe` reads response headers, `on_failure` answers an auth or rate-limit error with a `Failover`, `warning` never holds a secret.
