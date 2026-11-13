@@ -2,7 +2,7 @@
 //!
 //! Headers follow pi-ai's `createClient` (bundled in DeepSeek Harness, read
 //! 2026-11-11). OAuth mode adds Claude Code's identity: `user-agent:
-//! claude-cli/<version>`, `x-app: cli` and the betas `claude-code-20250219`
+//! claude-cli/<version>` (`claude_code.rs`), `x-app: cli` and the betas `claude-code-20250219`
 //! and `oauth-2025-04-20`.
 
 use super::error;
@@ -11,8 +11,8 @@ use crate::llm::{Auth, LlmError};
 
 /// The `anthropic-version` pi-ai's SDK sends (docs/providers.md fixes it too).
 pub(crate) const API_VERSION: &str = "2023-06-01";
-/// The Claude Code release pi-ai presents itself as in OAuth mode.
-pub(crate) const CLAUDE_CODE_VERSION: &str = "2.1.280";
+// The Claude Code release an OAuth call presents itself as moves with each
+// release (PLAN.md D71): `claude_code::version()`.
 pub(crate) const BETA_CLAUDE_CODE: &str = "claude-code-20250219";
 pub(crate) const BETA_OAUTH: &str = "oauth-2025-04-20";
 pub(crate) const BETA_INTERLEAVED_THINKING: &str = "interleaved-thinking-2025-05-14";
@@ -46,7 +46,7 @@ pub(crate) fn headers(auth: &Auth, betas: &[&str]) -> Vec<(String, String)> {
         Auth::OAuth(token) => {
             out.push((
                 "user-agent".into(),
-                format!("claude-cli/{CLAUDE_CODE_VERSION}"),
+                format!("claude-cli/{}", super::claude_code::version()),
             ));
             out.push(("x-app".into(), "cli".into()));
             out.push(("authorization".into(), format!("Bearer {token}")));

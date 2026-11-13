@@ -105,6 +105,8 @@ fn start_runtime(ui: &MainWindow, stop: &Arc<AtomicBool>) {
     match Runtime::load() {
         Ok(mut rt) => {
             rt.interactive = true;
+            // The newest Claude Code release, off the UI thread (D71).
+            rt.update_claude_code();
             let cwd = working_dir();
             // The project layer of the start folder (PLAN.md D41); its
             // untrusted note comes with the first agent.

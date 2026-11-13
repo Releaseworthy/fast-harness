@@ -4,7 +4,7 @@
 use std::sync::atomic::AtomicBool;
 
 use fast_harness_core::http::{RecordedRequest, ScriptedResponse, ScriptedTransport};
-use fast_harness_core::llm::anthropic::{builtin_models, list_models, Anthropic};
+use fast_harness_core::llm::anthropic::{builtin_models, claude_code, list_models, Anthropic};
 use fast_harness_core::llm::{Auth, Cache, ChatRequest, Provider, ToolSpec};
 use fast_harness_core::types::{Block, Message, Role};
 use serde_json::{json, Value};
@@ -176,7 +176,8 @@ fn oauth_golden_request() {
     );
     assert_eq!(header(&req, "authorization"), Some("Bearer test-token"));
     assert_eq!(header(&req, "x-api-key"), None);
-    assert_eq!(header(&req, "user-agent"), Some("claude-cli/2.1.280"));
+    let agent = format!("claude-cli/{}", claude_code::BUILTIN);
+    assert_eq!(header(&req, "user-agent"), Some(agent.as_str()));
     assert_eq!(header(&req, "x-app"), Some("cli"));
     assert_eq!(
         header(&req, "anthropic-beta"),

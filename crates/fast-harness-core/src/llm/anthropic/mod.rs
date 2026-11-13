@@ -4,6 +4,7 @@
 //! path pi-ai's SDK uses for `beta.messages.create`). The response stream is
 //! decoded by [`SseDecoder`] and assembled by `stream::Assembler`.
 
+pub mod claude_code;
 mod error;
 mod live;
 mod models;
@@ -187,12 +188,40 @@ impl Run<'_, '_> {
     }
 }
 
+/// An OAuth call refused because the Claude Code version is too old: takes
+/// the version the error asks for (PLAN.md D71); true when the call should
+/// go again with it. The refusal is an HTTP 400 before any delta.
+fn outdated_client(auth: &Auth, result: &Result<Completion, LlmError>) -> bool {
+    let Err(err) = result else {
+        return false;
+    };
+    let refused = matches!(auth, Auth::OAuth(_)) && err.status == Some(400);
+    refused && claude_code::required_by(&err.message).is_some_and(|v| claude_code::offer(&v))
+}
+
 impl Provider for Anthropic {
     fn id(&self) -> &str {
         "anthropic"
     }
 
     fn stream(
+        &self,
+        http: &dyn Transport,
+        auth: &Auth,
+        req: &ChatRequest<'_>,
+        on_delta: &mut dyn FnMut(Delta<'_>),
+    ) -> Result<Completion, LlmError> {
+        let first = self.send(http, auth, req, on_delta);
+        match outdated_client(auth, &first) {
+            true => self.send(http, auth, req, on_delta),
+            false => first,
+        }
+    }
+}
+
+impl Anthropic {
+    /// One `POST /v1/messages` and its stream.
+    fn send(
         &self,
         http: &dyn Transport,
         auth: &Auth,

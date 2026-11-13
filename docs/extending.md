@@ -24,6 +24,8 @@ fast-harness doctor                           what loaded, from where, what was 
 
 `VALUE` is read as JSON (`100`, `true`, `"text"`, `{"a":1}`), else taken as a string. A dotted key writes inside an object; a model id that contains a dot cannot be addressed that way (edit the file).
 
+`claudeCodeVersion` (user layer, read at start, D71): `"auto"` (default) presents Claude OAuth calls as the newest Claude Code release, checked on npm in the background each time Fast Harness opens and applied to the next call without a restart; a release such as `"2.1.323"` pins it.
+
 A broken user `config.json` stops the start with its error, as before. A broken project `config.json` or provider file is skipped, and `fast-harness doctor` names it with the parser's error.
 
 ## Project trust

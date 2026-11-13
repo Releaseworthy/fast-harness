@@ -89,6 +89,11 @@ pub struct Config {
     pub approvals: approvals::Approvals,
     /// `allow` (PLAN.md D64): what `ask` lets run without a question.
     pub allow: approvals::Allow,
+    /// `claudeCodeVersion` (PLAN.md D71): the Claude Code release an OAuth
+    /// call to Claude presents itself as. `auto` (default) follows the
+    /// newest npm release, checked at each start; a release such as
+    /// `2.1.323` pins it. Read from the user layer at start.
+    pub claude_code_version: String,
 }
 
 /// The `reflect` settings; a `null` model picks the cheapest priced one.
@@ -163,6 +168,7 @@ impl Default for Config {
             reflect: ReflectConfig::default(),
             approvals: approvals::Approvals::Off,
             allow: approvals::Allow::default(),
+            claude_code_version: "auto".into(),
         }
     }
 }

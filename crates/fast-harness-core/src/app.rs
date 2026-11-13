@@ -13,7 +13,7 @@ use crate::auth::{AuthSource, StaticAuth};
 use crate::config::layers::Layered;
 use crate::config::Config;
 use crate::http::Transport;
-use crate::llm::anthropic::Anthropic;
+use crate::llm::anthropic::{claude_code, Anthropic};
 use crate::llm::catalog::{self, Catalog};
 use crate::llm::custom::ProviderFile;
 use crate::llm::{Auth, Provider};
@@ -88,6 +88,8 @@ impl Runtime {
         let loaded = settings::load_settings(&home, None, &env_value)?;
         let catalog = Catalog::default();
         models::load_cache(&home, catalog.live());
+        claude_code::configure(&loaded.layered.config.claude_code_version);
+        claude_code::load_cache(&home);
         let pool = Arc::new(open_pool(&home)?);
         let mut runtime = Runtime {
             home,
@@ -346,6 +348,14 @@ impl Runtime {
             config.model = fallback;
         }
         config
+    }
+
+    /// Checks the newest Claude Code release on a background thread (PLAN.md
+    /// D71), once per process: the calls sent after it use it, no restart.
+    /// Front ends call it when they open; scripted tests never do.
+    pub fn update_claude_code(&self) {
+        let transport: Arc<dyn Transport> = self.transport.clone();
+        claude_code::update_in_background(self.home.clone(), transport);
     }
 
     /// Replaces a retired `config.model` (see [`Runtime::usable`]).
