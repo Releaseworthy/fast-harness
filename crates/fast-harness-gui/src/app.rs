@@ -188,7 +188,14 @@ impl App {
     /// Shows session `id`: its live run when it has one, else its log, which
     /// a worker opens (D60): the UI thread never parses a log (gate G10).
     pub fn open_session(&mut self, ui: &MainWindow, id: &str) {
+        // The shown session needs no read (a running turn may be appending
+        // to its log), and a parked run shows at once: either way an open
+        // asked before is left, so its result is dropped.
+        if self.runs.id.as_deref() == Some(id) {
+            return crate::open_load::clear(self, ui);
+        }
         if let Some(run) = self.runs.unpark(id) {
+            crate::open_load::clear(self, ui);
             let shown = self.runs.take(id.to_string(), run);
             return self.shown(ui, Ok(shown));
         }

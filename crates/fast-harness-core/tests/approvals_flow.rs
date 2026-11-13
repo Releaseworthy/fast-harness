@@ -19,6 +19,8 @@ use fast_harness_core::events::{AgentEvent, ApprovalRequest, TurnOutcome};
 use fast_harness_core::http::{ScriptedResponse, ScriptedTransport};
 use fast_harness_core::tools::hooks::Hooks;
 use fast_harness_core::tools::{self, Effect, Extensions};
+use fast_harness_core::trace;
+use fast_harness_core::view::Transcript;
 use hooks_support::{bodies, capture, entry, read_json, write_hooks};
 use serde_json::{json, Value};
 
@@ -221,6 +223,27 @@ fn a_childs_call_reaches_the_parents_gate_and_runs_when_allowed() {
     assert!(bodies.last().unwrap()["messages"]
         .to_string()
         .contains("child wrote it"));
+}
+
+/// Bug: the parent's live view kept the word of a child's call, which no row
+/// of the parent shows and the parent's log never holds (the child's log
+/// does, D61), so the replayed parent differed from the live one.
+#[test]
+fn a_childs_approval_stays_out_of_the_parents_view() {
+    let env = env("approvals-child-view");
+    let transport = Arc::new(ScriptedTransport::new(child_script("child wrote it")));
+    let mut conv = Conversation::create(&env.home, &env.cwd, None).unwrap();
+    let gate = answering();
+    let agent = parent(&env, &transport, &conv, &gate);
+    let (outcome, seen) = approving_turn(&agent, &mut conv, &gate, vec![Answer::Once]);
+    assert_eq!(outcome, TurnOutcome::Done);
+    assert_eq!(requests(&seen).len(), 1, "the child asked");
+    let mut live = Transcript::new();
+    seen.iter().for_each(|event| live.apply(event));
+    let (_, events) = trace::read(&conv.log_path).unwrap();
+    let replayed = Transcript::from_trace(&events);
+    assert_eq!(live.approvals.word("c1"), None, "c1 is the child's call");
+    assert_eq!(live.approvals, replayed.approvals);
 }
 
 #[test]

@@ -111,6 +111,77 @@ fn a_second_open_supersedes_the_first_and_its_result_is_dropped() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
+/// Bug: a click on the shown session reopened its log on a worker (a log a
+/// running turn may be appending to); the result replaced the shown run and
+/// closed the session it had just opened. It also left a pending open of
+/// another session running.
+#[test]
+fn opening_the_shown_session_keeps_it_and_reads_nothing() {
+    let dir = root("same");
+    let (ui, home, cwd, first, second) = setup(&dir);
+    ui_thread::mark(true);
+    with_app(|app, ui| app.open_session(ui, &first));
+    let ok = open_off_ui(&home, &cwd, &first);
+    with_app(|app, ui| open_load::arrived(app, ui, 1, &cwd, ok));
+    with_app(|app, ui| app.open_session(ui, &second));
+    with_app(|app, ui| app.open_session(ui, &first));
+    assert!(!ui.get_loading(), "the shown session needs no open");
+    assert_eq!(with_app(|app, _| app.opens.loading()), Some(false));
+    // The open of `second` was left: its result is dropped.
+    let stale = open_off_ui(&home, &cwd, &second);
+    with_app(|app, ui| open_load::arrived(app, ui, 2, &cwd, stale));
+    assert_eq!(with_app(|app, _| app.runs.id.clone()), Some(Some(first)));
+    ui_thread::mark(false);
+    let _ = ui.hide();
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// Bug: a parked run shown at once left an open asked before it running, so
+/// the view kept saying it loads and the older open replaced the run later.
+#[test]
+fn a_parked_run_shown_leaves_an_open_asked_before() {
+    let dir = root("parked");
+    let (ui, home, cwd, first, second) = setup(&dir);
+    ui_thread::mark(true);
+    with_app(|app, ui| app.open_session(ui, &first));
+    let ok = open_off_ui(&home, &cwd, &first);
+    with_app(|app, ui| open_load::arrived(app, ui, 1, &cwd, ok));
+    // A turn runs in `first`: shown elsewhere it stays parked.
+    with_app(|app, _| app.runs.shown.busy = true);
+    with_app(|app, ui| app.open_session(ui, &second));
+    let ok = open_off_ui(&home, &cwd, &second);
+    with_app(|app, ui| open_load::arrived(app, ui, 2, &cwd, ok));
+    with_app(|app, ui| app.open_session(ui, "no-such-session"));
+    with_app(|app, ui| app.open_session(ui, &first));
+    assert!(!ui.get_loading(), "the parked run shows at once");
+    let missing = open_off_ui(&home, &cwd, "no-such-session");
+    with_app(|app, ui| open_load::arrived(app, ui, 3, &cwd, missing));
+    assert!(!ui.get_error_text().contains("no-such-session"), "dropped");
+    assert_eq!(with_app(|app, _| app.runs.id.clone()), Some(Some(first)));
+    ui_thread::mark(false);
+    let _ = ui.hide();
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// Bug: Resume started a turn on the shown session while another opened,
+/// though the view says no turn starts while a session loads.
+#[test]
+fn resume_waits_while_a_session_loads() {
+    let dir = root("resume");
+    let (ui, home, cwd, first, second) = setup(&dir);
+    ui_thread::mark(true);
+    with_app(|app, ui| app.open_session(ui, &first));
+    let ok = open_off_ui(&home, &cwd, &first);
+    with_app(|app, ui| open_load::arrived(app, ui, 1, &cwd, ok));
+    with_app(|app, ui| app.open_session(ui, &second));
+    with_app(turn::resume);
+    let error = ui.get_error_text();
+    assert!(error.contains(open_load::LOADING), "{error}");
+    ui_thread::mark(false);
+    let _ = ui.hide();
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
 #[test]
 fn an_open_that_fails_shows_the_error_and_keeps_the_session() {
     let dir = root("error");

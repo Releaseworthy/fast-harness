@@ -148,6 +148,38 @@ fn a_prompt_is_refused_while_a_session_loads() {
     let _ = std::fs::remove_dir_all(&root);
 }
 
+/// Bug: `/resume` started a turn on the shown session while another opened;
+/// the open then closed that session, which cancels its turn.
+#[test]
+fn resume_is_refused_while_a_session_loads() {
+    let root = root("resume");
+    let (mut tui, _rx, _home, _cwd, ids) = tui(&root);
+    ui_thread::mark(true);
+    tui.open_session(Some(&ids[1]));
+    tui.act(Action::ResumeTurn);
+    assert_eq!(tui.ui.status, "a session is loading");
+    ui_thread::mark(false);
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// Bug: opening the shown session read its log again, and the result's
+/// session was closed at once (`close` of the same id), leaving the shown
+/// session outside the service. A pending open of another one is left.
+#[test]
+fn opening_the_shown_session_reads_nothing() {
+    let root = root("same");
+    let (mut tui, _rx, home, cwd, ids) = tui(&root);
+    ui_thread::mark(true);
+    tui.open_session(Some(&ids[1]));
+    tui.open_session(Some(&ids[0]));
+    assert!(!tui.ui.loading, "the shown session needs no open");
+    let stale = open_off_ui(&home, &cwd, &ids[1]);
+    tui.handle(Msg::Opened(1, stale));
+    assert_eq!(tui.session, ids[0]);
+    ui_thread::mark(false);
+    let _ = std::fs::remove_dir_all(&root);
+}
+
 #[test]
 fn a_new_session_cancels_an_open_still_running() {
     let root = root("cancel");

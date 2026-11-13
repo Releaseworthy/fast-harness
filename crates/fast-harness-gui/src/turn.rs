@@ -73,6 +73,10 @@ pub fn stop(app: &mut App, ui: &MainWindow) {
 
 /// Resume: continues the shown session's paused, cancelled or interrupted turn.
 pub fn resume(app: &mut App, ui: &MainWindow) {
+    // The shown session is about to be replaced (D60, G10).
+    if app.opens.loading() {
+        return show_error(ui, crate::open_load::LOADING);
+    }
     let (Some(id), false) = (app.runs.id.clone(), app.runs.shown.busy) else {
         return;
     };

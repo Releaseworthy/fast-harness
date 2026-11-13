@@ -21,6 +21,12 @@ impl Tui {
             return;
         }
         match id {
+            // The shown session: nothing to read, and an open of another one
+            // asked before is left (its result is dropped).
+            Some(id) if id == self.session => {
+                self.opens.cancel();
+                self.ui.loading = false;
+            }
             Some(id) => {
                 self.ui.loading = true;
                 if let Some(ask) = self.opens.ask(Some(id)) {

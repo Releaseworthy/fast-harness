@@ -58,8 +58,13 @@ pub fn prompt_text(request: &ApprovalRequest) -> String {
 }
 
 impl Approvals {
-    /// A request of call `call_id`: it waits.
+    /// A request of call `call_id`: it waits. A subagent's request names a
+    /// call of the child, which has no row here and whose `tool/approval`
+    /// line is in the child's log (D61): it is left out, so a replay matches.
     pub(crate) fn asked(&mut self, request: &ApprovalRequest) {
+        if request.agent.is_some() {
+            return;
+        }
         let ids = (request.id.clone(), request.call_id.clone());
         self.set(&request.call_id, WAITING);
         self.asked.push(ids);

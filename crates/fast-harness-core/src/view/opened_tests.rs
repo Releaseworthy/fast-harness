@@ -68,6 +68,22 @@ fn a_cancelled_open_drops_its_result_and_starts_nothing() {
     assert_eq!(opening.arrive(next.generation), Next::Apply);
 }
 
+/// Bug: after `cancel` (a new session, a workspace switch) the stale worker
+/// still counted as loading, so the GUI refused a prompt on the new session
+/// while its view said nothing loads.
+#[test]
+fn a_cancelled_open_no_longer_counts_as_loading() {
+    let mut opening = Opening::default();
+    let first = opening.ask(Some("a")).expect("starts");
+    opening.cancel();
+    assert!(!opening.loading(), "the view left the open");
+    // A newer open while the cancelled worker still runs loads again.
+    assert_eq!(opening.ask(Some("b")), None);
+    assert!(opening.loading());
+    assert!(matches!(opening.arrive(first.generation), Next::Start(_)));
+    assert!(opening.loading());
+}
+
 #[test]
 fn a_failed_open_is_an_error_and_leaves_nothing_loading() {
     let root = root("error");

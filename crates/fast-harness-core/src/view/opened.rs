@@ -123,9 +123,10 @@ impl Opening {
         self.wanted = None;
     }
 
-    /// An open is in flight: a turn must not start meanwhile.
+    /// An open the view still wants is in flight: a turn must not start
+    /// meanwhile. A cancelled open's worker may still run; it is not loading.
     pub fn loading(&self) -> bool {
-        self.running.is_some()
+        self.running.is_some() && self.wanted.is_some()
     }
 }
 

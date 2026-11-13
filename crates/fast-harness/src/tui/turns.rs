@@ -94,6 +94,11 @@ impl Tui {
 
     /// `/resume`: continues the last turn when its history allows it.
     pub(super) fn resume_turn(&mut self) {
+        // The open that arrives would close this session, cancelling the turn.
+        if self.ui.loading {
+            self.ui.status = "a session is loading".into();
+            return;
+        }
         if self.current.running() {
             self.ui.status = "a turn is running".into();
             return;
