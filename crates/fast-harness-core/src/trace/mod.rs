@@ -38,7 +38,7 @@ use serde_json::Value;
 /// like a steer.
 /// Version 11: `tool/approval` events (PLAN.md D64): how an approval request
 /// ended, so a replay shows the same word a live transcript showed.
-pub const VERSION: u32 = 11;
+pub const VERSION: u32 = 12;
 
 /// The oldest version the reader accepts; a resumed log keeps its own header.
 pub const MIN_VERSION: u32 = 1;

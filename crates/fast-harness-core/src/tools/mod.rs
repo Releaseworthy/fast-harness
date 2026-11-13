@@ -37,8 +37,13 @@ mod read;
 mod shell;
 mod shell_live;
 pub mod skills;
+pub mod undo;
+mod undo_restore;
 mod walk;
 mod write;
+
+pub use undo::{UndoInfo, UndoLog};
+pub use undo_restore::UndoOutcome;
 
 /// The end of `find_tools`' description when skills exist (D43).
 const SKILLS_NOTE: &str = "`names` and `query` also match the skills named in the system \

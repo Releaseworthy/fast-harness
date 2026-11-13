@@ -290,6 +290,19 @@ pub struct HookError {
     pub error: String,
 }
 
+/// `undo` (version 12, PLAN.md D69): the user undid the `write` and
+/// `edit` changes of `turn`; `restored` got their earlier content back,
+/// `removed` had been created by that turn.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct Undo {
+    pub turn: u32,
+    pub restored: Vec<String>,
+    pub removed: Vec<String>,
+    #[serde(default)]
+    pub forced: bool,
+}
+
 macro_rules! records {
     ($($variant:ident($ty:ident) = $kind:path,)*) => {
         /// The `data` of one log line, typed by its `type`.
@@ -353,4 +366,5 @@ records! {
     ToolApproval(ToolApproval) = kind::TOOL_APPROVAL,
     Hook(Hook) = kind::HOOK,
     HookError(HookError) = kind::HOOK_ERROR,
+    Undo(Undo) = kind::UNDO,
 }

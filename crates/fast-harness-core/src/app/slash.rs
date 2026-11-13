@@ -9,7 +9,11 @@ use crate::config::index::read_md;
 use crate::tools::Extensions;
 
 /// Slash commands the harness itself handles; a file cannot replace them.
-const BUILT_IN: [(&str, &str); 5] = [
+const BUILT_IN: [(&str, &str); 6] = [
+    (
+        "undo [force]",
+        "restore the files the last turn changed with write or edit (shell changes are not tracked)",
+    ),
     (
         "compact [instructions]",
         "summarise the conversation so far",
@@ -61,6 +65,10 @@ pub fn slash(ext: &Extensions, text: &str) -> Slash {
         Err(err) => Slash::Error(format!("/{name}: {err}")),
     }
 }
+
+/// `Some(force)` for `/undo` and `/undo force` (PLAN.md D69); front ends
+/// call `Session::undo_last_turn` with it instead of sending the text.
+pub use crate::service::undo::command as undo_args;
 
 /// The arguments of a `/reflect` text (PLAN.md D50), `None` for any other.
 pub fn reflect_args(text: &str) -> Option<&str> {

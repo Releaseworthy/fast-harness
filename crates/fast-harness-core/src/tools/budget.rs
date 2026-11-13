@@ -8,7 +8,7 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::SystemTime;
 
-use super::{Jobs, ToolCtx, ToolOutput};
+use super::{Jobs, ToolCtx, ToolOutput, UndoLog};
 
 /// Start of the note a spilled result ends with.
 pub const SPILL_MARK: &str = "[full output: ";
@@ -26,6 +26,8 @@ pub struct ToolSession {
     reads: Mutex<HashMap<ReadKey, String>>,
     /// Background shell jobs (PLAN.md D68), shared with the service session.
     jobs: Arc<Jobs>,
+    /// Prior states of the files `write` and `edit` change (PLAN.md D69).
+    undo: Arc<UndoLog>,
 }
 
 /// A returned read: path, offset, limit, file size and modified time.
@@ -40,11 +42,24 @@ pub struct ReadKey {
 
 impl ToolSession {
     pub fn new(out_dir: Option<PathBuf>) -> ToolSession {
+        // `<id>.out` -> `<id>.undo`, beside it.
+        let undo_dir = out_dir.as_ref().map(|dir| dir.with_extension("undo"));
         ToolSession {
             out_dir,
             reads: Mutex::new(HashMap::new()),
             jobs: Arc::default(),
+            undo: Arc::new(UndoLog::new(undo_dir)),
         }
+    }
+
+    /// The session's undo store (PLAN.md D69).
+    pub fn undo(&self) -> &Arc<UndoLog> {
+        &self.undo
+    }
+
+    /// Uses `undo` from now on (a conversation reopened after a panic).
+    pub fn share_undo(&mut self, undo: Arc<UndoLog>) {
+        self.undo = undo;
     }
 
     /// The session's background jobs (PLAN.md D68).

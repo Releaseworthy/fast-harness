@@ -123,6 +123,7 @@ impl Service {
 fn reopen(home: &Path, session: &Session) -> Option<Conversation> {
     let mut conv = Conversation::resume(home, &session.cwd, &session.id).ok()?;
     conv.tool_session.share_jobs(session.jobs());
+    conv.tool_session.share_undo(session.undo.clone());
     Some(conv)
 }
 

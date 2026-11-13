@@ -185,6 +185,10 @@ impl Replay {
             Record::Compaction(compaction) => self.compaction(&compaction),
             Record::StepEnd(_) => self.flush(),
             Record::TurnEnd(end) => self.turn_end(&end),
+            Record::Undo(undo) => {
+                self.flush();
+                self.view.note(NoteKind::Info, undo_text(&undo));
+            }
             _ => {}
         }
     }
@@ -257,4 +261,19 @@ impl Replay {
             self.view.account = live_account;
         }
     }
+}
+
+/// The transcript note of an `undo` record (PLAN.md D69).
+pub fn undo_text(undo: &crate::trace::record::Undo) -> String {
+    let mut text = format!("undid the file changes of turn {}", undo.turn);
+    if !undo.restored.is_empty() {
+        text.push_str(&format!(": restored {}", undo.restored.join(", ")));
+    }
+    if !undo.removed.is_empty() {
+        text.push_str(&format!("; removed {}", undo.removed.join(", ")));
+    }
+    if undo.forced {
+        text.push_str(" (forced over later changes)");
+    }
+    text
 }

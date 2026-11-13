@@ -71,7 +71,7 @@ fn edit(args: &Value, ctx: &ToolCtx<'_>) -> Result<String, String> {
     } else {
         (content.replacen(old.as_str(), &new, 1), 1)
     };
-    super::atomic::replace(&path, updated.as_bytes())
+    super::undo::tracked_replace(ctx, &path, updated.as_bytes())
         .map_err(|err| format!("cannot write {path_arg}: {err}"))?;
     let lines = match_lines(&content, &old, replaced);
     Ok(if replaced == 1 {

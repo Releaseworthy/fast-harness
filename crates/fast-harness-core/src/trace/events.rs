@@ -34,6 +34,8 @@ pub mod kind {
     /// An approval request ended (version 11, PLAN.md D64): `callId`,
     /// `decision`.
     pub const TOOL_APPROVAL: &str = "tool/approval";
+    /// The user undid a turn's file changes (version 12, PLAN.md D69).
+    pub const UNDO: &str = "undo";
 }
 
 /// Data of `request/context`: one model call attempt (written as
@@ -318,6 +320,11 @@ impl TraceWriter {
             call_id: call_id.to_string(),
             decision: decision.to_string(),
         }))
+    }
+
+    /// `undo` (version 12, PLAN.md D69): the user undid `data.turn`'s files.
+    pub fn undo(&mut self, data: record::Undo) -> io::Result<u64> {
+        self.write(&Record::Undo(data))
     }
 
     pub fn step_end(&mut self, turn: u32, step: u32, duration_ms: u64) -> io::Result<u64> {

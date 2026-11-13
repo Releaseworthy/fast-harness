@@ -20,7 +20,7 @@ use crate::session::{self, SessionSummary};
 pub const PROTOCOL_VERSION: u32 = 2;
 
 /// Our methods, advertised in `initialize`.
-pub const EXTENSIONS: [&str; 7] = [
+pub const EXTENSIONS: [&str; 9] = [
     "_fh/approve",
     "_fh/steer",
     "_fh/follow_up",
@@ -28,6 +28,8 @@ pub const EXTENSIONS: [&str; 7] = [
     "_fh/continue",
     "_fh/compact",
     "_fh/stats",
+    "_fh/undo",
+    "_fh/undo_info",
 ];
 
 pub(super) fn call(server: &Arc<Server>, method: &str, params: Value, id: Option<Value>) -> Reply {
@@ -41,6 +43,8 @@ pub(super) fn call(server: &Arc<Server>, method: &str, params: Value, id: Option
         "session/set_config_option" => set_option(server, &params),
         "_fh/pause" => pause(server, &params),
         "_fh/stats" => stats(server, &params),
+        "_fh/undo" => undo(server, &params),
+        "_fh/undo_info" => undo_info(server, &params),
         "_fh/approve" => super::approve::method(server, &params),
         "session/prompt" | "_fh/steer" | "_fh/follow_up" | "_fh/compact" | "_fh/continue" => {
             return prompt::call(server, method, &params, id)
@@ -207,6 +211,18 @@ fn set_option(server: &Server, params: &Value) -> Result<Value, RpcError> {
 fn pause(server: &Server, params: &Value) -> Result<Value, RpcError> {
     let session = session_of(server, params)?;
     Ok(json!({"paused": session.send(Input::Pause)}))
+}
+
+/// `_fh/undo` (D69): `force` overwrites files changed since the turn.
+fn undo(server: &Server, params: &Value) -> Result<Value, RpcError> {
+    let session = session_of(server, params)?;
+    let force = params["force"].as_bool().unwrap_or(false);
+    Ok(super::undo::outcome_json(&session.undo_last_turn(force)?))
+}
+
+fn undo_info(server: &Server, params: &Value) -> Result<Value, RpcError> {
+    let session = session_of(server, params)?;
+    Ok(super::undo::info_json(session.undo_info()))
 }
 
 fn stats(server: &Server, params: &Value) -> Result<Value, RpcError> {

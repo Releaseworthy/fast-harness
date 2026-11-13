@@ -95,6 +95,10 @@ fn submit(
     steer: bool,
     id: Option<Value>,
 ) -> Result<Reply, RpcError> {
+    if let Some(force) = super::undo::command(&text) {
+        let outcome = session.undo_last_turn(force)?;
+        return local(server, session, &text, &outcome.text());
+    }
     if steer && session.send(Input::Steer(text.clone())) {
         return Ok(Reply::Now(Ok(json!({"queued": true}))));
     }

@@ -93,6 +93,8 @@ cancelled and the process exits once their last updates are written.
 | `_fh/compact` | `sessionId`, `instructions`, `_meta.fh/wait` | runs `/compact [instructions]` (D38) |
 | `_fh/stats` | `sessionId` | the numbers of `fast-harness stats --json` |
 | `_fh/approve` | `sessionId`, `requestId`, `answer` (`once`, `session`, `no`), `reason` | `{}`; -32602 for an unknown or answered request (D64) |
+| `_fh/undo` | `sessionId`, `force` (optional bool) | `{turn, restored, removed, conflicts, refused, errors, forced, untracked, text}`: restores the newest turn's `write`/`edit` changes not yet undone (D69); `refused` set means nothing changed; error -32010 (busy) while a turn runs. A `session/prompt` or `_fh/steer` text `/undo [force]` does the same and answers with `text` |
+| `_fh/undo_info` | `sessionId` | `{turn, files, notUndoable}` of the turn the next undo restores, or `null` |
 
 Approvals (D64, `"approvals": "ask"`): a call that would ask sends the client an ACP
 `session/request_permission` request (id `fh-approval/<session>/<request id>`, options
@@ -175,7 +177,7 @@ is running a turn (`_fh/compact`, `_fh/continue`, a replay), -32603 internal.
 ### Library API
 
 `fast_harness_core::service`: `Service::{create, resume, get, close, list, set_config, stats,
-start, send_to}` and `Session::{running, send(Input), cancel, wait, with_conv, config}` over a
+start, send_to}` and `Session::{running, send(Input), cancel, wait, with_conv, config, undo_last_turn, undo_info}` over a
 `Host` (`app::RuntimeHost`).
 
 ## Session coordination (no daemon)

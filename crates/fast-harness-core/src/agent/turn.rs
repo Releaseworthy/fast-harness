@@ -81,6 +81,7 @@ pub(super) fn run(
 ) -> TurnOutcome {
     let started = Instant::now();
     conv.turn += 1;
+    conv.tool_session.undo().begin_turn(conv.turn);
     let mut turn = Turn {
         agent,
         turn: conv.turn,
@@ -149,13 +150,13 @@ impl Turn<'_> {
         if let (Some(children), Some(system)) = (&agent.children, &self.conv.system) {
             children.set_system(system);
         }
-        // The header (with the new context stamp) goes first: a crash before
-        // the user message then cannot repeat the context update on resume.
+        // Header first: a crash before the user message cannot repeat the update.
         traced(self.conv.header_if_changed())?;
         // A resume is mid-task: a compaction then asks to continue it.
         if let Some(outcome) = self.auto_compact(text.is_none())? {
             return Ok(outcome);
         }
+        let note = join_notes(note, self.conv.tool_session.undo().take_note());
         match text {
             Some(text) => {
                 let message = user_message(note, text);
@@ -322,6 +323,15 @@ fn user_message(note: Option<String>, text: &str) -> Message {
         message.content.insert(0, Block::Text { text });
     }
     message
+}
+
+/// The context update and the undo note (D69, since the last user message),
+/// in that order, as one block: appended, so the earlier prefix stays as sent.
+fn join_notes(context: Option<String>, undo: Option<String>) -> Option<String> {
+    match (context, undo) {
+        (Some(context), Some(undo)) => Some(format!("{}\n\n{undo}", context.trim_end())),
+        (context, undo) => context.or(undo),
+    }
 }
 
 /// True when a tool call of message holds arguments that are not complete JSON.

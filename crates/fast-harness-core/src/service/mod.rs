@@ -14,6 +14,7 @@ mod queue;
 pub mod remote;
 pub mod rpc;
 mod turn;
+pub mod undo;
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -30,7 +31,7 @@ use crate::events::ApprovalRequest;
 use crate::events::TurnOutcome;
 use crate::session::{self, SessionSummary, Unfinished};
 use crate::stats::{self, Stats};
-use crate::tools::Jobs;
+use crate::tools::{Jobs, UndoLog};
 use crate::trace;
 
 pub use queue::Status;
@@ -98,6 +99,8 @@ pub struct Session {
     gate: Arc<Gate>,
     /// Background shell jobs, the same as the conversation's (PLAN.md D68).
     jobs: Arc<Jobs>,
+    /// The undo store, the same as the conversation's (PLAN.md D69).
+    undo: Arc<UndoLog>,
 }
 
 struct State {
@@ -122,6 +125,7 @@ impl Session {
     fn new(conv: Conversation, cwd: &Path, config: Settings) -> Session {
         let unfinished = conv.unfinished;
         let jobs = conv.tool_session.jobs().clone();
+        let undo = conv.tool_session.undo().clone();
         Session {
             id: conv.id.clone(),
             cwd: cwd.to_path_buf(),
@@ -141,6 +145,7 @@ impl Session {
             queued: Arc::default(),
             gate: Arc::default(),
             jobs,
+            undo,
         }
     }
 

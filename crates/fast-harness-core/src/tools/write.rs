@@ -51,7 +51,7 @@ fn write(args: &Value, ctx: &ToolCtx<'_>) -> Result<String, String> {
     }
     // A file that cannot be read counts as new.
     let old = std::fs::read(&path).ok();
-    super::atomic::replace(&path, content.as_bytes())
+    super::undo::tracked_replace(ctx, &path, content.as_bytes())
         .map_err(|err| format!("cannot write {path_arg}: {err}"))?;
     let lines = line_count(content);
     let bytes = content.len();
