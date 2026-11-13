@@ -52,8 +52,18 @@ fn second_step(model: &VecModel<MsgRow>) -> usize {
     lines.take(2).last().expect("a step line")
 }
 
-fn settings(ui: &MainWindow, save: &dyn Fn(&str)) {
+fn settings(window: &MinimalSoftwareWindow, ui: &MainWindow, save: &dyn Fn(&str)) {
     crate::dialogs::open(ui, "settings");
+    frames(window, 100);
+    // Scrolled to the Subagents limits and the UI scale.
+    let position = slint::LogicalPosition::new(WIDTH as f32 / 2.0, HEIGHT as f32 / 2.0);
+    window.dispatch_event(WindowEvent::PointerMoved { position });
+    window.dispatch_event(WindowEvent::PointerScrolled {
+        position,
+        delta_x: 0.0,
+        delta_y: -360.0,
+    });
+    frames(window, 300);
     let g = ui.global::<LimitsUi>();
     g.set_scale(150);
     g.set_max_parallel(4);
@@ -103,6 +113,6 @@ fn rails_shots() {
         frames(&window, 200);
         save("rails-card");
         window.dispatch_event(WindowEvent::PointerExited);
-        settings(&ui, &save);
+        settings(&window, &ui, &save);
     }
 }

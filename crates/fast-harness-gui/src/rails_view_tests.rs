@@ -244,3 +244,39 @@ fn rails_sit_at_their_indents_and_run_unbroken() {
         "details at {first}, column {left}"
     );
 }
+
+/// The rails shot's order (2026-11-14: rows after the fold stayed blank
+/// until a scroll): a navigator click to turn 2, the fold of turn 2, a
+/// click back to turn 1. Fails: D80 to-follow (not fixed yet).
+#[test]
+#[ignore = "known bug, D80 to-follow: rows after a turn folded while scrolled stay blank"]
+fn the_rows_after_a_turn_folded_while_scrolled_draw_at_once() {
+    use crate::turn_nav_view_tests::tick;
+    use slint::platform::{PointerEventButton, WindowEvent};
+    let (window, ui) = window(WIDTH, crate::turn_nav_view_tests::HEIGHT);
+    let view = session(8);
+    let model = crate::turn_nav_view_tests::show(&ui, &view);
+    let mut mirror = Mirror::new(false);
+    mirror.reset_with(&view.items, &Approvals::default(), &*model);
+    frames(&window, 100);
+    let go = |index: usize| {
+        let (position, button) = (tick(&ui, index), PointerEventButton::Left);
+        window.dispatch_event(WindowEvent::PointerPressed { position, button });
+        window.dispatch_event(WindowEvent::PointerReleased { position, button });
+        window.dispatch_event(WindowEvent::PointerExited);
+        frames(&window, 300);
+    };
+    go(1);
+    let heads: Vec<usize> = turns(&view.items).iter().map(|t| t.row).collect();
+    mirror.toggle_turn(heads[1], &*model);
+    frames(&window, 100);
+    go(0);
+    let shot = Shot::take(&window);
+    let left = ui.global::<TurnsUi>().get_column_left() as usize;
+    let drawn = |y: usize| (left..left + 600).any(|x| shot.at(x, y) != shot.at(left - 4, y));
+    let blank = (320..560).filter(|&y| !drawn(y)).count();
+    assert!(
+        blank < 120,
+        "{blank} of 240 rows blank below the folded turn"
+    );
+}
