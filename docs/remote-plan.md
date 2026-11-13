@@ -224,3 +224,31 @@ Reported by research subagents **[agent]**, with the pages they named:
 - Every OS: [Slint backends and renderers](https://docs.slint.dev/latest/docs/slint/guide/backends-and-renderers/backends_and_renderers/), Slint iOS issue 14032 and three more named in the report, [keyring](https://crates.io/crates/keyring), [webbrowser](https://docs.rs/crate/webbrowser/latest), [RFC 8252](https://www.rfc-editor.org/rfc/rfc8252), Apple TestFlight and program pages on developer.apple.com, GitHub runner pricing.
 
 A claim marked **[agent]** is checked again from its page by the phase that depends on it.
+
+## 12. The owner's corrections after the first draft (2026-11-13), not yet folded into sections 4 to 8
+
+His words:
+- "app của tao vẫn là harness bình thường, chạy cả trên phone mà, chẳng qua có chức năng remote nữa thôi".
+- "Tailscale sao lại chiếm mất slot vpn của điện thoại, không có cách nào để không chiếm slot vpn của điện thoại hả".
+- "tao muốn bảo mật nhất, để không bị hack, chứ này production mà bị hack thì tao đền ngập đầu".
+
+What they change, until the sections above are rewritten:
+
+**The phone app is the full harness.** Sections 4, 5 (GR8, GR9) and 7 (R7, R8) describe a remote-only client on phones. That premise was wrong: the phone runs the normal harness with a local and a remote backend, the seam of GR7 a on every OS. A new gate is needed: what the harness runs locally on a phone (model calls and file tools; `shell`, command hooks, stdio MCP servers and native plugins depend on what each OS allows). On iOS guideline 2.5.2 says an app may not "download, install, or execute code which introduces or changes features or functionality of the app" **[web]**. GR9 b said a public listing may be refused under 4.2.7; that rule is written for a remote desktop app that mirrors specific software, and (a) asks for host and client "on a local and LAN-based network" (text from a mirror of the guideline, not the Apple page). How a reviewer treats a remote function inside a full app is not known. TestFlight first stays the advice.
+
+**The VPN slot.** Android runs one VPN connection at a time **[web]**, and Tailscale's own answer is that iOS and Android run only one VPN at a time **[web]**; its phone app is that VPN. Ways that leave the slot free:
+- a. No Tailscale on the phone: the app speaks plain HTTPS to a public address (the Cloudflare path, or b).
+- b. Tailscale Funnel on the host only: a public `ts.net` HTTPS address, ports 443, 8443 or 10000, TLS only, bandwidth limits that cannot be set **[web]**, and no login in front of it.
+- c. A tailnet node inside our app in userspace: `libtailscale` is a C library over Go that works "entirely from userspace" **[web]**, at the cost of a Go runtime in the app (memory not measured); `tailscale-rs` is "preview, experimental" **[web]**.
+
+**Security first, for production.** This replaces the recommendations of GR3 b and the trust GR4 a put in the edge:
+- End to end: an inner mutual TLS 1.3 session between the app and the host, with both public keys pinned at pairing. `rustls` 0.23.46 is already in the lock and has client certificates, a server-side client verifier and raw public keys, and `ring` 0.17.14 generates Ed25519 keys **[read]** (crate sources in the cargo registry). The session runs inside the outer connection, so Cloudflare, a relay, Funnel or any network carries ciphertext it can neither read nor change. No cryptography of our own.
+- The inner session needs a two-way byte stream, so GR3 moves to a (WebSocket) unless the spike shows two HTTP streams carry it.
+- The login (Google, Facebook) stays as the first gate and stops being the root of trust: a stolen login or a taken-over relay alone runs nothing on a host.
+- Device keys stay in the OS key store and are not exportable where the OS allows it; a phone asks for its lock (biometric) before remote commands.
+- At the host: rights per device, a remote turn can never switch `approvals` off, lockout and rate limits, expiry of devices not seen for a set time, a version floor (the host refuses a client older than a fixed version), the audit file.
+- Before production: a written threat model, fuzzing of the listener and the decoder, `cargo audit` in CI, a review by an outside security tester, and a way to ship a security fix fast.
+- What no design removes: a paired phone stolen while unlocked, a compromised operating system on either side, and the agent following hostile text it reads (prompt injection). The plan must say how each is limited, not that it cannot happen.
+
+**Open question for the owner.** Is remote for his own machines, or for customers who pair their own PCs and phones? For customers, accounts and a relay that we run become a product of their own, and that is a new gate.
+
