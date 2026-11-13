@@ -37,7 +37,7 @@ Rules for anyone (human or agent) changing this repo. Read `ARCHITECTURE.md` fir
 - Opening the TUI creates a session file even if nothing is sent.
 - Google Antigravity (provider, Google accounts, OAuth client, quota, its pitfalls and live test) lives on branch `antigravity` at a143cfa, not on main: PLAN.md D53 says how to bring it back.
 - Thinking and thought signatures go back only to the model that made them (`Message.model`, trace version 3): Anthropic drops foreign thinking.
-- Never share one `CARGO_TARGET_DIR` between worktrees of this repo: cargo gives the workspace members the same unit hash in every worktree and judges freshness by file times, so a build silently tested another worktree's core (2026-11-12). One target per worktree; `Copy-Item` keeps file times, so touch a copied source.
+- Never share one `CARGO_TARGET_DIR` between worktrees of this repo: cargo gives the members the same unit hash everywhere and judges freshness by file times, so a build silently tested another worktree's core (2026-11-12). One target per worktree; touch a source copied with `Copy-Item`.
 - Never take two `RuntimeHost::runtime()` guards in one statement: temporaries live to its end and the mutex deadlocks (TUI hang, 2026-11-13).
 - A session log line that lacks a required key reads as `Record::Raw` and is skipped (D61): test fixtures write whole lines.
 - Every tool but `find_tools` is deferred (D30): tests that need all tools loaded build `Registry::new()` and add them, while `tools::builtin()` starts with `find_tools`. On Claude the `cache_control` breakpoint sits on `find_tools`, the last tool that is not deferred.
