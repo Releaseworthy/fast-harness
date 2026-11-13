@@ -136,8 +136,11 @@ fn restore(
         untracked: UNTRACKED.to_string(),
         ..UndoOutcome::default()
     };
+    manifest.failed.clear();
     for (path, prior) in priors {
-        put_back(&path, prior, &mut outcome);
+        if !put_back(&path, prior, &mut outcome) {
+            manifest.failed.push(path);
+        }
     }
     manifest.undone = true;
     manifest.noted = false;
@@ -187,8 +190,9 @@ fn conflicts(manifest: &Manifest) -> Vec<PathBuf> {
         .collect()
 }
 
-/// Writes `prior` back to `path`, or removes `path` when it did not exist.
-fn put_back(path: &Path, prior: Option<Vec<u8>>, outcome: &mut UndoOutcome) {
+/// Writes `prior` back to `path`, or removes `path` when it did not exist;
+/// false when that failed.
+fn put_back(path: &Path, prior: Option<Vec<u8>>, outcome: &mut UndoOutcome) -> bool {
     let done = match &prior {
         Some(bytes) => {
             if let Some(parent) = path.parent() {
@@ -204,18 +208,25 @@ fn put_back(path: &Path, prior: Option<Vec<u8>>, outcome: &mut UndoOutcome) {
     match (done, prior.is_some()) {
         (Ok(()), true) => outcome.restored.push(path.to_path_buf()),
         (Ok(()), false) => outcome.removed.push(path.to_path_buf()),
-        (Err(err), _) => outcome.errors.push(format!("{}: {err}", path.display())),
+        (Err(err), _) => {
+            outcome.errors.push(format!("{}: {err}", path.display()));
+            return false;
+        }
     }
+    true
 }
 
 /// `[undo] ...`: the model's view of one undone turn.
 fn note_line(manifest: &Manifest) -> String {
     let names = |existed: bool| -> Vec<String> {
         (manifest.files.iter())
-            .filter(|file| file.existed == existed)
+            .filter(|file| file.existed == existed && !manifest.failed.contains(&file.path))
             .map(|file| file.path.display().to_string())
             .collect()
     };
+    let failed: Vec<String> = (manifest.failed.iter())
+        .map(|path| path.display().to_string())
+        .collect();
     let mut text = format!(
         "[undo] The user undid the file changes made with write and edit in turn {}.",
         manifest.turn
@@ -233,6 +244,14 @@ fn note_line(manifest: &Manifest) -> String {
             text,
             " Removed (that turn created them): {}.",
             removed.join(", ")
+        );
+    }
+    if !failed.is_empty() {
+        let _ = write!(
+            text,
+            " Not put back (the undo failed for them, so they may still hold that turn's \
+             content): {}.",
+            failed.join(", ")
         );
     }
     text.push_str(" Read a file again before editing it.");

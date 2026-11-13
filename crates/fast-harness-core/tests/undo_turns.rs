@@ -233,6 +233,33 @@ fn bodies(transport: &ScriptedTransport) -> Vec<Value> {
 }
 
 #[test]
+fn the_note_names_a_file_not_put_back_as_not_restored() {
+    let env = env("undo-note-failed");
+    let dir = env.cwd.join("d");
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("x.txt"), "zero").unwrap();
+    let script = vec![
+        write_call("c1", "d/x.txt", "one"),
+        text_reply("ok"),
+        text_reply("noted"),
+    ];
+    let (agent, transport) = agent(&env, script);
+    let mut conv = Conversation::create(&env.home, &env.cwd, None).unwrap();
+    turn(&agent, &mut conv, "change");
+    std::fs::remove_dir_all(&dir).unwrap();
+    std::fs::write(&dir, "a file now").unwrap();
+    undo_conv(&mut conv, true).unwrap();
+    turn(&agent, &mut conv, "go on");
+    let sent = bodies(&transport);
+    let last = sent[2]["messages"].as_array().unwrap().last().unwrap()["content"].to_string();
+    assert!(!last.contains("Restored"), "{last}");
+    assert!(
+        last.contains("Not put back") && last.contains("x.txt"),
+        "{last}"
+    );
+}
+
+#[test]
 fn the_note_reaches_the_next_request_behind_an_unchanged_prefix() {
     let env = env("undo-note");
     let script = vec![

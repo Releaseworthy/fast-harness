@@ -21,7 +21,7 @@ pub const SESSION_CAP: u64 = 64 * 1024 * 1024;
 pub const UNTRACKED: &str = "Files changed through shell commands, background jobs or \
 subagents are not tracked and were not undone.";
 const MANIFEST: &str = "manifest.json";
-const FORMAT: u32 = 1;
+const FORMAT: u32 = 2;
 
 /// The size caps of an [`UndoLog`].
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -72,6 +72,9 @@ pub(crate) struct Manifest {
     /// The model was told about the undo (the note went into a user message).
     #[serde(default)]
     pub noted: bool,
+    /// The files the undo could not put back (the note names them apart).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub failed: Vec<PathBuf>,
 }
 
 /// What a view shows about the next undo: the turn and its file count.
