@@ -18,7 +18,7 @@ fn tool(output: Option<&str>, is_error: bool) -> Item {
 
 #[test]
 fn user_and_assistant_rows() {
-    let user = msg_row(&Item::User { text: "hi".into() });
+    let user = msg_row(&Item::User { text: "hi".into(), images: vec![] });
     assert_eq!((user.kind.as_str(), user.text.as_str()), ("user", "hi"));
     let item = Item::Assistant {
         turn: 1,
@@ -91,7 +91,7 @@ fn long_transcript_texts_stay_under_the_renderer_limit() {
     assert_eq!(row.text, long, "Copy takes all of it");
     assert!(drawn_lines(&row.output) <= max, "tool output");
     assert!(row.output.contains("(Copy takes all)"));
-    let user = msg_row(&Item::User { text: long.clone() });
+    let user = msg_row(&Item::User { text: long.clone(), images: vec![] });
     assert!(drawn_lines(&user.shown) <= max, "user text");
     let item = Item::Assistant {
         turn: 1,

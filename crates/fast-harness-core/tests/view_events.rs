@@ -143,6 +143,7 @@ fn expected() -> Vec<Item> {
     vec![
         Item::User {
             text: "fix it".into(),
+            images: vec![],
         },
         Item::Note {
             kind: NoteKind::Retry,

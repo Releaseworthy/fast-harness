@@ -5,3 +5,8 @@ use std::path::PathBuf;
 pub fn pick_folder(_owner: isize, _title: &str) -> Result<Option<PathBuf>, PlatformError> {
     Err(PlatformError::Unsupported)
 }
+
+/// No file dialog outside Windows yet.
+pub fn pick_file(_owner: isize, _title: &str) -> Result<Option<PathBuf>, PlatformError> {
+    Err(PlatformError::Unsupported)
+}

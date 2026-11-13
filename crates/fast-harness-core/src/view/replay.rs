@@ -72,7 +72,8 @@ impl Transcript {
         if text.is_empty() {
             return false;
         }
-        self.items.push(Item::User { text });
+        let images = message.images().cloned().collect();
+        self.items.push(Item::User { text, images });
         true
     }
 

@@ -46,6 +46,7 @@ fn transcript() -> Transcript {
     t.items = vec![
         Item::User {
             text: "show me the build".into(),
+            images: vec![],
         },
         Item::Assistant {
             turn: 1,

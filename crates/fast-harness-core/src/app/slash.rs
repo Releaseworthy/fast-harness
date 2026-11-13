@@ -9,10 +9,14 @@ use crate::config::index::read_md;
 use crate::tools::Extensions;
 
 /// Slash commands the harness itself handles; a file cannot replace them.
-const BUILT_IN: [(&str, &str); 6] = [
+const BUILT_IN: [(&str, &str); 7] = [
     (
         "undo [force]",
         "restore the files the last turn changed with write or edit (shell changes are not tracked)",
+    ),
+    (
+        "image <path> | clear",
+        "attach a png, jpeg, gif or webp file to the next prompt, or remove the attached images",
     ),
     (
         "compact [instructions]",
@@ -69,6 +73,13 @@ pub fn slash(ext: &Extensions, text: &str) -> Slash {
 /// `Some(force)` for `/undo` and `/undo force` (PLAN.md D69); front ends
 /// call `Session::undo_last_turn` with it instead of sending the text.
 pub use crate::service::undo::command as undo_args;
+
+/// The argument of `/image <path>` or `/image clear` (PLAN.md D70), `Some("")`
+/// for `/image` alone, `None` for any other text: never sent to the model.
+pub fn image_args(text: &str) -> Option<&str> {
+    let rest = text.trim().strip_prefix("/image")?;
+    (rest.is_empty() || rest.starts_with(char::is_whitespace)).then(|| rest.trim())
+}
 
 /// The arguments of a `/reflect` text (PLAN.md D50), `None` for any other.
 pub fn reflect_args(text: &str) -> Option<&str> {

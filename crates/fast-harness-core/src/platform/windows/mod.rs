@@ -11,7 +11,7 @@ mod secret;
 mod window;
 
 pub use file::copy_permissions;
-pub use folder::pick_folder;
+pub use folder::{pick_file, pick_folder};
 pub use interrupt::on_interrupt;
 pub use liveness::{process_start, spawn_detached};
 pub use open::{open_folder, open_url};

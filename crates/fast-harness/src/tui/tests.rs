@@ -35,6 +35,7 @@ fn sample() -> Transcript {
     t.items = vec![
         Item::User {
             text: "hello 世界".into(),
+            images: vec![],
         },
         Item::Assistant {
             turn: 1,

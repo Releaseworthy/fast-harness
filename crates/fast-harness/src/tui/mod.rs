@@ -11,6 +11,7 @@ mod approval_tests;
 mod drafts_tests;
 mod draw;
 mod icons;
+mod images;
 mod input;
 mod jobs;
 #[cfg(test)]

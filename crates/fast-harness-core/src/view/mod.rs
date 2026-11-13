@@ -24,7 +24,7 @@ pub use tool_detail::{
 
 use crate::events::{AgentEvent, TurnOutcome};
 use crate::llm::Timing;
-use crate::types::{StopReason, Usage};
+use crate::types::{ImageRef, StopReason, Usage};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum NoteKind {
@@ -37,8 +37,11 @@ pub enum NoteKind {
 /// One rendered entry of the transcript.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Item {
+    /// `text` is `media::user_text` (the label lines of its images, then the
+    /// text), the same live and on replay; images are those images (D70).
     User {
         text: String,
+        images: Vec<ImageRef>,
     },
     /// The text and reasoning of one step; both grow as deltas arrive.
     Assistant {
@@ -203,7 +206,15 @@ impl Transcript {
     }
 
     pub fn push_user(&mut self, text: impl Into<String>) {
-        self.items.push(Item::User { text: text.into() });
+        let text: String = text.into();
+        self.push_user_images(&text, Vec::new());
+    }
+
+    /// The user item of a prompt that carries images (D70): the text a
+    /// replay shows, media::user_text.
+    pub fn push_user_images(&mut self, text: &str, images: Vec<ImageRef>) {
+        let text = crate::media::user_text(text, &images);
+        self.items.push(Item::User { text, images });
         self.bump();
     }
 

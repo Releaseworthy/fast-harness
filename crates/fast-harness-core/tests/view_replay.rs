@@ -33,7 +33,10 @@ fn final_answer() -> Message {
 
 fn items(duration_ms: Option<u64>) -> Vec<Item> {
     vec![
-        Item::User { text: "hi".into() },
+        Item::User {
+            text: "hi".into(),
+            images: vec![],
+        },
         Item::Assistant {
             turn: 1,
             step: 1,

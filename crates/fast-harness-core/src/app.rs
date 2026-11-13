@@ -305,7 +305,7 @@ pub mod words;
 
 pub use ext_list::{ext_lines, ext_list};
 pub use settings::{doctor, load_settings, mcp_lines, provider_for, Settings};
-pub use slash::{expand_body, help, reflect_args, slash, undo_args, Slash};
+pub use slash::{expand_body, help, image_args, reflect_args, slash, undo_args, Slash};
 
 pub use host::RuntimeHost;
 

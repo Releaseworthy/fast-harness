@@ -188,6 +188,7 @@ impl Tui {
         self.ui.current.clone_from(&self.session);
         self.show_queue();
         self.follow_jobs();
+        self.refresh_images();
         self.ui.undo = self.current.undo_info();
         if let Some(state) = unfinished {
             self.ui.status = format!("the last turn was {}: /resume continues it", state.word());
@@ -364,7 +365,11 @@ impl Tui {
         }
         // `/panel [id]` (PLAN.md D46), `/kill <job-id>` (D68).
         // `/undo [force]` (D69) never reaches the model.
-        if self.panel_command(&text) || self.kill_command(&text) || self.undo_command(&text) {
+        if self.panel_command(&text)
+            || self.kill_command(&text)
+            || self.undo_command(&text)
+            || self.image_command(&text)
+        {
             return;
         }
         // `/reflect [apply]` runs off the UI thread (PLAN.md D50).
@@ -390,7 +395,10 @@ impl Tui {
         if std::mem::take(&mut self.fresh) {
             self.drafts.created(&self.session);
         }
-        self.transcript.push_user(text.clone());
+        // The turn takes the attached images (D70): the item shows them.
+        let images = self.current.attached_images();
+        self.transcript.push_user_images(&text, images);
+        self.ui.images.clear();
         self.start(Start::Text(text));
     }
 

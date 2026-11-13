@@ -183,7 +183,7 @@ pub fn item_lines(item: &Item, kept: bool, o: &Opts) -> Vec<Line<'static>> {
     let width = o.width.max(1);
     let st = &o.styles;
     match item {
-        Item::User { text } => user_lines(text, width, st),
+        Item::User { text, .. } => user_lines(text, width, st),
         Item::Assistant { text, thinking, .. } => {
             let mut lines = Vec::new();
             if !thinking.trim().is_empty() {

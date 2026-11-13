@@ -217,7 +217,7 @@ fn gated(replies: &[&str]) -> (Model, Sender<()>) {
 fn users(run: &Run) -> Vec<String> {
     (run.view.items.iter())
         .filter_map(|item| match item {
-            Item::User { text } => Some(text.clone()),
+            Item::User { text, .. } => Some(text.clone()),
             _ => None,
         })
         .collect()

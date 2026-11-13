@@ -31,6 +31,8 @@ pub struct Icons {
     pub more: &'static str,
     /// Before the model and effort of the input box.
     pub settings: &'static str,
+    /// An image attached to the next prompt (D70).
+    pub image: &'static str,
 }
 
 pub const NERD: Icons = Icons {
@@ -52,6 +54,7 @@ pub const NERD: Icons = Icons {
     account: "\u{EB99}",  // cod-account
     more: "\u{EAB4}",     // cod-chevron_down
     settings: "\u{EB51}", // cod-settings_gear
+    image: "\u{EAEA}",    // cod-file_media
 };
 
 pub const PLAIN: Icons = Icons {
@@ -73,6 +76,7 @@ pub const PLAIN: Icons = Icons {
     account: "*",
     more: "↓",
     settings: "",
+    image: "▣",
 };
 
 /// Both sets, default first.
@@ -100,7 +104,7 @@ pub fn lead(mark: &str) -> String {
 #[cfg(test)]
 impl Icons {
     /// Every mark of the set, for the width tests.
-    pub fn all(&self) -> [&'static str; 17] {
+    pub fn all(&self) -> [&'static str; 18] {
         [
             self.app,
             self.chat,
@@ -119,6 +123,7 @@ impl Icons {
             self.account,
             self.more,
             self.settings,
+            self.image,
         ]
     }
 }

@@ -141,6 +141,8 @@ pub struct Ui {
     pub current: String,
     /// The shown session's background jobs (D68): the line above the input.
     pub jobs: Vec<fast_harness_core::view::jobs::JobRow>,
+    /// The labels of the images attached to the next prompt (D70 "Views").
+    pub images: Vec<String>,
     /// The turn the next `/undo` restores (D69 "Views"): the hint bar's.
     pub undo: Option<fast_harness_core::tools::UndoInfo>,
 }
@@ -168,6 +170,7 @@ impl Ui {
             sessions_loading: false,
             loading: false,
             jobs: Vec::new(),
+            images: Vec::new(),
             undo: None,
             models: Vec::new(),
             catalog: builtin_models(),

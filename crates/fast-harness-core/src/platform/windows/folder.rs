@@ -1,4 +1,4 @@
-//! The Windows "Select folder" dialog: IFileOpenDialog through raw COM vtables.
+//! The Windows "Select folder" and "Open file" dialogs: IFileOpenDialog through raw COM vtables.
 //! windows-sys has no COM interface types, so the two vtables are declared here in the
 //! order of shobjidl_core.h (checked against the `windows` 0.62.2 crate, 2026-11-12):
 //! IUnknown, IModalWindow::Show, IFileDialog (23 methods), IFileOpenDialog (2 methods).
@@ -13,7 +13,8 @@ use windows_sys::Win32::System::Com::{
     COINIT_APARTMENTTHREADED,
 };
 use windows_sys::Win32::UI::Shell::{
-    FileOpenDialog, FOS_FORCEFILESYSTEM, FOS_PATHMUSTEXIST, FOS_PICKFOLDERS, SIGDN_FILESYSPATH,
+    FileOpenDialog, FOS_FILEMUSTEXIST, FOS_FORCEFILESYSTEM, FOS_PATHMUSTEXIST, FOS_PICKFOLDERS,
+    SIGDN_FILESYSPATH,
 };
 
 use crate::platform::PlatformError;
@@ -141,9 +142,18 @@ impl Drop for Apartment {
 /// picked folder, or `Ok(None)` when the user cancels. Blocks the calling thread; call it
 /// on a thread of its own, not on the UI thread.
 pub fn pick_folder(owner: isize, title: &str) -> Result<Option<PathBuf>, PlatformError> {
+    pick(owner, title, FOS_PICKFOLDERS | FOS_PATHMUSTEXIST)
+}
+
+/// The same dialog picking one existing file (an image to attach, D70).
+pub fn pick_file(owner: isize, title: &str) -> Result<Option<PathBuf>, PlatformError> {
+    pick(owner, title, FOS_FILEMUSTEXIST | FOS_PATHMUSTEXIST)
+}
+
+fn pick(owner: isize, title: &str, flags: u32) -> Result<Option<PathBuf>, PlatformError> {
     let _apartment = Apartment::enter()?;
     let dialog = create_dialog()?;
-    configure(&dialog, title)?;
+    configure(&dialog, title, flags)?;
     // SAFETY: `dialog` is a live IFileOpenDialog; `owner` is a window handle or null.
     let hr = unsafe { (dialog.vtbl().show)(dialog.ptr, owner as HWND) };
     if check(hr)?.is_none() {
@@ -178,13 +188,13 @@ fn create_dialog() -> Result<Com<DialogVtbl>, PlatformError> {
     })
 }
 
-fn configure(dialog: &Com<DialogVtbl>, title: &str) -> Result<(), PlatformError> {
+fn configure(dialog: &Com<DialogVtbl>, title: &str, flags: u32) -> Result<(), PlatformError> {
     let wide: Vec<u16> = title.encode_utf16().chain(Some(0)).collect();
     let mut options = 0u32;
     // SAFETY: live dialog; `options` and the NUL-terminated `wide` outlive the calls.
     unsafe {
         check((dialog.vtbl().get_options)(dialog.ptr, &mut options))?;
-        let wanted = options | FOS_PICKFOLDERS | FOS_FORCEFILESYSTEM | FOS_PATHMUSTEXIST;
+        let wanted = options | flags | FOS_FORCEFILESYSTEM;
         check((dialog.vtbl().set_options)(dialog.ptr, wanted))?;
         check((dialog.vtbl().set_title)(dialog.ptr, wide.as_ptr()))?;
     }

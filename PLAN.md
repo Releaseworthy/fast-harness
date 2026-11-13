@@ -99,6 +99,7 @@ One file per decision in [docs/decisions/](docs/decisions/), moved there unchang
 - D67 [Registries become values](docs/decisions/D67.md)
 - D68 [Background shell jobs](docs/decisions/D68.md)
 - D69 [Undo of a turn's file changes](docs/decisions/D69.md)
+- D70 [Image input (core, TUI views)](docs/decisions/D70.md)
 
 ## Architecture
 
