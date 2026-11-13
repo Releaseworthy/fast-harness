@@ -68,6 +68,7 @@ fn a_path_becomes_a_chip_the_x_removes_it_and_a_refusal_says_why() {
     let shown = labels(&ui);
     assert_eq!(shown.len(), 2, "{}", ui.get_error_text());
     assert!(shown[0].starts_with("png 3x2, "), "{shown:?}");
+    assert!(ui.get_error_text().is_empty(), "no banner for a success");
     with_app(|app, ui| remove(app, ui, 0));
     assert_eq!(labels(&ui).len(), 1);
     with_app(|app, ui| attach(app, ui, &cwd.join("notes.txt")));

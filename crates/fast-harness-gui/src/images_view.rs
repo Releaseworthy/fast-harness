@@ -81,7 +81,8 @@ pub fn attach(app: &mut App, ui: &MainWindow, path: &Path) -> bool {
         session.attach_image_file(path).map_err(words)
     });
     match attached {
-        Ok(image) => ui.set_error_text(format!("Attached: {}", media::label(&image)).into()),
+        // The chip says it in words; the banner is for errors.
+        Ok(_) => ui.set_error_text("".into()),
         Err(err) => show_error(ui, format!("Image not attached: {err}")),
     }
     refresh(app, ui);

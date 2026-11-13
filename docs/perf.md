@@ -225,3 +225,15 @@ No PLAN.md fact was added near D36: E1 did not run, so "Antigravity caches nothi
 | One running job: CPU over 30 s (2 runs) | 140.6, 78.1 ms | 78.1, 31.2 ms |
 
 With a job the CPU is the job's own pipe readers (one line a second) plus the turn's tail; the strip's worker sleeps on the condition variable and wakes only at a start, end or kill. The spread between runs is larger than any difference between the builds. Executable: 30,764,544 bytes before, 30,948,864 after.
+
+## Phase 31 views: image attach and thumbnails (D70)
+
+`cargo build --release -p fast-harness-gui` at b844c38 (2026-11-13), measured by `out\fh-images\measure.ps1` (outside the repo): a copy of the exe, a fresh `FAST_HARNESS_HOME` with only a fake OpenAI-compatible provider (a local Bun server, model entry `"images": true`), the window started with `scripts/window.ps1`. For "10 image rows" each of 10 turns is `/image picN.png` (a 640x480 png, 4.1 KB) then `look N` typed in the composer; for the control "10 text rows" the same 10 turns without the image. After the last turn 10 s idle, private working set (`Win32_PerfFormattedData_PerfProc_Process.WorkingSetPrivate`), then CPU time (`TotalProcessorTime`) over the next 30 s, then `WM_CLOSE`. GPU not sampled. The fake server logged one `image_url` data URL (`data:image/png;base64,...`, 5,598 characters) in the last user message of each of the 10 requests.
+
+| Run | Private working set | CPU over 30 s idle |
+|---|---|---|
+| No rows (2 runs) | 18.1, 18.1 MB | 0.0, 15.6 ms |
+| 10 text rows (3 runs) | 20.8, 20.3, 20.9 MB | 203.1, 265.6, 234.4 ms |
+| 10 image rows (4 runs) | 21.2, 22.5, 21.5, 20.9 MB | 140.6, 765.6, 156.2, 203.1 ms |
+
+Ten image rows cost about 0.6 to 1.6 MB of private working set over ten text rows: ten 128 px thumbnails (64 KB at most each) plus the image rows' layout. The idle CPU after ten turns is the same with and without images (one 765.6 ms outlier of four image runs); the thumbnail worker ends after each batch and nothing polls. Where the idle CPU after ten turns comes from (it is 0 to 15.6 ms with no rows) is not measured here. Executable: 31,783,424 bytes.
