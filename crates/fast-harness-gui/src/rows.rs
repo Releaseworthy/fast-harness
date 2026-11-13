@@ -52,7 +52,10 @@ fn msg_row_plain(item: &Item) -> MsgRow {
         ..MsgRow::default()
     };
     match item {
-        Item::User { text, .. } => row("user", text),
+        Item::User { text, images } => MsgRow {
+            images: crate::images_view::chips(images),
+            ..row("user", text)
+        },
         Item::Assistant { text, thinking, .. } => MsgRow {
             body: markdown(&expanded(text)),
             thinking: expanded(thinking).into(),

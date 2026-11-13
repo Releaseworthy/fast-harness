@@ -30,6 +30,8 @@ mod theme;
 mod tool_rows;
 mod trace_load;
 mod undo_view;
+mod images_view;
+mod thumbs;
 mod trace_rows;
 mod turn;
 mod window_state;
@@ -119,6 +121,7 @@ fn start_runtime(ui: &MainWindow, stop: &Arc<AtomicBool>) {
             wire::connect(&ui);
             jobs_view::connect(&ui);
             undo_view::connect(&ui);
+    images_view::connect(&ui);
             wire::first_paint();
             accounts::start_poller(pool, http, stop.clone());
         }

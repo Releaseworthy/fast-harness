@@ -1,6 +1,7 @@
 import { Palette } from "std-widgets.slint";
-import { MsgRow, SessionRow, SideRow, AccountRow, TraceRow, ProviderCard, QueueChip, JobChip, ApprovalView, UndoBar } from "types.slint";
-import { QueueChips } from "queue.slint";
+import { MsgRow, SessionRow, SideRow, AccountRow, TraceRow, ProviderCard, QueueChip, JobChip, ApprovalView, UndoBar, ImageChip } from "types.slint";
+import { QueueRow } from "queue.slint";
+import { AttachRow } from "attach.slint";
 import { JobsRow } from "jobs.slint";
 import { UndoRow } from "undo.slint";
 import { ApprovalPrompt } from "approval.slint";
@@ -23,7 +24,7 @@ import { TabStrip, StatusBar, ErrorBanner } from "panel.slint";
 // The icon font (Symbols Nerd Font subset); `Theme.symbols` names it.
 import "../fonts/FastHarnessIcons.ttf";
 
-export { MsgRow, SessionRow, SideRow, AccountRow, TraceRow, ProviderCard, QueueChip, JobChip, ApprovalView, Theme }
+export { MsgRow, SessionRow, SideRow, AccountRow, TraceRow, ProviderCard, QueueChip, JobChip, ApprovalView, ImageChip, Theme }
 
 // No native frame: the title bar (titlebar.slint) draws the window
 // controls; a 1px line edges the window while it is not maximized.
@@ -86,6 +87,9 @@ export component MainWindow inherits Window {
     callback kill-job(string);
     // The next undo of the shown session (D69); undo-turn(force) runs it.
     in property <UndoBar> undo;
+    // Images for the next prompt (D70): attach-image() opens the file dialog.
+    in property <[ImageChip]> attached;
+    callback attach-image(); callback remove-image(int);
     callback undo-turn(bool);
     // How the shown session's last turn stopped when Resume applies.
     in property <string> resume-word;
@@ -309,16 +313,11 @@ export component MainWindow inherits Window {
                                 copy(t) => { root.copy-text(t); }
                                 link(u) => { root.open-url(u); }
                             }
-                            if root.queue-chips.length > 0: Rectangle {
-                                height: chips.preferred-height + Theme.space-s;
-                                chips := QueueChips {
-                                    x: (parent.width - self.width) / 2;
-                                    y: Theme.space-s;
-                                    width: chat.column;
-                                    height: self.preferred-height;
-                                    chips: root.queue-chips;
-                                    remove(i) => { root.remove-queued(i); }
-                                }
+                            if root.queue-chips.length > 0: QueueRow {
+                                column: chat.column; chips: root.queue-chips; remove(i) => { root.remove-queued(i); }
+                            }
+                            if root.attached.length > 0: AttachRow {
+                                column: chat.column; chips: root.attached; remove(i) => { root.remove-image(i); }
                             }
                             if root.jobs.length > 0: JobsRow {
                                 column: chat.column;
@@ -357,6 +356,7 @@ export component MainWindow inherits Window {
                                     stop => { root.stop(); }
                                     pause => { root.pause(); }
                                     resume => { root.resume(); }
+                                    attach => { root.attach-image(); }
                                     send-key: root.send-key;
                                     queue-key: root.queue-key;
                                     shortcut(e) => {

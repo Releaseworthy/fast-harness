@@ -228,3 +228,6 @@ mod turn_tests;
 
 #[path = "approval_tests.rs"]
 mod approval_tests;
+
+#[path = "images_turn_tests.rs"]
+mod images_turn_tests;

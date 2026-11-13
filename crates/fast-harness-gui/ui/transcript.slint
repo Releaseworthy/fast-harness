@@ -6,6 +6,7 @@ import { BusySpinner, IconButton } from "widgets.slint";
 import { ScrollBar } from "scrollbar.slint";
 import { ThinkingQuote, LoadingLine } from "blocks.slint";
 import { ToolFrame } from "toolcard.slint";
+import { RowThumbs } from "attach.slint";
 
 // The user's message: a bubble on the right, at most 80% of the column.
 component UserBubble {
@@ -30,11 +31,15 @@ component UserBubble {
                     padding-right: Theme.space-l - 2px;
                     padding-top: Theme.space-s + 2px;
                     padding-bottom: Theme.space-s + 2px;
-                    Text {
-                        text: msg.shown;
-                        wrap: word-wrap;
-                        color: Theme.text;
-                        font-size: Theme.font-m;
+                    VerticalLayout {
+                        spacing: Theme.space-xs;
+                        if msg.images.length > 0: RowThumbs { images: msg.images; }
+                        Text {
+                            text: msg.shown;
+                            wrap: word-wrap;
+                            color: Theme.text;
+                            font-size: Theme.font-m;
+                        }
                     }
                 }
             }

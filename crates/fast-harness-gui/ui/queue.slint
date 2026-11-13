@@ -60,3 +60,19 @@ export component QueueChips inherits VerticalLayout {
         remove => { root.remove(c.index); }
     }
 }
+
+// The chips centred in a chat `column` (PLAN.md D39).
+export component QueueRow inherits Rectangle {
+    in property <[QueueChip]> chips;
+    in property <length> column;
+    callback remove(int);
+    height: list.preferred-height + Theme.space-s;
+    list := QueueChips {
+        x: (parent.width - self.width) / 2;
+        y: Theme.space-s;
+        width: root.column;
+        height: self.preferred-height;
+        chips: root.chips;
+        remove(i) => { root.remove(i); }
+    }
+}

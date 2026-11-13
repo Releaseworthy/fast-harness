@@ -117,6 +117,8 @@ impl App {
         let run = &self.runs.shown;
         let (items, approvals) = (&run.view.items, &run.view.approvals);
         (self.mirror).sync_with(items, approvals, &*self.rows, run.turn_from);
+        // A user row's thumbnails still to decode (D70).
+        crate::images_view::start_thumbs();
     }
 
     pub fn refresh_status(&self, ui: &MainWindow) {
@@ -156,6 +158,7 @@ impl App {
             })
             .collect();
         ui.set_queue_chips(ModelRc::new(VecModel::from(chips)));
+        crate::images_view::refresh(self, ui);
         let word = match run.status().unfinished {
             Some(state) if run.can_resume() => state.word(),
             _ => "",

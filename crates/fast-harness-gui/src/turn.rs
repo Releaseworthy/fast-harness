@@ -22,6 +22,11 @@ pub fn send(app: &mut App, ui: &MainWindow, text: &str) -> bool {
     if text.trim().is_empty() {
         return false;
     }
+    // `/image` attaches, never a steer or a message (D70 "Views").
+    if let Some(args) = fast_harness_core::app::image_args(&text) {
+        crate::images_view::typed(app, ui, args);
+        return true;
+    }
     // A session still opening has no history to send with (D60, G10).
     if app.opens.loading() {
         crate::app::show_error(ui, crate::open_load::LOADING);
@@ -149,7 +154,7 @@ fn start_text(app: &mut App, ui: &MainWindow, text: String) -> bool {
 }
 
 /// The id of the shown session, opened in the service on its first message.
-fn shown_session(app: &mut App) -> Result<String, String> {
+pub(crate) fn shown_session(app: &mut App) -> Result<String, String> {
     if let Some(session) = &app.runs.shown.session {
         return Ok(session.id.clone());
     }
@@ -222,7 +227,8 @@ pub(crate) fn start_run(
         run.view.items.push(Item::Note { kind, text });
     }
     if let Start::Text(text) = &start {
-        run.view.push_user(text.as_str());
+        // The turn takes the attached images (D70): the row shows them.
+        run.view.push_user_images(text, session.attached_images());
     }
     host.prepare(id, agent);
     match service.start(&session, start, sink, done) {

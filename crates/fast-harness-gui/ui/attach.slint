@@ -1,0 +1,106 @@
+import { Theme, Mark } from "parts.slint";
+import { Icons } from "icons.slint";
+import { IconButton } from "widgets.slint";
+import { ImageChip } from "types.slint";
+
+// One image (PLAN.md D70 "Views"): its small thumbnail, decoded once on a
+// worker and capped at 128 px, or a file mark until it arrives. The label
+// in words is its text alternative.
+export component Thumb inherits Rectangle {
+    in property <ImageChip> chip;
+    in property <length> size: 32px;
+    width: root.size;
+    height: root.size;
+    border-radius: Theme.radius-s;
+    background: Theme.raised;
+    border-width: 1px;
+    border-color: Theme.line;
+    clip: true;
+    accessible-role: image;
+    accessible-label: root.chip.label;
+    if root.chip.thumb.width == 0: Mark {
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
+        text: Icons.file;
+        color: Theme.dim;
+        font-size: Theme.font-s;
+    }
+    Image {
+        source: root.chip.thumb;
+        width: parent.width;
+        height: parent.height;
+        image-fit: contain;
+    }
+}
+
+// The thumbnails of a user message, left to right.
+export component RowThumbs inherits HorizontalLayout {
+    in property <[ImageChip]> images;
+    alignment: start;
+    spacing: Theme.space-xs;
+    for c in root.images: Thumb { chip: c; size: 64px; }
+}
+
+// One image attached to the next prompt: thumbnail, "image N", the label
+// and an x that removes it.
+component AttachLine inherits Rectangle {
+    in property <ImageChip> chip;
+    callback remove();
+    height: Theme.control-height;
+    border-radius: Theme.radius-m;
+    background: Theme.raised;
+    border-width: 1px;
+    border-color: Theme.line;
+    accessible-role: list-item;
+    accessible-label: "attached image " + (root.chip.index + 1) + ": " + root.chip.label;
+    HorizontalLayout {
+        padding-left: 3px;
+        padding-right: 2px;
+        padding-top: 3px;
+        padding-bottom: 3px;
+        spacing: Theme.space-s;
+        Thumb { chip: root.chip; size: Theme.control-height - 6px; }
+        Text {
+            text: "image " + (root.chip.index + 1);
+            color: Theme.accent;
+            font-size: Theme.font-xs;
+            vertical-alignment: center;
+        }
+        Text {
+            text: root.chip.label;
+            color: Theme.text;
+            font-size: Theme.font-s;
+            vertical-alignment: center;
+            overflow: elide;
+            horizontal-stretch: 1;
+        }
+        IconButton {
+            icon: Icons.close;
+            label: "Remove the attached image";
+            icon-size: Theme.font-s;
+            clicked => { root.remove(); }
+        }
+    }
+}
+
+// The images attached to the shown session's next prompt, centred in a
+// chat `column`, one per line; `remove(index)` drops image `index`.
+export component AttachRow inherits Rectangle {
+    in property <[ImageChip]> chips;
+    in property <length> column;
+    callback remove(int);
+    height: list.preferred-height + Theme.space-s;
+    accessible-role: groupbox;
+    accessible-label: "Attached images";
+    list := VerticalLayout {
+        x: (parent.width - self.width) / 2;
+        y: Theme.space-s;
+        width: root.column;
+        height: self.preferred-height;
+        spacing: 4px;
+        for c in root.chips: AttachLine {
+            chip: c;
+            remove => { root.remove(c.index); }
+        }
+    }
+}

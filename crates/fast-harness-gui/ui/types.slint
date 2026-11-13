@@ -62,9 +62,20 @@ export struct ToolView {
     more-label: string,
 }
 
+// An image attached to the next prompt or shown in a user row (D70): its
+// thumbnail (empty until decoded), its label in words, its file and place.
+export struct ImageChip {
+    thumb: image,
+    label: string,
+    path: string,
+    index: int,
+}
+
 // One transcript entry. `kind`: user, assistant, tool, note or footer.
 export struct MsgRow {
     kind: string,
+    // A user message's images (D70), drawn as thumbnails above its text.
+    images: [ImageChip],
     // Plain text: what Copy puts on the clipboard.
     text: string,
     // `text` as drawn: cut under the software renderer's i16 pixel limit.
