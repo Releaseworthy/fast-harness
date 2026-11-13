@@ -61,6 +61,16 @@ With `"approvals": "ask"` a call can wait for an answer (PLAN.md D64). Both fron
 - `ConfigUi.folder`: property <string>
 - `ConfigUi.open-folder`: callback
 - `ConfigUi.rows`: property <[ConfigRow]>
+- `JobsUi.clear`: callback
+- `JobsUi.closed`: callback
+- `JobsUi.dropped`: property <bool>
+- `JobsUi.expand`: callback
+- `JobsUi.expanded`: property <string>
+- `JobsUi.finished`: property <[JobChip]>
+- `JobsUi.kill`: callback
+- `JobsUi.open`: property <bool>
+- `JobsUi.output`: property <string>
+- `JobsUi.running`: property <[JobChip]>
 - `MainWindow.accounts`: property <[AccountRow]>
 - `MainWindow.accounts-message`: property <string>
 - `MainWindow.accounts-provider`: property <string>
@@ -79,9 +89,7 @@ With `"approvals": "ask"` a call can wait for an answer (PLAN.md D64). Both fron
 - `MainWindow.effort-picked`: callback
 - `MainWindow.efforts`: property <[string]>
 - `MainWindow.error-text`: property <string>
-- `MainWindow.jobs`: property <[JobChip]>
 - `MainWindow.key-action`: callback
-- `MainWindow.kill-job`: callback
 - `MainWindow.loading`: property <bool>
 - `MainWindow.login-url`: property <string>
 - `MainWindow.messages`: property <[MsgRow]>

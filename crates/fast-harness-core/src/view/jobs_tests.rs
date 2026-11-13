@@ -7,12 +7,15 @@ use super::*;
 const WAIT: Duration = Duration::from_secs(20);
 
 fn info(id: &str, command: &str, state: JobState, exit_code: Option<i32>) -> JobInfo {
+    let started = SystemTime::now();
+    let ended = (state != JobState::Running).then(|| started + Duration::from_secs(125));
     JobInfo {
         id: id.into(),
         command: command.into(),
         state,
         exit_code,
-        started: SystemTime::now(),
+        started,
+        ended,
         bytes: 0,
         log: None,
     }
@@ -40,6 +43,8 @@ fn rows_say_each_state_in_a_word_and_a_mark() {
         info("job-5", "true", JobState::Exited, None),
     ];
     let rows = rows(&list);
+    assert_eq!(rows[0].took, None, "no duration while it runs");
+    assert_eq!(rows[1].took, Some(Duration::from_secs(125)));
     let words: Vec<(&str, Mark)> = rows.iter().map(|r| (r.word.as_str(), r.mark)).collect();
     assert_eq!(
         words,

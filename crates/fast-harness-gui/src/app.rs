@@ -48,6 +48,8 @@ pub struct App {
     pub drafts: fast_harness_core::app::drafts::Drafts,
     /// The worker watching the shown session's background jobs (D68).
     pub jobs: fast_harness_core::view::jobs::Follow,
+    /// The jobs popover and the worker reading one job's output (D72).
+    pub jobs_panel: crate::jobs_view::Panel,
     /// The undo running and the last conflict (D69 "Views").
     pub undo: crate::undo_view::UndoState,
 }
@@ -108,6 +110,7 @@ impl App {
             // The window starts with a new session.
             drafts: Default::default(),
             jobs: Default::default(),
+            jobs_panel: Default::default(),
             undo: Default::default(),
         }
     }

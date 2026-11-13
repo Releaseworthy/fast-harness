@@ -1,49 +1,43 @@
-//! The jobs strip (PLAN.md D68 "Views"): its row model, and in a software
-//! window, drawn only while the session has jobs.
+//! The jobs pill and popover (PLAN.md D68 "Views", D72): the row model, the
+//! panel's sections and Clear, and in a software window: no pill without
+//! jobs, the popover opens and closes with Escape, a row shows its output.
 
 use std::rc::Rc;
+use std::time::Duration;
 
 use fast_harness_core::view::jobs::{JobRow, Mark};
 use slint::platform::software_renderer::{
     MinimalSoftwareWindow, PremultipliedRgbaColor, RepaintBufferType,
 };
-use slint::platform::{Platform, WindowAdapter};
-use slint::{ComponentHandle, ModelRc, PhysicalSize, VecModel};
+use slint::platform::{Platform, WindowAdapter, WindowEvent};
+use slint::{ComponentHandle, ModelRc, PhysicalSize, SharedString, VecModel};
+
+use super::{chips, took_text, Panel};
 
 slint::slint! {
-    import { JobsRow } from "ui/jobs.slint";
+    import { JobsBar, JobsUi } from "ui/jobs.slint";
     import { JobChip } from "ui/types.slint";
-    export { JobChip }
+    export { JobChip, JobsUi }
     export component JobsHarness inherits Window {
         width: 600px;
-        height: 80px;
-        in property <[JobChip]> jobs;
-        out property <string> killed;
-        out property <length> used-width: strip.used-width;
-        out property <length> strip-height: strip.height;
+        height: 400px;
         VerticalLayout {
-            strip := JobsRow {
-                column: 560px;
-                jobs: root.jobs;
-            }
-            // As in main.slint: no row while the session has no jobs.
-            if root.jobs.length > 0: JobsRow {
-                column: 560px;
-                jobs: root.jobs;
-                kill(id) => { root.killed = id; }
-            }
             Rectangle {}
+            // As in main.slint: no pill while the session has no jobs.
+            if JobsUi.count > 0: JobsBar { column: 560px; room: 360px; }
         }
     }
 }
 
 fn row(id: &str, word: &str, mark: Mark) -> JobRow {
     let (id, command, word) = (id.into(), format!("command of {id}"), word.into());
+    let took = (mark != Mark::Running).then(|| Duration::from_secs(125));
     JobRow {
         id,
         command,
         word,
         mark,
+        took,
     }
 }
 
@@ -58,20 +52,45 @@ fn rows() -> Vec<JobRow> {
 
 #[test]
 fn the_row_model_names_each_state_and_keeps_its_word() {
-    let chips = super::chips(&rows());
-    let got: Vec<(&str, &str, &str)> = (chips.iter())
-        .map(|c| (c.id.as_str(), c.mark.as_str(), c.word.as_str()))
+    let chips = chips(&rows());
+    let got: Vec<(&str, &str, &str, &str)> = (chips.iter())
+        .map(|c| (c.id.as_str(), c.mark.as_str(), c.word.as_str(), c.when.as_str()))
         .collect();
     assert_eq!(
         got,
         [
-            ("job-1", "running", "running"),
-            ("job-2", "exited", "exited 0"),
-            ("job-3", "failed", "exited 3"),
-            ("job-4", "killed", "killed"),
+            ("job-1", "running", "running", ""),
+            ("job-2", "exited", "exited 0", "2m 05s"),
+            ("job-3", "failed", "exited 3", "2m 05s"),
+            ("job-4", "killed", "killed", "2m 05s"),
         ]
     );
     assert_eq!(chips[0].command.as_str(), "command of job-1");
+}
+
+#[test]
+fn a_duration_reads_in_the_largest_two_units() {
+    let text = |secs| took_text(Some(Duration::from_secs(secs)));
+    assert_eq!((text(4), text(65), text(3720)), ("4s".into(), "1m 05s".into(), "1h 02m".into()));
+    assert_eq!(took_text(None), "");
+}
+
+/// Clear takes the finished jobs off the list; a running job stays, and a
+/// job that ends after the Clear is listed again.
+#[test]
+fn clear_hides_the_finished_jobs_only() {
+    let mut panel = Panel {
+        rows: rows(),
+        ..Panel::default()
+    };
+    let ids = |rows: Vec<JobRow>| rows.into_iter().map(|r| r.id).collect::<Vec<_>>();
+    let (running, finished) = panel.visible();
+    assert_eq!((ids(running), ids(finished).len()), (vec!["job-1".to_string()], 3));
+    panel.cleared.extend(["job-2", "job-3", "job-4"].map(String::from));
+    let (running, finished) = panel.visible();
+    assert_eq!((ids(running).len(), ids(finished).len()), (1, 0));
+    panel.rows.push(row("job-5", "exited 0", Mark::Exited));
+    assert_eq!(ids(panel.visible().1), ["job-5"]);
 }
 
 struct TestPlatform(Rc<MinimalSoftwareWindow>);
@@ -83,51 +102,85 @@ impl Platform for TestPlatform {
 }
 
 const W: usize = 600;
-const H: usize = 80;
+const H: usize = 400;
 
 fn render(window: &MinimalSoftwareWindow) -> Vec<(u8, u8, u8, u8)> {
     let mut buffer = vec![PremultipliedRgbaColor::default(); W * H];
-    window.request_redraw();
-    window.draw_if_needed(|renderer| {
-        renderer.render(&mut buffer, W);
-    });
+    for _ in 0..2 {
+        slint::platform::update_timers_and_animations();
+        window.request_redraw();
+        window.draw_if_needed(|renderer| {        renderer.render(&mut buffer, W);    });
+    }
     (buffer.iter())
         .map(|p| (p.red, p.green, p.blue, p.alpha))
         .collect()
 }
 
+fn model(rows: &[JobRow]) -> ModelRc<JobChip> {
+    let chips = chips(rows).into_iter().map(|c| JobChip {
+        id: c.id,
+        command: c.command,
+        word: c.word,
+        mark: c.mark,
+        when: c.when,
+    });
+    ModelRc::new(VecModel::from(chips.collect::<Vec<_>>()))
+}
+
+fn click(window: &MinimalSoftwareWindow, x: f32, y: f32) {
+    use slint::platform::PointerEventButton;
+    let position = slint::LogicalPosition::new(x, y);
+    let button = PointerEventButton::Left;
+    window.dispatch_event(WindowEvent::PointerMoved { position });
+    window.dispatch_event(WindowEvent::PointerPressed { position, button });
+    window.dispatch_event(WindowEvent::PointerReleased { position, button });
+    window.dispatch_event(WindowEvent::PointerExited);
+}
+
+fn key(window: &MinimalSoftwareWindow, text: SharedString) {
+    window.dispatch_event(WindowEvent::KeyPressed { text: text.clone() });
+    window.dispatch_event(WindowEvent::KeyReleased { text });
+}
+
 #[test]
-fn the_strip_draws_only_while_the_session_has_jobs() {
+fn the_pill_shows_only_with_jobs_and_its_popover_closes_with_escape() {
     let window = MinimalSoftwareWindow::new(RepaintBufferType::NewBuffer);
     slint::platform::set_platform(Box::new(TestPlatform(window.clone()))).expect("platform");
     window.set_size(PhysicalSize::new(W as u32, H as u32));
     let ui = JobsHarness::new().expect("harness");
     ui.show().expect("show");
+    let jobs = ui.global::<JobsUi>();
     let empty = render(&window);
-    // The harness has its own JobChip type: the same fields.
-    let model = |rows: &[JobRow]| {
-        let chips = super::chips(rows).into_iter().map(|c| JobChip {
-            id: c.id,
-            command: c.command,
-            word: c.word,
-            mark: c.mark,
-        });
-        ModelRc::new(VecModel::from(chips.collect::<Vec<_>>()))
-    };
-    ui.set_jobs(model(&rows()));
-    let shown = render(&window);
-    assert_ne!(empty, shown, "the strip draws with jobs");
-    ui.set_jobs(model(&[]));
-    assert_eq!(empty, render(&window), "no strip without jobs");
-    // Eight jobs (the cap) all fit the column, on more lines (found in the
-    // real window, 2026-11-13: job-5 was cut and jobs 6 to 8 unreachable).
-    let one_line = {
-        ui.set_jobs(model(&rows()[..1]));
-        ui.get_strip_height()
-    };
-    let eight: Vec<JobRow> = (1..=8).map(|i| row(&format!("job-{i}"), "running", Mark::Running)).collect();
-    ui.set_jobs(model(&eight));
-    let used = ui.get_used_width();
-    assert!(used > 0.0 && used <= 560.0, "the chips take {used} px of 560");
-    assert!(ui.get_strip_height() > one_line, "more than one line");
+    let (running, finished): (Vec<JobRow>, Vec<JobRow>) = rows().into_iter().partition(JobRow::running);
+    jobs.set_running(model(&running));
+    jobs.set_finished(model(&finished));
+    let pill = render(&window);
+    assert_ne!(empty, pill, "the pill draws with jobs");
+    let closed = Rc::new(std::cell::Cell::new(0));
+    let count = closed.clone();
+    jobs.on_closed(move || count.set(count.get() + 1));
+    // A click on the pill (bottom left of the column) opens the popover.
+    click(&window, 60.0, 388.0);
+    assert!(jobs.get_open(), "the click opens the popover");
+    let open = render(&window);
+    assert_ne!(pill, open, "the popover draws");
+    // A click on the last row (just above the popover's bottom edge) asks
+    // for its output and keeps the popover open.
+    let asked = Rc::new(std::cell::RefCell::new(String::new()));
+    let sink = asked.clone();
+    jobs.on_expand(move |id| *sink.borrow_mut() = id.to_string());
+    click(&window, 200.0, 350.0);
+    assert_eq!((asked.borrow().as_str(), jobs.get_open()), ("job-4", true));
+    jobs.set_expanded("job-1".into());
+    jobs.set_output("line one\nline two\n".into());
+    let expanded = render(&window);
+    assert_ne!(open, expanded, "the expanded row shows its output");
+    key(&window, slint::platform::Key::Escape.into());
+    assert!(!jobs.get_open() && closed.get() == 1, "Escape closes it, closed() once");
+    let after = render(&window);
+    let popover = (0..W * 300).filter(|&i| after[i] != pill[i]).count();
+    assert_eq!(popover, 0, "the popover area is clear again");
+    jobs.set_running(model(&[]));
+    jobs.set_finished(model(&[]));
+    assert_eq!(empty, render(&window), "no pill without jobs");
 }

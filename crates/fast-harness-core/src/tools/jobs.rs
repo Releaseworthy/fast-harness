@@ -20,6 +20,10 @@ use super::shell::shell_command;
 use super::shell_live::complete_end;
 use crate::platform::ProcessGroup;
 
+#[path = "job_peek.rs"]
+mod peek;
+pub use peek::OutputMark;
+
 /// Jobs of one session that may run at once.
 pub const MAX_RUNNING: usize = 8;
 /// Jobs one session keeps listed; the oldest ended ones go first.
@@ -52,6 +56,8 @@ pub struct JobInfo {
     /// `None` while it runs, or when the OS gave none.
     pub exit_code: Option<i32>,
     pub started: SystemTime,
+    /// When the shell exited; `None` while it runs.
+    pub ended: Option<SystemTime>,
     /// Output bytes received in all.
     pub bytes: u64,
     /// The log file under the session folder, when there is one.
@@ -86,6 +92,8 @@ struct Run {
     cursor: u64,
     /// `Some` once the shell exited: its exit code, if any.
     exit: Option<Option<i32>>,
+    /// When the exit was recorded.
+    ended_at: Option<SystemTime>,
     killed: bool,
     /// A kill was signalled; killed is set only when it ended the job.
     kill_asked: bool,
@@ -272,10 +280,17 @@ impl Jobs {
         }
     }
 
-    /// Wakes every [`Jobs::wait_change_or_stop`] so it reads its stop flag.
+    /// Wakes every [`Jobs::wait_change_or_stop`] and
+    /// [`Jobs::wait_output_or_stop`] so it reads its stop flag.
     pub fn wake(&self) {
-        let _count = self.revision.lock();
+        let count = self.revision.lock();
         self.revision.changed.notify_all();
+        drop(count);
+        let jobs = self.lock().jobs.clone();
+        for job in jobs {
+            let _run = job.lock();
+            job.changed.notify_all();
+        }
     }
 }
 
@@ -316,6 +331,7 @@ impl Job {
             state,
             exit_code: run.exit.flatten(),
             started: self.started,
+            ended: run.ended_at,
             bytes: run.buffer.total(),
             log: run.buffer.log_path.clone(),
         }
@@ -434,6 +450,7 @@ fn wait_exit(mut child: Child, job: Arc<Job>) {
         let mut run = job.lock();
         run.killed = run.kill_asked && crate::platform::ended_by_kill(code);
         run.exit = Some(code);
+        run.ended_at = Some(SystemTime::now());
         drop(run);
         job.changed.notify_all();
         job.revision.bump();

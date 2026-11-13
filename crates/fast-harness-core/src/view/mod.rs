@@ -5,6 +5,7 @@
 
 pub mod approvals;
 pub mod diff;
+pub mod job_tail;
 pub mod jobs;
 mod live_tail;
 pub mod opened;

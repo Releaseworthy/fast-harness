@@ -1,90 +1,216 @@
 import { Theme, Mark } from "parts.slint";
 import { Icons } from "icons.slint";
-import { IconButton } from "widgets.slint";
-import { JobChip } from "types.slint";
+import { FocusRing } from "widgets.slint";
+import { JobsUi, JobItem } from "job_row.slint";
+export { JobsUi }
 
-// One background job of the shown session (PLAN.md D68): a mark and a word
-// for its state (never colour alone), its id, its command on one line, and
-// Stop while it runs.
-component JobLine inherits Rectangle {
-    in property <JobChip> job;
-    callback kill();
-    property <bool> running: root.job.mark == "running";
-    property <color> tone: root.running ? Theme.accent
-        : root.job.mark == "failed" ? Theme.error
-        : root.job.mark == "killed" ? Theme.warning : Theme.success;
-    height: Theme.control-height;
-    border-radius: Theme.radius-m;
-    background: Theme.raised;
-    border-width: 1px;
-    border-color: Theme.line;
-    accessible-role: list-item;
-    accessible-label: root.job.id + " " + root.job.command + ": " + root.job.word;
+// "Finished N" with its chevron, and Clear (the rows leave the list only).
+component FinishedHeader inherits Rectangle {
+    height: 26px;
+    accessible-role: button;
+    accessible-label: (JobsUi.finished-open ? "Hide " : "Show ") + JobsUi.finished.length + " finished jobs";
+    accessible-action-default => { JobsUi.finished-open = !JobsUi.finished-open; }
+    ta := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { JobsUi.finished-open = !JobsUi.finished-open; }
+    }
     HorizontalLayout {
-        padding-left: Theme.space-m;
-        padding-right: root.running ? 2px : Theme.space-m;
+        padding-left: Theme.space-xs;
         spacing: Theme.space-s;
         Mark {
-            text: root.running ? Icons.terminal
-                : root.job.mark == "failed" ? Icons.error
-                : root.job.mark == "killed" ? Icons.circle-slash : Icons.check;
-            color: root.tone;
-            font-size: Theme.font-s;
+            text: JobsUi.finished-open ? Icons.chevron-down : Icons.chevron-right;
+            color: Theme.dim;
+            font-size: Theme.font-xs;
         }
         Text {
-            text: root.job.id;
-            color: Theme.text;
+            text: "Finished " + JobsUi.finished.length;
+            color: ta.has-hover ? Theme.text : Theme.dim;
             font-size: Theme.font-xs;
             font-weight: 600;
             vertical-alignment: center;
-        }
-        Text {
-            text: root.job.command;
-            color: Theme.dim;
-            font-size: Theme.font-s;
-            vertical-alignment: center;
-            overflow: elide;
             horizontal-stretch: 1;
         }
-        Text {
-            text: root.job.word;
-            color: root.tone;
-            font-size: Theme.font-xs;
-            vertical-alignment: center;
-        }
-        if root.running: IconButton {
-            icon: Icons.debug-stop;
-            label: "Stop " + root.job.id + " and its process tree";
-            icon-size: Theme.font-s;
-            clicked => { root.kill(); }
+        Rectangle {
+            width: clear.preferred-width + 2 * Theme.space-s;
+            border-radius: Theme.radius-s;
+            background: clear-ta.has-hover ? Theme.hover : transparent;
+            accessible-role: button;
+            accessible-label: "Clear the finished jobs from the list";
+            accessible-action-default => { JobsUi.clear(); }
+            clear := Text {
+                text: "Clear";
+                color: Theme.accent;
+                font-size: Theme.font-xs;
+                vertical-alignment: center;
+            }
+            clear-ta := TouchArea {
+                mouse-cursor: pointer;
+                clicked => { JobsUi.clear(); }
+            }
         }
     }
 }
 
-// The jobs of the shown session, centred in a chat `column`: as many chips
-// of at least `chip-min` side by side as fit, then more lines, so every chip
-// is in view (a single line cut chips off at the right edge, 2026-11-13).
-// Positions are bindings: they change only with the list or the width.
-// `kill(id)` stops job `id`. main.slint shows it only while there are jobs.
-export component JobsRow inherits Rectangle {
-    in property <[JobChip]> jobs;
-    in property <length> column;
-    callback kill(string);
-    property <length> gap: 4px;
-    property <length> chip-min: 220px;
-    property <int> per-line: max(1, floor((root.column + root.gap) / (root.chip-min + root.gap)));
-    property <int> lines: ceil(root.jobs.length / root.per-line);
-    property <length> chip-width: (root.column - (root.per-line - 1) * root.gap) / root.per-line;
-    // The width the chips take (for the tests).
-    out property <length> used-width: max(0px, min(root.jobs.length, root.per-line) * (root.chip-width + root.gap) - root.gap);
-    height: max(0px, root.lines * (Theme.control-height + root.gap) - root.gap) + Theme.space-s;
+// The popover's sections: Running, then Finished N (collapsible). `hi`
+// is the row the arrow keys moved to, counting running rows first.
+component JobsList inherits VerticalLayout {
+    in property <int> hi;
+    padding: Theme.space-s;
+    spacing: 2px;
     accessible-role: list;
     accessible-label: "Background jobs";
-    for j[i] in root.jobs: JobLine {
-        x: (root.width - root.column) / 2 + mod(i, root.per-line) * (root.chip-width + root.gap);
-        y: Theme.space-s + floor(i / root.per-line) * (Theme.control-height + root.gap);
-        width: root.chip-width;
+    if JobsUi.running.length > 0: Text {
+        text: "Running";
+        color: Theme.dim;
+        font-size: Theme.font-xs;
+        font-weight: 600;
+    }
+    for j[i] in JobsUi.running: JobItem {
         job: j;
-        kill => { root.kill(j.id); }
+        highlighted: i == root.hi;
+    }
+    if JobsUi.finished.length > 0: FinishedHeader {}
+    if JobsUi.finished-open: VerticalLayout {
+        spacing: 2px;
+        for j[i] in JobsUi.finished: JobItem {
+            job: j;
+            highlighted: JobsUi.running.length + i == root.hi;
+        }
+    }
+}
+
+// The shown session's background jobs (PLAN.md D72): one small pill above
+// the composer, "N background jobs running" while N run; a click opens
+// the popover above it. Escape or a click outside closes it. main.slint
+// shows the bar only while `JobsUi.count > 0`.
+export component JobsBar inherits Rectangle {
+    in property <length> column;
+    // The room above the pill the popover may take.
+    in property <length> room: 480px;
+    property <bool> open: JobsUi.open;
+    property <int> hi: -1;
+    // As DeepSeek Harness says it: the running jobs while one runs, else all.
+    property <int> shown: JobsUi.running.length > 0 ? JobsUi.running.length : JobsUi.count;
+    property <string> label: root.shown + (root.shown == 1 ? " background job" : " background jobs")
+        + (JobsUi.running.length > 0 ? " running" : "");
+    height: 24px + Theme.space-s;
+    changed open => {
+        if root.open {
+            root.hi = -1;
+            popup.show();
+        } else {
+            popup.close();
+        }
+    }
+    pill := Rectangle {
+        x: (root.width - root.column) / 2;
+        y: Theme.space-s;
+        width: row.preferred-width;
+        height: 24px;
+        border-radius: 12px;
+        background: ta.has-hover || root.open ? Theme.hover : Theme.raised;
+        border-width: 1px;
+        border-color: Theme.line;
+        accessible-role: button;
+        accessible-label: root.label;
+        accessible-action-default => { JobsUi.open = !JobsUi.open; }
+        row := HorizontalLayout {
+            padding-left: Theme.space-s + 2px;
+            padding-right: Theme.space-s + 2px;
+            spacing: 6px;
+            Mark {
+                text: JobsUi.running.length > 0 ? Icons.terminal : Icons.check;
+                color: JobsUi.running.length > 0 ? Theme.accent : Theme.dim;
+                font-size: Theme.font-xs;
+            }
+            Text {
+                text: root.label;
+                color: Theme.text;
+                font-size: Theme.font-xs;
+                vertical-alignment: center;
+            }
+            Mark {
+                text: root.open ? Icons.chevron-down : Icons.chevron-up;
+                color: Theme.dim;
+                font-size: Theme.font-xs;
+            }
+        }
+        fs := FocusScope {
+            key-pressed(event) => {
+                if event.text == Key.Return || event.text == " " {
+                    JobsUi.open = true;
+                    return accept;
+                }
+                return reject;
+            }
+        }
+        ta := TouchArea {
+            mouse-cursor: pointer;
+            clicked => {
+                fs.focus();
+                JobsUi.open = !JobsUi.open;
+            }
+        }
+        if fs.has-focus: FocusRing { radius: 14px; x: -3px; y: -3px; width: parent.width + 6px; height: parent.height + 6px; }
+    }
+    popup := PopupWindow {
+        x: pill.x;
+        y: pill.y - self.height - 6px;
+        width: min(root.column, 560px);
+        height: min(list.preferred-height + 2px, root.room);
+        close-policy: close-on-click-outside;
+        forward-focus: keys;
+        keys := FocusScope {
+            // The scope holds the focus while the popover is open and loses
+            // it however the popover closes (Esc, a click outside).
+            focus-changed-event => {
+                if !self.has-focus {
+                    JobsUi.open = false;
+                    JobsUi.confirm = "";
+                    JobsUi.closed();
+                }
+            }
+            key-pressed(event) => { return root.list-keys(event); }
+        }
+        Rectangle {
+            background: Theme.surface;
+            border-radius: Theme.radius-l;
+            border-width: 1px;
+            border-color: Theme.border;
+            drop-shadow-blur: 12px;
+            drop-shadow-offset-y: 4px;
+            drop-shadow-color: #00000040;
+            Flickable {
+                x: 1px;
+                y: 1px;
+                width: parent.width - 2px;
+                height: parent.height - 2px;
+                content-height: list.preferred-height;
+                list := JobsList { width: parent.width; hi: root.hi; }
+            }
+        }
+    }
+
+    // Up and Down move between the rows, Enter shows or hides the output.
+    function list-keys(event: KeyEvent) -> EventResult {
+        let rows = JobsUi.running.length + (JobsUi.finished-open ? JobsUi.finished.length : 0);
+        if event.text == Key.DownArrow {
+            root.hi = min(rows - 1, root.hi + 1);
+            return accept;
+        }
+        if event.text == Key.UpArrow {
+            root.hi = max(0, root.hi - 1);
+            return accept;
+        }
+        if event.text == Key.Return && root.hi >= 0 {
+            JobsUi.expand(root.hi < JobsUi.running.length ? JobsUi.running[root.hi].id
+                : JobsUi.finished[root.hi - JobsUi.running.length].id);
+            return accept;
+        }
+        if event.text == Key.Escape {
+            popup.close();
+            return accept;
+        }
+        return reject;
     }
 }

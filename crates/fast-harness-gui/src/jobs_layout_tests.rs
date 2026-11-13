@@ -1,4 +1,4 @@
-//! The jobs strip in the whole window (PLAN.md D68 "Views"): eight jobs keep
+//! The jobs pill in the whole window (PLAN.md D68 "Views", D72): eight jobs keep
 //! the transcript's rows drawn (a guard: a blank transcript with eight jobs
 //! was seen once in the real window on 2026-11-13 and not reproduced since).
 
@@ -42,6 +42,7 @@ fn jobs(count: usize) -> Vec<crate::JobChip> {
             command: format!("ping -n 600 127.0.0.{i}"),
             word: "running".into(),
             mark: Mark::Running,
+            took: None,
         })
         .collect();
     crate::jobs_view::chips(&rows)
@@ -74,14 +75,16 @@ fn many_jobs_keep_the_transcript_drawn() {
     ui.set_messages(ModelRc::new(VecModel::from(rows())));
     let shot0 = frames(&window);
     let before = ui.get_transcript_content_height();
-    ui.set_jobs(ModelRc::new(VecModel::from(jobs(8))));
+    ui.global::<crate::JobsUi>()
+        .set_running(ModelRc::new(VecModel::from(jobs(8))));
     let shot1 = frames(&window);
     let after = ui.get_transcript_content_height();
     let top = (W * 300) as usize;
     let differ = (0..top).filter(|&i| shot0[i] != shot1[i]).count();
     let mut empty = rows();
     empty.clear();
-    ui.set_jobs(ModelRc::new(VecModel::from(jobs(0))));
+    ui.global::<crate::JobsUi>()
+        .set_running(ModelRc::new(VecModel::from(jobs(0))));
     ui.set_messages(ModelRc::new(VecModel::from(empty)));
     let shot2 = frames(&window);
     let blank = (0..top).filter(|&i| shot0[i] != shot2[i]).count();

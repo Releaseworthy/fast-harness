@@ -39,6 +39,8 @@ mod shots_appearance;
 #[cfg(test)]
 mod shots_approval;
 #[cfg(test)]
+mod shots_jobs;
+#[cfg(test)]
 mod shots_png;
 #[cfg(test)]
 mod shots_prompt;

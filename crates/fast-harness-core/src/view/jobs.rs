@@ -34,6 +34,8 @@ pub struct JobRow {
     /// `running`, `exited 3`, `exited` or `killed`.
     pub word: String,
     pub mark: Mark,
+    /// How long it ran, once it ended (D72).
+    pub took: Option<std::time::Duration>,
 }
 
 impl JobRow {
@@ -65,6 +67,7 @@ fn row(info: &JobInfo) -> JobRow {
         command: short_command(&info.command),
         word,
         mark,
+        took: (info.ended).and_then(|end| end.duration_since(info.started).ok()),
     }
 }
 

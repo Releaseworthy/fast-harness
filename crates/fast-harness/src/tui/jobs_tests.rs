@@ -29,6 +29,7 @@ fn row(id: &str, command: &str, word: &str, mark: Mark) -> JobRow {
         command,
         word,
         mark,
+        took: None,
     }
 }
 

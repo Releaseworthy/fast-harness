@@ -2,7 +2,8 @@ import { Palette } from "std-widgets.slint";
 import { MsgRow, SessionRow, SideRow, AccountRow, TraceRow, ProviderCard, QueueChip, JobChip, ApprovalView, UndoBar, ImageChip } from "types.slint";
 import { QueueRow } from "queue.slint";
 import { AttachRow } from "attach.slint";
-import { JobsRow } from "jobs.slint";
+import { JobsBar, JobsUi } from "jobs.slint";
+export { JobsUi } from "jobs.slint";
 import { UndoRow } from "undo.slint";
 import { ApprovalPrompt } from "approval.slint";
 import { Theme } from "parts.slint";
@@ -82,9 +83,6 @@ export component MainWindow inherits Window {
     in-out property <string> draft <=> composer.text;
     // Steers not yet read and queued follow-ups of the shown session.
     in property <[QueueChip]> queue-chips;
-    // The shown session's background jobs (D68); Stop calls kill-job(id).
-    in property <[JobChip]> jobs;
-    callback kill-job(string);
     // The next undo of the shown session (D69); undo-turn(force) runs it.
     in property <UndoBar> undo;
     // Images for the next prompt (D70): attach-image() opens the file dialog.
@@ -319,11 +317,8 @@ export component MainWindow inherits Window {
                             if root.attached.length > 0: AttachRow {
                                 column: chat.column; chips: root.attached; remove(i) => { root.remove-image(i); }
                             }
-                            if root.jobs.length > 0: JobsRow {
-                                column: chat.column;
-                                jobs: root.jobs;
-                                kill(id) => { root.kill-job(id); }
-                            }
+                            // The shown session's background jobs (D72).
+                            if JobsUi.count > 0: JobsBar { column: chat.column; room: transcript.height; }
                             if root.undo.turn > 0: UndoRow {
                                 column: chat.column; bar: root.undo; busy: root.busy;
                                 undo(force) => { root.undo-turn(force); }

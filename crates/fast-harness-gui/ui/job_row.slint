@@ -1,0 +1,175 @@
+import { Theme, Mark } from "parts.slint";
+import { Icons } from "icons.slint";
+import { JobChip } from "types.slint";
+
+// The jobs popover's state (PLAN.md D72), filled by src/jobs_view.rs.
+export global JobsUi {
+    // The shown session's jobs: running, and finished not cleared.
+    in property <[JobChip]> running;
+    in property <[JobChip]> finished;
+    out property <int> count: self.running.length + self.finished.length;
+    // The popover is open; src/jobs_view.rs closes it when no job is left.
+    in-out property <bool> open;
+    in-out property <bool> finished-open: true;
+    // The job whose output shows, its bounded tail, and whether earlier
+    // output was dropped.
+    in property <string> expanded;
+    in property <string> output;
+    in property <bool> dropped;
+    // A running job whose Stop asks for a second click.
+    in-out property <string> confirm;
+    callback kill(string);
+    // Shows job `id`'s output, or hides it when it shows.
+    callback expand(string);
+    // Clears the finished rows from the list (the jobs stay).
+    callback clear();
+    // The popover closed: the output stops being read.
+    callback closed();
+}
+
+// Stop on a running row: the first click asks, the second stops. No focus,
+// so the popover's key scope keeps it while the popover is open.
+component StopButton inherits Rectangle {
+    in property <string> id;
+    property <bool> asking: JobsUi.confirm == root.id;
+    width: root.asking ? ask.preferred-width + 2 * Theme.space-s : 24px;
+    height: 24px;
+    border-radius: Theme.radius-s;
+    background: ta.has-hover ? Theme.hover : transparent;
+    accessible-role: button;
+    accessible-label: root.asking ? "Click again to stop " + root.id : "Stop " + root.id + " and its process tree";
+    accessible-action-default => { ta.clicked(); }
+    if !root.asking: Mark {
+        width: parent.width;
+        height: parent.height;
+        horizontal-alignment: center;
+        text: Icons.debug-stop;
+        color: ta.has-hover ? Theme.error : Theme.dim;
+        font-size: Theme.font-s;
+    }
+    ask := Text {
+        visible: root.asking;
+        width: parent.width;
+        height: parent.height;
+        horizontal-alignment: center;
+        text: "Stop?";
+        color: Theme.error;
+        font-size: Theme.font-xs;
+        font-weight: 600;
+        vertical-alignment: center;
+    }
+    ta := TouchArea {
+        mouse-cursor: pointer;
+        clicked => {
+            if root.asking {
+                JobsUi.confirm = "";
+                JobsUi.kill(root.id);
+            } else {
+                JobsUi.confirm = root.id;
+            }
+        }
+    }
+}
+
+// The expanded row's output: monospace, a fixed height with its own scroll,
+// at the end until the user scrolls. The tail is bounded in the core.
+component OutputPanel inherits Rectangle {
+    height: 180px;
+    border-radius: Theme.radius-s;
+    background: Theme.code;
+    accessible-role: text;
+    accessible-label: "Job output";
+    VerticalLayout {
+        padding: Theme.space-s;
+        spacing: Theme.space-xs;
+        if JobsUi.dropped: Text {
+            text: "Earlier output dropped";
+            color: Theme.dim;
+            font-size: Theme.font-xs;
+        }
+        flick := Flickable {
+            vertical-stretch: 1;
+            content-height: max(self.height, out.height);
+            content-y: min(0px, self.height - self.content-height);
+            out := Text {
+                width: flick.width;
+                height: self.preferred-height;
+                text: JobsUi.output == "" ? "No output yet" : JobsUi.output;
+                color: JobsUi.output == "" ? Theme.dim : Theme.text;
+                font-family: Theme.mono;
+                font-size: Theme.font-xs;
+                wrap: char-wrap;
+            }
+        }
+    }
+}
+
+// One job in the popover: a mark and a word for its state (never colour
+// alone), its command, how long it ran, Stop while it runs. A click shows
+// its output below it.
+export component JobItem inherits Rectangle {
+    in property <JobChip> job;
+    in property <bool> highlighted;
+    property <bool> running: root.job.mark == "running";
+    property <bool> open: JobsUi.expanded == root.job.id;
+    property <color> tone: root.running ? Theme.accent
+        : root.job.mark == "failed" ? Theme.error
+        : root.job.mark == "killed" ? Theme.warning : Theme.success;
+    preferred-height: lay.preferred-height;
+    min-height: lay.min-height;
+    lay := VerticalLayout {
+        spacing: Theme.space-xs;
+        Rectangle {
+            height: 28px;
+            border-radius: Theme.radius-s;
+            background: ta.has-hover || root.highlighted ? Theme.hover : transparent;
+            accessible-role: list-item;
+            accessible-label: root.job.id + " " + root.job.command + ": " + root.job.word + (root.open ? ", output shown" : "");
+            accessible-action-default => { JobsUi.expand(root.job.id); }
+            ta := TouchArea {
+                mouse-cursor: pointer;
+                clicked => { JobsUi.expand(root.job.id); }
+            }
+            HorizontalLayout {
+                padding-left: Theme.space-xs;
+                padding-right: 2px;
+                spacing: Theme.space-s;
+                Mark {
+                    text: root.open ? Icons.chevron-down : Icons.chevron-right;
+                    color: Theme.dim;
+                    font-size: Theme.font-xs;
+                }
+                Mark {
+                    text: root.running ? Icons.terminal
+                        : root.job.mark == "failed" ? Icons.error
+                        : root.job.mark == "killed" ? Icons.circle-slash : Icons.check;
+                    color: root.tone;
+                    font-size: Theme.font-s;
+                }
+                Text {
+                    text: root.job.word;
+                    color: root.tone;
+                    font-size: Theme.font-xs;
+                    vertical-alignment: center;
+                }
+                Text {
+                    text: root.job.command;
+                    color: Theme.text;
+                    font-family: Theme.mono;
+                    font-size: Theme.font-xs;
+                    vertical-alignment: center;
+                    overflow: elide;
+                    horizontal-stretch: 1;
+                }
+                Text {
+                    text: root.job.when;
+                    color: Theme.dim;
+                    font-size: Theme.font-xs;
+                    vertical-alignment: center;
+                }
+                if root.running: StopButton { id: root.job.id; }
+            }
+        }
+        if root.open: OutputPanel {}
+    }
+}

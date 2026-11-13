@@ -91,6 +91,7 @@ fn run(ui: MainWindow, note: Option<String>) {
         app::with_app(|app, _| {
             app.panels.stop_all();
             app.jobs.stop();
+            app.jobs_panel.stop();
         });
         let _ = ui.hide();
     }
