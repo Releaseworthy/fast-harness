@@ -33,6 +33,8 @@ mod panels_tests;
 #[cfg(test)]
 mod prompt_settings_tests;
 #[cfg(test)]
+mod rails_view_tests;
+#[cfg(test)]
 mod scroll_tests;
 #[cfg(test)]
 mod shots_appearance;

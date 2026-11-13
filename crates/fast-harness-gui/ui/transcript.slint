@@ -7,7 +7,7 @@ import { ScrollBar } from "scrollbar.slint";
 import { ThinkingQuote, LoadingLine } from "blocks.slint";
 import { ToolFrame } from "toolcard.slint";
 import { RowThumbs } from "attach.slint";
-import { StepLine, StepRail } from "stepline.slint";
+import { StepLine, StepRail, Rails } from "stepline.slint";
 import { TurnNav, TurnsUi } from "turnnav.slint";
 
 // The user's message: a bubble on the right, at most 80% of the column.
@@ -213,12 +213,20 @@ component MessageView {
         // A small gap above the turn's first row.
         y: msg.turn-head == root.row-index ? root.top : 0px;
         height: root.height - self.y;
+        lit: Rails.turn == msg.turn-head;
+        changed hovered => {
+            Rails.turn = self.hovered ? msg.turn-head : Rails.turn == msg.turn-head ? -1 : Rails.turn;
+        }
         clicked => { root.turn-toggle(msg.turn-head); }
     }
     if msg.rail && !msg.turn-hidden: StepRail {
         x: root.side + root.indent;
         y: root.line ? root.top + root.line-height : 0px;
         height: root.height - self.y;
+        lit: Rails.step == msg.step-head;
+        changed hovered => {
+            Rails.step = self.hovered ? msg.step-head : Rails.step == msg.step-head ? -1 : Rails.step;
+        }
         clicked => { root.step-toggle(msg.step-head); }
     }
 }
@@ -359,6 +367,8 @@ export component TranscriptView {
     function probe() {
         TurnsUi.nav-shown = root.nav-shown;
         TurnsUi.column-right = root.absolute-position.x + root.width - root.side;
+        TurnsUi.column-left = root.absolute-position.x + root.side;
+        TurnsUi.list-top = root.absolute-position.y;
     }
     init => { root.probe(); }
     changed nav-shown => { root.probe(); }

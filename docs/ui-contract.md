@@ -224,8 +224,10 @@ With `"approvals": "ask"` a call can wait for an answer (PLAN.md D64). Both fron
 - `Theme.warning`: property <color>
 - `TraceProbe.content-height`: property <length>
 - `TurnsUi.card-height`: property <length>
+- `TurnsUi.column-left`: property <length>
 - `TurnsUi.column-right`: property <length>
 - `TurnsUi.hovered`: property <int>
+- `TurnsUi.list-top`: property <length>
 - `TurnsUi.nav-shown`: property <bool>
 - `TurnsUi.nav-step`: property <length>
 - `TurnsUi.nav-top`: property <length>
