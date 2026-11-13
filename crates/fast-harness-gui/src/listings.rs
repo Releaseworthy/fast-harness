@@ -7,6 +7,7 @@
 use std::collections::HashMap;
 use std::io;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::thread;
 
 use fast_harness_core::session::{self, SessionSummary};
@@ -89,6 +90,36 @@ impl Listings {
     }
 }
 
+/// Workers that read or write the home folder (session opens and
+/// listings) still running: a test waits for none before it removes its
+/// folder, or a late index write brings the folder back.
+static WORKERS: AtomicUsize = AtomicUsize::new(0);
+
+/// Counts one such worker while it lives (moved into its thread).
+pub struct Working(());
+
+impl Working {
+    pub fn enter() -> Working {
+        WORKERS.fetch_add(1, Ordering::SeqCst);
+        Working(())
+    }
+}
+
+impl Drop for Working {
+    fn drop(&mut self) {
+        WORKERS.fetch_sub(1, Ordering::SeqCst);
+    }
+}
+
+/// Waits until no such worker runs, at most `limit` (tests).
+#[cfg(test)]
+pub fn wait_idle(limit: std::time::Duration) {
+    let deadline = std::time::Instant::now() + limit;
+    while WORKERS.load(Ordering::SeqCst) > 0 && std::time::Instant::now() < deadline {
+        thread::sleep(std::time::Duration::from_millis(10));
+    }
+}
+
 /// One listing's result, handed to the UI thread.
 pub type Listed = Result<Vec<SessionSummary>, String>;
 
@@ -101,7 +132,12 @@ pub fn spawn(
 ) -> io::Result<()> {
     thread::Builder::new()
         .name("fast-harness-gui-list".into())
-        .spawn(move || done(session::list(&home, &path).map_err(|err| err.to_string())))
+        .spawn(move || {
+            let working = Working::enter();
+            let listed = session::list(&home, &path).map_err(|err| err.to_string());
+            drop(working);
+            done(listed)
+        })
         .map(|_| ())
 }
 

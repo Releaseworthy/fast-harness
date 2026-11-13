@@ -39,6 +39,9 @@ impl Drop for Env {
     fn drop(&mut self) {
         ui_thread::mark(false);
         let _ = self.ui.hide();
+        // The opens and listings the test started read and write the home
+        // folder: a late index write would bring the folder back.
+        crate::listings::wait_idle(std::time::Duration::from_secs(10));
         let _ = std::fs::remove_dir_all(&self.dir);
     }
 }

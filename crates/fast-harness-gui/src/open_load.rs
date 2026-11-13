@@ -40,10 +40,12 @@ pub fn clear(app: &mut App, ui: &MainWindow) {
 /// Starts the worker of `generation`, which opens `id` in `cwd`.
 fn start(app: &mut App, ui: &MainWindow, id: String, cwd: PathBuf, generation: u64) {
     let home = app.rt.home.clone();
+    let working = crate::listings::Working::enter();
     let spawned = thread::Builder::new()
         .name("fast-harness-gui-open".into())
         .spawn(move || {
             let result = opened::load(&home, &cwd, &id);
+            drop(working);
             let _ = slint::invoke_from_event_loop(move || {
                 with_app(|app, ui| arrived(app, ui, generation, &cwd, result));
             });
