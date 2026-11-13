@@ -286,6 +286,7 @@ impl Runtime {
 
 // Live model catalog: the caches and each provider's list (`app/models.rs`,
 // one module).
+pub mod drafts;
 mod ext_list;
 mod host;
 mod models;
