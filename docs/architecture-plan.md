@@ -215,6 +215,7 @@ Phases 22 and 23 touch no format and no contract and can start as soon as G5 and
 | 31 (G11) | done 2026-11-13 | e0bef02 (core, service, serve, -p), 078c395 and 1e66f10 (TUI prompt, summary rule), 79f5554 (GUI prompt), 65ddc40 (real window pass) | docs/decisions/D64.md |
 | 31 (D5) | done 2026-11-13; a Stop click in the real window not tried | c4d17ba (cancel flag on `HttpRequest`, call thread and socket shutdown in `net`, silent `ScriptedTransport`, model list 20 s) | docs/decisions/D66.md |
 | 29 | done 2026-11-13 | e4320c3 (G12), 17b2617 (one name rule, version, enabled, ext list), 8caec32 (PreModelRequest, hook budget, MCP expiry) | docs/decisions/D62.md, D63.md |
+| 27 | done 2026-11-13 | 5b3aac1 (`Catalog` owned by `Runtime`, live table shared with its Claude provider, children dropped on close) | docs/decisions/D67.md |
 
 Checked for both: `fmt`, `clippy`, 590 tests passed, 0 failed, 9 ignored on Windows; CI green on Windows and Linux at da69164 (run 43269200480); `tests/parallel_edits.rs` passes un-ignored; `fast-harness accounts` with the new binary reads the real store and rewrites nothing.
 

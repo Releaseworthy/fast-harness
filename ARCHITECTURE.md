@@ -36,7 +36,7 @@ The test `crates/fast-harness-core/tests/guard_rails.rs` holds this list and fai
 Change one only together with every user of it.
 
 - `http::Transport`: `send` streams the response body through `on_chunk` on the calling thread; any status is `Ok` at this layer (the caller reads `head.status`); `Flow::Stop` ends the transfer and still returns `Ok(head)`. `HttpRequest::cancel` (set by both providers and MCP over HTTP) ends a call in any state with `HttpErrorKind::Cancelled`: `UreqTransport` runs such a call on its own thread and shuts its sockets down (D66). Tests use `http::ScriptedTransport` (`with_silence` for a silent stream).
-- `llm::Provider`: `id()` is a short stable id written to the trace; `stream` runs one streaming call to completion, shows every increment to `on_delta` and returns the assembled `Completion`. On main: Claude (`anthropic`) and the providers of `providers/*.json` (`llm/custom.rs`; api `openai-chat` or `anthropic-messages`, models named `<provider id>/<id>`); `llm::catalog` picks one by model id.
+- `llm::Provider`: `id()` is a short stable id written to the trace; `stream` runs one streaming call to completion, shows every increment to `on_delta` and returns the assembled `Completion`. On main: Claude (`anthropic`) and the providers of `providers/*.json` (`llm/custom.rs`; api `openai-chat` or `anthropic-messages`, models named `<provider id>/<id>`); `llm::Catalog` picks one by model id: a value owned by `app::Runtime` holding its provider files and live model table (D67).
 - `tools::Tool`: `run` never panics and reports failure through `ToolOutput::is_error`; invalid arguments give an error that tells the model what to fix; `effect()` is `Run` unless the tool says otherwise, `parallel()` is true for `Effect::Read`.
 - `auth::AuthSource`: `lease` gives the credential (may refresh first), `observe` reads response headers, `on_failure` answers an auth or rate-limit error with a `Failover`, `warning` never holds a secret.
 - `events::AgentEvent`: owns its data (it crosses threads), `#[non_exhaustive]`; a traced event is in the log before a front end gets it.
@@ -54,6 +54,7 @@ Change one only together with every user of it.
 - Trust gates project files: nothing in `<project>/.fast-harness/` and no project `AGENTS.md` (root to cwd or nested) is read until the user trusts the project once (`config/trust.rs`, `trusted.json`, `layers::agents_trusted`, D62).
 - Approvals (`approvals: ask`, off by default) gate `Write` and `Run` calls after the PreToolUse hooks and fail closed: only the user layer allows or turns them off (`agent/approval.rs`, D64).
 - Thinking goes back only to the model that made it (`Message.model`).
+- No process-wide registry of runtime state: providers and live models live in the runtime's `Catalog`, a settings reload makes a new one, and a session's children go when it closes (D67). Only the compiled-in plugins (`ext::installed`) are static.
 - Colours come only from `theme` roles; built-in themes are JSON in the user format ([docs/themes.md](docs/themes.md)).
 - The full list (sizes, panics, secrets, tests) is in `AGENTS.md`.
 
@@ -92,7 +93,7 @@ By decision title; each is `docs/decisions/Dnn.md`.
 | trace, sessions, measuring | D07 D35 D48 D49 |
 | accounts, credentials | D08 D09 D10 D11 D26 D32 D56 |
 | Google Antigravity (branch `antigravity`) | D23 D24 D25 D53 |
-| models, effort, catalog | D13 D16 D17 D24 |
+| models, effort, catalog | D13 D16 D17 D24 D67 |
 | system prompt, context, cache | D18 D31 D36 |
 | tool results, compaction | D37 D38 |
 | tools, approvals | D30 D34 D54 D58 D64 |

@@ -96,6 +96,7 @@ One file per decision in [docs/decisions/](docs/decisions/), moved there unchang
 - D64 [Approvals](docs/decisions/D64.md)
 - D65 [Each session keeps its own draft](docs/decisions/D65.md)
 - D66 [Cancel of a silent stream](docs/decisions/D66.md)
+- D67 [Registries become values](docs/decisions/D67.md)
 
 ## Architecture
 
