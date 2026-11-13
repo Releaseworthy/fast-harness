@@ -212,3 +212,16 @@ No further live call was made. Side finding: after the second 403 the Google poo
 - E6, the synthetic `find_tools` pair (compaction D38, subagent preload D40) on Antigravity Claude with thinking: unmeasured, account disabled. Offline tests only.
 
 No PLAN.md fact was added near D36: E1 did not run, so "Antigravity caches nothing" is not shown.
+
+## Phase 31 views: background jobs strip (D68)
+
+`cargo build --release -p fast-harness-gui` at 46f202c (before) and with the jobs views (after), same target dir, built one after the other (2026-11-13). Each run: a copy of the exe, a fresh `FAST_HARNESS_HOME` with only a fake OpenAI-compatible provider (a local Bun server), the window started with `scripts/window.ps1`; for "one job" a prompt makes the fake model call `shell` with `background: true` (`ping -n 600 127.0.0.1`, one output line a second), and the run measures once the turn ended. Then 10 s idle, private working set (`Win32_PerfFormattedData_PerfProc_Process.WorkingSetPrivate`), then CPU time (`TotalProcessorTime`) over the next 30 s, then `WM_CLOSE`. GPU not sampled.
+
+| Run | Before | After |
+|---|---|---|
+| No job: private working set | 18.1 MB | 18.2 MB |
+| No job: CPU over 30 s | 0 ms | 0 ms |
+| One running job: private working set (2 runs) | 20.2, 19.8 MB | 20.1, 20.6 MB |
+| One running job: CPU over 30 s (2 runs) | 140.6, 78.1 ms | 78.1, 31.2 ms |
+
+With a job the CPU is the job's own pipe readers (one line a second) plus the turn's tail; the strip's worker sleeps on the condition variable and wakes only at a start, end or kill. The spread between runs is larger than any difference between the builds. Executable: 30,764,544 bytes before, 30,948,864 after.
