@@ -6,6 +6,7 @@ import { Theme, Mark } from "parts.slint";
 import { Icons } from "icons.slint";
 import { ActionButton, FocusRing } from "widgets.slint";
 import { Slider, NumberBox } from "controls.slint";
+import { UiScaleSetting } from "limits.slint";
 
 // One theme as its card shows it: the colours already at the greyscale level.
 export struct ThemeCard {
@@ -242,6 +243,8 @@ export component Appearance {
         }
         if AppearanceUi.folder != "": Text { text: AppearanceUi.folder; color: Theme.dim; font-size: Theme.font-xs; wrap: word-wrap; }
         if AppearanceUi.notes != "": WarningBox { title: "Theme files"; detail: AppearanceUi.notes; }
+        Rectangle { height: Theme.space-s; }
+        UiScaleSetting { }
         Rectangle { height: Theme.space-s; }
         Text { text: "Chat detail"; color: Theme.text; font-size: Theme.font-m; font-weight: 600; }
         HorizontalLayout {

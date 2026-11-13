@@ -18,6 +18,13 @@ use fast_harness_core::trace;
 use fast_harness_core::types::Role;
 use serde_json::Value;
 
+/// `parts` with `maxDepth` 2: these tests nest children (the default 1
+/// gives children no `subagent` tool).
+fn deep(mut parts: fast_harness_core::agent::AgentParts) -> fast_harness_core::agent::AgentParts {
+    parts.config.subagent.max_depth = 2;
+    parts
+}
+
 const FIND_SUBAGENT: &str = r#"{"names":["subagent"]}"#;
 
 /// Answers each request from the route whose needle the first user
@@ -92,7 +99,11 @@ fn preloaded_tools_need_no_find_and_keep_the_parent_prefix() {
     ];
     let transport = Arc::new(ScriptedTransport::new(responses));
     let mut conv = Conversation::create(&env.home, &env.cwd, None).unwrap();
-    let agent = Agent::with_subagent(parts(&transport, key_auth(), &env.cwd), &env.home, &conv.id);
+    let agent = Agent::with_subagent(
+        deep(parts(&transport, key_auth(), &env.cwd)),
+        &env.home,
+        &conv.id,
+    );
     let outcome = agent.run_turn(&mut conv, "go", &AtomicBool::new(false), &mut |_| {});
     assert_eq!(outcome, TurnOutcome::Done);
     let requests = transport.requests();
@@ -164,7 +175,11 @@ fn model_and_effort_override_the_parent() {
     ];
     let transport = Arc::new(ScriptedTransport::new(responses));
     let mut conv = Conversation::create(&env.home, &env.cwd, None).unwrap();
-    let agent = Agent::with_subagent(parts(&transport, key_auth(), &env.cwd), &env.home, &conv.id);
+    let agent = Agent::with_subagent(
+        deep(parts(&transport, key_auth(), &env.cwd)),
+        &env.home,
+        &conv.id,
+    );
     agent.run_turn(&mut conv, "go", &AtomicBool::new(false), &mut |_| {});
     let requests = transport.requests();
     let parent = json(&requests[0].body);
@@ -218,6 +233,7 @@ fn background_children_answer_in_order_of_completion() {
         &env.cwd,
     );
     parts.transport = transport.clone();
+    parts.config.subagent.max_depth = 2;
     let mut conv = Conversation::create(&env.home, &env.cwd, None).unwrap();
     let agent = Agent::with_subagent(parts, &env.home, &conv.id);
     let mut seen = Vec::new();
@@ -283,6 +299,7 @@ fn cancel_reaches_every_descendant() {
         &env.cwd,
     );
     parts.transport = transport.clone();
+    parts.config.subagent.max_depth = 2;
     let mut conv = Conversation::create(&env.home, &env.cwd, None).unwrap();
     let agent = Agent::with_subagent(parts, &env.home, &conv.id);
     let cancel = Arc::new(AtomicBool::new(false));

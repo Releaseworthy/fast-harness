@@ -14,6 +14,8 @@ export component Slider {
     in property <string> label;
     out property <bool> has-focus: fs.has-focus;
     callback changed(int);
+    // The drag ended or a key changed the value: the value is final.
+    callback released();
     property <length> knob: 20px;
     property <float> ratio: (min(root.maximum, max(root.minimum, root.value)) - root.minimum) / max(1, root.maximum - root.minimum);
     property <bool> active: ta.has-hover || ta.pressed || fs.has-focus;
@@ -97,6 +99,9 @@ export component Slider {
                 fs.focus();
                 root.set(root.at(self.mouse-x));
             }
+            if (e.kind == PointerEventKind.up && e.button == PointerEventButton.left) {
+                root.released();
+            }
         }
         moved => {
             if (self.pressed) {
@@ -107,12 +112,12 @@ export component Slider {
     fs := FocusScope {
         focus-on-click: false;
         key-pressed(e) => {
-            if (e.text == Key.RightArrow || e.text == Key.UpArrow) { root.set(root.value + 1); return accept; }
-            if (e.text == Key.LeftArrow || e.text == Key.DownArrow) { root.set(root.value - 1); return accept; }
-            if (e.text == Key.PageUp) { root.set(root.value + 10); return accept; }
-            if (e.text == Key.PageDown) { root.set(root.value - 10); return accept; }
-            if (e.text == Key.Home) { root.set(root.minimum); return accept; }
-            if (e.text == Key.End) { root.set(root.maximum); return accept; }
+            if (e.text == Key.RightArrow || e.text == Key.UpArrow) { root.set(root.value + 1); root.released(); return accept; }
+            if (e.text == Key.LeftArrow || e.text == Key.DownArrow) { root.set(root.value - 1); root.released(); return accept; }
+            if (e.text == Key.PageUp) { root.set(root.value + 10); root.released(); return accept; }
+            if (e.text == Key.PageDown) { root.set(root.value - 10); root.released(); return accept; }
+            if (e.text == Key.Home) { root.set(root.minimum); root.released(); return accept; }
+            if (e.text == Key.End) { root.set(root.maximum); root.released(); return accept; }
             return reject;
         }
     }

@@ -107,6 +107,7 @@ One file per decision in [docs/decisions/](docs/decisions/), moved there unchang
 - D75 [The window renders at a fixed scale on the vsync renderer](docs/decisions/D75.md)
 - D76 [Settings and About are dialogs; Subagents and Jobs are tabs](docs/decisions/D76.md): modal dialogs over the window; the two popover triggers sit after Trace
 - D77 [Turn navigator in the chat's right gutter, wider chat margins](docs/decisions/D77.md)
+- D80 [Subagent limits and UI scale in Settings, turn and step rails](docs/decisions/D80.md): `subagent.maxDepth` defaults to 1; scale 50 % to 400 % applied live
 
 ## Architecture
 

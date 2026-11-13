@@ -216,7 +216,10 @@ fn subagent_writes_a_child_log_naming_the_parent() {
     ];
     let transport = Arc::new(ScriptedTransport::new(responses));
     let mut conv = Conversation::create(&env.home, &env.cwd, None).unwrap();
-    let agent = Agent::with_subagent(parts(&transport, key_auth(), &env.cwd), &env.home, &conv.id);
+    let mut nested = parts(&transport, key_auth(), &env.cwd);
+    // The default is 1 (children start none); this test nests one level.
+    nested.config.subagent.max_depth = 2;
+    let agent = Agent::with_subagent(nested, &env.home, &conv.id);
     let outcome = agent.run_turn(&mut conv, "go", &AtomicBool::new(false), &mut |_| {});
     assert_eq!(outcome, TurnOutcome::Done);
     let sessions = session::list(&env.home, &env.cwd).unwrap();

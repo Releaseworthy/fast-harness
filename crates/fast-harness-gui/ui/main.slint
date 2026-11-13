@@ -17,6 +17,7 @@ import { Dialogs } from "dialog.slint";
 export { DialogUi } from "dialog.slint";
 export { PromptUi } from "prompt_settings.slint";
 export { AppearanceUi, ThemeCard } from "appearance.slint";
+export { LimitsUi } from "limits.slint";
 export { ConfigUi, ConfigRow } from "config_settings.slint";
 import { PanelLine, PanelUi } from "panel_view.slint";
 export { PanelUi, PanelRow } from "panel_view.slint";
@@ -122,6 +123,8 @@ export component MainWindow inherits Window {
     callback toggle(int);
     // Opens or folds the step whose line is on that row (D73).
     callback step-toggle(int);
+    // Folds or opens the turn whose first row is the argument (D80).
+    callback turn-toggle(int);
     callback open-url(string);
     // keys.json `reload_ui` and Settings: reload ~/.fast-harness/ui (fast-harness-gui-live, PLAN.md D51).
     callback reload-ui();
@@ -312,6 +315,7 @@ export component MainWindow inherits Window {
                                 loading: root.loading;
                                 toggle(i) => { root.toggle(i); }
                                 step-toggle(i) => { root.step-toggle(i); }
+            turn-toggle(i) => { root.turn-toggle(i); }
                                 copy(t) => { root.copy-text(t); }
                                 link(u) => { root.open-url(u); }
                             }

@@ -1,0 +1,104 @@
+// Settings limits (PLAN.md D80): the UI scale (Appearance) and the
+// subagent limits (their own section). State lives in the LimitsUi global;
+// src/limits.rs applies and saves the values.
+import { Theme, Eyebrow } from "parts.slint";
+import { Slider, NumberBox } from "controls.slint";
+
+export global LimitsUi {
+    // `uiScale` in percent, 50 to 400.
+    in-out property <int> scale: 100;
+    // A drag or a typed value: applies to the window at once (not saved).
+    callback scale-preview(int);
+    // The value is final (drag released, key, typed value): apply and save.
+    callback scale-saved(int);
+    // `subagent.maxParallel`, 1 to 16.
+    in-out property <int> max-parallel: 4;
+    // `subagent.maxDepth`, 0 (no subagents) to 5.
+    in-out property <int> max-depth: 1;
+    callback max-parallel-changed(int);
+    callback max-depth-changed(int);
+}
+
+// Settings > Appearance: a slider and a percent box kept in sync.
+export component UiScaleSetting inherits VerticalLayout {
+    spacing: Theme.space-m;
+    HorizontalLayout {
+        spacing: Theme.space-s;
+        Text { text: "UI scale"; color: Theme.text; font-size: Theme.font-m; font-weight: 600; vertical-alignment: center; }
+        Text { text: LimitsUi.scale + "%"; color: Theme.accent; font-size: Theme.font-m; font-weight: 700; vertical-alignment: center; horizontal-stretch: 1; }
+    }
+    HorizontalLayout {
+        spacing: Theme.space-l;
+        Slider {
+            label: "UI scale";
+            minimum: 50;
+            maximum: 400;
+            value: LimitsUi.scale;
+            changed(v) => { LimitsUi.scale = v; LimitsUi.scale-preview(v); }
+            released => { LimitsUi.scale-saved(LimitsUi.scale); }
+        }
+        scale-box := NumberBox {
+            label: "UI scale percent";
+            suffix: "%";
+            minimum: 50;
+            maximum: 400;
+            value: LimitsUi.scale;
+            changed(v) => { LimitsUi.scale = v; LimitsUi.scale-saved(v); }
+        }
+    }
+    Text {
+        text: "50% to 400%, applied at once and saved to config.json (uiScale). The Windows display scale is ignored.";
+        color: Theme.dim;
+        font-size: Theme.font-s;
+        wrap: word-wrap;
+    }
+}
+
+// One labelled number setting with a caption.
+component LimitRow inherits HorizontalLayout {
+    in property <string> label;
+    in property <string> caption;
+    in property <int> minimum;
+    in property <int> maximum;
+    in property <int> value;
+    callback changed(int);
+    spacing: Theme.space-l;
+    VerticalLayout {
+        horizontal-stretch: 1;
+        spacing: 2px;
+        Text { text: root.label; color: Theme.text; font-size: Theme.font-m; font-weight: 600; }
+        Text { text: root.caption; color: Theme.dim; font-size: Theme.font-s; wrap: word-wrap; }
+    }
+    VerticalLayout {
+        alignment: center;
+        NumberBox {
+            label: root.label;
+            minimum: root.minimum;
+            maximum: root.maximum;
+            value: root.value;
+            changed(v) => { root.changed(v); }
+        }
+    }
+}
+
+// Settings > Subagents: how many run at once and how deep they nest.
+export component SubagentLimits inherits VerticalLayout {
+    spacing: Theme.space-l;
+    Eyebrow { text: "SUBAGENTS"; }
+    LimitRow {
+        label: "Max subagents";
+        caption: "Subagents of one session running at once (1 to 16). Applies to the next turn; saved as subagent.maxParallel.";
+        minimum: 1;
+        maximum: 16;
+        value: LimitsUi.max-parallel;
+        changed(v) => { LimitsUi.max-parallel = v; LimitsUi.max-parallel-changed(v); }
+    }
+    LimitRow {
+        label: "Max nesting depth";
+        caption: "0: no subagents. 1: the session starts subagents, they start none. 2 and more: subagents start their own (up to 5). Saved as subagent.maxDepth.";
+        minimum: 0;
+        maximum: 5;
+        value: LimitsUi.max-depth;
+        changed(v) => { LimitsUi.max-depth = v; LimitsUi.max-depth-changed(v); }
+    }
+}

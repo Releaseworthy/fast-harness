@@ -106,6 +106,7 @@ pub fn show(app: &App, ui: &MainWindow) {
     );
     ui.global::<AppearanceUi>().set_folder(folder.into());
     (ui.global::<AppearanceUi>()).set_chat_full(app.rt.config.chat_full());
+    crate::limits::show(app, ui);
 }
 
 /// Applies `chatDetail` (D73) to the shown chat at once and saves it.
@@ -130,6 +131,7 @@ fn open_folder(app: &App, ui: &MainWindow) {
 }
 
 pub fn connect(ui: &MainWindow) {
+    crate::limits::connect(ui);
     let g = ui.global::<AppearanceUi>();
     g.on_pick(|index| {
         with_app(|app, ui| {
@@ -149,6 +151,12 @@ pub fn connect(ui: &MainWindow) {
         with_app(|app, _| {
             let index = usize::try_from(index).unwrap_or(usize::MAX);
             app.mirror.toggle_step(index, &*app.rows);
+        });
+    });
+    ui.on_turn_toggle(|head| {
+        with_app(|app, _| {
+            let head = usize::try_from(head).unwrap_or(usize::MAX);
+            app.mirror.toggle_turn(head, &*app.rows);
         });
     });
     g.on_chat_detail_changed(|full| {

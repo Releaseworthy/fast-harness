@@ -119,6 +119,14 @@ export struct MsgRow {
     // The row's detail is folded into its step line (an assistant row keeps
     // its text and folds its thinking).
     folded: bool,
+    // The turn (D80): the row draws the turn's rail (open turn), the turn's
+    // first row and number, the folded turn's line (its first row only)
+    // and whether the row's turn is folded.
+    turn-rail: bool,
+    turn-head: int,
+    turn-no: int,
+    turn-line: string,
+    turn-hidden: bool,
 }
 
 // The approval prompt (D64); an empty `id` for none. `title` says what the
