@@ -5,14 +5,14 @@
 //! merged with the live `Subagent` and `SubagentProgress` events for the
 //! state and the latest step. Those events never reach the GUI transcript:
 //! [`take`] keeps them out (the TUI keeps its inline notes). A subagent
-//! shown while it runs is not mirrored live: its log opens again on its
-//! events (at most every 500 ms, the core's progress rate).
+//! shown while it runs follows its live events (`child_pump`, D79).
 
 use std::collections::HashMap;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use fast_harness_core::events::AgentEvent;
 use fast_harness_core::session::{self, Child, Unfinished};
+use fast_harness_core::view::short_tokens;
 use slint::{ComponentHandle, ModelRc, VecModel};
 
 use crate::app::{with_app, App};
@@ -49,6 +49,11 @@ pub struct Subagents {
     generation: u64,
     /// The subagent sessions opened from a list, outermost first.
     pub viewing: Vec<Viewing>,
+    /// The child session a `child_pump` follows now (D79).
+    pub pumped: Option<String>,
+    /// When the last scan started: a running child's progress scans again
+    /// at most every 2 s while the popover is open (its tokens grow).
+    scanned_at: Option<Instant>,
 }
 
 /// One subagent event applied to `live`: `Some(child id)` when `event` is
@@ -90,9 +95,22 @@ fn ended(child: &Child) -> (&'static str, &'static str) {
     }
 }
 
+/// The dim second line of a row (D79): the model's name, the effort and
+/// every token of the child's log, the parts it has.
+pub fn detail(child: &Child, name: &dyn Fn(&str) -> String) -> String {
+    let model = (!child.model.is_empty()).then(|| name(&child.model));
+    let tokens = (child.tokens > 0).then(|| format!("{} tokens", short_tokens(child.tokens)));
+    let parts = [model, child.effort.clone(), tokens];
+    parts.into_iter().flatten().collect::<Vec<_>>().join(" · ")
+}
+
 /// The popover's rows: each child's log, its state and step from the live
 /// events while it runs.
-pub fn rows(children: &[Child], live: &HashMap<String, Live>) -> Vec<SubagentRow> {
+pub fn rows(
+    children: &[Child],
+    live: &HashMap<String, Live>,
+    name: &dyn Fn(&str) -> String,
+) -> Vec<SubagentRow> {
     let row = |child: &Child| {
         let seen = live.get(&child.id);
         let running = seen.is_some_and(|l| l.running);
@@ -111,16 +129,21 @@ pub fn rows(children: &[Child], live: &HashMap<String, Live>) -> Vec<SubagentRow
             word: word.into(),
             progress: if running && !line.is_empty() { progress(line).into() } else { logged.into() },
             when: if running { String::new() } else { took_text(Some(took)) }.into(),
-            detail: Default::default(),
+            detail: detail(child, name).into(),
         }
     };
     children.iter().map(row).collect()
 }
 
+/// The name the model pickers show for `model`, else its id.
+fn model_name(app: &App, model: &str) -> String {
+    app.rt.catalog.display_name(model).unwrap_or_else(|| model.to_string())
+}
+
 /// Redraws the pill and the popover; closes it when no row is left.
 pub fn render(app: &App, ui: &MainWindow) {
     let s = &app.subagents;
-    let rows = rows(&s.children, &s.live);
+    let rows = rows(&s.children, &s.live, &|m| model_name(app, m));
     let subs = ui.global::<SubagentsUi>();
     let running = rows.iter().filter(|r| r.mark == "running").count();
     subs.set_running(running as i32);
@@ -154,6 +177,7 @@ pub fn follow(app: &mut App, ui: &MainWindow) {
 fn scan(app: &mut App) {
     let s = &mut app.subagents;
     s.generation += 1;
+    s.scanned_at = Some(Instant::now());
     let Some(parent) = s.parent.clone() else {
         return;
     };
@@ -184,12 +208,14 @@ pub fn event(app: &mut App, ui: &MainWindow, event: &AgentEvent) -> bool {
     let Some(id) = take(&mut app.subagents.live, event) else {
         return false;
     };
-    if matches!(event, AgentEvent::Subagent { .. }) {
+    let open = ui.global::<SubagentsUi>().get_open();
+    let stale = app.subagents.scanned_at.is_none_or(|at| at.elapsed() >= Duration::from_secs(2));
+    if matches!(event, AgentEvent::Subagent { .. }) || (open && stale) {
         scan(app);
     }
     let viewed = app.subagents.viewing.last().is_some_and(|v| v.child == id);
     if viewed && app.runs.id.as_deref() == Some(id) {
-        crate::open_load::reload(app, ui, id);
+        crate::child_pump::follow(app, id);
     }
     render(app, ui);
     true
@@ -206,12 +232,13 @@ pub fn open_child(app: &mut App, ui: &MainWindow, id: &str) {
         Some(top) if top.child == parent => top.label.clone(),
         _ => "parent session".to_string(),
     };
-    let rows = rows(&s.children, &s.live);
+    let rows = rows(&s.children, &s.live, &|m| m.to_string());
     let row = rows.iter().find(|r| r.id == id);
     let label = row.map_or("subagent".to_string(), |r| r.label.to_string());
     let child = id.to_string();
     s.viewing.push(Viewing { child, parent, back, label });
     app.open_session(ui, id);
+    crate::child_pump::follow(app, id);
 }
 /// Back: the session the shown subagent was opened from.
 pub fn back(app: &mut App, ui: &MainWindow) {

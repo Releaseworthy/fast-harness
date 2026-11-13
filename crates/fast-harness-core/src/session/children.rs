@@ -30,6 +30,12 @@ pub struct Child {
     /// while no turn ended.
     pub outcome: Option<String>,
     pub unfinished: Option<Unfinished>,
+    /// The model and effort of the latest request (D79), empty and `None`
+    /// before the first one.
+    pub model: String,
+    pub effort: Option<String>,
+    /// Every token of the log: input, output, cache read and cache write.
+    pub tokens: u64,
 }
 
 /// The children of session `parent` in `cwd`, oldest first. Reads the first
@@ -77,7 +83,8 @@ fn child(log: &Path) -> Option<Child> {
     Some(kid)
 }
 
-/// The step, last tool and outcome of the last turn of `events`.
+/// The step, last tool and outcome of the last turn of `events`, the
+/// latest model and effort, and the tokens of every step.
 fn last_turn(events: &[TraceEvent], kid: &mut Child) {
     for event in events {
         match event.record() {
@@ -85,6 +92,14 @@ fn last_turn(events: &[TraceEvent], kid: &mut Child) {
             Record::StepStart(start) => kid.step = start.step,
             Record::ToolCall(call) => kid.tool = Some(call.name),
             Record::TurnEnd(end) => kid.outcome = Some(end.outcome),
+            Record::RequestContext(request) => {
+                kid.model = request.model;
+                kid.effort = request.effort.flatten();
+            }
+            Record::AssistantMessage(message) => {
+                let u = &message.usage;
+                kid.tokens += u.input + u.output + u.cache_read + u.cache_write;
+            }
             _ => {}
         }
     }

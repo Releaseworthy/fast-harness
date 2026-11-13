@@ -28,6 +28,7 @@ mod reflect;
 mod rows;
 mod runs;
 mod settings;
+mod child_pump;
 mod subagents_view;
 mod theme;
 mod tool_rows;

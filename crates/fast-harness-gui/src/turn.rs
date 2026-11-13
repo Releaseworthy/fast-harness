@@ -278,7 +278,7 @@ fn wires(id: &str) -> (Sink, Done) {
 
 /// Applies one event of session `id` on the UI thread: its own transcript
 /// changes; the rows, the status and the panels only when it is shown.
-fn deliver(id: &str, event: AgentEvent) {
+pub(crate) fn deliver(id: &str, event: AgentEvent) {
     with_app(|app, ui| {
         // Subagent events feed the pill, not the transcript (D74).
         if crate::subagents_view::event(app, ui, &event) {

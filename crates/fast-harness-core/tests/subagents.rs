@@ -127,6 +127,20 @@ fn model_and_effort_override_the_parent() {
         format!("{last:?}").contains("branch `antigravity`"),
         "{last:?}"
     );
+    // The popover's detail line (D79) reads them back from the child logs.
+    let kids = fast_harness_core::session::children(&env.home, &env.cwd, &conv.id).unwrap();
+    let seen: Vec<_> = kids
+        .iter()
+        .map(|k| (k.model.as_str(), k.effort.as_deref()))
+        .collect();
+    assert_eq!(
+        &seen[..2],
+        &[
+            ("claude-sonnet-5", Some("high")),
+            ("claude-opus-5-5", Some("low"))
+        ]
+    );
+    assert!(kids[..2].iter().all(|k| k.tokens > 0), "{kids:?}");
 }
 
 #[test]
