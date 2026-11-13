@@ -256,6 +256,18 @@ pub struct TurnEnd {
     pub outcome: String,
 }
 
+/// `tool/approval` (version 11, PLAN.md D64): how an approval request ended,
+/// so a replay shows the same word a live transcript showed (`once`,
+/// `session`, `declined`, `cancelled`, `paused`, `refused`).
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ToolApproval {
+    pub turn: u32,
+    pub step: u32,
+    pub call_id: String,
+    pub decision: String,
+}
+
 /// `hook` (version 10): `decision` is `none` or the keys that acted.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -338,6 +350,7 @@ records! {
     ToolResult(ToolResult) = kind::TOOL_RESULT,
     StepEnd(StepEnd) = kind::STEP_END,
     TurnEnd(TurnEnd) = kind::TURN_END,
+    ToolApproval(ToolApproval) = kind::TOOL_APPROVAL,
     Hook(Hook) = kind::HOOK,
     HookError(HookError) = kind::HOOK_ERROR,
 }

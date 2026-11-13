@@ -158,6 +158,10 @@ mod old {
                 kind::HOOK_ERROR,
                 json!({"turn": 1, "event": "Stop", "command": "c", "ms": 4, "error": "boom"}),
             ),
+            (
+                kind::TOOL_APPROVAL,
+                json!({"turn": 1, "step": 1, "callId": "c1", "decision": "once"}),
+            ),
         ]
     }
 }
@@ -176,7 +180,7 @@ fn every_event_type_writes_the_old_bytes() {
     }
     typed::write_all(&mut writer(&new_path), &f);
     let (old_lines, new_lines) = (masked(&old_path), masked(&new_path));
-    assert_eq!(old_lines.len(), 23);
+    assert_eq!(old_lines.len(), 24);
     for (old, new) in old_lines.iter().zip(&new_lines) {
         assert_eq!(new, old);
     }

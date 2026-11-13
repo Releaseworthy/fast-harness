@@ -22,6 +22,7 @@ pub const CASES: &[(&str, Case)] = &[
     ("failed", failed),
     ("find-tools", find_tools),
     ("spilled-result", spilled),
+    ("approvals-allowed-and-declined", approvals),
 ];
 
 const SUMMARY: &str = "## Task\nfix it\n## Files\nsrc/a.rs\n## Durable facts\nuse pwsh";
@@ -181,5 +182,28 @@ fn spilled(env: &Env) -> Run {
     assert_eq!(run.turn("go"), TurnOutcome::Done);
     let spill = run.conv.log_path.with_extension("out");
     assert!(spill.is_dir(), "the result spilled to {}", spill.display());
+    run
+}
+
+/// Two `jot` calls (`Effect::Run`) with the gate on: the first is allowed,
+/// the second declined, and both rows say so after a replay (D64).
+fn approvals(env: &Env) -> Run {
+    let calls = [("t1", "jot", HI), ("t2", "jot", r#"{"text":"two"}"#)];
+    let replies = vec![tool_reply(&calls), text_reply("done")];
+    let plan = vec![Answer::Once, Answer::No(Some("not now".into()))];
+    let mut run = approving(env, replies, plan);
+    assert_eq!(run.turn("go"), TurnOutcome::Done);
+    let word = |id: &str| run.live.approvals.word(id);
+    assert_eq!(
+        word("t1"),
+        Some("allowed once"),
+        "the first call was allowed"
+    );
+    assert_eq!(word("t2"), Some("declined"), "the second was declined");
+    assert!(!run.conv.messages.iter().any(|m| {
+        m.content.iter().any(
+            |b| matches!(b, fast_harness_core::types::Block::ToolResult { content, .. } if content == "noted two"),
+        )
+    }));
     run
 }

@@ -97,4 +97,5 @@ pub fn write_all(w: &mut TraceWriter, f: &Fixture) {
     w.step_end(1, 1, 5120).unwrap();
     w.turn_end(1, 3, &f.usage, 14200, "done").unwrap();
     hooks(w);
+    w.tool_approval(1, 1, "c1", "once").unwrap();
 }

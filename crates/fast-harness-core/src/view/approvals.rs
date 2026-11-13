@@ -1,18 +1,29 @@
-//! The approval outcome of each tool call (PLAN.md D64), live only: the
-//! request events are never traced, so a replayed transcript has none (the
-//! declined, cancelled, paused and refused calls say so in their result).
+//! The approval outcome of each tool call (PLAN.md D64): live from
+//! `ApprovalRequest` and `ApprovalDone`, replayed from the `tool/approval`
+//! record (trace version 11). A request is live only: the record holds the
+//! decision, so a replayed row shows the same word.
 
 use crate::config::approvals::LEFT_OUT;
 use crate::events::ApprovalRequest;
 
 /// The words of the calls that asked, by tool call id.
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, Default)]
 pub struct Approvals {
     /// `(request id, call id)` of every request seen.
     asked: Vec<(String, String)>,
     /// `(call id, word)`, the newest last.
     words: Vec<(String, &'static str)>,
 }
+
+/// Only the words compare: `asked` is live bookkeeping (a request id to its
+/// call), and a replay has no request ids (D64).
+impl PartialEq for Approvals {
+    fn eq(&self, other: &Self) -> bool {
+        self.words == other.words
+    }
+}
+
+impl Eq for Approvals {}
 
 /// The word of a request that waits for its answer.
 pub const WAITING: &str = "waiting for your answer";
@@ -64,6 +75,20 @@ impl Approvals {
         if let Some(call) = call {
             self.set(&call, outcome_word(answer));
         }
+    }
+
+    /// The decision of a replayed request (the `tool/approval` line, trace
+    /// version 11): the same word the live `ApprovalDone` set.
+    pub(crate) fn record(&mut self, call_id: &str, answer: &str) {
+        self.set(call_id, outcome_word(answer));
+    }
+
+    /// True when tool call `call_id` never ran because the gate ended it: the
+    /// row says so in its word and is not a failed call (D64).
+    pub fn kept_from_running(&self, call_id: &str) -> bool {
+        (self.word(call_id)).is_some_and(|word| {
+            matches!(word, "declined" | "cancelled" | "paused") || word.starts_with("refused")
+        })
     }
 
     fn set(&mut self, call: &str, word: &'static str) {

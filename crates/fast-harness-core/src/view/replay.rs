@@ -177,6 +177,11 @@ impl Replay {
                 self.view
                     .add_results(&result.message, Some(result.duration_ms));
             }
+            Record::ToolApproval(approval) => {
+                self.view
+                    .approvals
+                    .record(&approval.call_id, &approval.decision);
+            }
             Record::Compaction(compaction) => self.compaction(&compaction),
             Record::StepEnd(_) => self.flush(),
             Record::TurnEnd(end) => self.turn_end(&end),

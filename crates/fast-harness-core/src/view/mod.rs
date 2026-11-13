@@ -107,7 +107,8 @@ pub struct Transcript {
     pub window: u64,
     /// Usage of the current (or last) turn.
     pub turn_usage: Usage,
-    /// How the calls that asked for approval ended (D64), live only.
+    /// How the calls that asked for approval ended (D64): live from the
+    /// events, replayed from the `tool/approval` record (trace version 11).
     pub approvals: Approvals,
 }
 

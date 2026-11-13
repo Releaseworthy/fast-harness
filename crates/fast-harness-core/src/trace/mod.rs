@@ -36,7 +36,9 @@ use serde_json::Value;
 /// Version 10: `hook` and `hook/error` events (PLAN.md D44); a user text of
 /// kind `hook` (a hook's context or Stop continuation) joins the history
 /// like a steer.
-pub const VERSION: u32 = 10;
+/// Version 11: `tool/approval` events (PLAN.md D64): how an approval request
+/// ended, so a replay shows the same word a live transcript showed.
+pub const VERSION: u32 = 11;
 
 /// The oldest version the reader accepts; a resumed log keeps its own header.
 pub const MIN_VERSION: u32 = 1;

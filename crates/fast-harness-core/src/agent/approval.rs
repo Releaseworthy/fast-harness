@@ -19,6 +19,11 @@ use crate::tools::ToolOutput;
 /// the session wake it at once.
 const BACKSTOP: Duration = Duration::from_millis(500);
 
+/// Where each decided request goes: the tool thread pushes `(call id,
+/// decision)` and the agent thread writes them as `tool/approval`
+/// (trace version 11, PLAN.md D64).
+pub(super) type Decisions<'a> = &'a Mutex<Vec<(String, String)>>;
+
 /// A person's answer to one request.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Answer {
@@ -120,13 +125,15 @@ impl Gate {
         (self.lock().grants.iter()).any(|(t, k)| t == tool && k == key)
     }
 
-    /// Waits for the answer to `request` (its id is set here).
+    /// Waits for the answer to `request` (its id is set here); `decided`
+    /// takes `(call id, decision)` for the session log (version 11, D64).
     fn ask(
         &self,
         mut request: ApprovalRequest,
         key: &str,
         cancel: &AtomicBool,
         emit: &dyn Fn(AgentEvent),
+        decided: Decisions<'_>,
     ) -> Option<ToolOutput> {
         {
             let mut state = self.lock();
@@ -138,6 +145,7 @@ impl Gate {
             state.pending.push(request.clone());
         }
         let (id, tool) = (request.id.clone(), request.tool.clone());
+        let call = request.call_id.clone();
         emit(AgentEvent::ApprovalRequest(request));
         let ended = self.wait(&id, cancel);
         let word = match &ended {
@@ -146,6 +154,7 @@ impl Gate {
             Err(Stop::Pause) => "paused",
         };
         let answer = word.to_string();
+        (decided.lock().unwrap_or_else(|p| p.into_inner())).push((call, answer.clone()));
         emit(AgentEvent::ApprovalDone { id, answer });
         match ended {
             Ok(Answer::Once) => None,
@@ -232,12 +241,13 @@ fn exempt(tool: &str) -> bool {
 
 /// The gate for one call with its final arguments `raw`: `None` runs it,
 /// `Some` is its result instead. With `approvals: off` it costs one
-/// comparison.
+/// comparison. `decisions` takes every decided request for the log.
 pub(super) fn check(
     agent: &Agent,
     (call_id, tool, raw): (&str, &str, &str),
     cancel: &AtomicBool,
     emit: &dyn Fn(AgentEvent),
+    decisions: Decisions<'_>,
 ) -> Option<ToolOutput> {
     let config = &agent.parts.config;
     if config.approvals == Approvals::Off || exempt(tool) {
@@ -262,10 +272,12 @@ pub(super) fn check(
         agent: approver.and_then(|a| a.agent.clone()),
     };
     match approver.filter(|a| a.gate.lock().answering) {
-        Some(approver) => approver.gate.ask(request, &key, cancel, emit),
+        Some(approver) => approver.gate.ask(request, &key, cancel, emit, decisions),
         None => {
             let id = format!("refused-{call_id}");
             let answer = "refused".to_string();
+            let decided = (call_id.to_string(), answer.clone());
+            (decisions.lock().unwrap_or_else(|p| p.into_inner())).push(decided);
             emit(AgentEvent::ApprovalRequest(ApprovalRequest {
                 id: id.clone(),
                 ..request

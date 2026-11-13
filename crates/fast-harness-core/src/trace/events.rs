@@ -31,6 +31,9 @@ pub mod kind {
     pub const HOOK: &str = "hook";
     /// A hook failed and was ignored: `event`, `command`, `ms`, `error`.
     pub const HOOK_ERROR: &str = "hook/error";
+    /// An approval request ended (version 11, PLAN.md D64): `callId`,
+    /// `decision`.
+    pub const TOOL_APPROVAL: &str = "tool/approval";
 }
 
 /// Data of `request/context`: one model call attempt (written as
@@ -298,6 +301,23 @@ impl TraceWriter {
     /// `compaction` as built by the agent (PLAN.md D38).
     pub fn compaction(&mut self, data: record::Compaction) -> io::Result<u64> {
         self.write(&Record::Compaction(data))
+    }
+
+    /// How an approval request ended (version 11, PLAN.md D64): a replayed
+    /// transcript shows the same word the live one showed.
+    pub fn tool_approval(
+        &mut self,
+        turn: u32,
+        step: u32,
+        call_id: &str,
+        decision: &str,
+    ) -> io::Result<u64> {
+        self.write(&Record::ToolApproval(record::ToolApproval {
+            turn,
+            step,
+            call_id: call_id.to_string(),
+            decision: decision.to_string(),
+        }))
     }
 
     pub fn step_end(&mut self, turn: u32, step: u32, duration_ms: u64) -> io::Result<u64> {

@@ -4,6 +4,7 @@ use std::ops::Range;
 use std::panic::{self, AssertUnwindSafe};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, RecvTimeoutError};
+use std::sync::Mutex;
 use std::time::Instant;
 
 use crate::agent::approval;
@@ -26,6 +27,9 @@ struct Run<'a> {
     session: &'a ToolSession,
     /// The session id given to hooks (PLAN.md D44).
     session_id: &'a str,
+    /// `(call id, decision)` of every approval request the step decided
+    /// (PLAN.md D64); the agent thread writes them as `tool/approval`.
+    decisions: &'a Mutex<Vec<(String, String)>>,
 }
 
 /// One call's output, duration, hook runs and hook context texts.
@@ -51,14 +55,26 @@ impl Turn<'_> {
         let found = find::found(&self.conv.messages);
         let loaded = self.agent.tools.finds().then_some(found.as_slice());
         let shared = &self.conv.tool_session;
+        let decisions = Mutex::new(Vec::new());
         let run = Run {
             agent: self.agent,
             loaded,
             cancel: self.cancel,
             session: shared,
             session_id: &self.conv.id,
+            decisions: &decisions,
         };
         let done = execute(&run, &calls, &mut *self.sink);
+        // Every decided request goes in the log before its results: a replay
+        // then shows the same word a live transcript showed (D64).
+        let decided = std::mem::take(&mut *decisions.lock().unwrap_or_else(|p| p.into_inner()));
+        for (call_id, decision) in decided {
+            traced(
+                self.conv
+                    .trace
+                    .tool_approval(self.turn, step, &call_id, &decision),
+            )?;
+        }
         let mut outputs = Vec::with_capacity(done.len());
         let mut durations = Vec::with_capacity(done.len());
         for (output, duration_ms, records, mut context) in done {
@@ -304,7 +320,15 @@ fn run_one(
         .with_call_id(&call.id)
         .with_session(run.session)
         .with_progress(progress);
-    let gate = |raw: &str| approval::check(agent, (&call.id, &call.name, raw), run.cancel, emit);
+    let gate = |raw: &str| {
+        approval::check(
+            agent,
+            (&call.id, &call.name, raw),
+            run.cancel,
+            emit,
+            run.decisions,
+        )
+    };
     let go = || match !agent.parts.extensions.has_hooks() {
         true => {
             let output = gate(&call.arguments)

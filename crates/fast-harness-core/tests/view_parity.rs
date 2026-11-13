@@ -10,8 +10,11 @@ use std::sync::mpsc::Sender;
 use std::sync::Arc;
 
 use agent_support::*;
-use fast_harness_core::agent::{Agent, AgentParts, Conversation, Inbox, Input};
+use fast_harness_core::agent::{
+    Agent, AgentParts, Answer, Approver, Conversation, Gate, Inbox, Input,
+};
 use fast_harness_core::auth::{AuthSource, Failover};
+use fast_harness_core::config::approvals::Approvals;
 use fast_harness_core::events::{AgentEvent, TurnOutcome};
 use fast_harness_core::http::{ScriptedResponse, ScriptedTransport};
 use fast_harness_core::llm::ToolSpec;
@@ -39,6 +42,10 @@ struct Run {
     live: Transcript,
     conv: Conversation,
     agent: Option<Agent>,
+    /// The gate of an approval case (D64), and the answer to each request
+    /// the next turn makes, in order; empty for a case without approvals.
+    gate: Option<Arc<Gate>>,
+    plan: Vec<Answer>,
 }
 
 fn scripted(env: &Env, replies: Vec<ScriptedResponse>) -> Run {
@@ -64,6 +71,8 @@ fn build(
         live: Transcript::new(),
         conv,
         agent: Some(agent),
+        gate: None,
+        plan: Vec::new(),
     }
 }
 
@@ -77,6 +86,31 @@ fn with_subagent(env: &Env, replies: Vec<ScriptedResponse>) -> Run {
         live: Transcript::new(),
         conv,
         agent: Some(agent),
+        gate: None,
+        plan: Vec::new(),
+    }
+}
+
+/// A run on `echo` and `jot` with the gate on (`approvals: ask`): the
+/// session answers the next turn's requests in order with `plan` (D64).
+fn approving(env: &Env, replies: Vec<ScriptedResponse>, plan: Vec<Answer>) -> Run {
+    let transport = Arc::new(ScriptedTransport::new(replies));
+    let mut registry = Registry::new();
+    registry.add(Box::new(Echo));
+    registry.add(Box::new(Jot));
+    let mut parts = parts(&transport, key_auth(), &env.cwd);
+    parts.config.approvals = Approvals::Ask;
+    let conv = Conversation::create(&env.home, &env.cwd, None).unwrap();
+    let gate = Arc::new(Gate::default());
+    gate.set_answering(true);
+    let mut agent = Agent::new(parts, Arc::new(registry));
+    agent.set_approver(Approver::new(Arc::clone(&gate)));
+    Run {
+        live: Transcript::new(),
+        conv,
+        agent: Some(agent),
+        gate: Some(gate),
+        plan,
     }
 }
 
@@ -85,7 +119,6 @@ impl Run {
     fn turn(&mut self, text: &str) -> TurnOutcome {
         self.turn_with(text, None, |_| false)
     }
-
     /// [`Run::turn`] that sends `input` at the first event `when` matches,
     /// or cancels there when `input` is `None` and `cancel` is set.
     fn turn_with(
@@ -100,8 +133,15 @@ impl Run {
         let (tx, mut inbox) = Inbox::channel();
         let mut pending: Option<(Sender<Input>, Input)> = input.map(|i| (tx, i));
         let cancel = AtomicBool::new(false);
+        let (gate, mut plan) = (self.gate.clone(), std::mem::take(&mut self.plan));
         let (agent, live) = (self.agent.as_ref().unwrap(), &mut self.live);
         agent.run_turn_with(&mut self.conv, text, &cancel, &mut inbox, &mut |event| {
+            // An approval case answers its gate as the request arrives (D64).
+            if let (Some(gate), AgentEvent::ApprovalRequest(request)) = (&gate, &event) {
+                if !plan.is_empty() {
+                    gate.answer(&request.id, plan.remove(0));
+                }
+            }
             if when(&event) {
                 match pending.take() {
                     Some((tx, input)) => tx.send(input).unwrap(),
