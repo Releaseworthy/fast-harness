@@ -94,6 +94,7 @@ One file per decision in [docs/decisions/](docs/decisions/), moved there unchang
 - D62 [An untrusted project supplies nothing](docs/decisions/D62.md)
 - D63 [PreModelRequest hook, hook budget, MCP session expiry](docs/decisions/D63.md)
 - D64 [Approvals](docs/decisions/D64.md)
+- D65 [Each session keeps its own draft](docs/decisions/D65.md)
 
 ## Architecture
 
