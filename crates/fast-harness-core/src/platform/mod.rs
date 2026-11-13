@@ -14,7 +14,9 @@
 //!   group 1 on the calling thread's visible windows; a no-op returning 0 elsewhere) and
 //!   `thread_window() -> Option<isize>` (the calling thread's visible unowned window) and
 //!   `caret_timeout() -> Option<Duration>` (how long a text caret blinks after the last input:
-//!   SPI_GETCARETTIMEOUT on Windows, `None` elsewhere).
+//!   SPI_GETCARETTIMEOUT on Windows, `None` elsewhere) and `lcd_text_order() -> Option<LcdOrder>`
+//!   (the ClearType subpixel order, `None` when text smoothing is grayscale or off or outside
+//!   Windows).
 //! - `folder`: `pick_folder(owner, title) -> Result<Option<PathBuf>>` (the modal "Select folder"
 //!   dialog owned by window `owner`; `Ok(None)` when cancelled; IFileOpenDialog on Windows).
 //!
@@ -51,6 +53,14 @@ impl fmt::Display for PlatformError {
 }
 
 impl std::error::Error for PlatformError {}
+
+/// The order of a display's colour subpixels, left to right, for subpixel
+/// (ClearType) text.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum LcdOrder {
+    Rgb,
+    Bgr,
+}
 
 impl PlatformError {
     /// The calling thread's last OS error.

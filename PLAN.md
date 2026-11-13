@@ -105,6 +105,7 @@ One file per decision in [docs/decisions/](docs/decisions/), moved there unchang
 - D73 [GUI chat step summaries](docs/decisions/D73.md): `chatDetail` summary (default) or full; each step folds into one line, a click opens it
 - D74 [GUI subagents: a pill, a popover and a read-only child view](docs/decisions/D74.md)
 - D75 [The window renders at a fixed scale on the vsync renderer](docs/decisions/D75.md)
+- D78 [Skia on Direct3D 12 by default, subpixel text through a patched Slint crate](docs/decisions/D78.md)
 
 ## Architecture
 

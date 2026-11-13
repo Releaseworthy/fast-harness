@@ -26,7 +26,7 @@ fast-harness doctor                           what loaded, from where, what was 
 
 `claudeCodeVersion` (user layer, read at start, D71): `"auto"` (default) presents Claude OAuth calls as the newest Claude Code release, checked on npm in the background each time Fast Harness opens and applied to the next call without a restart; a release such as `"2.1.323"` pins it.
 
-`renderer` and `uiScale` (user layer, read when the GUI starts, D75): `renderer` is `"auto"` (default: OpenGL with vsync, the software renderer when OpenGL cannot start), `"software"` (about 200 MB less memory, may tear when scrolling) or `"femtovg"`; `uiScale` (default `1.0`, 0.5 to 4) is the size of the GUI, independent of the Windows display scale. `SLINT_BACKEND` and `SLINT_SCALE_FACTOR` override them.
+`renderer`, `textAntialiasing` and `uiScale` (user layer, read when the GUI starts, D75, D78): `renderer` is `"auto"` (default: Skia, on Windows Direct3D 12 with vsync, Skia on the CPU when Direct3D 12 cannot start; FemtoVG and then the software renderer only when Skia itself cannot start), `"skia"`, `"femtovg"` (OpenGL with vsync) or `"software"` (least memory, may tear when scrolling); `textAntialiasing` is `"subpixel"` (ClearType-style colour edges, the default when Windows has ClearType on, Skia only) or `"grayscale"` (the default otherwise); `uiScale` (default `1.0`, 0.5 to 4) is the size of the GUI, independent of the Windows display scale. `SLINT_BACKEND`, `SLINT_SKIA_TEXT_AA` (`rgb`, `bgr` or `grayscale`) and `SLINT_SCALE_FACTOR` override them.
 
 A broken user `config.json` stops the start with its error, as before. A broken project `config.json` or provider file is skipped, and `fast-harness doctor` names it with the parser's error.
 

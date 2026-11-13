@@ -1,4 +1,4 @@
-use crate::platform::PlatformError;
+use crate::platform::{LcdOrder, PlatformError};
 
 /// No window icon to set outside Windows: a no-op.
 pub fn set_big_window_icon() -> Result<usize, PlatformError> {
@@ -12,5 +12,10 @@ pub fn caret_timeout() -> Option<std::time::Duration> {
 
 /// No native window handle outside Windows.
 pub fn thread_window() -> Option<isize> {
+    None
+}
+
+/// No ClearType setting outside Windows: grayscale text.
+pub fn lcd_text_order() -> Option<LcdOrder> {
     None
 }
