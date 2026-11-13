@@ -24,7 +24,8 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 use slint::platform::WindowEvent as SlintEvent;
-use slint::winit_030::winit::event::{Ime, WindowEvent};
+use slint::winit_030::winit::dpi::PhysicalSize;
+use slint::winit_030::winit::event::{Ime, InnerSizeWriter, WindowEvent};
 use slint::winit_030::{EventResult, WinitWindowAccessor};
 use slint::{ComponentHandle, Timer, TimerMode};
 
@@ -73,6 +74,7 @@ impl Rest {
 enum Kind {
     Drop(PathBuf),
     Resize,
+    Scale,
     Activation(bool),
     Ime,
     Input,
@@ -83,6 +85,7 @@ fn kind(event: &WindowEvent) -> Kind {
     match event {
         WindowEvent::DroppedFile(path) => Kind::Drop(path.clone()),
         WindowEvent::Resized(_) => Kind::Resize,
+        WindowEvent::ScaleFactorChanged { .. } => Kind::Scale,
         WindowEvent::Focused(active) => Kind::Activation(*active),
         WindowEvent::Ime(_) => Kind::Ime,
         WindowEvent::KeyboardInput { .. }
@@ -151,6 +154,15 @@ fn activation(ui: &MainWindow, active: bool) {
     }
 }
 
+/// The window moved to a monitor with another Windows scale: the UI scale
+/// is fixed (`display`, D75), so the physical size stays as it is. winit
+/// would otherwise apply its suggested size (the logical size at the new
+/// scale), shrinking or growing the window while the content stays 1:1.
+fn keep_size(window: &slint::Window, mut writer: InnerSizeWriter) {
+    let size = window.size();
+    let _ = writer.request_inner_size(PhysicalSize::new(size.width, size.height));
+}
+
 fn on_event(ui: &MainWindow, window: &slint::Window, event: &WindowEvent) -> EventResult {
     match kind(event) {
         Kind::Drop(path) => {
@@ -158,6 +170,11 @@ fn on_event(ui: &MainWindow, window: &slint::Window, event: &WindowEvent) -> Eve
             return EventResult::PreventDefault;
         }
         Kind::Resize => crate::window_state::sync(ui),
+        Kind::Scale => {
+            if let WindowEvent::ScaleFactorChanged { inner_size_writer, .. } = event {
+                keep_size(window, inner_size_writer.clone());
+            }
+        }
         Kind::Activation(active) => activation(ui, active),
         Kind::Ime => {
             if let WindowEvent::Ime(ime) = event {

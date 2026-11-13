@@ -225,10 +225,8 @@ export component MainWindow inherits Window {
         opacity: 0;
     }
 
-    // The backdrop: bg at the top left to bg-end at the bottom right. The
-    // window background itself cannot be a gradient in the software
-    // renderer; a full-bleed square rectangle can.
-    Rectangle { background: @linear-gradient(135deg, Theme.bg 0%, Theme.bg-end 100%); }
+    // The backdrop is the flat window background: a 135deg bg to bg-end
+    // gradient over 8-bit colour showed diagonal bands (D75).
     // The brand line along the top edge (square, so the gradient renders).
     Rectangle {
         y: 0;
