@@ -15,6 +15,8 @@ mod appearance_tests;
 #[cfg(test)]
 mod approval_focus_tests;
 #[cfg(test)]
+mod child_session_tests;
+#[cfg(test)]
 mod composer_tests;
 #[cfg(test)]
 mod drafts_tests;
@@ -32,6 +34,8 @@ mod open_tests;
 mod panels_tests;
 #[cfg(test)]
 mod prompt_settings_tests;
+#[cfg(test)]
+mod rails_view_tests;
 #[cfg(test)]
 mod scroll_tests;
 #[cfg(test)]

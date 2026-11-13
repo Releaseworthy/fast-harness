@@ -73,21 +73,31 @@ export component StepLine inherits Rectangle {
     if fs.has-focus: FocusRing { radius: Theme.radius-s; x: -2px; y: -2px; width: parent.width + 4px; height: parent.height + 4px; }
 }
 
+// The hovered rails (D80): every row draws its own segment of a turn's or
+// a step's rail, so the hover is shared by the group's first row number.
+export global Rails {
+    in-out property <int> turn: -1;
+    in-out property <int> step: -1;
+}
+
 // The faint line on the left of an open step's rows: a 12 px hit area
-// whose click folds the step; it widens and darkens under the pointer.
+// whose click folds the step; the whole rail widens and darkens while the
+// pointer is on any of its segments (`lit`). Square ends: the segments of
+// consecutive rows join into one line (rounded ends left 2 px dim notches).
 export component StepRail inherits Rectangle {
     in property <string> label: "Collapse step";
+    in property <bool> lit: rail.has-hover;
+    out property <bool> hovered: rail.has-hover;
     callback clicked();
     width: 12px;
     accessible-role: button;
     accessible-label: root.label;
     accessible-action-default => { root.clicked(); }
     Rectangle {
-        x: (parent.width - self.width) / 2;
-        width: rail.has-hover ? 3px : 2px;
-        border-radius: 1px;
+        x: root.lit ? 4px : 5px;
+        width: root.lit ? 3px : 2px;
         // Theme.line vanished on light themes: the dim text colour, faint.
-        background: rail.has-hover ? Theme.dim : Theme.dim.with-alpha(0.32);
+        background: root.lit ? Theme.dim : Theme.dim.with-alpha(0.32);
     }
     rail := TouchArea {
         mouse-cursor: pointer;

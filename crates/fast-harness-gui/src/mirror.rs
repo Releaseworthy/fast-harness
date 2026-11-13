@@ -199,8 +199,15 @@ impl Mirror {
         self.redraw(range.start, decos, model);
     }
 
-    /// Folds or opens the turn whose first row is `head` (D80).
+    /// Folds or opens the turn whose first row is `head` (D80). The turn's
+    /// user row (`turn_nav::Turn::row`) names it too: the turn starts after
+    /// it, and closing the user row itself folded nothing (2026-11-14).
     pub fn toggle_turn(&mut self, head: usize, model: &dyn Rows) {
+        let head = match self.items.get(head) {
+            Some(Item::User { .. }) => head + 1,
+            Some(_) => head,
+            None => return,
+        };
         if head >= self.items.len() {
             return;
         }
