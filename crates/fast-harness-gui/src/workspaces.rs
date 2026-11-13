@@ -199,6 +199,8 @@ pub fn select(app: &mut App, ui: &MainWindow, path: &str) {
 /// turn goes on parked (D39).
 fn switch(app: &mut App, ui: &MainWindow, path: &Path) -> bool {
     app.cwd = path.to_path_buf();
+    // Each workspace has its own project settings and providers (D67).
+    crate::settings::reload_project(app, ui);
     app.side.list.touch(path, now_ms());
     app.side.expanded.insert(slug(path));
     // An open for the workspace left behind is dropped when it comes (D60).

@@ -35,6 +35,24 @@ pub fn fill(app: &mut App, ui: &MainWindow) {
     show_models(app, ui, list);
 }
 
+/// Loads the settings of the workspace `app.cwd` (its project layer when
+/// trusted and its provider files, D67) and refills the pickers. A model
+/// picked in this window stays when the new list still has it.
+pub fn reload_project(app: &mut App, ui: &MainWindow) {
+    let (model, effort) = (app.rt.config.model.clone(), app.rt.config.effort.clone());
+    let cwd = app.cwd.clone();
+    if let Err(err) = app.rt.use_project(&cwd) {
+        ui.set_error_text(format!("Project settings: {err}").into());
+    }
+    let list = model_list(&app.rt.catalog, &app.rt.models().cached(), &app.rt.config.model);
+    if list.iter().any(|(id, _)| *id == model) {
+        let (effort, _) = refit(&app.rt.catalog, &model, effort.as_deref());
+        app.rt.config.model = model;
+        app.rt.config.effort = effort;
+    }
+    fill(app, ui);
+}
+
 /// Shows `(id, label)` rows (provider titles marked as headers) with the
 /// current model selected, then its efforts.
 pub fn show_models(app: &mut App, ui: &MainWindow, list: Vec<(String, String)>) {

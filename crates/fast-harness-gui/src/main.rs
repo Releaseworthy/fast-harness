@@ -46,6 +46,8 @@ mod shots_tools;
 mod shots_trace;
 #[cfg(test)]
 mod side_tests;
+#[cfg(test)]
+mod workspace_switch_tests;
 
 /// This binary has its UI built in: Reload (keys.json `reload_ui`) only says
 /// which binary reloads UI files.
