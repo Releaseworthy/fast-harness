@@ -1,4 +1,4 @@
-//! fast-harness-gui: the fast-harness desktop window (Slint, software renderer).
+//! fast-harness-gui: the fast-harness desktop window (Slint: Skia on Direct3D 12, or the software renderer).
 //!
 //! `fast-harness-gui [working directory]`: sessions and tools use that directory, the
 //! current one when it is not given. `fast-harness-gui --export-ui <dir>` writes

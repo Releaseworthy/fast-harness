@@ -8,6 +8,8 @@ mod open;
 mod process;
 mod random;
 mod secret;
+#[cfg(target_env = "msvc")]
+mod stl_shims;
 mod window;
 
 pub use file::copy_permissions;

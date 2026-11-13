@@ -108,6 +108,7 @@ One file per decision in [docs/decisions/](docs/decisions/), moved there unchang
 - D76 [Settings and About are dialogs; Subagents and Jobs are tabs](docs/decisions/D76.md): modal dialogs over the window; the two popover triggers sit after Trace
 - D77 [Turn navigator in the chat's right gutter, wider chat margins](docs/decisions/D77.md)
 - D79 [Subagent sessions are full sessions](docs/decisions/D79.md): prompt, steer, pause and stop a child at any depth; children leave the sidebar; Back tab before Chat
+- D78 [Skia on Direct3D 12 by default, the software renderer as the CPU choice](docs/decisions/D78.md)
 
 ## Architecture
 

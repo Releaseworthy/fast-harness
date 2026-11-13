@@ -190,8 +190,8 @@ export component Halo inherits Rectangle {
     }
 }
 
-// Elevation under a card: one blurred drop shadow. The OpenGL renderer
-// (the default, D75) draws it; the software renderer draws no drop shadow,
+// Elevation under a card: one blurred drop shadow. Skia
+// (the default, D78) draws it; the software renderer draws no drop shadow,
 // so there the card is flat. The fill sits under the card's own fill, same
 // shape, and never shows. Three offset translucent fills did this before
 // and drew stepped ghost edges under every card.

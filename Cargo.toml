@@ -21,7 +21,7 @@ ignore = "0.4.34"
 ratatui = "0.30.2"
 crossterm = "0.29.0"
 pulldown-cmark = { version = "0.13.6", default-features = false }
-slint = { version = "1.18.1", default-features = false, features = ["std", "compat-1-2", "accessibility", "backend-winit", "renderer-software", "renderer-femtovg", "unstable-winit-030"] }
+slint = { version = "1.18.1", default-features = false, features = ["std", "compat-1-2", "accessibility", "backend-winit", "renderer-software", "renderer-skia", "unstable-winit-030"] }
 slint-build = "1.18.1"
 # Optional variant only (fast-harness-gui-live, feature ui-files), pending owner OK (PLAN.md D1, D51).
 slint-interpreter = { version = "=1.18.1", default-features = false, features = ["std", "compat-1-2", "display-diagnostics"] }

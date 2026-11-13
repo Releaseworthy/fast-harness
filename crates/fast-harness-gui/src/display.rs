@@ -9,12 +9,14 @@
 //! `window_events` keeps the physical size when the window moves to a monitor
 //! with another scale. A `SLINT_SCALE_FACTOR` already set wins.
 //!
-//! Renderer: `auto` (default) is Slint's winit default, FemtoVG on OpenGL
-//! with a swap interval of 1 (vsync), falling back to the software renderer
-//! when OpenGL cannot start. The software renderer blits partial frames with
-//! GDI and no vsync: scrolling and resizing tore (horizontal bands).
-//! `software` forces it (about 75 MB private memory instead of about 300).
-//! `SLINT_BACKEND` overrides both.
+//! Renderer (D78): `auto` (default) is Slint's winit default, Skia: on
+//! Windows Direct3D 12 through wgpu (AutoVsync, so FIFO), else Skia's own
+//! CPU raster surface, and the software renderer only when the Skia renderer
+//! itself cannot start. `skia` (alias `d3d`, `directx`) and `software` force
+//! one; any other value reads as `auto`. The software renderer blits partial
+//! frames with GDI and no vsync: scrolling and resizing tore (D75).
+//! `SLINT_BACKEND` overrides the setting. Text is Slint's grayscale
+//! anti-aliasing on both renderers (no subpixel text, owner 2026-11-14).
 
 use std::path::Path;
 
@@ -25,7 +27,8 @@ const SCALE_RANGE: (f32, f32) = (0.5, 4.0);
 /// What `select` applies.
 #[derive(Debug, PartialEq)]
 pub struct Plan {
-    /// A winit renderer name, or `None` for Slint's default (FemtoVG, vsync).
+    /// A winit renderer name, or `None` for Slint's default (Skia on
+    /// Direct3D 12, then Skia on the CPU, then software).
     pub renderer: Option<&'static str>,
     /// The `SLINT_SCALE_FACTOR` to set, or `None` to leave the one set.
     pub scale: Option<f32>,
@@ -38,7 +41,7 @@ pub struct Plan {
 pub fn plan(config: &serde_json::Value, env: &dyn Fn(&str) -> Option<String>) -> Plan {
     let renderer = match config.get("renderer").and_then(|v| v.as_str()) {
         Some("software") | Some("sw") => Some("software"),
-        Some("femtovg") | Some("gl") => Some("femtovg"),
+        Some("skia") | Some("d3d") | Some("directx") => Some("skia"),
         _ => None,
     };
     let preset = env("SLINT_SCALE_FACTOR")
@@ -49,13 +52,8 @@ pub fn plan(config: &serde_json::Value, env: &dyn Fn(&str) -> Option<String>) ->
         .map(|f| f as f32)
         .filter(|f| f.is_finite())
         .map_or(DEFAULT_SCALE, |f| f.clamp(SCALE_RANGE.0, SCALE_RANGE.1));
-    Plan {
-        renderer,
-        scale: (!preset).then_some(scale),
-        select: env("SLINT_BACKEND").is_none(),
-    }
+    Plan { renderer, scale: (!preset).then_some(scale), select: env("SLINT_BACKEND").is_none() }
 }
-
 /// The user layer settings, or null when they are missing or unreadable
 /// (the runtime reports a broken file later).
 fn user_settings(home: Option<&Path>) -> serde_json::Value {
@@ -70,6 +68,7 @@ fn user_settings(home: Option<&Path>) -> serde_json::Value {
 pub fn select() {
     let home = fast_harness_core::platform::app_home();
     let plan = plan(&user_settings(home.as_deref()), &|k| std::env::var(k).ok());
+
     if let Some(scale) = plan.scale {
         std::env::set_var("SLINT_SCALE_FACTOR", scale.to_string());
     }
