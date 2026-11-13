@@ -110,3 +110,39 @@ fn a_thumbnail_is_at_most_128_pixels_and_cached_by_its_path() {
     assert!(chip.label.starts_with("png 300x200"));
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+#[test]
+fn a_thumbnail_is_not_read_from_a_file_over_the_attach_limit() {
+    let dir = temp("thumbs-big-file");
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("padded.png");
+    std::fs::write(&path, media::solid_png(30, 20, [1, 2, 3])).unwrap();
+    let file = std::fs::OpenOptions::new().write(true).open(&path).unwrap();
+    file.set_len(media::MAX_BYTES + 1).unwrap();
+    drop(file);
+    assert!(thumbs::decode(&path).is_none(), "a file over the cap is never read");
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn a_thumbnail_is_not_decoded_above_the_pixel_budget() {
+    let dir = temp("thumbs-budget");
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("wide.png");
+    std::fs::write(&path, media::solid_png(300, 200, [9, 9, 9])).unwrap();
+    assert!(thumbs::decode_within(&path, 300 * 200 - 1).is_none());
+    assert!(thumbs::decode_within(&path, 300 * 200).is_some());
+    const { assert!(thumbs::MAX_PIXELS >= 3840 * 2160, "a 4K screenshot keeps its thumbnail") };
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// Peak memory probe (by hand): `FH_PEAK_PNG=<file>` decodes one thumbnail
+/// and waits so the caller can read the process peak.
+#[test]
+#[ignore]
+fn peak_memory_probe() {
+    let path = PathBuf::from(std::env::var("FH_PEAK_PNG").unwrap());
+    let made = thumbs::decode(&path).map(|p| (p.width(), p.height()));
+    println!("thumbnail: {made:?}");
+    std::thread::sleep(std::time::Duration::from_secs(3));
+}
