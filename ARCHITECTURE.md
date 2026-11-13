@@ -50,6 +50,7 @@ Change one only together with every user of it.
 - Every tool but `find_tools` is deferred: a session starts with `find_tools` and loads the others by searching (`llm/find.rs`); on Claude the others are sent with `defer_loading: true`.
 - Files under the home folder are written only through `store::write_atomic` or `store::update`; a read-change-write is always `store::update` (it re-reads inside `<file>.lock`).
 - Tool calls of one step run by effect (see Threads).
+- `shell` with `background: true` starts a job of the session (`tools/jobs.rs`): `job_output`, `job_kill`, `job_list` read, stop and list it; `Service::close` and the last handle kill the jobs, 8 run at most, output keeps the newest 64 KiB plus a log (D68).
 - `AgentEvent::ToolProgress` is live only: never traced, never sent to the model.
 - Trust gates project files: nothing in `<project>/.fast-harness/` and no project `AGENTS.md` (root to cwd or nested) is read until the user trusts the project once (`config/trust.rs`, `trusted.json`, `layers::agents_trusted`, D62).
 - Approvals (`approvals: ask`, off by default) gate `Write` and `Run` calls after the PreToolUse hooks and fail closed: only the user layer allows or turns them off (`agent/approval.rs`, D64).
@@ -96,7 +97,7 @@ By decision title; each is `docs/decisions/Dnn.md`.
 | models, effort, catalog | D13 D16 D17 D24 D67 |
 | system prompt, context, cache | D18 D31 D36 |
 | tool results, compaction | D37 D38 |
-| tools, approvals | D30 D34 D54 D58 D64 |
+| tools, approvals | D30 D34 D54 D58 D64 D68 |
 | steering, subagents, turn runner | D39 D40 D59 |
 | settings layers, extension files | D41 D42 D43 D44 D45 D46 D47 D51 |
 | plugins | D52 D57 D58 |

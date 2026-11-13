@@ -97,6 +97,7 @@ One file per decision in [docs/decisions/](docs/decisions/), moved there unchang
 - D65 [Each session keeps its own draft](docs/decisions/D65.md)
 - D66 [Cancel of a silent stream](docs/decisions/D66.md)
 - D67 [Registries become values](docs/decisions/D67.md)
+- D68 [Background shell jobs](docs/decisions/D68.md)
 
 ## Architecture
 

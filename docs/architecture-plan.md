@@ -248,7 +248,7 @@ Open after phases 25 to 31 (2026-11-13; each phase's decision file has the detai
 - 28 (D61): `trace/detail.rs` and `trace/report.rs` read `data` by key (inside `trace/`, allowed); a log line that lacks a required key is skipped where the untyped readers half-read it.
 - 29 (D62, D63): themes are not on the shared `version` and `enabled` header and each loader still does its own walk; panel ids and MCP server names are now held to 64 characters; `Extensions` built without a home (library and test use) is not gated by trust; a `PreModelRequest` hook cannot add headers.
 - 31, approvals (D64): Shift+Tab in the approval prompt checked only on the software backend; the TUI marks a kept call in the warning role, the GUI in dim (both with mark and word); the PNG captures of `scripts/console.ps1` are cut at 900 x 480 (the text captures are whole).
-- Not started: phase 27 (no gate, waits for the owner); the other items of phase 31 (cancel of a silent stream, background shell jobs and undo, image input), each its own yes; the Unix backend (G13 a: after the first tag).
+- Not started: phase 27 (no gate, waits for the owner); the other items of phase 31 (cancel of a silent stream, undo and image input; background shell jobs: core done (D68), views next), each its own yes; the Unix backend (G13 a: after the first tag).
 - Drive F: ran out of space once during phase 29 (`target/` was about 48 GB): only cargo's incremental caches were deleted.
 
 Open from phases 22 and 23:
