@@ -1,32 +1,45 @@
-//! Print mode: one turn, text deltas on stdout, one-line notes on stderr.
+//! Print mode: one turn, text deltas on stdout, one-line notes on stderr
+//! (`print_out.rs`). The turn runs through `service::Service` like every
+//! other front end (PLAN.md D59), so a panic on its thread ends it `Failed`
+//! instead of ending the process.
 
-use std::io::Write;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::mpsc;
+use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
 use fast_harness_core::agent::{Agent, Conversation};
 use fast_harness_core::app::Slash;
+use fast_harness_core::config::Config;
 use fast_harness_core::events::{AgentEvent, TurnOutcome};
-use fast_harness_core::service::json as events;
-use fast_harness_core::types::Usage;
+use fast_harness_core::service::{
+    json as events, Finished, Host, Service, ServiceError, Session, Start,
+};
 use fast_harness_core::{platform, session};
 
 use crate::args::PrintArgs;
 use crate::auth_choice::runtime;
+use crate::print_out::{json_sink, text_sink, Out};
 
 static CANCEL: AtomicBool = AtomicBool::new(false);
+/// The session whose turn runs, for Ctrl+C.
+static ACTIVE: Mutex<Option<Arc<Session>>> = Mutex::new(None);
 
 /// First Ctrl+C cancels the turn; a second one ends the process.
 fn on_ctrl_c() {
     if CANCEL.swap(true, Ordering::SeqCst) {
         std::process::exit(130);
     }
+    if let Some(session) = active().as_ref() {
+        session.cancel();
+    }
 }
 
-/// Longest tool argument text shown in a note.
-const NOTE_CHARS: usize = 120;
+fn active() -> std::sync::MutexGuard<'static, Option<Arc<Session>>> {
+    ACTIVE.lock().unwrap_or_else(|p| p.into_inner())
+}
 
 pub fn run(args: PrintArgs) -> Result<ExitCode, String> {
     let mut rt = runtime()?;
@@ -54,7 +67,9 @@ pub fn run(args: PrintArgs) -> Result<ExitCode, String> {
         }
         Slash::Error(err) => return Err(err),
     };
-    let mut conv = rt.open_conversation(&cwd, args.resume.as_deref(), args.continue_latest)?;
+    let conv = rt.open_conversation(&cwd, args.resume.as_deref(), args.continue_latest)?;
+    // Built here, as before the service ran it: a build error ends the
+    // command, and the notes come before the turn's output.
     let (agent, notes) = rt.agent(&cwd, &conv)?;
     for note in notes {
         eprintln!("[note] {note}");
@@ -62,59 +77,130 @@ pub fn run(args: PrintArgs) -> Result<ExitCode, String> {
     if let Err(err) = platform::on_interrupt(on_ctrl_c) {
         eprintln!("[note] Ctrl+C will not cancel cleanly: {err}");
     }
-    let outcome = match args.json {
-        true => json_turn(&agent, &mut conv, &prompt, &cwd),
-        false => text_turn(&agent, &mut conv, &prompt),
-    };
+    let host = PrintHost::new(rt.home.clone(), rt.config.clone(), agent);
+    let outcome = drive(host, conv, &cwd, &prompt, args.json, Out::std());
     if outcome == TurnOutcome::Truncated {
         eprintln!("[note] the answer was cut at the output token limit (maxTokens); `--continue` with \"continue\" goes on");
     }
     Ok(exit_code(outcome))
 }
 
-fn text_turn(agent: &Agent, conv: &mut Conversation, prompt: &str) -> TurnOutcome {
-    let mut printer = Printer {
-        session: conv.id.clone(),
-        ..Printer::default()
-    };
-    agent.run_turn(conv, prompt, &CANCEL, &mut |event| printer.event(event))
+/// The service's host in print mode: the one agent built before the turn.
+pub struct PrintHost {
+    home: PathBuf,
+    config: Config,
+    agent: Mutex<Option<Agent>>,
 }
 
-fn line(value: &serde_json::Value) {
-    let mut out = std::io::stdout().lock();
-    let _ = writeln!(out, "{value}").and_then(|_| out.flush());
-}
-
-/// `--json` (PLAN.md D48): a `session` line, one line per event, then the
-/// `result` line with the usage of every turn (schema in docs/service.md).
-fn json_turn(agent: &Agent, conv: &mut Conversation, prompt: &str, cwd: &Path) -> TurnOutcome {
-    line(&events::session_line(&conv.id, &cwd.to_string_lossy()));
-    let started = Instant::now();
-    let mut usage = Usage::default();
-    let mut told = false;
-    let outcome = agent.run_turn(conv, prompt, &CANCEL, &mut |event| {
-        refused_note(&event, &mut told);
-        if let AgentEvent::TurnEnd { usage: one, .. } = &event {
-            usage.add(one);
+impl PrintHost {
+    pub fn new(home: PathBuf, config: Config, agent: Agent) -> PrintHost {
+        PrintHost {
+            home,
+            config,
+            agent: Mutex::new(Some(agent)),
         }
-        line(&events::event(&event));
-    });
-    let ms = started.elapsed().as_millis() as u64;
-    line(&events::result_line(&conv.id, outcome, &usage, ms));
+    }
+}
+
+impl Host for PrintHost {
+    fn home(&self) -> PathBuf {
+        self.home.clone()
+    }
+
+    fn config(&self, _cwd: &Path) -> Result<Config, String> {
+        Ok(self.config.clone())
+    }
+
+    fn agent(
+        &self,
+        _: &Path,
+        _: &Conversation,
+        _: &Config,
+    ) -> Result<(Agent, Vec<String>), String> {
+        let taken = self.agent.lock().unwrap_or_else(|p| p.into_inner()).take();
+        taken
+            .map(|agent| (agent, Vec::new()))
+            .ok_or_else(|| "print mode runs one turn".to_string())
+    }
+}
+
+/// Runs the turn of `prompt` on the service's turn thread and writes it to
+/// `out`; with `json` a `session` line first and the `result` line last,
+/// with the usage of every turn (schema in docs/service.md).
+pub fn drive(
+    host: PrintHost,
+    conv: Conversation,
+    cwd: &Path,
+    prompt: &str,
+    json: bool,
+    out: Out,
+) -> TurnOutcome {
+    let id = conv.id.clone();
+    if json {
+        out.line(&events::session_line(&id, &cwd.to_string_lossy()));
+    }
+    let started = Instant::now();
+    let finished = run_turn(host, conv, cwd, prompt, json, &out);
+    let outcome = finished.as_ref().map_or(TurnOutcome::Failed, |f| f.outcome);
+    if json {
+        let usage = finished.map(|f| f.usage).unwrap_or_default();
+        let ms = started.elapsed().as_millis() as u64;
+        out.line(&events::result_line(&id, outcome, &usage, ms));
+    }
     outcome
 }
 
-/// Print mode cannot answer approvals (PLAN.md D64): the first refused call
-/// says once on stderr how to allow it.
-fn refused_note(event: &AgentEvent, told: &mut bool) {
-    if *told || !matches!(event, AgentEvent::ApprovalDone { answer, .. } if answer == "refused") {
-        return;
+/// The turn through the service; `None` when it could not start (the
+/// reason was written as an error).
+fn run_turn(
+    host: PrintHost,
+    conv: Conversation,
+    cwd: &Path,
+    prompt: &str,
+    json: bool,
+    out: &Out,
+) -> Option<Finished> {
+    let service = Service::new(Arc::new(host));
+    let sink = match json {
+        true => json_sink(out.clone()),
+        false => text_sink(out.clone(), conv.id.clone()),
+    };
+    let (tx, rx) = mpsc::channel();
+    let done = Box::new(move |end: &Finished| {
+        let _ = tx.send(end.clone());
+    });
+    let started = service.open(conv, cwd).and_then(|session| {
+        Ok((
+            service.start(&session, Start::Text(prompt.into()), sink, done)?,
+            session,
+        ))
+    });
+    let session = match started {
+        Ok((_, session)) => session,
+        Err(
+            ServiceError::Unknown(err)
+            | ServiceError::Busy(err)
+            | ServiceError::Invalid(err)
+            | ServiceError::Failed(err),
+        ) => {
+            match json {
+                true => out.line(&events::event(&AgentEvent::Error(err))),
+                false => out.note(&format!("[error] {err}")),
+            }
+            return None;
+        }
+    };
+    *active() = Some(Arc::clone(&session));
+    if CANCEL.load(Ordering::SeqCst) {
+        session.cancel();
     }
-    *told = true;
-    eprintln!("[approvals] a call was refused: \"approvals\": \"ask\" and print mode cannot answer; allow it in the \"allow\" list of ~/.fast-harness/config.json (\"commands\": command prefixes, \"paths\": path prefixes, \"tools\": tool names) or set \"approvals\": \"off\"");
+    let finished = rx.recv().ok();
+    *active() = None;
+    session.wait();
+    finished
 }
 
-fn exit_code(outcome: TurnOutcome) -> ExitCode {
+pub fn exit_code(outcome: TurnOutcome) -> ExitCode {
     match outcome {
         TurnOutcome::Done => ExitCode::SUCCESS,
         TurnOutcome::Failed
@@ -128,104 +214,6 @@ fn exit_code(outcome: TurnOutcome) -> ExitCode {
     }
 }
 
-fn clip(text: &str) -> String {
-    let flat = text.replace(['\r', '\n'], " ");
-    match flat.char_indices().nth(NOTE_CHARS) {
-        Some((cut, _)) => format!("{}...", &flat[..cut]),
-        None => flat,
-    }
-}
-
-/// Writes events as they arrive; remembers whether stdout ends mid-line.
-#[derive(Default)]
-struct Printer {
-    mid_line: bool,
-    session: String,
-    names: Vec<(String, String)>,
-    told: bool,
-}
-
-impl Printer {
-    fn event(&mut self, event: AgentEvent) {
-        refused_note(&event, &mut self.told);
-        if let AgentEvent::TextDelta(text) = &event {
-            let mut out = std::io::stdout().lock();
-            let _ = out.write_all(text.as_bytes()).and_then(|_| out.flush());
-            self.mid_line = !text.ends_with('\n');
-        } else if let Some(note) = self.note(event) {
-            if self.mid_line {
-                println!();
-                self.mid_line = false;
-            }
-            eprintln!("{note}");
-        }
-    }
-
-    /// The stderr line for an event, if it gets one.
-    fn note(&mut self, event: AgentEvent) -> Option<String> {
-        Some(match event {
-            AgentEvent::ToolCall {
-                id,
-                name,
-                arguments,
-            } => {
-                let note = format!("[tool] {name} {}", clip(&arguments));
-                self.names.push((id, name));
-                note
-            }
-            AgentEvent::ToolResult {
-                id,
-                is_error: true,
-                content,
-                duration_ms,
-            } => {
-                let name = self
-                    .names
-                    .iter()
-                    .find(|(i, _)| *i == id)
-                    .map(|(_, n)| n.as_str());
-                let name = name.unwrap_or("?");
-                format!(
-                    "[tool] {name} failed after {duration_ms} ms: {}",
-                    clip(&content)
-                )
-            }
-            AgentEvent::Retry {
-                attempt,
-                delay_ms,
-                error,
-            } => {
-                format!("[retry] attempt {attempt} failed, retrying in {delay_ms} ms: {error}")
-            }
-            AgentEvent::AccountSwitch { from, to, reason } => {
-                format!("[account] {from} -> {to} ({reason})")
-            }
-            AgentEvent::Error(message) => format!("[error] {message}"),
-            AgentEvent::Compaction {
-                summary,
-                before,
-                after,
-                auto,
-            } => {
-                println!("{summary}");
-                let how = if auto { "auto" } else { "manual" };
-                format!("[compaction] {how}: context {before} -> about {after} tokens")
-            }
-            AgentEvent::TurnEnd {
-                usage,
-                duration_ms,
-                outcome,
-                ..
-            } => format!(
-                "[usage] in {} out {} cache read {} write {} | {:.1} s | {outcome:?} | session {}",
-                usage.input,
-                usage.output,
-                usage.cache_read,
-                usage.cache_write,
-                duration_ms as f64 / 1000.0,
-                self.session
-            ),
-            _ => return None,
-        })
-    }
-}
+#[cfg(test)]
+#[path = "print_tests.rs"]
+mod tests;

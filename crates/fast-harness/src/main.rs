@@ -8,6 +8,7 @@ mod config_cmd;
 mod info;
 mod models_cmd;
 mod print;
+mod print_out;
 mod reflect_cmd;
 mod serve_cmd;
 mod session_cmd;

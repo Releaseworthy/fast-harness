@@ -65,7 +65,6 @@ const EXCEPTIONS: &[(&str, &str, usize)] = &[
         "apply_control",
         67,
     ),
-    ("crates/fast-harness/src/print.rs", "note", 66),
     ("crates/fast-harness-gui/src/wire.rs", "connect", 63),
     ("crates/fast-harness/src/main.rs", "main", 57),
     (
