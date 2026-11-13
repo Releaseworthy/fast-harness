@@ -134,6 +134,8 @@ With `"approvals": "ask"` a call can wait for an answer (PLAN.md D64). Both fron
 - `MainWindow.transcript-thumb-x`: property <length>
 - `MainWindow.transcript-thumb-y`: property <length>
 - `MainWindow.ui-files`: property <bool>
+- `MainWindow.undo`: property <UndoBar>
+- `MainWindow.undo-turn`: callback
 - `MainWindow.use-account`: callback
 - `MainWindow.version`: property <string>
 - `MainWindow.win-maximized`: property <bool>

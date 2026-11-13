@@ -125,7 +125,11 @@ pub fn hint_text(ui: &Ui) -> String {
             "↑↓ PgUp PgDn choose · Enter pick · Esc close".into()
         }
         Screen::Chat if ui.running => line(&[], ui, RUNNING, &[]),
-        Screen::Chat => line(&[], ui, IDLE, &[]),
+        // First, so a narrow terminal still shows it (D69 "Views").
+        Screen::Chat => match super::undo::hint(ui.undo.as_ref()) {
+            Some(undo) => line(&[&undo], ui, IDLE, &[]),
+            None => line(&[], ui, IDLE, &[]),
+        },
         Screen::Accounts if ui.account_provider.is_none() => {
             let items = &[("account_usage", "read usage"), ("back", "back")];
             line(&["↑↓ choose", "Enter open provider"], ui, items, &[])

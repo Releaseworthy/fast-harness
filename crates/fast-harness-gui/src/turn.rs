@@ -28,6 +28,11 @@ pub fn send(app: &mut App, ui: &MainWindow, text: &str) -> bool {
         return false;
     }
     if app.runs.shown.busy {
+        // `/undo` is never a steer (D69): it waits for no turn's end.
+        if fast_harness_core::app::undo_args(&text).is_some() {
+            show_error(ui, crate::undo_view::RUNNING);
+            return false;
+        }
         // A turn that ended meanwhile: the session queues the text.
         if let Some(session) = &app.runs.shown.session {
             session.steer(text);
@@ -105,6 +110,11 @@ fn start_text(app: &mut App, ui: &MainWindow, text: String) -> bool {
     // `/panel [id]` opens a panel or lists them (PLAN.md D46).
     if crate::panels::slash(app, ui, &text) {
         return false;
+    }
+    // `/undo [force]` runs on a thread, never sent to the model (D69).
+    if let Some(force) = fast_harness_core::app::undo_args(&text) {
+        crate::undo_view::typed(app, ui, force);
+        return true;
     }
     // `/reflect [apply]` runs off the UI thread (PLAN.md D50).
     if let Some(args) = fast_harness_core::app::reflect_args(&text) {
@@ -315,9 +325,13 @@ pub(crate) fn crash_text() -> String {
 /// Starts the next queued text or settles the run, then refreshes the views.
 fn after_turn(app: &mut App, ui: &MainWindow, id: &str, next: Option<String>) {
     match next {
-        Some(text) => {
-            launch(app, ui, id, Start::Text(text));
-        }
+        // A queued `/undo` runs on its thread, then the queue goes on (D69).
+        Some(text) => match fast_harness_core::app::undo_args(&text) {
+            Some(force) => crate::undo_view::start(app, ui, id, force, true),
+            None => {
+                launch(app, ui, id, Start::Text(text));
+            }
+        },
         None => {
             if app.runs.settle(id) {
                 app.service.close(id);
@@ -335,6 +349,13 @@ fn after_turn(app: &mut App, ui: &MainWindow, id: &str, next: Option<String>) {
     if shown && ui.get_page() == "trace" {
         app.refresh_trace(ui);
     }
+}
+
+/// After a queued `/undo` of run `id`: its next queued text, or settle.
+pub(crate) fn next_after_undo(app: &mut App, ui: &MainWindow, id: &str) {
+    let session = app.runs.get_mut(id).and_then(|run| run.session.clone());
+    let next = session.and_then(|session| session.take_next());
+    after_turn(app, ui, id, next);
 }
 
 /// A service error as one line.

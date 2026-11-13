@@ -29,6 +29,7 @@ mod settings;
 mod theme;
 mod tool_rows;
 mod trace_load;
+mod undo_view;
 mod trace_rows;
 mod turn;
 mod window_state;
@@ -117,6 +118,7 @@ fn start_runtime(ui: &MainWindow, stop: &Arc<AtomicBool>) {
             app::install(app::App::new(&ui, rt, cwd));
             wire::connect(&ui);
             jobs_view::connect(&ui);
+            undo_view::connect(&ui);
             wire::first_paint();
             accounts::start_poller(pool, http, stop.clone());
         }

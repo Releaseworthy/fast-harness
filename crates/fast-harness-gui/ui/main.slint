@@ -1,7 +1,8 @@
 import { Palette } from "std-widgets.slint";
-import { MsgRow, SessionRow, SideRow, AccountRow, TraceRow, ProviderCard, QueueChip, JobChip, ApprovalView } from "types.slint";
+import { MsgRow, SessionRow, SideRow, AccountRow, TraceRow, ProviderCard, QueueChip, JobChip, ApprovalView, UndoBar } from "types.slint";
 import { QueueChips } from "queue.slint";
 import { JobsRow } from "jobs.slint";
+import { UndoRow } from "undo.slint";
 import { ApprovalPrompt } from "approval.slint";
 import { Theme } from "parts.slint";
 import { Dropdown } from "widgets.slint";
@@ -83,6 +84,9 @@ export component MainWindow inherits Window {
     // The shown session's background jobs (D68); Stop calls kill-job(id).
     in property <[JobChip]> jobs;
     callback kill-job(string);
+    // The next undo of the shown session (D69); undo-turn(force) runs it.
+    in property <UndoBar> undo;
+    callback undo-turn(bool);
     // How the shown session's last turn stopped when Resume applies.
     in property <string> resume-word;
     in-out property <string> error-text;
@@ -320,6 +324,10 @@ export component MainWindow inherits Window {
                                 column: chat.column;
                                 jobs: root.jobs;
                                 kill(id) => { root.kill-job(id); }
+                            }
+                            if root.undo.turn > 0: UndoRow {
+                                column: chat.column; bar: root.undo; busy: root.busy;
+                                undo(force) => { root.undo-turn(force); }
                             }
                             // Only while a request waits: no row otherwise.
                             if root.approval.id != "": Rectangle {

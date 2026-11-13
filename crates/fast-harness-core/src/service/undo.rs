@@ -8,7 +8,6 @@ use serde_json::{json, Value};
 use super::{busy, ServiceError, Session};
 use crate::agent::Conversation;
 use crate::tools::{UndoInfo, UndoOutcome};
-use crate::trace::record::Undo;
 
 /// `Some(force)` for `/undo` and `/undo force`; `None` for any other text.
 pub fn command(text: &str) -> Option<bool> {
@@ -24,14 +23,8 @@ pub fn command(text: &str) -> Option<bool> {
 /// logs an `undo` record when files changed. Call it only between turns.
 pub fn undo_conv(conv: &mut Conversation, force: bool) -> Result<UndoOutcome, String> {
     let outcome = conv.tool_session.undo().undo_last(force);
-    if let (None, Some(turn)) = (&outcome.refused, outcome.turn) {
-        let names = |paths: &[PathBuf]| paths.iter().map(|p| p.display().to_string()).collect();
-        let data = Undo {
-            turn,
-            restored: names(&outcome.restored),
-            removed: names(&outcome.removed),
-            forced: outcome.forced,
-        };
+    // The record a replay shows, the same as the live note (view::undo).
+    if let Some(data) = crate::view::undo::record(&outcome) {
         conv.trace
             .undo(data)
             .map_err(|err| format!("session log: {err}"))?;

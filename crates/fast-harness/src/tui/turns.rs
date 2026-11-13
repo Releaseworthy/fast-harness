@@ -84,6 +84,10 @@ impl Tui {
     /// Enter while a turn runs: a steer, or a queued text when the turn
     /// ended meanwhile.
     pub(super) fn steer(&mut self, text: String) {
+        // `/undo` is never a steer (D69): it waits for no turn's end.
+        if fast_harness_core::app::undo_args(&text).is_some() {
+            return self.note(NoteKind::Error, super::undo::RUNNING);
+        }
         if !self.current.steer(text) && !self.ui.running {
             self.next_queued();
         }
@@ -123,6 +127,7 @@ impl Tui {
         self.transcript.state = State::Idle;
         self.transcript.revision += 1;
         self.refresh_accounts();
+        self.ui.undo = self.current.undo_info();
         if end.outcome == TurnOutcome::Cancelled {
             self.ui.status = "turn cancelled: /resume continues it".into();
         } else if self.ui.status.starts_with("cancelling") {
@@ -136,10 +141,14 @@ impl Tui {
         }
     }
 
-    fn next_queued(&mut self) {
+    pub(super) fn next_queued(&mut self) {
         if let Some(text) = self.current.take_next() {
             self.show_queue();
-            self.send(text);
+            // A queued `/undo` runs, then the queue goes on (D69).
+            match fast_harness_core::app::undo_args(&text) {
+                Some(force) => self.undo(force, true),
+                None => self.send(text),
+            }
         }
     }
 

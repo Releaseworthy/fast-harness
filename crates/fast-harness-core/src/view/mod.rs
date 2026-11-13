@@ -13,6 +13,7 @@ mod summary;
 pub mod tool_detail;
 mod tool_detail_fs;
 mod tool_detail_run;
+pub mod undo;
 
 pub use approvals::Approvals;
 pub use live_tail::{LiveTail, LIVE_LINES, LIVE_LINE_BYTES};

@@ -195,3 +195,12 @@ export struct ProviderCard {
     left-text: string,
 }
 
+// The next undo of the shown session (D69, src/undo_view.rs): `turn` 0 hides
+// the row; `summary`, `blocked` (cannot be undone) and `conflict` (files
+// changed since that turn, offering Undo anyway) are words.
+export struct UndoBar {
+    turn: int,
+    summary: string,
+    blocked: string,
+    conflict: string,
+}

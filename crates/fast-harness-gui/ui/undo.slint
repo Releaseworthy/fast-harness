@@ -1,0 +1,53 @@
+import { Theme, Mark } from "parts.slint";
+import { Icons } from "icons.slint";
+import { ActionButton } from "widgets.slint";
+import { UndoBar } from "types.slint";
+
+// The next undo of the shown session (PLAN.md D69 "Views"), centred in a
+// chat `column`: what it restores in words, "Undo last turn" (off while a
+// turn runs), and after a conflict the files and "Undo anyway", a second
+// explicit click. A mark and words say the state, never colour alone.
+export component UndoRow inherits Rectangle {
+    in property <UndoBar> bar;
+    in property <length> column;
+    in property <bool> busy;
+    callback undo(bool);
+    property <bool> conflict: root.bar.conflict != "";
+    height: line.preferred-height + Theme.space-s;
+    accessible-role: groupbox;
+    accessible-label: "Undo";
+    line := HorizontalLayout {
+        x: (parent.width - self.width) / 2;
+        y: Theme.space-s;
+        width: root.column;
+        height: self.preferred-height;
+        spacing: Theme.space-s;
+        Mark {
+            text: root.conflict ? Icons.warning : Icons.arrow-left;
+            color: root.conflict ? Theme.warning : Theme.dim;
+            font-size: Theme.font-s;
+        }
+        Text {
+            text: root.conflict ? root.bar.conflict
+                : root.bar.blocked != "" ? root.bar.blocked : root.bar.summary;
+            color: root.conflict ? Theme.warning : Theme.dim;
+            font-size: Theme.font-s;
+            vertical-alignment: center;
+            overflow: elide;
+            horizontal-stretch: 1;
+        }
+        ActionButton {
+            text: "Undo last turn";
+            icon: Icons.arrow-left;
+            variant: "ghost";
+            enabled: !root.busy && root.bar.blocked == "";
+            clicked => { root.undo(false); }
+        }
+        if root.conflict: ActionButton {
+            text: "Undo anyway";
+            icon: Icons.warning;
+            enabled: !root.busy;
+            clicked => { root.undo(true); }
+        }
+    }
+}

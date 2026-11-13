@@ -54,6 +54,9 @@ mod transcript;
 mod turn_tests;
 mod turns;
 mod ui;
+mod undo;
+#[cfg(test)]
+mod undo_tests;
 mod worker;
 mod wrap;
 

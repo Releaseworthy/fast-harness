@@ -48,6 +48,8 @@ pub struct App {
     pub drafts: fast_harness_core::app::drafts::Drafts,
     /// The worker watching the shown session's background jobs (D68).
     pub jobs: fast_harness_core::view::jobs::Follow,
+    /// The undo running and the last conflict (D69 "Views").
+    pub undo: crate::undo_view::UndoState,
 }
 
 thread_local! {
@@ -106,6 +108,7 @@ impl App {
             // The window starts with a new session.
             drafts: Default::default(),
             jobs: Default::default(),
+            undo: Default::default(),
         }
     }
 
@@ -159,6 +162,8 @@ impl App {
         };
         ui.set_resume_word(word.into());
         ui.set_approval(crate::approval::view(run, &self.rt.keys.gui));
+        // The undo row follows turn ends, switches and undos (D69).
+        crate::undo_view::show(self, ui);
     }
 
     /// Asks the workers for the sidebar's lists and redraws it (D60).

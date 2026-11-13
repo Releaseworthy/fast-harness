@@ -52,6 +52,12 @@ pub enum Msg {
     ),
     /// The shown session's jobs, posted by the watch of generation (D68).
     Jobs(u64, Vec<fast_harness_core::tools::JobInfo>),
+    /// An undo of session `id` ended (D69); `true` goes on with the queue.
+    Undone(
+        String,
+        Result<fast_harness_core::tools::UndoOutcome, String>,
+        bool,
+    ),
 }
 
 pub struct Tui {
@@ -182,6 +188,7 @@ impl Tui {
         self.ui.current.clone_from(&self.session);
         self.show_queue();
         self.follow_jobs();
+        self.ui.undo = self.current.undo_info();
         if let Some(state) = unfinished {
             self.ui.status = format!("the last turn was {}: /resume continues it", state.word());
         }
@@ -219,6 +226,7 @@ impl Tui {
             Msg::Trace(ticket, result) => self.trace_loaded(ticket, result),
             Msg::Opened(generation, result) => self.opened(generation, result),
             Msg::Jobs(generation, list) => self.jobs_arrived(generation, list),
+            Msg::Undone(id, result, queued) => self.undone(&id, result, queued),
             Msg::Notes(notes) => {
                 for note in notes {
                     self.note(NoteKind::Error, note);
@@ -355,7 +363,8 @@ impl Tui {
             return;
         }
         // `/panel [id]` (PLAN.md D46), `/kill <job-id>` (D68).
-        if self.panel_command(&text) || self.kill_command(&text) {
+        // `/undo [force]` (D69) never reaches the model.
+        if self.panel_command(&text) || self.kill_command(&text) || self.undo_command(&text) {
             return;
         }
         // `/reflect [apply]` runs off the UI thread (PLAN.md D50).
