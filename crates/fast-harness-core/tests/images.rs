@@ -230,3 +230,24 @@ fn a_version_12_log_without_images_still_opens() {
     let (conv, _) = Conversation::reopen(&env.home, &env.cwd, &id).unwrap();
     assert_eq!(conv.messages.len(), count);
 }
+
+#[test]
+fn the_images_of_a_request_stay_within_its_byte_cap() {
+    let env = env("images-budget");
+    let png = solid_png(1100, 1100, [9, 9, 9]);
+    let image = media::attach_bytes(&env.home.join("s.media"), &png, None).unwrap();
+    let one = std::slice::from_ref(&image);
+    let messages: Vec<Message> = (0..7).map(|_| media::user_message("look", one)).collect();
+    let prepared = fast_harness_core::llm::images::prepare(&messages, true);
+    let sent: Vec<usize> = prepared
+        .messages
+        .iter()
+        .map(|m| m.images().count())
+        .collect();
+    // 7 images of 3.6 MB pass the cap: the oldest becomes text.
+    assert_eq!(sent, [0, 1, 1, 1, 1, 1, 1]);
+    let total: u64 = (prepared.messages.iter().flat_map(Message::images))
+        .map(|i| i.bytes)
+        .sum();
+    assert!(total <= media::MAX_REQUEST_BYTES);
+}

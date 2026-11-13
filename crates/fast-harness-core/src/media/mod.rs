@@ -29,6 +29,11 @@ pub const MANY_EDGE: u32 = 2000;
 /// Most images one request carries (the API limit for 200k context models);
 /// older ones are sent as a text placeholder.
 pub const MAX_IMAGES: usize = 100;
+/// Image bytes one request carries at most (32 MB in base64): the newest
+/// images within it go, older ones are sent as a text placeholder. The
+/// Messages API limit read 2026-11-13 was 128 MB on platform.claude.com
+/// and 32 MB on other pages; partner platforms take 20 to 30 MB.
+pub const MAX_REQUEST_BYTES: u64 = 24_000_000;
 
 /// Why an image was refused.
 #[derive(Clone, Debug, PartialEq, Eq)]

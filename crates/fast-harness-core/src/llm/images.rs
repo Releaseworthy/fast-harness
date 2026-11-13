@@ -37,7 +37,7 @@ pub fn prepare(messages: &[Message], vision: bool) -> Prepared<'_> {
         let messages = Cow::Borrowed(messages);
         return Prepared { messages, bytes };
     }
-    let first_kept = all.len().saturating_sub(media::MAX_IMAGES);
+    let first_kept = first_kept(&all);
     let many = all.len() - first_kept > media::MANY_IMAGES;
     let mut seen = 0;
     let mut why = |image: &ImageRef| -> Option<String> {
@@ -47,8 +47,9 @@ pub fn prepare(messages: &[Message], vision: bool) -> Prepared<'_> {
         }
         if seen <= first_kept {
             return Some(format!(
-                "a request carries at most {} images, this is an earlier one",
-                media::MAX_IMAGES
+                "a request carries at most {} images and {} MB of them, this is an earlier one",
+                media::MAX_IMAGES,
+                media::MAX_REQUEST_BYTES / 1_000_000
             ));
         }
         if many && image.width.max(image.height) > media::MANY_EDGE {
@@ -71,6 +72,21 @@ pub fn prepare(messages: &[Message], vision: bool) -> Prepared<'_> {
         messages: Cow::Owned(messages),
         bytes,
     }
+}
+
+/// The index in `all` of the oldest image that goes: the newest
+/// [`media::MAX_IMAGES`] within [`media::MAX_REQUEST_BYTES`] (by the sizes
+/// in the history, so a rebuilt request makes the same choice).
+fn first_kept(all: &[&ImageRef]) -> usize {
+    let mut total = 0u64;
+    let fit = (all.iter().rev())
+        .take(media::MAX_IMAGES)
+        .take_while(|image| {
+            total = total.saturating_add(image.bytes);
+            total <= media::MAX_REQUEST_BYTES
+        })
+        .count();
+    all.len() - fit
 }
 
 fn rewrite(message: &Message, why: &mut dyn FnMut(&ImageRef) -> Option<String>) -> Message {
