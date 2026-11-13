@@ -10,7 +10,7 @@ pub mod approval;
 mod call;
 mod child_run;
 mod child_tools;
-mod children;
+pub mod children;
 mod compact;
 pub mod context;
 mod conversation;
@@ -85,6 +85,9 @@ pub struct AgentParts {
     /// The tool, agent and command files of the settings (PLAN.md D42);
     /// every registry of the session and of its children is built from it.
     pub extensions: Arc<tools::Extensions>,
+    /// The runtime's model facts (PLAN.md D67): context windows, output
+    /// caps and the provider of a model id.
+    pub catalog: crate::llm::Catalog,
 }
 
 pub struct Agent {

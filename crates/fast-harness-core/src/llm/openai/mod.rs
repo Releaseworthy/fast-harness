@@ -13,7 +13,7 @@ mod stream;
 use std::sync::atomic::Ordering;
 use std::time::Instant;
 
-use super::custom;
+use super::custom::ModelFile;
 use crate::http::{Flow, HttpHead, HttpRequest, Transport};
 use crate::llm::{Auth, ChatRequest, Completion, Delta, ErrorKind, LlmError, Provider, Timing};
 use crate::sse::SseDecoder;
@@ -25,6 +25,8 @@ pub struct OpenAiChat {
     id: String,
     base_url: String,
     headers: Vec<(String, String)>,
+    /// The `models` of this provider's file (efforts, `maxOutput`), PLAN.md D67.
+    models: Vec<ModelFile>,
 }
 
 impl OpenAiChat {
@@ -34,12 +36,21 @@ impl OpenAiChat {
             id: id.to_string(),
             base_url: base_url.trim_end_matches('/').to_string(),
             headers,
+            models: Vec::new(),
         }
+    }
+
+    /// This provider with the `models` of its file.
+    pub fn with_models(mut self, models: Vec<ModelFile>) -> OpenAiChat {
+        self.models = models;
+        self
     }
 
     /// The JSON body this provider would send for `req`.
     pub fn request_body(&self, req: &ChatRequest<'_>) -> String {
-        let entry = custom::model(req.model);
+        let entry = (req.model.split_once('/'))
+            .filter(|(prefix, _)| *prefix == self.id)
+            .and_then(|(_, id)| self.models.iter().find(|m| m.id == id));
         let efforts = entry
             .as_ref()
             .map(|m| m.efforts.clone())

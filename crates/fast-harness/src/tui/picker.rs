@@ -5,8 +5,8 @@
 use fast_harness_core::app::pickers::{effort_list, fetched, kept_row, model_list, Fetched};
 use fast_harness_core::app::words::Voice;
 use fast_harness_core::llm::anthropic::ModelInfo;
-use fast_harness_core::llm::catalog::{display_name, label};
-use fast_harness_core::llm::{efforts, fit_effort};
+use fast_harness_core::llm::catalog::label;
+use fast_harness_core::llm::Catalog;
 use ratatui::crossterm::event::{KeyCode, KeyEvent};
 use ratatui::layout::Rect;
 use ratatui::style::Modifier;
@@ -39,16 +39,16 @@ pub struct Picker {
 }
 
 /// The display name of `model` (`catalog::label`), else its id.
-pub fn model_name(model: &str) -> String {
-    display_name(model)
+pub fn model_name(facts: &Catalog, model: &str) -> String {
+    (facts.display_name(model))
         .map(|name| label(model, &name))
         .unwrap_or_else(|| model.to_string())
 }
 
 /// The effort after `current` among the efforts of `model`; `None` when
 /// the model takes no effort.
-pub fn next_effort(model: &str, current: Option<&str>) -> Option<String> {
-    let list = efforts(model);
+pub fn next_effort(facts: &Catalog, model: &str, current: Option<&str>) -> Option<String> {
+    let list = facts.efforts(model);
     let index = list.iter().position(|e| Some(e.as_str()) == current);
     let next = index.map_or(0, |i| (i + 1) % list.len().max(1));
     list.get(next).cloned()
@@ -57,13 +57,13 @@ pub fn next_effort(model: &str, current: Option<&str>) -> Option<String> {
 pub use fast_harness_core::app::pickers::is_header;
 
 /// The model rows of `catalog` in the terminal's words (`app::pickers`).
-fn model_rows(catalog: &[ModelInfo], model: &str) -> Vec<(String, String)> {
-    model_list(catalog, model, Voice::Terminal)
+fn model_rows(facts: &Catalog, catalog: &[ModelInfo], model: &str) -> Vec<(String, String)> {
+    model_list(facts, catalog, model, Voice::Terminal)
 }
 
 /// The efforts `catalog` lists for `model`, else the known ones.
-fn effort_rows(catalog: &[ModelInfo], model: &str) -> Vec<(String, String)> {
-    let list = effort_list(catalog, model);
+fn effort_rows(facts: &Catalog, catalog: &[ModelInfo], model: &str) -> Vec<(String, String)> {
+    let list = effort_list(facts, catalog, model);
     list.into_iter().map(|e| (e.clone(), e)).collect()
 }
 
@@ -84,13 +84,14 @@ fn settle(items: &[(String, String)], index: usize, forward: bool) -> usize {
 impl Picker {
     pub fn new(
         kind: PickerKind,
+        facts: &Catalog,
         catalog: &[ModelInfo],
         model: &str,
         effort: Option<&str>,
     ) -> Picker {
         let (items, current) = match kind {
-            PickerKind::Model => (model_rows(catalog, model), Some(model.to_string())),
-            PickerKind::Effort => (effort_rows(catalog, model), effort.map(String::from)),
+            PickerKind::Model => (model_rows(facts, catalog, model), Some(model.to_string())),
+            PickerKind::Effort => (effort_rows(facts, catalog, model), effort.map(String::from)),
         };
         let found = items
             .iter()
@@ -123,7 +124,13 @@ pub const REFRESHING: &str = "refreshing...";
 
 impl Ui {
     pub(super) fn open_picker(&mut self, kind: PickerKind) {
-        let mut picker = Picker::new(kind, &self.catalog, &self.model, self.effort.as_deref());
+        let mut picker = Picker::new(
+            kind,
+            &self.facts,
+            &self.catalog,
+            &self.model,
+            self.effort.as_deref(),
+        );
         picker.note = self.fetching.then(|| REFRESHING.to_string());
         self.picker = Some(picker);
     }
@@ -153,7 +160,13 @@ impl Ui {
         let Some(old) = self.picker.take() else {
             return;
         };
-        let mut picker = Picker::new(old.kind, &self.catalog, &self.model, self.effort.as_deref());
+        let mut picker = Picker::new(
+            old.kind,
+            &self.facts,
+            &self.catalog,
+            &self.model,
+            self.effort.as_deref(),
+        );
         if let Some(index) = kept_row(&old.items, old.selected, &picker.items) {
             picker.selected = index;
         }
@@ -203,7 +216,7 @@ impl Ui {
     /// sets the status line to what applies.
     pub fn set_model(&mut self, model: String) {
         let before = self.effort.clone();
-        self.effort = fit_effort(&model, before.as_deref());
+        self.effort = self.facts.fit_effort(&model, before.as_deref());
         let effort = self.effort.as_deref().unwrap_or("default");
         let note = match &before {
             Some(old) if self.effort != before => format!(" ({old} does not apply)"),
@@ -214,7 +227,10 @@ impl Ui {
         } else {
             "next turn"
         };
-        self.status = format!("{when}: {} · effort {effort}{note}", model_name(&model));
+        self.status = format!(
+            "{when}: {} · effort {effort}{note}",
+            model_name(&self.facts, &model)
+        );
         self.model = model;
     }
 }

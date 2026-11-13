@@ -147,12 +147,15 @@ fn silence_alone_does_not_end_the_call() {
 fn openai_chat_cancel_in_silence_is_aborted_within_the_bound() {
     let file = r#"{"id": "sc", "api": "openai-chat", "baseUrl": "http://local/v1",
         "models": [{"id": "chat-1", "maxOutput": 4096}]}"#;
-    custom::remember(&[serde_json::from_str(file).unwrap()]);
+    let models = serde_json::from_str::<custom::ProviderFile>(file)
+        .unwrap()
+        .models;
     let body = "data: {\"choices\": [{\"index\": 0, \"delta\": {\"content\": \"Hel\"}}]}\n\n";
     for at in [0, 1] {
         let reply = ScriptedResponse::new(200, body, 1000);
         let transport = ScriptedTransport::new(vec![reply]).with_silence(0, at);
-        let provider = OpenAiChat::new("sc", "http://local/v1/", Vec::new());
+        let provider =
+            OpenAiChat::new("sc", "http://local/v1/", Vec::new()).with_models(models.clone());
         let cancel = AtomicBool::new(false);
         let req = ChatRequest::new("sc/chat-1", "be brief", &[], &[], 1000, &cancel);
         let auth = Auth::ApiKey("test-key".into());

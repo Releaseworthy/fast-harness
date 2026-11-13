@@ -1,6 +1,5 @@
 //! The chat box pickers and the trace timeline.
 
-use fast_harness_core::llm::anthropic::efforts;
 use fast_harness_core::trace::detail::{self, Entry, EntryKind};
 use fast_harness_core::trace::TraceEvent;
 use fast_harness_core::types::Message;
@@ -147,16 +146,21 @@ fn ctrl_e_lists_the_efforts_of_the_model_and_esc_closes() {
     ui.model = "claude-opus-5-5".into();
     ctrl(&mut ui, 'e');
     let items = ui.picker.as_ref().unwrap().items.len();
-    assert_eq!(items, efforts("claude-opus-5-5").len());
+    assert_eq!(
+        items,
+        fast_harness_core::llm::Catalog::default()
+            .efforts("claude-opus-5-5")
+            .len()
+    );
     assert_eq!(key(&mut ui, KeyCode::Esc), Action::None);
     assert!(ui.picker.is_none());
     assert_eq!(ui.screen, Screen::Chat);
     assert_eq!(
-        next_effort("claude-opus-4-5", Some("off")).as_deref(),
+        next_effort(&Default::default(), "claude-opus-4-5", Some("off")).as_deref(),
         Some("low")
     );
     assert_eq!(
-        next_effort("claude-opus-5-5", Some("high")).as_deref(),
+        next_effort(&Default::default(), "claude-opus-5-5", Some("high")).as_deref(),
         Some("xhigh")
     );
     ui.running = true;

@@ -12,7 +12,7 @@ use std::collections::BTreeMap;
 use std::fmt::Write;
 
 use crate::config::Config;
-use crate::llm::custom;
+use crate::llm::Catalog;
 use crate::trace::record::ToolCall;
 use crate::trace::{Record, TraceEvent};
 use crate::types::{Block, Message};
@@ -50,7 +50,7 @@ impl Mode {
 
 /// `reflect.model`, else the cheapest model with a price in the provider
 /// files (input plus output per million tokens), else the session model.
-pub fn pick_model(config: &Config) -> String {
+pub fn pick_model(config: &Config, catalog: &Catalog) -> String {
     if let Some(model) = config
         .reflect
         .model
@@ -60,7 +60,7 @@ pub fn pick_model(config: &Config) -> String {
         return model.clone();
     }
     let mut best: Option<(f64, String)> = None;
-    for provider in custom::providers() {
+    for provider in catalog.files() {
         for model in &provider.models {
             let Some(price) = model.price else { continue };
             let cost = price.input + price.output;

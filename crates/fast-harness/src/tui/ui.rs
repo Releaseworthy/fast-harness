@@ -106,6 +106,8 @@ pub struct Ui {
     pub models: Vec<ModelInfo>,
     /// The model list the pickers show: cached, then live.
     pub catalog: Vec<ModelInfo>,
+    /// The runtime's model facts (PLAN.md D67): providers, names, efforts.
+    pub facts: fast_harness_core::llm::Catalog,
     /// A live model list fetch is running.
     pub fetching: bool,
     /// The trace screen: timeline entries, steps table and drawn lines.
@@ -163,6 +165,7 @@ impl Ui {
             loading: false,
             models: Vec::new(),
             catalog: builtin_models(),
+            facts: Default::default(),
             fetching: false,
             trace: TraceView::default(),
             picker: None,

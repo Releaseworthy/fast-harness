@@ -8,7 +8,7 @@ pub mod custom;
 pub mod find;
 pub mod openai;
 
-pub use catalog::{efforts, fit_effort};
+pub use catalog::Catalog;
 
 use std::fmt;
 use std::sync::atomic::AtomicBool;

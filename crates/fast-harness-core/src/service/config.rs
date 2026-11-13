@@ -6,7 +6,7 @@
 use serde_json::{json, Value};
 
 use crate::config::Config;
-use crate::llm::catalog;
+use crate::llm::Catalog;
 
 /// `config` with dotted `key` (the camelCase names of `config.json`, e.g.
 /// `maxSteps` or `compaction.percent`) set to `value`. A string is parsed as
@@ -38,7 +38,7 @@ pub fn set_key(config: &Config, key: &str, value: &Value) -> Result<Config, Stri
     Ok(next)
 }
 
-fn select(values: Vec<String>, current: &str, label: fn(&str) -> String) -> Vec<Value> {
+fn select(values: Vec<String>, current: &str, label: impl Fn(&str) -> String) -> Vec<Value> {
     let mut values = values;
     if !values.iter().any(|value| value == current) {
         values.insert(0, current.to_string());
@@ -54,20 +54,22 @@ fn select(values: Vec<String>, current: &str, label: fn(&str) -> String) -> Vec<
         .collect()
 }
 
-fn model_label(model: &str) -> String {
-    catalog::display_name(model).unwrap_or_else(|| model.to_string())
+fn model_label(catalog: &Catalog, model: &str) -> String {
+    catalog
+        .display_name(model)
+        .unwrap_or_else(|| model.to_string())
 }
 
 /// The `configOptions` of a session: `model` (from `models` and the
 /// current one) and `effort` (`default` plus the model's levels).
-pub fn options(config: &Config, models: Vec<String>) -> Value {
+pub fn options(catalog: &Catalog, config: &Config, models: Vec<String>) -> Value {
     let effort = config.effort.clone().unwrap_or_else(|| "default".into());
     let mut levels = vec!["default".to_string()];
-    levels.extend(catalog::efforts(&config.model));
+    levels.extend(catalog.efforts(&config.model));
     json!([
         {"configId": "model", "name": "Model", "category": "model", "type": "select",
             "currentValue": config.model,
-            "options": select(models, &config.model, model_label)},
+            "options": select(models, &config.model, |m| model_label(catalog, m))},
         {"configId": "effort", "name": "Effort", "category": "thought_level", "type": "select",
             "currentValue": effort, "options": select(levels, &effort, str::to_string)},
     ])

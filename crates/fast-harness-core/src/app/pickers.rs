@@ -8,8 +8,8 @@ use std::thread::{self, JoinHandle};
 
 use super::words::Voice;
 use crate::llm::anthropic::ModelInfo;
-use crate::llm::catalog::{group_title, label as provider_label, provider_of, providers};
-use crate::llm::{efforts, fit_effort};
+use crate::llm::catalog::label as provider_label;
+use crate::llm::Catalog;
 
 /// One picker row: `(value, label)`; an empty value is a provider title row.
 pub type Row = (String, String);
@@ -22,27 +22,34 @@ pub fn is_header(row: &Row) -> bool {
     row.0.is_empty()
 }
 
-/// The model rows of `catalog` (the cached or fetched list) grouped by
+/// The model rows of `models` (the cached or fetched list) grouped by
 /// provider (PLAN.md D24): a title row ("Claude" or a providers/*.json
 /// title) before each non-empty group, and `configured` first in its group
-/// (labelled by its id) when the catalog lacks it. The window labels a row
+/// (labelled by its id) when the list lacks it. `catalog` is the runtime's
+/// (PLAN.md D67): which provider serves a model and the group titles. The window labels a row
 /// by its display name (see [`labelled`]) with " (deprecated)" after; the
 /// terminal by the padded display name, the id and "  deprecated".
-pub fn model_list(catalog: &[ModelInfo], configured: &str, voice: Voice) -> Vec<Row> {
-    let listed = catalog.iter().any(|m| m.id == configured);
+pub fn model_list(
+    catalog: &Catalog,
+    models: &[ModelInfo],
+    configured: &str,
+    voice: Voice,
+) -> Vec<Row> {
+    let listed = models.iter().any(|m| m.id == configured);
     let mut list = Vec::new();
-    for provider in providers() {
-        let group: Vec<&ModelInfo> = (catalog.iter())
-            .filter(|m| provider_of(&m.id) == provider)
+    for provider in catalog.providers() {
+        let group: Vec<&ModelInfo> = (models.iter())
+            .filter(|m| catalog.provider_of(&m.id) == provider)
             .collect();
-        let missing = !listed && !configured.is_empty() && provider_of(configured) == provider;
+        let missing =
+            !listed && !configured.is_empty() && catalog.provider_of(configured) == provider;
         let mine = if missing { configured } else { "" };
         let rows = match voice {
             Voice::Window => window_rows(&group, mine),
             Voice::Terminal => terminal_rows(&group, mine),
         };
         if !rows.is_empty() {
-            list.push((String::new(), group_title(provider).to_string()));
+            list.push((String::new(), catalog.group_title(provider).to_string()));
             list.extend(rows);
         }
     }
@@ -101,20 +108,20 @@ pub fn labelled(table: &[Row], configured: &str) -> Vec<Row> {
     list
 }
 
-/// The efforts `catalog` lists for `model`, else the provider's
-/// (`llm::efforts`: the remembered live list, then the built-in table).
-pub fn effort_list(catalog: &[ModelInfo], model: &str) -> Vec<String> {
-    let listed = (catalog.iter())
+/// The efforts `models` lists for `model`, else the catalog's
+/// (`Catalog::efforts`: the remembered live list, then the built-in table).
+pub fn effort_list(catalog: &Catalog, models: &[ModelInfo], model: &str) -> Vec<String> {
+    let listed = (models.iter())
         .find(|m| m.id == model)
         .map(|m| m.efforts.clone())
         .filter(|list| !list.is_empty());
-    listed.unwrap_or_else(|| efforts(model))
+    listed.unwrap_or_else(|| catalog.efforts(model))
 }
 
 /// The effort to keep when `model` is picked, and a note for the user when
 /// it had to change (empty otherwise).
-pub fn refit(model: &str, effort: Option<&str>) -> (Option<String>, String) {
-    let fitted = fit_effort(model, effort);
+pub fn refit(catalog: &Catalog, model: &str, effort: Option<&str>) -> (Option<String>, String) {
+    let fitted = catalog.fit_effort(model, effort);
     let note = match (effort, fitted.as_deref()) {
         (Some(old), Some(new)) if old != new => {
             format!("Effort set to {new}: {model} does not take {old}.")
@@ -172,12 +179,18 @@ pub struct Merged {
 
 /// Merges a fetch into the pickers' state for the current `model` and
 /// `effort`. A failure keeps the list and the effort and explains itself.
-pub fn merge(result: Fetched, model: &str, effort: Option<&str>, voice: Voice) -> Merged {
+pub fn merge(
+    catalog: &Catalog,
+    result: Fetched,
+    model: &str,
+    effort: Option<&str>,
+    voice: Voice,
+) -> Merged {
     match fetched(result, voice) {
         Ok(models) => {
-            let (effort, note) = refit(model, effort);
+            let (effort, note) = refit(catalog, model, effort);
             Merged {
-                list: Some(model_list(&models, model, voice)),
+                list: Some(model_list(catalog, &models, model, voice)),
                 effort,
                 note,
             }

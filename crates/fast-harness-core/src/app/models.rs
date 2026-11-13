@@ -9,7 +9,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::auth::AuthSource;
 use crate::http::Transport;
-use crate::llm::anthropic::{builtin_models, remember_models, Anthropic, ModelInfo};
+use crate::llm::anthropic::{builtin_models, Anthropic, LiveModels, ModelInfo};
+use crate::llm::Catalog;
 use crate::trace;
 
 /// File name of the model cache inside the fast-harness home.
@@ -54,9 +55,9 @@ pub(super) fn write_atomic(home: &Path, name: &str, text: &str) -> Result<(), St
 }
 
 /// Fills the live capability registries from the caches of `home`, if any.
-pub fn load_cache(home: &Path) {
+pub fn load_cache(home: &Path, live: &LiveModels) {
     if let Some(models) = read_cache(home) {
-        remember_models(&models);
+        live.remember(&models);
     }
 }
 
@@ -69,6 +70,8 @@ pub struct ModelSource {
     auth: Result<Arc<dyn AuthSource>, String>,
     transport: Arc<dyn Transport>,
     provider: Arc<Anthropic>,
+    /// The runtime's catalog: the custom providers' models (PLAN.md D67).
+    catalog: Catalog,
 }
 
 /// One provider's live list, or why it failed.
@@ -81,12 +84,14 @@ impl ModelSource {
         auth: Result<Arc<dyn AuthSource>, String>,
         transport: Arc<dyn Transport>,
         provider: Arc<Anthropic>,
+        catalog: Catalog,
     ) -> ModelSource {
         ModelSource {
             home,
             auth,
             transport,
             provider,
+            catalog,
         }
     }
 
@@ -94,7 +99,7 @@ impl ModelSource {
     /// providers' models. Reads one small file.
     pub fn cached(&self) -> Vec<ModelInfo> {
         let mut list = self.cached_claude();
-        list.extend(custom_models());
+        list.extend(custom_models(&self.catalog));
         list
     }
 
@@ -110,7 +115,7 @@ impl ModelSource {
     pub fn fetch(&self) -> Result<Vec<ModelInfo>, String> {
         let source = self.auth.as_ref().map_err(Clone::clone)?;
         let mut list = self.list_claude(source.as_ref())?;
-        list.extend(custom_models());
+        list.extend(custom_models(&self.catalog));
         Ok(list)
     }
     /// `GET /v1/models`; fills the registry and `models.json`.
@@ -132,9 +137,8 @@ impl ModelSource {
 
 /// The models of the custom providers of `providers/*.json` (PLAN.md
 /// D41), named `<provider id>/<model id>`, in file order.
-pub fn custom_models() -> Vec<ModelInfo> {
-    let providers = crate::llm::custom::providers();
-    let custom = providers.iter().filter(|p| p.is_custom());
+pub fn custom_models(catalog: &Catalog) -> Vec<ModelInfo> {
+    let custom = catalog.files().iter().filter(|p| p.is_custom());
     let pairs = custom.flat_map(|p| p.models.iter().map(move |m| (p, m)));
     pairs
         .map(|(provider, model)| ModelInfo {

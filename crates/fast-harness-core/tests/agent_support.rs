@@ -134,6 +134,7 @@ pub fn parts(
     cwd: &Path,
 ) -> AgentParts {
     AgentParts {
+        catalog: Default::default(),
         extensions: Default::default(),
         provider: Arc::new(Anthropic::new("http://scripted.invalid")),
         transport: transport.clone(),

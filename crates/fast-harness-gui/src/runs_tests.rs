@@ -80,6 +80,7 @@ fn agent_with(
     tools: Registry,
 ) -> Agent {
     let parts = AgentParts {
+        catalog: Default::default(),
         extensions: Default::default(),
         provider: Arc::new(Anthropic::new("http://scripted.invalid")),
         transport: Arc::new(model),

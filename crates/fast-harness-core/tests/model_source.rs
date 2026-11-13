@@ -7,8 +7,8 @@ use std::sync::Arc;
 use fast_harness_core::app::{read_cache, ModelSource, CACHE_FILE};
 use fast_harness_core::auth::{AuthError, AuthSource, Failover, Lease};
 use fast_harness_core::http::{HttpHead, ScriptedResponse, ScriptedTransport, Transport};
-use fast_harness_core::llm::anthropic::{builtin_models, efforts, Anthropic};
-use fast_harness_core::llm::{Auth, LlmError};
+use fast_harness_core::llm::anthropic::{builtin_models, Anthropic};
+use fast_harness_core::llm::{Auth, Catalog, LlmError};
 use serde_json::{json, Value};
 
 struct TempDir(PathBuf);
@@ -53,13 +53,25 @@ impl AuthSource for Counting {
 }
 
 fn source(home: &TempDir, auth: Arc<Counting>, replies: Vec<ScriptedResponse>) -> ModelSource {
+    sourced(home, auth, replies, &Catalog::default())
+}
+
+/// A source filling `catalog`'s live table, as `Runtime::models` builds it.
+fn sourced(
+    home: &TempDir,
+    auth: Arc<Counting>,
+    replies: Vec<ScriptedResponse>,
+    catalog: &Catalog,
+) -> ModelSource {
     let auth: Arc<dyn AuthSource> = auth;
     let transport: Arc<dyn Transport> = Arc::new(ScriptedTransport::new(replies));
+    let provider = Anthropic::default().with_live(Arc::clone(catalog.live()));
     ModelSource::new(
         home.0.clone(),
         Ok(auth),
         transport,
-        Arc::new(Anthropic::default()),
+        Arc::new(provider),
+        catalog.clone(),
     )
 }
 
@@ -80,15 +92,24 @@ fn page() -> String {
 fn fetch_fills_registry_and_cache() {
     let home = TempDir::new("fetch");
     let auth = Arc::new(Counting::default());
-    let models = source(&home, auth, vec![ScriptedResponse::new(200, &page(), 3)]);
+    let catalog = Catalog::default();
+    let models = sourced(
+        &home,
+        auth,
+        vec![ScriptedResponse::new(200, &page(), 3)],
+        &catalog,
+    );
     assert_eq!(models.cached(), builtin_models());
     let list = models.fetch().unwrap();
     assert_eq!(list.len(), 1);
     assert_eq!(list[0].efforts, ["low", "medium", "high", "xhigh"]);
     assert_eq!(
-        efforts("claude-source-1"),
+        catalog.efforts("claude-source-1"),
         ["low", "medium", "high", "xhigh"]
     );
+    // Another runtime's catalog never sees this list (PLAN.md D67).
+    let other = Catalog::default().efforts("claude-source-1");
+    assert_eq!(other, ["low", "medium", "high", "xhigh", "max", "off"]);
     let text = std::fs::read_to_string(home.0.join(CACHE_FILE)).unwrap();
     let file: Value = serde_json::from_str(&text).unwrap();
     assert_eq!(file["version"], 1);
@@ -121,6 +142,7 @@ fn failed_fetch_keeps_the_account_and_the_cache() {
         Err("no account".into()),
         Arc::new(ScriptedTransport::new(Vec::new())),
         Arc::new(Anthropic::default()),
+        Catalog::default(),
     );
     assert_eq!(none.fetch().unwrap_err(), "no account");
 }

@@ -39,7 +39,7 @@ fn finish(app: &mut App, ui: &MainWindow, fetched: Fetched) {
     ui.set_models_refreshing(false);
     let model = app.rt.config.model.clone();
     let effort = app.rt.config.effort.as_deref();
-    let merged = merge(fetched, &model, effort, Voice::Window);
+    let merged = merge(&app.rt.catalog, fetched, &model, effort, Voice::Window);
     if let Some(list) = merged.list {
         app.rt.config.effort = merged.effort;
         settings::show_models(app, ui, list);
@@ -63,12 +63,12 @@ mod tests {
         old.id = "old-b".into();
         old.display_name = "OLD-B".into();
         old.deprecated = true;
-        let merged = merge(Ok(vec![old]), "old-b", None, Voice::Window);
+        let merged = merge(&Default::default(), Ok(vec![old]), "old-b", None, Voice::Window);
         let list = merged.list.unwrap();
         assert_eq!(list[1], ("old-b".into(), "OLD-B (deprecated)".into()));
         assert_eq!(model_index(&list, "old-b"), 1);
         let failed: Fetched = Err("no account".into());
-        let note = merge(failed, "m", None, Voice::Window).note;
+        let note = merge(&Default::default(), failed, "m", None, Voice::Window).note;
         assert_eq!(note, "Could not fetch the model list: no account");
     }
 }

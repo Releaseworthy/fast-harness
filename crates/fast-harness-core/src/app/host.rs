@@ -77,6 +77,12 @@ impl Host for RuntimeHost {
         self.at(cwd)?.agent_with(cwd, conv, config)
     }
 
+    fn catalog(&self, cwd: &Path) -> crate::llm::Catalog {
+        self.at(cwd)
+            .map(|rt| rt.catalog.clone())
+            .unwrap_or_default()
+    }
+
     fn models(&self) -> Vec<String> {
         let cached = read_cache(&self.home).unwrap_or_default();
         cached.into_iter().map(|model| model.id).collect()

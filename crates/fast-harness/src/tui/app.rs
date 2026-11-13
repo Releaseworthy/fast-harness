@@ -153,6 +153,7 @@ impl Tui {
 
     fn first_ui(rt: &Runtime) -> Ui {
         let mut ui = Ui::new(rt.config.model.clone(), rt.config.effort.clone());
+        ui.facts = rt.catalog.clone();
         ui.themes = fast_harness_core::theme::ThemeSet::load(&rt.home);
         ui.set_greyscale(rt.config.greyscale);
         ui.set_theme(ui.themes.get(&rt.config.theme).clone());

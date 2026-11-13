@@ -15,6 +15,7 @@ use std::collections::{HashMap, HashSet};
 use serde::Serialize;
 
 use crate::llm::find::FIND_TOOLS;
+use crate::llm::Catalog;
 use crate::tools::budget::SPILL_MARK;
 use crate::trace::record::{AssistantMessage, ToolCall, ToolResult};
 use crate::trace::{prefix_binding_mismatches, Record, TraceEvent};
@@ -93,12 +94,21 @@ struct Pass {
     find_steps: HashSet<(u64, u64)>,
     tools: HashMap<String, ToolBytes>,
     results: Vec<ResultSize>,
+    /// Prices of the provider files (PLAN.md D67).
+    catalog: Catalog,
 }
 
 /// The numbers of one session log's events; `session` names its results.
+/// No step is priced: [`compute_with`] reads the prices of a catalog.
 pub fn compute(session: &str, events: &[TraceEvent]) -> Stats {
+    compute_with(session, events, &Catalog::default())
+}
+
+/// [`compute`] pricing each step from `catalog`'s provider files.
+pub fn compute_with(session: &str, events: &[TraceEvent], catalog: &Catalog) -> Stats {
     let mut pass = Pass {
         session: session.to_string(),
+        catalog: catalog.clone(),
         ..Pass::default()
     };
     for event in events {
@@ -139,7 +149,7 @@ impl Pass {
         self.stats.usage.add(&usage);
         (self.signals).answer(usage.cache_read, usage.cache_write);
         let model = answer.message.model.as_deref().unwrap_or("");
-        if let Some(price) = crate::llm::custom::price(model) {
+        if let Some(price) = self.catalog.price(model) {
             self.stats.cost_micro_usd += (price.cost(&usage) * 1_000_000.0).round() as u64;
             self.stats.priced_steps += 1;
         }

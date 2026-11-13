@@ -9,7 +9,6 @@ use crate::agent::Conversation;
 use crate::auth::Lease;
 use crate::config::compaction::Compaction;
 use crate::events::{AgentEvent, TurnOutcome};
-use crate::llm::catalog::context_window;
 use crate::llm::{find, Completion};
 use crate::session::compacted;
 use crate::types::{Block, Message, Role, Usage};
@@ -61,7 +60,7 @@ impl Turn<'_> {
             return Ok(None);
         }
         let config = &self.agent.parts.config;
-        let window = context_window(&config.model);
+        let window = self.agent.parts.catalog.context_window(&config.model);
         let limit = settings.threshold(window, u64::from(config.max_tokens));
         if limit == 0 || self.conv.last_context <= limit {
             return Ok(None);

@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 use fast_harness_core::app::{doctor, load_settings};
 use fast_harness_core::config::layers::Source;
 use fast_harness_core::config::trust;
-use fast_harness_core::llm::{catalog, custom};
+use fast_harness_core::llm::{catalog, custom, Catalog};
 use fast_harness_core::stats;
 use fast_harness_core::trace::TraceEvent;
 use serde_json::json;
@@ -137,10 +137,10 @@ fn a_model_entry_overrides_a_built_in_models_numbers() {
         "contextWindow": 123456, "maxOutput": 1000, "compaction": {"trigger": "30%"}}]}"#;
     write(&d.home.join("providers/anthropic.json"), file);
     let settings = load_settings(&d.home, None, &no_env).unwrap();
-    custom::remember(&settings.providers);
-    assert_eq!(catalog::context_window("claude-haiku-4-5"), 123456);
-    assert_eq!(catalog::max_output_override("claude-haiku-4-5"), Some(1000));
-    assert_eq!(catalog::provider_of("claude-haiku-4-5"), catalog::ANTHROPIC);
+    let known = Catalog::new(settings.providers.clone());
+    assert_eq!(known.context_window("claude-haiku-4-5"), 123456);
+    assert_eq!(known.max_output_override("claude-haiku-4-5"), Some(1000));
+    assert_eq!(known.provider_of("claude-haiku-4-5"), catalog::ANTHROPIC);
     let entry = &settings.layered.config.models["claude-haiku-4-5"];
     assert_eq!(entry.compaction.trigger.as_deref(), Some("30%"));
 }
@@ -149,7 +149,7 @@ fn a_model_entry_overrides_a_built_in_models_numbers() {
 fn stats_prices_steps_of_models_with_a_price() {
     let file = r#"{"id": "priced", "api": "openai-chat", "baseUrl": "http://h",
         "models": [{"id": "m1", "price": {"input": 2, "output": 10, "cacheRead": 0.5}}]}"#;
-    custom::remember(&[serde_json::from_str(file).unwrap()]);
+    let priced = Catalog::new(vec![serde_json::from_str(file).unwrap()]);
     let answer = |model: &str, input: u64| TraceEvent {
         kind: "assistant/message".into(),
         seq: 0,
@@ -168,7 +168,8 @@ fn stats_prices_steps_of_models_with_a_price() {
         answer("priced/m1", 500_000),
         answer("claude-opus-5-5", 1),
     ];
-    let s = stats::compute("s", &events);
+    let s = stats::compute_with("s", &events, &priced);
+    assert_eq!(stats::compute("s", &events).priced_steps, 0);
     // 0.5M x 2 + 0.1M x 10 + 1M x 0.5 = 2.5 dollars.
     assert_eq!((s.cost_micro_usd, s.priced_steps), (2_500_000, 1));
     assert!(stats::format_text(&s).contains("cost $2.5000 (1 of 1 steps priced)"));

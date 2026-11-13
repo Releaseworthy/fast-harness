@@ -56,6 +56,10 @@ impl Host for TuiHost {
     fn expand(&self, text: &str) -> Result<Expanded, String> {
         self.runtime.expand(text)
     }
+
+    fn catalog(&self, cwd: &Path) -> fast_harness_core::llm::Catalog {
+        self.runtime.catalog(cwd)
+    }
 }
 
 impl Tui {

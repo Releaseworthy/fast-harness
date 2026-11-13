@@ -178,13 +178,13 @@ fn fill(ui: &MainWindow) {
     ui.set_side_rows(model(side_rows()));
     ui.set_accounts(model(claude_rows()));
     ui.set_providers(model(provider_cards()));
-    let models = crate::pickers::model_list(&catalog(), "claude-opus-5-5");
+    let models = crate::pickers::model_list(&Default::default(), &catalog(), "claude-opus-5-5");
     ui.set_models(model(models.iter().map(|(_, l)| l.into()).collect()));
     ui.set_model_headers(model(
         models.iter().map(crate::pickers::is_header).collect(),
     ));
     ui.set_model_index(crate::pickers::model_index(&models, "claude-opus-5-5"));
-    let efforts = crate::pickers::effort_list("claude-opus-5-5");
+    let efforts = crate::pickers::effort_list(&Default::default(), "claude-opus-5-5");
     ui.set_efforts(model(
         efforts
             .iter()

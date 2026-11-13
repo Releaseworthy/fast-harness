@@ -14,7 +14,7 @@ use fast_harness_core::config::compaction::{parse_trigger, ModelEntry, Trigger};
 use fast_harness_core::config::Config;
 use fast_harness_core::events::{AgentEvent, TurnOutcome};
 use fast_harness_core::http::{ScriptedResponse, ScriptedTransport};
-use fast_harness_core::llm::catalog::context_window;
+use fast_harness_core::llm::Catalog;
 use fast_harness_core::session::compacted::{CONTINUE, SUMMARY_PREFIX};
 use fast_harness_core::tools;
 use fast_harness_core::trace::kind;
@@ -71,6 +71,7 @@ fn turn(agent: &Agent, conv: &mut Conversation, text: &str) -> (TurnOutcome, Vec
 #[test]
 fn thresholds_per_model_and_overrides() {
     let mut config = Config::default();
+    let context_window = |model: &str| Catalog::default().context_window(model);
     assert_eq!(context_window("claude-opus-5-5"), 1_000_000);
     let defaults = config.compaction_for("anthropic");
     assert_eq!(defaults.threshold(1_000_000, 32_000), 500_000);

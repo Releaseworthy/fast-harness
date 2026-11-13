@@ -141,8 +141,7 @@ impl Turn<'_> {
         let agent = self.agent;
         let parts = &agent.parts;
         let change = self.change.as_ref().filter(|_| !self.quiet);
-        let (model, effort, _) =
-            super::model_hook::request_parts(&self.request, change, &parts.config);
+        let (model, effort, _) = super::model_hook::request_parts(&self.request, change, parts);
         let context = RequestContext {
             turn: self.turn,
             step,
@@ -180,7 +179,7 @@ impl Turn<'_> {
         // A `PreModelRequest` hook may change only these two (PLAN.md D63).
         let change = self.change.as_ref().filter(|_| !self.quiet);
         let (model, effort, max_tokens) =
-            super::model_hook::request_parts(&self.request, change, &parts.config);
+            super::model_hook::request_parts(&self.request, change, parts);
         let req = ChatRequest {
             model,
             system: conv.system.as_deref().unwrap_or(&parts.system),

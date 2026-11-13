@@ -100,7 +100,8 @@ fn route(tool: &SubagentTool, parts: &mut AgentParts, model: &str) -> Result<(),
     }
     match &tool.router {
         Some(router) => (parts.provider, parts.auth) = router(model)?,
-        None if catalog::provider_of(model) == catalog::provider_of(&parts.config.model) => {}
+        None if parts.catalog.provider_of(model)
+            == parts.catalog.provider_of(&parts.config.model) => {}
         None => {
             return Err(format!(
                 "model `{model}` needs a provider this session lacks"

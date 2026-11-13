@@ -206,7 +206,7 @@ fn draw_transcript(frame: &mut Frame, ui: &mut Ui, view: &mut View<'_>, area: Re
 fn settings_title(ui: &Ui, st: &Styles) -> Line<'static> {
     Line::from(vec![
         Span::styled(format!(" {}", lead(st.icons.settings)), st.dim()),
-        Span::styled(model_name(&ui.model), st.accent()),
+        Span::styled(model_name(&ui.facts, &ui.model), st.accent()),
         Span::styled(" · effort ", st.dim()),
         Span::styled(
             ui.effort.clone().unwrap_or_else(|| "default".into()),

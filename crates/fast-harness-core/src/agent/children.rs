@@ -1,9 +1,9 @@
 //! The subagents of one session (PLAN.md D40): the running count behind
 //! `maxParallel`, the background children with their cancel flag, steer
 //! channel and answer, the finished notices for the parent's inbox and the
-//! events for the parent's front end. One registry per session id lives as
-//! long as the process, so a front end that builds an agent per turn still
-//! finds the children of an earlier turn.
+//! events for the parent's front end. One registry per session id lives
+//! until the session closes ([`forget`], PLAN.md D67), so a front end that
+//! builds an agent per turn still finds the children of an earlier turn.
 
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -48,12 +48,33 @@ pub struct Children {
     changed: Condvar,
 }
 
+type Table = Mutex<HashMap<String, Arc<Children>>>;
+
+/// The registries of the open sessions, by session id.
+fn table() -> MutexGuard<'static, HashMap<String, Arc<Children>>> {
+    static ALL: OnceLock<Table> = OnceLock::new();
+    let all = ALL.get_or_init(Mutex::default);
+    all.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
 /// The registry of session `id`.
 pub fn of_session(id: &str) -> Arc<Children> {
-    static ALL: OnceLock<Mutex<HashMap<String, Arc<Children>>>> = OnceLock::new();
-    let all = ALL.get_or_init(Mutex::default);
-    let mut all = all.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
-    all.entry(id.to_string()).or_default().clone()
+    table().entry(id.to_string()).or_default().clone()
+}
+
+/// Drops the registry of session `id` when the session closes, cancelling
+/// its background children (PLAN.md D67); a later [`of_session`] starts an
+/// empty one.
+pub fn forget(id: &str) {
+    let gone = table().remove(id);
+    if let Some(children) = gone {
+        children.cancel_all();
+    }
+}
+
+/// Whether session `id` has a registry now (tests).
+pub fn is_known(id: &str) -> bool {
+    table().contains_key(id)
 }
 
 /// A running child's place in the count; dropping it frees the place.

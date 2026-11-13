@@ -1,5 +1,5 @@
-//! Live model capabilities from `GET /v1/models` and the process-wide
-//! registry that `efforts`, `fit_effort` and the request builder read.
+//! Live model capabilities from `GET /v1/models` and the per-runtime table
+//! ([`LiveModels`], PLAN.md D67) that `efforts`, `fit_effort` and the request builder read.
 //!
 //! Field names follow the official TypeScript SDK (`src/resources/models.ts`)
 //! and <https://platform.claude.com/docs/en/api/models> (read 2026-11-11):
@@ -8,7 +8,7 @@
 //! `supported` flag; a null or missing flag counts as false.
 
 use std::collections::HashMap;
-use std::sync::{OnceLock, PoisonError, RwLock};
+use std::sync::{PoisonError, RwLock};
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -65,31 +65,35 @@ pub(crate) fn parse(entry: &Value) -> Option<(LiveCaps, Vec<String>)> {
     Some((live, levels))
 }
 
-fn registry() -> &'static RwLock<HashMap<String, ModelInfo>> {
-    static REGISTRY: OnceLock<RwLock<HashMap<String, ModelInfo>>> = OnceLock::new();
-    REGISTRY.get_or_init(|| RwLock::new(HashMap::new()))
+/// The live model table of one runtime (PLAN.md D67): what the last model
+/// list (or the cache) said each model accepts. A value, shared by the
+/// runtime's catalog and its Claude provider through an `Arc`.
+#[derive(Debug, Default)]
+pub struct LiveModels {
+    map: RwLock<HashMap<String, ModelInfo>>,
 }
 
-/// Records the live capabilities of `list` (a fetched or cached model list):
-/// entries with capabilities replace what was known, entries without them
-/// drop back to the built-in table.
-pub fn remember(list: &[ModelInfo]) {
-    let mut map = registry().write().unwrap_or_else(PoisonError::into_inner);
-    for info in list {
-        if info.live.is_some() {
-            map.insert(info.id.clone(), info.clone());
-        } else {
-            map.remove(&info.id);
+impl LiveModels {
+    /// Records the live capabilities of `list` (a fetched or cached model
+    /// list): entries with capabilities replace what was known, entries
+    /// without them drop back to the built-in table.
+    pub fn remember(&self, list: &[ModelInfo]) {
+        let mut map = self.map.write().unwrap_or_else(PoisonError::into_inner);
+        for info in list {
+            if info.live.is_some() {
+                map.insert(info.id.clone(), info.clone());
+            } else {
+                map.remove(&info.id);
+            }
         }
     }
-}
 
-/// The live entry of `model`, when a list or the cache reported its capabilities.
-pub(crate) fn lookup(model: &str) -> Option<ModelInfo> {
-    let map = registry().read().unwrap_or_else(PoisonError::into_inner);
-    map.get(model).cloned()
+    /// The live entry of `model`, when a list or the cache reported its capabilities.
+    pub fn lookup(&self, model: &str) -> Option<ModelInfo> {
+        let map = self.map.read().unwrap_or_else(PoisonError::into_inner);
+        map.get(model).cloned()
+    }
 }
-
 /// `levels` as the fixed level names (unknown names dropped).
 pub(crate) fn static_levels(levels: &[String]) -> Vec<&'static str> {
     levels

@@ -17,6 +17,7 @@ use std::collections::HashSet;
 
 use serde_json::{json, Map, Value};
 
+use super::live::LiveModels;
 use super::models::ModelSpec;
 use super::thinking;
 use super::wire;
@@ -92,13 +93,14 @@ pub(crate) fn cache_control(long: bool) -> Value {
 pub(crate) fn build(
     req: &ChatRequest<'_>,
     spec: Option<&ModelSpec>,
+    live: &LiveModels,
     oauth: bool,
 ) -> (Value, Vec<&'static str>) {
     // Tools and system share one lifetime and come first, so a 1 hour
     // breakpoint never follows a 5 minute one (PLAN.md D36).
     let cache = cache_control(req.cache.system_1h || req.cache.messages_1h);
     let tail = cache_control(req.cache.messages_1h);
-    let plan = thinking::plan_model(req.model, spec, req.effort, req.max_tokens);
+    let plan = thinking::plan_model(live, req.model, spec, req.effort, req.max_tokens);
     let mut messages = convert_messages(req.messages, req.tools, oauth, &tail);
     if let Some(effort) = &plan.trailing_effort {
         messages

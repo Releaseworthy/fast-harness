@@ -62,6 +62,11 @@ pub trait Host: Send + Sync {
     fn models(&self) -> Vec<String> {
         Vec::new()
     }
+    /// The model facts of `cwd`'s settings (PLAN.md D67): efforts, names
+    /// and prices; a host without provider files has none.
+    fn catalog(&self, _cwd: &Path) -> crate::llm::Catalog {
+        crate::llm::Catalog::default()
+    }
     /// `/help` and the user's `commands/*.md` (PLAN.md D42).
     fn expand(&self, text: &str) -> Result<Expanded, String> {
         Ok(Expanded::Send(text.to_string()))
@@ -286,6 +291,8 @@ impl Service {
         let session = self.table().remove(id)?;
         session.cancel();
         session.wait();
+        // Its background children stop and their registry goes (PLAN.md D67).
+        crate::agent::children::forget(id);
         Some(session)
     }
 
@@ -310,7 +317,8 @@ impl Service {
         let path = session::log_path(&self.host.home(), &session.cwd, id);
         let (_, events) =
             trace::read(&path).map_err(|err| ServiceError::Failed(format!("{id}: {err}")))?;
-        Ok(stats::compute(id, &events))
+        let catalog = self.host.catalog(&session.cwd);
+        Ok(stats::compute_with(id, &events, &catalog))
     }
 }
 

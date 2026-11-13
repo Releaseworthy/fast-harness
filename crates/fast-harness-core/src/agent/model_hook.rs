@@ -10,9 +10,8 @@ use serde_json::{json, Value};
 use crate::agent::call::request_model;
 use crate::agent::hooks::fire;
 use crate::agent::turn::{Res, Turn};
-use crate::config::Config;
+use crate::agent::AgentParts;
 use crate::events::{AgentEvent, TurnOutcome};
-use crate::llm::catalog::max_output_override;
 use crate::tools::hooks::{Answer, HookEvent, RequestChange};
 
 /// `Err` when a `PreModelRequest` answer asks for a change the rules refuse
@@ -80,7 +79,7 @@ impl Turn<'_> {
     /// change over it.
     pub(super) fn request_parts(&self) -> (&str, Option<&str>, u32) {
         let change = self.change.as_ref().filter(|_| !self.quiet);
-        request_parts(&self.request, change, &self.agent.parts.config)
+        request_parts(&self.request, change, &self.agent.parts)
     }
 }
 
@@ -88,15 +87,19 @@ impl Turn<'_> {
 pub(super) fn request_parts<'a>(
     request: &'a Option<(String, Option<String>)>,
     change: Option<&'a RequestChange>,
-    config: &'a Config,
+    parts: &'a AgentParts,
 ) -> (&'a str, Option<&'a str>, u32) {
+    let config = &parts.config;
     let (model, effort) = request_model(request, config);
     // A `maxOutput` in `providers/*.json` caps it (PLAN.md D41).
-    let cap = max_output_override(model).map_or(config.max_tokens, |cap| {
-        config
-            .max_tokens
-            .min(u32::try_from(cap).unwrap_or(u32::MAX))
-    });
+    let cap = parts
+        .catalog
+        .max_output_override(model)
+        .map_or(config.max_tokens, |cap| {
+            config
+                .max_tokens
+                .min(u32::try_from(cap).unwrap_or(u32::MAX))
+        });
     match change {
         Some(change) => (
             model,

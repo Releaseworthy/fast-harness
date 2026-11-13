@@ -75,7 +75,7 @@ impl Runtime {
         };
         let prompt = self.reflect_prompt(cwd, &id)?;
         let mut config = self.config.clone();
-        config.model = reflect::pick_model(&self.config);
+        config.model = reflect::pick_model(&self.config, &self.catalog);
         config.effort = None;
         let parts = self.parts_with(cwd, reflect::SYSTEM.into(), &config)?;
         let job = Prepared {
@@ -94,7 +94,7 @@ impl Runtime {
     fn reflect_prompt(&self, cwd: &Path, id: &str) -> Result<String, String> {
         let path = session::log_path(&self.home, cwd, id);
         let (_, events) = trace::read(&path).map_err(|err| format!("{}: {err}", path.display()))?;
-        let numbers = stats::format_text(&stats::compute(id, &events));
+        let numbers = stats::format_text(&stats::compute_with(id, &events, &self.catalog));
         let index = Memory::read(&self.home, cwd).index;
         Ok(reflect::prompt(&numbers, &reflect::digest(&events), &index))
     }

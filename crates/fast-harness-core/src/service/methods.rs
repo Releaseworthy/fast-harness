@@ -80,7 +80,11 @@ fn initialize() -> Value {
 }
 
 fn options(server: &Server, session: &Session) -> Value {
-    config::options(&session.config(), server.service.host().models())
+    config::options(
+        &server.service.host().catalog(&session.cwd),
+        &session.config(),
+        server.service.host().models(),
+    )
 }
 
 /// MCP servers come from `mcp.json` (PLAN.md D47); ACP asks to reject a

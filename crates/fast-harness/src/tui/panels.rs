@@ -3,7 +3,6 @@
 use fast_harness_core::accounts::model::AccountKind;
 use fast_harness_core::accounts::pool::AccountStatus;
 use fast_harness_core::accounts::providers::{summaries, ProviderKey, ProviderSummary};
-use fast_harness_core::llm::catalog::{group_title, provider_of};
 use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Paragraph, Wrap};
@@ -197,10 +196,10 @@ fn model_rows(ui: &Ui) -> (Vec<String>, usize) {
     let mut selected = 0;
     let mut group = "";
     for (index, m) in ui.models.iter().enumerate() {
-        let provider = provider_of(&m.id);
+        let provider = ui.facts.provider_of(&m.id);
         if provider != group {
             group = provider;
-            rows.push(group_title(provider).to_string());
+            rows.push(ui.facts.group_title(provider).to_string());
         }
         if index == ui.selected {
             selected = rows.len();

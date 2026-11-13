@@ -89,6 +89,8 @@ pub fn run(args: PrintArgs) -> Result<ExitCode, String> {
 pub struct PrintHost {
     home: PathBuf,
     config: Config,
+    /// The agent's model facts (PLAN.md D67).
+    catalog: fast_harness_core::llm::Catalog,
     agent: Mutex<Option<Agent>>,
 }
 
@@ -97,6 +99,7 @@ impl PrintHost {
         PrintHost {
             home,
             config,
+            catalog: agent.parts.catalog.clone(),
             agent: Mutex::new(Some(agent)),
         }
     }
@@ -121,6 +124,10 @@ impl Host for PrintHost {
         taken
             .map(|agent| (agent, Vec::new()))
             .ok_or_else(|| "print mode runs one turn".to_string())
+    }
+
+    fn catalog(&self, _cwd: &Path) -> fast_harness_core::llm::Catalog {
+        self.catalog.clone()
     }
 }
 

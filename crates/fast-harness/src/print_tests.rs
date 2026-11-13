@@ -108,6 +108,7 @@ fn agent(env: &Env, script: Vec<ScriptedResponse>, panic_at: Option<usize>) -> A
     let script = ScriptedTransport::new(script);
     let calls = AtomicUsize::new(0);
     let parts = AgentParts {
+        catalog: Default::default(),
         extensions: Default::default(),
         provider: Arc::new(Anthropic::new("http://scripted.invalid")),
         transport: Arc::new(Model {

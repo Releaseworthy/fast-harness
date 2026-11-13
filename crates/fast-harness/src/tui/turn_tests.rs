@@ -68,6 +68,7 @@ impl Host for ScriptHost {
         c: &Config,
     ) -> Result<(Agent, Vec<String>), String> {
         let parts = AgentParts {
+            catalog: Default::default(),
             extensions: Default::default(),
             provider: Arc::new(Anthropic::new("http://scripted.invalid")),
             transport: self.transport.clone(),

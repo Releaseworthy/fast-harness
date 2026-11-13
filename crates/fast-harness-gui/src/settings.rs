@@ -31,7 +31,7 @@ fn replace<T: Clone + 'static>(current: ModelRc<T>, items: Vec<T>) -> Option<Mod
 pub fn fill(app: &mut App, ui: &MainWindow) {
     crate::appearance::show(app, ui);
     crate::config_page::show(app, ui);
-    let list = model_list(&app.rt.models().cached(), &app.rt.config.model);
+    let list = model_list(&app.rt.catalog, &app.rt.models().cached(), &app.rt.config.model);
     show_models(app, ui, list);
 }
 
@@ -53,7 +53,7 @@ pub fn show_models(app: &mut App, ui: &MainWindow, list: Vec<(String, String)>) 
 
 /// The effort list of the current model and the current effort in it.
 fn fill_efforts(app: &App, ui: &MainWindow) {
-    let list = effort_list(&app.rt.config.model);
+    let list = effort_list(&app.rt.catalog, &app.rt.config.model);
     if let Some(model) = strings(ui.get_efforts(), list.iter().map(String::as_str)) {
         ui.set_efforts(model);
     }
@@ -68,7 +68,7 @@ pub fn pick_model(app: &mut App, ui: &MainWindow, index: i32) {
     let Some(id) = picked.filter(|id| !id.is_empty()).cloned() else {
         return;
     };
-    let (effort, note) = refit(&id, app.rt.config.effort.as_deref());
+    let (effort, note) = refit(&app.rt.catalog, &id, app.rt.config.effort.as_deref());
     app.rt.config.model = id;
     app.rt.config.effort = effort;
     ui.set_model_index(index);
@@ -78,7 +78,7 @@ pub fn pick_model(app: &mut App, ui: &MainWindow, index: i32) {
 }
 
 pub fn pick_effort(app: &mut App, ui: &MainWindow, index: i32) {
-    let list = effort_list(&app.rt.config.model);
+    let list = effort_list(&app.rt.catalog, &app.rt.config.model);
     if let Some(level) = usize::try_from(index).ok().and_then(|i| list.get(i)) {
         app.rt.config.set_effort(level);
     }

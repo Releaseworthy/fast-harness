@@ -5,12 +5,12 @@ use std::process::ExitCode;
 
 use fast_harness_core::app::Runtime;
 use fast_harness_core::llm::anthropic::ModelInfo;
-use fast_harness_core::llm::catalog::provider_of;
+use fast_harness_core::llm::Catalog;
 use serde_json::Value;
 
 /// One line: provider, id, display name, effort levels (`-` when none), a
 /// deprecation mark.
-fn line(model: &ModelInfo) -> String {
+fn line(catalog: &Catalog, model: &ModelInfo) -> String {
     let efforts = if model.efforts.is_empty() {
         "-".to_string()
     } else {
@@ -23,17 +23,17 @@ fn line(model: &ModelInfo) -> String {
     };
     format!(
         "{:<12} {:<40} {:<24} {efforts}{note}",
-        provider_of(&model.id),
+        catalog.provider_of(&model.id),
         model.id,
         model.display_name
     )
 }
 
 /// The `--json` entry of `model`: its fields plus `provider`.
-fn entry(model: &ModelInfo) -> Result<Value, String> {
+fn entry(catalog: &Catalog, model: &ModelInfo) -> Result<Value, String> {
     let mut value = serde_json::to_value(model).map_err(|err| err.to_string())?;
     if let Value::Object(map) = &mut value {
-        map.insert("provider".into(), provider_of(&model.id).into());
+        map.insert("provider".into(), catalog.provider_of(&model.id).into());
     }
     Ok(value)
 }
@@ -46,12 +46,15 @@ pub fn run(json: bool) -> Result<ExitCode, String> {
         Err(err) => (source.cached(), Some(err)),
     };
     if json {
-        let entries = list.iter().map(entry).collect::<Result<Vec<_>, _>>()?;
+        let entries = list
+            .iter()
+            .map(|m| entry(&runtime.catalog, m))
+            .collect::<Result<Vec<_>, _>>()?;
         let text = serde_json::to_string_pretty(&entries).map_err(|err| err.to_string())?;
         println!("{text}");
     } else {
         for model in &list {
-            println!("{}", line(model));
+            println!("{}", line(&runtime.catalog, model));
         }
     }
     match failure {
@@ -71,11 +74,11 @@ mod tests {
     #[test]
     fn line_shows_id_name_and_efforts() {
         let mut model = builtin_models().remove(0);
-        let text = line(&model);
+        let text = line(&Catalog::default(), &model);
         assert!(text.starts_with("anthropic    claude-opus-5-5"));
         assert!(text.ends_with("low,medium,high,xhigh,max"));
         model.efforts.clear();
         model.deprecated = true;
-        assert!(line(&model).ends_with("-  (deprecated)"));
+        assert!(line(&Catalog::default(), &model).ends_with("-  (deprecated)"));
     }
 }

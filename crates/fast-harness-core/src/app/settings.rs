@@ -11,7 +11,7 @@ use crate::config::index::{ExtIndex, Item};
 use crate::config::layers::{self, kind_files, Layered, Layers};
 use crate::config::{trust, Config};
 use crate::http::Transport;
-use crate::llm::anthropic::Anthropic;
+use crate::llm::anthropic::{Anthropic, LiveModels};
 use crate::llm::custom::{self, ProviderFile, API_OPENAI};
 use crate::llm::openai::OpenAiChat;
 use crate::llm::{Auth, ChatRequest, Completion, Delta, LlmError, Provider};
@@ -127,15 +127,17 @@ impl Provider for Renamed {
     }
 }
 
-/// The adapter of a custom provider file.
-pub fn provider_for(file: &ProviderFile) -> Arc<dyn Provider> {
+/// The adapter of a custom provider file; an Anthropic one reads and fills
+/// `live`, the runtime's live model table (PLAN.md D67).
+pub fn provider_for(file: &ProviderFile, live: &Arc<LiveModels>) -> Arc<dyn Provider> {
     if file.api.as_deref() == Some(API_OPENAI) {
         let headers = file.headers.clone().into_iter().collect();
-        return Arc::new(OpenAiChat::new(&file.id, &file.base_url, headers));
+        let chat = OpenAiChat::new(&file.id, &file.base_url, headers);
+        return Arc::new(chat.with_models(file.models.clone()));
     }
     Arc::new(Renamed {
         id: file.id.clone(),
-        inner: Anthropic::new(&file.base_url),
+        inner: Anthropic::new(&file.base_url).with_live(Arc::clone(live)),
     })
 }
 
@@ -193,11 +195,11 @@ impl Runtime {
         let native = super::plugins::providers(&providers, &plugins);
         let mut known = providers.clone();
         known.extend(native.iter().map(|(_, file)| file.clone()));
-        custom::remember(&known);
+        self.catalog = self.catalog.with_files(known);
         self.custom = providers
             .into_iter()
             .filter(ProviderFile::is_custom)
-            .map(|file| (provider_for(&file), file))
+            .map(|file| (provider_for(&file, self.catalog.live()), file))
             .chain(native)
             .collect();
         let mut notes = self.notes.lock().unwrap_or_else(|p| p.into_inner());

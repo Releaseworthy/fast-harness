@@ -16,10 +16,13 @@ fn tools() -> Vec<ToolSpec> {
         .collect()
 }
 
-fn register() {
+/// The model entries of the provider file the adapter is built from.
+fn models() -> Vec<custom::ModelFile> {
     let file = r#"{"id": "oc", "api": "openai-chat", "baseUrl": "http://local/v1",
         "models": [{"id": "chat-1", "maxOutput": 4096, "efforts": ["low", "high"]}]}"#;
-    custom::remember(&[serde_json::from_str(file).unwrap()]);
+    serde_json::from_str::<custom::ProviderFile>(file)
+        .unwrap()
+        .models
 }
 
 fn sse(chunks: &[Value]) -> String {
@@ -37,13 +40,13 @@ struct Call {
 }
 
 fn call(response: ScriptedResponse, messages: &[Message]) -> Call {
-    register();
     let transport = ScriptedTransport::new(vec![response]);
     let provider = OpenAiChat::new(
         "oc",
         "http://local/v1/",
         vec![("x-extra".into(), "1".into())],
-    );
+    )
+    .with_models(models());
     let (tools, cancel) = (tools(), AtomicBool::new(false));
     let req = ChatRequest::new("oc/chat-1", "be brief", messages, &tools, 32_000, &cancel)
         .with_effort(Some("high"));

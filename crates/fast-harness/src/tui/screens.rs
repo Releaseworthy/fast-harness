@@ -185,7 +185,7 @@ impl Ui {
 
     fn models_key(&mut self, key: &KeyEvent, action: Option<&str>) -> Action {
         if action == Some("cycle_effort") {
-            return match next_effort(&self.model, self.effort.as_deref()) {
+            return match next_effort(&self.facts, &self.model, self.effort.as_deref()) {
                 Some(effort) => Action::SetEffort(effort),
                 None => Action::None,
             };

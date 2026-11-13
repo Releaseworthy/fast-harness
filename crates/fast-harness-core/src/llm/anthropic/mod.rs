@@ -13,9 +13,10 @@ mod thinking;
 mod wire;
 
 use std::sync::atomic::Ordering;
+use std::sync::Arc;
 use std::time::Instant;
 
-pub use live::{remember as remember_models, LiveCaps};
+pub use live::{LiveCaps, LiveModels};
 pub use models::{builtin_models, context_window, efforts, fit_effort, ModelInfo};
 
 use crate::http::{Flow, HttpHead, HttpRequest, Transport};
@@ -31,6 +32,9 @@ const MAX_ERROR_BODY: usize = 64 * 1024;
 #[derive(Clone, Debug)]
 pub struct Anthropic {
     base_url: String,
+    /// The live model table this provider reads and fills (PLAN.md D67):
+    /// the runtime's catalog shares it.
+    live: Arc<LiveModels>,
 }
 
 impl Default for Anthropic {
@@ -44,7 +48,19 @@ impl Anthropic {
     pub fn new(base_url: &str) -> Anthropic {
         Anthropic {
             base_url: base_url.trim_end_matches('/').to_string(),
+            live: Arc::default(),
         }
+    }
+
+    /// This provider reading and filling `live` (a runtime's table).
+    pub fn with_live(mut self, live: Arc<LiveModels>) -> Anthropic {
+        self.live = live;
+        self
+    }
+
+    /// The live model table this provider reads and fills.
+    pub fn live(&self) -> &Arc<LiveModels> {
+        &self.live
     }
 
     /// The models this credential can use, merged with the built-in table.
@@ -53,7 +69,7 @@ impl Anthropic {
         http: &dyn Transport,
         auth: &Auth,
     ) -> Result<Vec<ModelInfo>, LlmError> {
-        models::list(http, &self.base_url, auth)
+        models::list(http, &self.base_url, auth, &self.live)
     }
 }
 
@@ -64,7 +80,7 @@ pub fn list_models(http: &dyn Transport, auth: &Auth) -> Result<Vec<ModelInfo>, 
 
 /// The JSON body Claude would receive for `req` (benchmarks and tests).
 pub fn request_body(req: &ChatRequest<'_>, oauth: bool) -> String {
-    request::build(req, models::find(req.model), oauth)
+    request::build(req, models::find(req.model), &LiveModels::default(), oauth)
         .0
         .to_string()
 }
@@ -187,7 +203,7 @@ impl Provider for Anthropic {
             return Err(LlmError::new(ErrorKind::Aborted, "cancelled"));
         }
         let oauth = matches!(auth, Auth::OAuth(_));
-        let (body, betas) = request::build(req, models::find(req.model), oauth);
+        let (body, betas) = request::build(req, models::find(req.model), &self.live, oauth);
         let body = body.to_string();
         let mut owned = wire::headers(auth, &betas);
         owned.push(("content-type".into(), "application/json".into()));

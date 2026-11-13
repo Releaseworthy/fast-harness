@@ -8,7 +8,7 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use super::live::{self, LiveCaps};
+use super::live::{self, LiveCaps, LiveModels};
 use super::{error, wire};
 use crate::http::Transport;
 use crate::llm::{Auth, ErrorKind, LlmError};
@@ -119,8 +119,8 @@ pub(crate) fn find(id: &str) -> Option<&'static ModelSpec> {
 }
 
 /// The context window of `model`: the live list wins, then the table; 0 when unknown.
-pub fn context_window(model: &str) -> u64 {
-    super::live::lookup(model)
+pub fn context_window(live: &LiveModels, model: &str) -> u64 {
+    live.lookup(model)
         .map(|info| info.context_window)
         .filter(|window| *window > 0)
         .or_else(|| find(model).map(|spec| spec.context))
@@ -154,8 +154,8 @@ pub fn builtin_models() -> Vec<ModelInfo> {
 /// then the model's own extra levels (`xhigh`, `max`), then `off` where
 /// thinking can be switched off. The live capabilities of the last model
 /// list (or the cache) win; else the table; a model in neither gets them all.
-pub fn efforts(model: &str) -> Vec<&'static str> {
-    match live::lookup(model) {
+pub fn efforts(live: &LiveModels, model: &str) -> Vec<&'static str> {
+    match live.lookup(model) {
         Some(info) => live::static_levels(&info.efforts),
         None => table_efforts(model),
     }
@@ -177,9 +177,9 @@ fn table_efforts(model: &str) -> Vec<&'static str> {
 
 /// `effort` when `model` takes it, `None` (the model default) as it is,
 /// else `high`, or `None` when the model takes no effort at all.
-pub fn fit_effort(model: &str, effort: Option<&str>) -> Option<String> {
+pub fn fit_effort(live: &LiveModels, model: &str, effort: Option<&str>) -> Option<String> {
     let level = effort?;
-    let levels = efforts(model);
+    let levels = efforts(live, model);
     if levels.contains(&level) {
         Some(level.to_string())
     } else {
@@ -216,6 +216,7 @@ pub(crate) fn list(
     http: &dyn Transport,
     base_url: &str,
     auth: &Auth,
+    live: &LiveModels,
 ) -> Result<Vec<ModelInfo>, LlmError> {
     let mut out = Vec::new();
     let mut after: Option<String> = None;
@@ -224,7 +225,7 @@ pub(crate) fn list(
         let page = fetch_page(http, base_url, auth, after.as_deref())?;
         let list = page["data"].as_array().map(Vec::as_slice).unwrap_or(&[]);
         out.extend(list.iter().filter_map(merge));
-        live::remember(&out);
+        live.remember(&out);
         let more = page["has_more"].as_bool().unwrap_or(false);
         after = page["last_id"].as_str().map(str::to_string);
         if !more || after.is_none() {
@@ -298,30 +299,39 @@ mod tests {
     #[test]
     fn efforts_per_model() {
         let all = ["low", "medium", "high", "xhigh", "max"];
-        assert_eq!(efforts("claude-opus-5-5"), all);
-        assert_eq!(efforts("claude-opus-4-7"), [&all[..], &["off"]].concat());
+        assert_eq!(efforts(&LiveModels::default(), "claude-opus-5-5"), all);
         assert_eq!(
-            efforts("claude-opus-4-6"),
+            efforts(&LiveModels::default(), "claude-opus-4-7"),
+            [&all[..], &["off"]].concat()
+        );
+        assert_eq!(
+            efforts(&LiveModels::default(), "claude-opus-4-6"),
             ["low", "medium", "high", "max", "off"]
         );
         assert_eq!(
-            efforts("claude-haiku-4-5"),
+            efforts(&LiveModels::default(), "claude-haiku-4-5"),
             ["low", "medium", "high", "off"]
         );
-        assert_eq!(efforts("claude-new"), [&all[..], &["off"]].concat());
         assert_eq!(
-            fit_effort("claude-opus-5-5", Some("xhigh")).as_deref(),
+            efforts(&LiveModels::default(), "claude-new"),
+            [&all[..], &["off"]].concat()
+        );
+        assert_eq!(
+            fit_effort(&LiveModels::default(), "claude-opus-5-5", Some("xhigh")).as_deref(),
             Some("xhigh")
         );
         assert_eq!(
-            fit_effort("claude-opus-5-5", Some("off")).as_deref(),
+            fit_effort(&LiveModels::default(), "claude-opus-5-5", Some("off")).as_deref(),
             Some("high")
         );
         assert_eq!(
-            fit_effort("claude-haiku-4-5", Some("max")).as_deref(),
+            fit_effort(&LiveModels::default(), "claude-haiku-4-5", Some("max")).as_deref(),
             Some("high")
         );
-        assert_eq!(fit_effort("claude-haiku-4-5", None), None);
+        assert_eq!(
+            fit_effort(&LiveModels::default(), "claude-haiku-4-5", None),
+            None
+        );
     }
 
     #[test]
@@ -332,19 +342,20 @@ mod tests {
         let info = merge(&entry).unwrap();
         assert!(info.deprecated && info.live.is_some());
         assert_eq!(info.efforts, ["low", "high", "off"]);
+        let live = LiveModels::default();
         assert_eq!(
-            efforts("claude-live-test-1"),
+            efforts(&live, "claude-live-test-1"),
             ["low", "medium", "high", "xhigh", "max", "off"]
         );
-        live::remember(std::slice::from_ref(&info));
-        assert_eq!(efforts("claude-live-test-1"), ["low", "high", "off"]);
-        let fit = fit_effort("claude-live-test-1", Some("max"));
+        live.remember(std::slice::from_ref(&info));
+        assert_eq!(efforts(&live, "claude-live-test-1"), ["low", "high", "off"]);
+        let fit = fit_effort(&live, "claude-live-test-1", Some("max"));
         assert_eq!(fit.as_deref(), Some("high"));
         let bare =
             json!({"id": "claude-live-test-2", "capabilities": {"thinking": {"supported": false}}});
-        live::remember(&[merge(&bare).unwrap()]);
-        assert!(efforts("claude-live-test-2").is_empty());
-        assert_eq!(fit_effort("claude-live-test-2", Some("high")), None);
+        live.remember(&[merge(&bare).unwrap()]);
+        assert!(efforts(&live, "claude-live-test-2").is_empty());
+        assert_eq!(fit_effort(&live, "claude-live-test-2", Some("high")), None);
         assert!(merge(&json!({"id": "claude-old", "lifecycle": "retired"})).is_none());
         let table = merge(&json!({"id": "claude-haiku-4-5"})).unwrap();
         assert_eq!(table.efforts, ["low", "medium", "high", "off"]);

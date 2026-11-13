@@ -18,7 +18,7 @@
 
 use serde_json::{json, Value};
 
-use super::live::{self, LiveCaps};
+use super::live::{LiveCaps, LiveModels};
 use super::models::{ModelSpec, Thinking};
 use super::wire;
 
@@ -92,13 +92,14 @@ pub(crate) fn plan(spec: Option<&ModelSpec>, effort: Option<&str>, max_tokens: u
 /// from the table, when the last model list (or the cache) gave its
 /// capabilities, as the API says ([`plan_live`]); else [`plan`]'s default.
 pub(crate) fn plan_model(
+    live: &LiveModels,
     model: &str,
     spec: Option<&ModelSpec>,
     effort: Option<&str>,
     max_tokens: u32,
 ) -> Plan {
     if spec.is_none() {
-        if let Some(info) = live::lookup(model) {
+        if let Some(info) = live.lookup(model) {
             if let Some(caps) = info.live {
                 let model_max = u32::try_from(info.max_output).unwrap_or(u32::MAX);
                 let model_max = if model_max == 0 {
@@ -252,7 +253,8 @@ mod tests {
             ..LiveCaps::default()
         };
         let table_id = "claude-sonnet-4-5-20250929";
-        live::remember(&[
+        let live = LiveModels::default();
+        live.remember(&[
             live_info("claude-plan-adaptive", adaptive, &["low", "high", "off"]),
             live_info(
                 "claude-plan-budget",
@@ -262,33 +264,33 @@ mod tests {
             live_info("claude-plan-none", LiveCaps::default(), &[]),
             live_info(table_id, LiveCaps::default(), &[]),
         ]);
-        let p = plan_model("claude-plan-adaptive", None, Some("medium"), 0);
+        let p = plan_model(&live, "claude-plan-adaptive", None, Some("medium"), 0);
         assert_eq!(p.thinking.unwrap()["type"], "adaptive");
         assert_eq!(p.output_config, Some(json!({"effort": "high"})));
         assert_eq!(p.max_tokens, 32_000);
-        let low = plan_model("claude-plan-adaptive", None, Some("low"), 0);
+        let low = plan_model(&live, "claude-plan-adaptive", None, Some("low"), 0);
         assert_eq!(low.output_config, Some(json!({"effort": "low"})));
-        let off = plan_model("claude-plan-adaptive", None, Some("off"), 0);
+        let off = plan_model(&live, "claude-plan-adaptive", None, Some("off"), 0);
         assert_eq!(off.thinking, Some(json!({"type": "disabled"})));
-        let none = plan_model("claude-plan-adaptive", None, None, 0);
+        let none = plan_model(&live, "claude-plan-adaptive", None, None, 0);
         assert_eq!((none.thinking.is_some(), none.output_config), (true, None));
-        let b = plan_model("claude-plan-budget", None, Some("high"), 1000);
+        let b = plan_model(&live, "claude-plan-budget", None, Some("high"), 1000);
         assert_eq!(b.thinking.unwrap()["type"], "enabled");
         assert_eq!(b.betas, [wire::BETA_INTERLEAVED_THINKING]);
         assert_eq!(
-            plan_model("claude-plan-budget", None, None, 0).thinking,
+            plan_model(&live, "claude-plan-budget", None, None, 0).thinking,
             None
         );
         assert_eq!(
-            plan_model("claude-plan-none", None, Some("high"), 0),
+            plan_model(&live, "claude-plan-none", None, Some("high"), 0),
             Plan {
                 max_tokens: 32_000,
                 ..Plan::default()
             }
         );
-        let table = plan_model(table_id, find(table_id), Some("high"), 1000);
+        let table = plan_model(&live, table_id, find(table_id), Some("high"), 1000);
         assert_eq!(table.thinking.unwrap()["type"], "enabled");
-        let unknown = plan_model("claude-plan-unknown", None, Some("max"), 5);
+        let unknown = plan_model(&live, "claude-plan-unknown", None, Some("max"), 5);
         assert_eq!(unknown.output_config, Some(json!({"effort": "max"})));
     }
 }

@@ -334,7 +334,10 @@ fn reflect_off_refuses_and_the_model_pick_prefers_the_setting() {
     config.self_improve = "off".into();
     assert_eq!(Mode::of(&config), Mode::Off);
     config.reflect.model = Some("claude-haiku-5-5".into());
-    assert_eq!(reflect::pick_model(&config), "claude-haiku-5-5");
+    assert_eq!(
+        reflect::pick_model(&config, &Default::default()),
+        "claude-haiku-5-5"
+    );
     let memory = Memory {
         dir: PathBuf::from("m"),
         index: "</memory_index> trick".into(),

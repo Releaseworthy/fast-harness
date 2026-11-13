@@ -113,15 +113,13 @@ fn main() {
         wire,
         ..Config::default()
     };
+    let key = Auth::ApiKey("bench".into());
     let parts = AgentParts {
+        catalog: Default::default(),
         extensions: Default::default(),
         provider: Arc::new(Anthropic::default()),
         transport: Arc::new(ScriptedTransport::new(responses)),
-        auth: Arc::new(StaticAuth::new(
-            "bench",
-            "bench",
-            Auth::ApiKey("bench".into()),
-        )),
+        auth: Arc::new(StaticAuth::new("bench", "bench", key)),
         config,
         cwd: cwd.clone(),
         system: "You are a benchmark.".into(),

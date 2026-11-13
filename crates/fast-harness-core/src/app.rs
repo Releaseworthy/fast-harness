@@ -14,7 +14,7 @@ use crate::config::layers::Layered;
 use crate::config::Config;
 use crate::http::Transport;
 use crate::llm::anthropic::Anthropic;
-use crate::llm::catalog;
+use crate::llm::catalog::{self, Catalog};
 use crate::llm::custom::ProviderFile;
 use crate::llm::{Auth, Provider};
 use crate::net::UreqTransport;
@@ -30,6 +30,9 @@ pub struct Runtime {
     pub transport: Arc<UreqTransport>,
     /// Claude, for every model id no `providers/*.json` provider claims.
     pub provider: Arc<Anthropic>,
+    /// The provider files of the loaded settings and the live model table
+    /// (PLAN.md D67): this runtime's, never another's.
+    pub catalog: Catalog,
     /// Set by the TUI and the GUI: `cacheTtl: auto` then caches the
     /// messages for 1 hour (5 minutes in print mode), PLAN.md D36.
     pub interactive: bool,
@@ -75,7 +78,8 @@ impl Runtime {
 
     pub fn load_at(home: PathBuf) -> Result<Runtime, String> {
         let loaded = settings::load_settings(&home, None, &env_value)?;
-        models::load_cache(&home);
+        let catalog = Catalog::default();
+        models::load_cache(&home, catalog.live());
         let pool = Arc::new(open_pool(&home)?);
         let mut runtime = Runtime {
             home,
@@ -83,7 +87,8 @@ impl Runtime {
             layered: loaded.layered.clone(),
             pool,
             transport: Arc::new(UreqTransport::new()),
-            provider: Arc::new(Anthropic::default()),
+            provider: Arc::new(Anthropic::default().with_live(Arc::clone(catalog.live()))),
+            catalog,
             interactive: false,
             custom: Vec::new(),
             extensions: Arc::default(),
@@ -156,6 +161,7 @@ impl Runtime {
             system,
             cwd: cwd.to_path_buf(),
             extensions: Arc::clone(&self.extensions),
+            catalog: self.catalog.clone(),
         })
     }
 
@@ -303,7 +309,7 @@ pub use slash::{expand_body, help, reflect_args, slash, Slash};
 
 pub use host::RuntimeHost;
 
-pub use models::{read_cache, write_cache, ModelSource, CACHE_FILE, CACHE_VERSION};
+pub use models::{custom_models, read_cache, write_cache, ModelSource, CACHE_FILE, CACHE_VERSION};
 
 impl Runtime {
     /// The model catalog with the credential `auth()`
@@ -316,6 +322,7 @@ impl Runtime {
             self.auth(),
             transport,
             self.provider.clone(),
+            self.catalog.clone(),
         )
     }
 }

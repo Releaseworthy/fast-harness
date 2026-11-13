@@ -8,7 +8,6 @@ use crate::agent::inbox::{self, Inbox};
 use crate::agent::{compact, repair, Agent, Conversation};
 use crate::auth::Lease;
 use crate::events::{AgentEvent, TurnOutcome};
-use crate::llm::catalog::context_window;
 use crate::llm::Completion;
 use crate::tools::hooks::RequestChange;
 use crate::types::{Block, Message, StopReason, Usage};
@@ -265,7 +264,7 @@ impl Turn<'_> {
     /// Traces the answer (and the server's input transformations), adds its
     /// usage to the turn and emits `StepEnd` with the context and window.
     fn record(&mut self, turn: u32, step: u32, done: &Completion, account: &str) -> Res<()> {
-        let window = context_window(&self.agent.parts.config.model);
+        let window = (self.agent.parts.catalog).context_window(&self.agent.parts.config.model);
         let trace = &mut self.conv.trace;
         if let Some(changes) = &done.transformations {
             traced(trace.request_transformations(turn, step, changes))?;

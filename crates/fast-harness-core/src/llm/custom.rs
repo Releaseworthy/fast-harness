@@ -5,11 +5,10 @@
 //! `headers` and `models`; its models are named `<id>/<model id>`. A file
 //! whose id is a built-in provider (`anthropic`; `antigravity` stays reserved for the branch of D53) only
 //! overrides that provider's model numbers (window, maxOutput, price,
-//! compaction). The process-wide registry ([`remember`]) is read by
-//! `catalog`, the pickers, the adapters and `stats`.
+//! compaction). The loaded files live in the runtime's `catalog::Catalog`
+//! (PLAN.md D67), read by the pickers, the adapters and `stats`.
 
-use std::collections::{BTreeMap, HashMap};
-use std::sync::{OnceLock, RwLock};
+use std::collections::BTreeMap;
 
 use serde::Deserialize;
 
@@ -179,88 +178,4 @@ pub fn read(files: &[LayerFile]) -> (Vec<ProviderFile>, Vec<LayerFile>, Vec<Skip
         }
     }
     (out, loaded, skipped)
-}
-
-#[derive(Default)]
-struct Registry {
-    providers: Vec<ProviderFile>,
-    /// Ids and titles kept for the `&'static str` the catalog hands out.
-    names: HashMap<String, &'static str>,
-}
-
-fn registry() -> &'static RwLock<Registry> {
-    static REGISTRY: OnceLock<RwLock<Registry>> = OnceLock::new();
-    REGISTRY.get_or_init(RwLock::default)
-}
-
-/// A process-lifetime copy of `text` (each distinct id or title once).
-fn intern(names: &mut HashMap<String, &'static str>, text: &str) -> &'static str {
-    if let Some(known) = names.get(text) {
-        return known;
-    }
-    let leaked: &'static str = Box::leak(text.to_string().into_boxed_str());
-    names.insert(text.to_string(), leaked);
-    leaked
-}
-
-/// Adds `providers` to the registry, replacing those with the same id.
-pub fn remember(providers: &[ProviderFile]) {
-    let mut reg = registry().write().unwrap_or_else(|p| p.into_inner());
-    for provider in providers {
-        reg.providers.retain(|known| known.id != provider.id);
-        reg.providers.push(provider.clone());
-        let (id, title) = (provider.id.clone(), provider.title().to_string());
-        intern(&mut reg.names, &id);
-        intern(&mut reg.names, &title);
-    }
-}
-
-/// Every remembered provider, in the order they were added.
-pub fn providers() -> Vec<ProviderFile> {
-    let reg = registry().read().unwrap_or_else(|p| p.into_inner());
-    reg.providers.clone()
-}
-
-/// The custom provider ids, in registry order.
-pub fn custom_ids() -> Vec<&'static str> {
-    let reg = registry().read().unwrap_or_else(|p| p.into_inner());
-    let custom = reg.providers.iter().filter(|p| p.is_custom());
-    custom
-        .filter_map(|p| reg.names.get(&p.id).copied())
-        .collect()
-}
-
-/// The custom provider serving `model` (`<id>/<model id>`).
-pub fn provider_of(model: &str) -> Option<(&'static str, ProviderFile)> {
-    let (prefix, _) = model.split_once('/')?;
-    let reg = registry().read().unwrap_or_else(|p| p.into_inner());
-    let file = reg
-        .providers
-        .iter()
-        .find(|p| p.is_custom() && p.id == prefix)?;
-    Some((reg.names.get(prefix).copied()?, file.clone()))
-}
-
-/// The group title of provider `id`, when it is remembered.
-pub fn title_of(id: &str) -> Option<&'static str> {
-    let reg = registry().read().unwrap_or_else(|p| p.into_inner());
-    let file = reg.providers.iter().find(|p| p.id == id)?;
-    reg.names.get(file.title()).copied()
-}
-
-/// The model entry of `model`: `<id>/<model id>` of any remembered
-/// provider, or a bare id in an `anthropic` file.
-pub fn model(model: &str) -> Option<ModelFile> {
-    let (provider, id) = match model.split_once('/') {
-        Some((provider, id)) => (provider, id),
-        None => ("anthropic", model),
-    };
-    let reg = registry().read().unwrap_or_else(|p| p.into_inner());
-    let file = reg.providers.iter().find(|p| p.id == provider)?;
-    file.models.iter().find(|m| m.id == id).cloned()
-}
-
-/// The price of `model`, when its entry has one.
-pub fn price(model_id: &str) -> Option<Price> {
-    model(model_id).and_then(|entry| entry.price)
 }
