@@ -15,7 +15,8 @@ use std::time::{Duration, UNIX_EPOCH};
 /// The index file in each sessions folder.
 pub const INDEX_FILE: &str = "index.json";
 /// Format version of the index; another version is rebuilt.
-pub const VERSION: u32 = 1;
+/// 2: titles of first prompts with images use the user's words (D70).
+pub const VERSION: u32 = 2;
 /// How long a list waits for another process writing the index; after that
 /// it answers without writing.
 const WAIT: Duration = Duration::from_millis(500);

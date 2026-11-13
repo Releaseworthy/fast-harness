@@ -1,7 +1,8 @@
 use fast_harness_core::llm::Timing;
+use fast_harness_core::media;
 use fast_harness_core::session::{self, SessionSummary};
 use fast_harness_core::trace::{self, SessionHeader, TraceWriter};
-use fast_harness_core::types::{Block, Message, Role, StopReason, Usage};
+use fast_harness_core::types::{Block, ImageRef, Message, Role, StopReason, Usage};
 use std::path::{Path, PathBuf};
 
 struct TempDir(PathBuf);
@@ -162,4 +163,29 @@ fn list_is_newest_first_with_titles_and_turns() {
     assert_eq!((old.title.as_str(), old.turns), ("first one", 2));
     assert!(old.last_time >= 1_700_000_000_000);
     assert_eq!(session::latest(home, cwd).unwrap().unwrap().id, "new");
+}
+
+/// A first prompt with images (D70) is titled by the user's words, not by
+/// the `[image N: ...]` labels sent before the images; the label only when
+/// there are no words.
+#[test]
+fn a_first_prompt_with_an_image_is_titled_by_its_text() {
+    let tmp = TempDir::new("image-title");
+    let (home, cwd) = (tmp.0.as_path(), Path::new("F:\\p"));
+    let image = ImageRef::new("F:\\m\\1.png", "image/png", 2048, (640, 480));
+    for (id, words) in [("words", "what is in this picture"), ("bare", "")] {
+        let path = session::log_path(home, cwd, id);
+        let mut w = TraceWriter::create(&path, &header(id, 1)).unwrap();
+        w.turn_start(1).unwrap();
+        let user = media::user_message(words, std::slice::from_ref(&image));
+        w.user_message(1, &user).unwrap();
+    }
+    let list = session::list(home, cwd).unwrap();
+    let title = |id: &str| list.iter().find(|s| s.id == id).unwrap().title.clone();
+    assert_eq!(title("words"), "what is in this picture");
+    assert!(
+        title("bare").starts_with("[image 1: png 640x480"),
+        "{}",
+        title("bare")
+    );
 }

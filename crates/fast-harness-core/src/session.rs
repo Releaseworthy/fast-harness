@@ -12,7 +12,7 @@ pub use index::{latest, list, list_counted, Listing};
 pub use unfinished::{unfinished, Unfinished};
 
 use crate::trace::{self, Record, TraceEvent};
-use crate::types::{Message, Role};
+use crate::types::{Block, Message, Role};
 use std::io;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU32, Ordering};
@@ -133,7 +133,12 @@ fn summarize(header: trace::SessionHeader, events: &[TraceEvent]) -> SessionSumm
             Record::UserMessage(user) => Some(user.message),
             _ => None,
         })
-        .map(|m| m.text().chars().take(TITLE_CHARS).collect::<String>())
+        .map(|m| {
+            title_words(&m)
+                .chars()
+                .take(TITLE_CHARS)
+                .collect::<String>()
+        })
         .unwrap_or_default();
     let turns = events
         .iter()
@@ -152,6 +157,20 @@ fn summarize(header: trace::SessionHeader, events: &[TraceEvent]) -> SessionSumm
         last_time,
         unfinished: unfinished(events),
     }
+}
+
+/// The words a title starts from: with images (D70) the user's own text,
+/// the last block of `media::user_message`, not the `[image N: ...]` labels
+/// before it; the labels only when that text is blank.
+fn title_words(message: &Message) -> String {
+    if message.images().next().is_some() {
+        if let Some(Block::Text { text }) = message.content.last() {
+            if !text.trim().is_empty() {
+                return text.trim_start().to_string();
+            }
+        }
+    }
+    message.text()
 }
 
 /// True for the event types that carry a message (PLAN.md D61).
