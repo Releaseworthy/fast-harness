@@ -51,6 +51,7 @@ fn start(app: &mut App, ui: &MainWindow, id: String, cwd: PathBuf, generation: u
     if let Err(err) = spawned {
         app.opens.failed();
         ui.set_loading(false);
+        crate::drafts::back_to_shown(app, ui);
         show_error(ui, format!("Cannot start the session read: {err}"));
     }
 }
@@ -81,6 +82,7 @@ fn shown(app: &mut App, ui: &MainWindow, cwd: &Path, result: Result<Opened, Stri
         Ok(opened) => opened,
         Err(err) => {
             ui.set_loading(false);
+            crate::drafts::back_to_shown(app, ui);
             return show_error(ui, err);
         }
     };
@@ -100,6 +102,7 @@ fn shown(app: &mut App, ui: &MainWindow, cwd: &Path, result: Result<Opened, Stri
         }
         Err(err) => {
             ui.set_loading(false);
+            crate::drafts::back_to_shown(app, ui);
             show_error(ui, error_text(err));
         }
     }

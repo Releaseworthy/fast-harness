@@ -70,6 +70,7 @@ With `"approvals": "ask"` a call can wait for an answer (PLAN.md D64). Both fron
 - `MainWindow.approval`: property <ApprovalView>
 - `MainWindow.busy`: property <bool>
 - `MainWindow.cancel-sign-in`: callback
+- `MainWindow.draft`: property <string>
 - `MainWindow.effort-index`: property <int>
 - `MainWindow.effort-picked`: callback
 - `MainWindow.efforts`: property <[string]>
@@ -107,6 +108,7 @@ With `"approvals": "ask"` a call can wait for an answer (PLAN.md D64). Both fron
 - `MainWindow.send`: callback
 - `MainWindow.send-key`: property <string>
 - `MainWindow.set-color-scheme`: function
+- `MainWindow.show-draft`: function
 - `MainWindow.side-rows`: property <[SideRow]>
 - `MainWindow.sidebar-open`: property <bool>
 - `MainWindow.sign-in`: callback

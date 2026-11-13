@@ -1,6 +1,7 @@
 import { Theme, Card, Halo } from "parts.slint";
 import { Icons } from "icons.slint";
-import { ActionButton, TextArea } from "widgets.slint";
+import { ActionButton } from "widgets.slint";
+import { TextArea } from "textarea.slint";
 
 // The message composer: a rounded card with the text area on top and a
 // toolbar below. Children placed inside `Composer { ... }` go to the left
@@ -35,6 +36,11 @@ export component Composer inherits Rectangle {
         : root.resume-word != "" ? "Last turn " + root.resume-word + ": Resume continues it"
         : root.hint;
     public function focus-input() { area.focus(); }
+    // Shows another session's draft (D65): its text, the cursor at byte `cursor`.
+    public function show-text(text: string, cursor: int) {
+        area.text = text;
+        area.set-cursor(cursor);
+    }
     // A floating card: elevation, a glow halo and an accent edge while focused.
     if area.has-focus: Halo { radius: Theme.radius-xl; }
     Card {

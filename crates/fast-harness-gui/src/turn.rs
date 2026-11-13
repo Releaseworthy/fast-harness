@@ -148,6 +148,8 @@ fn shown_session(app: &mut App) -> Result<String, String> {
     // The window shows approval requests and answers them (D64).
     session.set_answering(true);
     app.runs.id = Some(session.id.clone());
+    // The new session's composer now belongs to its id (D65).
+    app.drafts.created(&session.id);
     app.runs.shown.cwd = app.cwd.clone();
     app.runs.shown.session = Some(session.clone());
     Ok(session.id.clone())

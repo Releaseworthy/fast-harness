@@ -44,6 +44,8 @@ pub struct App {
     pub trace_load: crate::trace_load::TraceLoad,
     /// The session open on a worker (D60, gate G10).
     pub opens: crate::open_load::Opens,
+    /// Each session's unsent composer text (D65).
+    pub drafts: fast_harness_core::app::drafts::Drafts,
 }
 
 thread_local! {
@@ -99,6 +101,8 @@ impl App {
             side,
             trace_load: Default::default(),
             opens: Default::default(),
+            // The window starts with a new session.
+            drafts: Default::default(),
         }
     }
 
@@ -177,6 +181,8 @@ impl App {
 
     /// A new session in the current folder; a running turn goes on parked.
     pub fn new_session(&mut self, ui: &MainWindow) {
+        // The new session's own draft (D65), kept while other sessions show.
+        crate::drafts::switch(self, ui, None);
         let cwd = self.cwd.clone();
         let fresh = || Ok(Run::new(cwd, None, Transcript::new()));
         let shown = self.runs.show(None, fresh);
@@ -188,6 +194,8 @@ impl App {
     /// Shows session `id`: its live run when it has one, else its log, which
     /// a worker opens (D60): the UI thread never parses a log (gate G10).
     pub fn open_session(&mut self, ui: &MainWindow, id: &str) {
+        // The composer is `id`'s from now on, also while its log loads (D65).
+        crate::drafts::switch(self, ui, Some(id));
         // The shown session needs no read (a running turn may be appending
         // to its log), and a parked run shows at once: either way an open
         // asked before is left, so its result is dropped.

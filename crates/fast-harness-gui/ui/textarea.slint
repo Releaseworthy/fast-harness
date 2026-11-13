@@ -1,0 +1,60 @@
+import { Theme } from "parts.slint";
+
+// A multi-line text area: a TextInput in a Flickable that follows the
+// cursor (as the std TextEdit does), a placeholder and a focus state the
+// parent draws (`has-focus`). `key-pressed` runs before the input sees the
+// key, so a parent can take Enter and leave Shift+Enter to the input.
+export component TextArea {
+    in-out property <string> text <=> input.text;
+    in property <string> placeholder;
+    in property <length> min-lines-height: 44px;
+    in property <length> grow-limit: 200px;
+    in property <length> font-size: Theme.font-m;
+    out property <bool> has-focus: input.has-focus;
+    callback key-pressed(KeyEvent) -> EventResult;
+    callback edited(string);
+    public function select-all() { input.select-all(); }
+    // Puts the cursor at UTF-8 byte `offset` (a draft shown again, D65).
+    public function set-cursor(offset: int) { input.set-selection-offsets(offset, offset); }
+    forward-focus: input;
+    preferred-height: max(root.min-lines-height, min(root.grow-limit, input.preferred-height));
+    min-height: root.min-lines-height;
+    accessible-role: text-input;
+    accessible-label: root.placeholder;
+    accessible-value: root.text;
+    flick := Flickable {
+        content-height: max(self.height, input.preferred-height);
+        input := TextInput {
+            width: flick.width;
+            height: max(flick.height, self.preferred-height);
+            single-line: false;
+            wrap: word-wrap;
+            font-size: root.font-size;
+            color: Theme.text;
+            selection-background-color: Theme.selection;
+            selection-foreground-color: Theme.text;
+            page-height: flick.height;
+            accessible-role: none;
+            key-pressed(event) => { return root.key-pressed(event); }
+            edited => { root.edited(self.text); }
+            cursor-position-changed(cpos) => {
+                if cpos.y + flick.content-y < 0px {
+                    flick.content-y = -cpos.y;
+                } else if cpos.y + flick.content-y > flick.height - 20px {
+                    flick.content-y = min(0px, flick.height - cpos.y - 20px);
+                }
+            }
+        }
+    }
+    if root.text == "" && input.preedit-text == "": Text {
+        x: 0;
+        y: 0;
+        width: root.width;
+        text: root.placeholder;
+        color: Theme.dim;
+        font-size: root.font-size;
+        vertical-alignment: top;
+        overflow: elide;
+        accessible-role: none;
+    }
+}

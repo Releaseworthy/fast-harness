@@ -75,6 +75,8 @@ export component MainWindow inherits Window {
     // A session's log is being opened on a worker (D60, gate G10): the
     // transcript says so in a word and the composer holds until it comes.
     in property <bool> loading;
+    // The composer's text: the draft of the session shown or opening (D65).
+    in-out property <string> draft <=> composer.text;
     // Steers not yet read and queued follow-ups of the shown session.
     in property <[QueueChip]> queue-chips;
     // How the shown session's last turn stopped when Resume applies.
@@ -175,6 +177,11 @@ export component MainWindow inherits Window {
         clip.select-all();
         clip.copy();
         clip.text = "";
+    }
+
+    // Another session's draft in the composer, the cursor at byte `cursor` (D65).
+    public function show-draft(text: string, cursor: int) {
+        composer.show-text(text, cursor);
     }
 
     public function to-bottom() {

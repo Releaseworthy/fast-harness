@@ -9,6 +9,7 @@ mod appearance;
 mod approval;
 mod config_page;
 mod crash;
+mod drafts;
 mod format;
 mod host;
 mod keys;
