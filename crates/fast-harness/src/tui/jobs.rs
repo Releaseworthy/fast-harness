@@ -32,7 +32,9 @@ impl Tui {
     /// up to 5 s for the exit); the strip shows the end. False for other
     /// text.
     pub(super) fn kill_command(&mut self, text: &str) -> bool {
-        let Some(id) = text.trim().strip_prefix("/kill") else {
+        // `/kill` alone or with an id; `/killport` stays a user command.
+        let rest = text.trim().strip_prefix("/kill");
+        let Some(id) = rest.filter(|r| r.is_empty() || r.starts_with(char::is_whitespace)) else {
             return false;
         };
         let id = id.trim().to_string();

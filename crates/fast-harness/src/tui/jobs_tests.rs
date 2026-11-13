@@ -137,3 +137,16 @@ fn the_worker_feeds_the_line_drops_a_stale_list_and_kill_ends_the_job() {
     drop(tui);
     let _ = std::fs::remove_dir_all(&root);
 }
+
+#[test]
+fn only_kill_as_a_word_is_the_kill_command() {
+    let root = root("word");
+    let (mut tui, _rx) = tui(&root);
+    assert!(
+        !tui.kill_command("/killport 8080"),
+        "a user command keeps its name"
+    );
+    assert!(tui.kill_command("/kill job-9"));
+    drop(tui);
+    let _ = std::fs::remove_dir_all(&root);
+}
