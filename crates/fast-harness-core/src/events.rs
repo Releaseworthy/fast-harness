@@ -3,6 +3,7 @@
 //! tracing is written to the session log before it is sent.
 
 use crate::llm::Timing;
+pub use crate::tools::ask::{Question, QuestionAnswer, QuestionOption};
 use crate::tools::Effect;
 use crate::types::{StopReason, Usage};
 
@@ -140,6 +141,28 @@ pub enum AgentEvent {
         id: String,
         answer: String,
     },
+    /// An `ask_user_question` call waits for the user's answers (PLAN.md
+    /// D81); answer with `service::Session::reply`. Live only.
+    QuestionRequest(QuestionRequest),
+    /// Question request `id` ended: `answered`, `skipped`, `cancelled` or
+    /// `paused`. Live only.
+    QuestionDone {
+        id: String,
+        answer: String,
+    },
+}
+
+/// Questions of one `ask_user_question` call (PLAN.md D81).
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[non_exhaustive]
+pub struct QuestionRequest {
+    /// Unique in the session: what a reply names.
+    pub id: String,
+    /// The model's tool call id.
+    pub call_id: String,
+    pub questions: Vec<Question>,
+    /// The subagent that asks; `None` for the session itself.
+    pub agent: Option<String>,
 }
 
 /// One question to the user before a call runs (PLAN.md D64).

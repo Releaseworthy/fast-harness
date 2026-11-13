@@ -17,6 +17,7 @@ pub use jobs::{JobInfo, JobState, Jobs};
 pub use output::{Part, ToolOutput};
 
 mod args;
+pub mod ask;
 mod atomic;
 pub mod budget;
 pub(crate) mod command;
@@ -334,7 +335,7 @@ impl Registry {
 }
 
 /// Registry with `find_tools` and the built-in tools: read, write, edit,
-/// shell, grep, glob, job_output, job_kill, job_list.
+/// shell, grep, glob, job_output, job_kill, job_list, ask_user_question.
 pub fn builtin() -> Registry {
     let mut registry = Registry::with_find();
     for tool in builtin_tools() {
@@ -354,6 +355,7 @@ fn builtin_tools() -> Vec<Box<dyn Tool>> {
         Box::new(glob::GlobTool),
     ];
     tools.extend(job_tools::all());
+    tools.push(Box::new(ask::AskTool));
     tools
 }
 

@@ -48,7 +48,7 @@ fn search_ranks_names_then_parameters_then_descriptions() {
     assert_eq!(spec.name, find::FIND_TOOLS);
     assert!(spec
         .description
-        .contains("Tools: read, write, edit, shell, grep, glob, job_output, job_kill, job_list."));
+        .contains("Tools: read, write, edit, shell, grep, glob, job_output, job_kill, job_list, ask_user_question."));
     assert!(!spec.description.contains("\"properties\""));
 }
 
@@ -141,7 +141,7 @@ fn check_claude_bodies(transport: &ScriptedTransport) {
     // The job tools (D68) are deferred like the rest.
     let names: Vec<&str> = tools.iter().filter_map(|t| t["name"].as_str()).collect();
     assert!(
-        names.ends_with(&["job_output", "job_kill", "job_list"]),
+        names.ends_with(&["job_output", "job_kill", "job_list", "ask_user_question"]),
         "{names:?}"
     );
     for tool in &tools[1..] {

@@ -14,6 +14,8 @@ use crate::config::approvals::{self, Approvals, Subject};
 use crate::events::{AgentEvent, ApprovalRequest};
 use crate::tools::ToolOutput;
 
+mod ask;
+
 /// The longest sleep of a waiting call between looks at its own cancel
 /// flag (a child stopped by `agent_stop`); answers, cancel and pause of
 /// the session wake it at once.
@@ -62,6 +64,11 @@ struct State {
     stop: Option<Stop>,
     /// A front end answers requests; without one a request is refused.
     answering: bool,
+    /// A front end shows sk_user_question calls (D81); without one the
+    /// tool refuses at once.
+    asking: bool,
+    questions: Vec<crate::events::QuestionRequest>,
+    replies: Vec<(String, ask::Reply)>,
     next: u64,
 }
 
@@ -236,7 +243,7 @@ fn stopped(stop: Stop) -> ToolOutput {
 
 /// The subagent tools run no program themselves; their children ask.
 fn exempt(tool: &str) -> bool {
-    tool == SUBAGENT || child_tools::NAMES.contains(&tool)
+    tool == SUBAGENT || tool == crate::tools::ask::NAME || child_tools::NAMES.contains(&tool)
 }
 
 /// The gate for one call with its final arguments `raw`: `None` runs it,
@@ -249,6 +256,9 @@ pub(super) fn check(
     emit: &dyn Fn(AgentEvent),
     decisions: Decisions<'_>,
 ) -> Option<ToolOutput> {
+    if tool == crate::tools::ask::NAME {
+        return ask::check(agent, (call_id, raw), cancel, emit);
+    }
     let config = &agent.parts.config;
     if config.approvals == Approvals::Off || exempt(tool) {
         return None;

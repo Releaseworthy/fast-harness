@@ -216,6 +216,23 @@ impl Session {
         self.gate.set_answering(on);
     }
 
+    /// A front end that shows `ask_user_question` calls and replies says
+    /// so; until then the tool answers that nobody can reply (D81).
+    pub fn set_asking(&self, on: bool) {
+        self.gate.set_asking(on);
+    }
+
+    /// The question requests waiting for a reply, oldest first (D81).
+    pub fn questions(&self) -> Vec<crate::events::QuestionRequest> {
+        self.gate.questions()
+    }
+
+    /// Replies to question request `id` (`None`: skipped); false when none
+    /// such waits.
+    pub fn reply(&self, id: &str, reply: Option<Vec<crate::events::QuestionAnswer>>) -> bool {
+        self.gate.reply(id, reply)
+    }
+
     pub(super) fn gate(&self) -> Arc<Gate> {
         Arc::clone(&self.gate)
     }
