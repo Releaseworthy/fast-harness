@@ -19,7 +19,13 @@ slint::slint! {
         height: 80px;
         in property <[JobChip]> jobs;
         out property <string> killed;
+        out property <length> used-width: strip.used-width;
+        out property <length> strip-height: strip.height;
         VerticalLayout {
+            strip := JobsRow {
+                column: 560px;
+                jobs: root.jobs;
+            }
             // As in main.slint: no row while the session has no jobs.
             if root.jobs.length > 0: JobsRow {
                 column: 560px;
@@ -113,4 +119,15 @@ fn the_strip_draws_only_while_the_session_has_jobs() {
     assert_ne!(empty, shown, "the strip draws with jobs");
     ui.set_jobs(model(&[]));
     assert_eq!(empty, render(&window), "no strip without jobs");
+    // Eight jobs (the cap) all fit the column, on more lines (found in the
+    // real window, 2026-11-13: job-5 was cut and jobs 6 to 8 unreachable).
+    let one_line = {
+        ui.set_jobs(model(&rows()[..1]));
+        ui.get_strip_height()
+    };
+    let eight: Vec<JobRow> = (1..=8).map(|i| row(&format!("job-{i}"), "running", Mark::Running)).collect();
+    ui.set_jobs(model(&eight));
+    let used = ui.get_used_width();
+    assert!(used > 0.0 && used <= 560.0, "the chips take {used} px of 560");
+    assert!(ui.get_strip_height() > one_line, "more than one line");
 }

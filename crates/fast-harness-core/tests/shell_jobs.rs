@@ -191,7 +191,11 @@ fn the_running_cap_and_the_output_cap_hold() {
         jobs.start("sleep 30", &env.cwd, None).unwrap();
     }
     let over = jobs.start("sleep 30", &env.cwd, None).unwrap_err();
-    assert!(over.contains("the cap"), "{over}");
+    // Plain words (found in the real window, 2026-11-13: "already run").
+    assert_eq!(
+        over,
+        "8 background jobs are running in this session, the cap: stop one with job_kill first"
+    );
     jobs.kill("job-1").unwrap();
     let id = jobs
         .start("'x' * 100000", &env.cwd, Some(&env.home))

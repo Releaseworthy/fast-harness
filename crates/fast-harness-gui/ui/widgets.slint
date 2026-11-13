@@ -189,6 +189,10 @@ export component Dropdown inherits Rectangle {
     in-out property <int> highlight: -1;
     property <length> list-height: min(8, max(1, root.model.length)) * Theme.control-height + 8px;
     property <bool> open;
+    // The first row the open list shows: the one before the picked row, so
+    // the picked row and the ones after it are in view (a title above it
+    // too), and never past the last full page.
+    out property <int> first-row: max(0, min(root.highlight - 1, root.model.length - 8));
 
     function show-list() {
         root.highlight = root.current-index;
@@ -333,7 +337,7 @@ export component Dropdown inherits Rectangle {
                 width: parent.width - 8px;
                 height: parent.height - 8px;
                 content-height: root.model.length * Theme.control-height;
-                content-y: -max(0, root.highlight - 7) * Theme.control-height;
+                content-y: -root.first-row * Theme.control-height;
                 for item[i] in root.model: DropdownItem {
                     y: i * Theme.control-height;
                     width: parent.width;

@@ -19,6 +19,10 @@ mod composer_tests;
 #[cfg(test)]
 mod drafts_tests;
 #[cfg(test)]
+mod dropdown_tests;
+#[cfg(test)]
+mod jobs_layout_tests;
+#[cfg(test)]
 mod layout_tests;
 #[cfg(test)]
 mod loading_tests;

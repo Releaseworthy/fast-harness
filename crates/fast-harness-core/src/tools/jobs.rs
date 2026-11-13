@@ -158,7 +158,7 @@ impl Jobs {
         let running = table.jobs.iter().filter(|job| job.lock().exit.is_none());
         if running.count() >= MAX_RUNNING {
             return Err(format!(
-                "{MAX_RUNNING} background jobs already run in this session (the cap): \
+                "{MAX_RUNNING} background jobs are running in this session, the cap: \
                  stop one with job_kill first"
             ));
         }

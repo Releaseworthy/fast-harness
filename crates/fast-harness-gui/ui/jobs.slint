@@ -61,22 +61,30 @@ component JobLine inherits Rectangle {
     }
 }
 
-// The jobs of the shown session side by side, centred in a chat `column`;
+// The jobs of the shown session, centred in a chat `column`: as many chips
+// of at least `chip-min` side by side as fit, then more lines, so every chip
+// is in view (a single line cut chips off at the right edge, 2026-11-13).
+// Positions are bindings: they change only with the list or the width.
 // `kill(id)` stops job `id`. main.slint shows it only while there are jobs.
 export component JobsRow inherits Rectangle {
     in property <[JobChip]> jobs;
     in property <length> column;
     callback kill(string);
-    height: strip.preferred-height + Theme.space-s;
-    strip := HorizontalLayout {
-        x: (parent.width - self.width) / 2;
-        y: Theme.space-s;
-        width: root.column;
-        height: self.preferred-height;
-        spacing: 4px;
-        for j in root.jobs: JobLine {
-            job: j;
-            kill => { root.kill(j.id); }
-        }
+    property <length> gap: 4px;
+    property <length> chip-min: 220px;
+    property <int> per-line: max(1, floor((root.column + root.gap) / (root.chip-min + root.gap)));
+    property <int> lines: ceil(root.jobs.length / root.per-line);
+    property <length> chip-width: (root.column - (root.per-line - 1) * root.gap) / root.per-line;
+    // The width the chips take (for the tests).
+    out property <length> used-width: max(0px, min(root.jobs.length, root.per-line) * (root.chip-width + root.gap) - root.gap);
+    height: max(0px, root.lines * (Theme.control-height + root.gap) - root.gap) + Theme.space-s;
+    accessible-role: list;
+    accessible-label: "Background jobs";
+    for j[i] in root.jobs: JobLine {
+        x: (root.width - root.column) / 2 + mod(i, root.per-line) * (root.chip-width + root.gap);
+        y: Theme.space-s + floor(i / root.per-line) * (Theme.control-height + root.gap);
+        width: root.chip-width;
+        job: j;
+        kill => { root.kill(j.id); }
     }
 }
