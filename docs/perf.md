@@ -237,3 +237,20 @@ With a job the CPU is the job's own pipe readers (one line a second) plus the tu
 | 10 image rows (4 runs) | 21.2, 22.5, 21.5, 20.9 MB | 140.6, 765.6, 156.2, 203.1 ms |
 
 Ten image rows cost about 0.6 to 1.6 MB of private working set over ten text rows: ten 128 px thumbnails (64 KB at most each) plus the image rows' layout. The idle CPU after ten turns is the same with and without images (one 765.6 ms outlier of four image runs); the thumbnail worker ends after each batch and nothing polls. Where the idle CPU after ten turns comes from (it is 0 to 15.6 ms with no rows) is not measured here. Executable: 31,783,424 bytes.
+
+## Idle wakeups: caret rest and no window-state timer (2026-11-13)
+
+The idle CPU after ten turns above was the focused composer's caret: Slint 1.18.1 blinks a focused TextInput (`TextCursorBlinker`, every 530 ms here, half of the `GetCaretBlinkTime` cycle) for as long as it thinks the window is active, one frame per blink. A second source was `window_state.rs` re-reading the window state with a 200 ms repeating timer. Now a winit `Resized` re-reads the state, and after the caret timeout (`SPI_GETCARETTIMEOUT`, 5000 ms by default) without input while the composer has focus the window tells Slint it is inactive, so the caret hides and its timer ends; the next input wakes it (`src/window_events.rs`, docs/pitfalls-gui.md).
+
+Method: `out\fh-idle2\measure.ps1` (outside the repo), release builds, before = `out\fh-idle\before.exe` (built 2026-11-13 18:39 from main before 54eae3a, which changed only project lookup in core), after = this commit's tree. A copy of the exe, a fresh `FAST_HARNESS_HOME` with only a fake OpenAI-compatible provider (a local Bun server), 10 turns typed in the composer, a click into the composer, 10 s idle, private working set, then CPU time and per-thread context switches over 30 s; runs alternated. GPU not sampled.
+
+| Run | Before | After |
+|---|---|---|
+| 10 turns, composer focused: CPU over 30 s (3 runs) | 171.9, 125.0, 171.9 ms | 0.0, 0.0, 0.0 ms |
+| 10 turns: busiest thread's context switches over 30 s | 1253, 648, 844 | 129, 88, 104 |
+| 10 turns: private working set | 20.3, 20.5, 20.5 MB | 20.5, 19.7, 20.3 MB |
+| Fresh window: CPU over 30 s | 0.0 ms | 0.0 ms |
+| Fresh window: busiest thread's context switches | 555 | 85 |
+| Fresh window: private working set | 18.2 MB | 18.2 MB |
+
+Checked in the real window (`out\fh-idle2\verify.ps1`, shots `v-*.png`): after `ShowWindow` maximize the title bar shows the restore glyph, after restore the maximize glyph (the first build read Slint's `is_maximized` in the resize hook and showed the state before; it now asks winit); text typed after a rest arrives in full and Enter sends it.

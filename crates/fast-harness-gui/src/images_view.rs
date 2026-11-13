@@ -28,23 +28,13 @@ pub fn connect(ui: &MainWindow) {
     ui.on_remove_image(|index| {
         with_app(|app, ui| remove(app, ui, index));
     });
-    connect_drop(ui);
 }
 
-/// Files dropped on the window attach, one by one, on the UI thread.
-fn connect_drop(ui: &MainWindow) {
-    use slint::winit_030::winit::event::WindowEvent;
-    use slint::winit_030::{EventResult, WinitWindowAccessor};
-    use slint::ComponentHandle;
-    ui.window().on_winit_window_event(|_, event| match event {
-        WindowEvent::DroppedFile(path) => {
-            let path = path.clone();
-            let _ = slint::invoke_from_event_loop(move || {
-                with_app(|app, ui| attach(app, ui, &path));
-            });
-            EventResult::PreventDefault
-        }
-        _ => EventResult::Propagate,
+/// A file dropped on the window (`window_events`, the window's one winit
+/// hook) attaches on the UI thread, one by one.
+pub fn dropped(path: PathBuf) {
+    let _ = slint::invoke_from_event_loop(move || {
+        with_app(|app, ui| attach(app, ui, &path));
     });
 }
 

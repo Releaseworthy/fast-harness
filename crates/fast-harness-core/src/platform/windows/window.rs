@@ -1,14 +1,28 @@
-//! The large window icon (taskbar, Alt-Tab) from the exe's icon group 1.
+//! The large window icon (taskbar, Alt-Tab) from the exe's icon group 1,
+//! the main window handle and the caret timeout.
+
+use std::time::Duration;
 
 use windows_sys::Win32::Foundation::{HWND, LPARAM};
 use windows_sys::Win32::System::Threading::GetCurrentThreadId;
 use windows_sys::Win32::UI::WindowsAndMessaging::{
     EnumThreadWindows, GetSystemMetrics, GetWindow, GetWindowLongPtrW, IsWindowVisible, LoadImageW,
-    SendMessageW, GWLP_HINSTANCE, GW_OWNER, ICON_BIG, IMAGE_ICON, LR_DEFAULTCOLOR, SM_CXICON,
-    SM_CYICON, WM_SETICON,
+    SendMessageW, SystemParametersInfoW, GWLP_HINSTANCE, GW_OWNER, ICON_BIG, IMAGE_ICON,
+    LR_DEFAULTCOLOR, SM_CXICON, SM_CYICON, SPI_GETCARETTIMEOUT, WM_SETICON,
 };
 
 use crate::platform::PlatformError;
+
+/// How long a text caret blinks after the last input (`SPI_GETCARETTIMEOUT`,
+/// 5000 ms by default); `None` when the call fails or gives 0.
+pub fn caret_timeout() -> Option<Duration> {
+    let mut ms: u32 = 0;
+    // SAFETY: SPI_GETCARETTIMEOUT writes one DWORD through `pvparam`, which
+    // points at `ms` for the whole call; no profile is written (flags 0).
+    let ok =
+        unsafe { SystemParametersInfoW(SPI_GETCARETTIMEOUT, 0, (&mut ms as *mut u32).cast(), 0) };
+    (ok != 0 && ms != 0).then(|| Duration::from_millis(u64::from(ms)))
+}
 
 /// The resource id of the icon group `fast-harness-gui/build.rs` embeds.
 const ICON_GROUP: usize = 1;

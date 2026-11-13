@@ -3,6 +3,14 @@ import { Icons } from "icons.slint";
 import { ActionButton, IconButton } from "widgets.slint";
 import { TextArea } from "textarea.slint";
 
+// The composer's caret rest (`src/window_events.rs`): Rust reads whether the
+// composer has focus, and the composer keeps its focus look while its caret
+// rests (Slint then sees the window inactive, so `has-focus` is false).
+export global Caret {
+    in-out property <bool> composer;
+    in-out property <bool> resting;
+}
+
 // The message composer: a rounded card with the text area on top and a
 // toolbar below. Children placed inside `Composer { ... }` go to the left
 // slot of the toolbar (a HorizontalLayout), e.g. model and effort dropdowns.
@@ -43,14 +51,17 @@ export component Composer inherits Rectangle {
         area.text = text;
         area.set-cursor(cursor);
     }
+    property <bool> focused: area.has-focus;
+    changed focused => { Caret.composer = self.focused; }
+    property <bool> lit: area.has-focus || Caret.resting;
     // A floating card: elevation, a glow halo and an accent edge while focused.
-    if area.has-focus: Halo { radius: Theme.radius-xl; }
+    if root.lit: Halo { radius: Theme.radius-xl; }
     Card {
         radius: Theme.radius-xl;
         elevation: 2;
-        edge: area.has-focus ? Theme.accent : Theme.border;
+        edge: root.lit ? Theme.accent : Theme.border;
     }
-    if area.has-focus: Rectangle {
+    if root.lit: Rectangle {
         border-radius: Theme.radius-xl;
         border-width: 2px;
         border-color: Theme.accent;

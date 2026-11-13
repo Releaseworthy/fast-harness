@@ -7,7 +7,7 @@ import { UndoRow } from "undo.slint";
 import { ApprovalPrompt } from "approval.slint";
 import { Theme } from "parts.slint";
 import { Dropdown } from "widgets.slint";
-import { Composer } from "composer.slint";
+import { Composer, Caret } from "composer.slint";
 import { TranscriptView } from "transcript.slint";
 import { Sidebar } from "sidebar.slint";
 import { AccountsPage } from "accounts.slint";
@@ -24,7 +24,7 @@ import { TabStrip, StatusBar, ErrorBanner } from "panel.slint";
 // The icon font (Symbols Nerd Font subset); `Theme.symbols` names it.
 import "../fonts/FastHarnessIcons.ttf";
 
-export { MsgRow, SessionRow, SideRow, AccountRow, TraceRow, ProviderCard, QueueChip, JobChip, ApprovalView, ImageChip, Theme }
+export { MsgRow, SessionRow, SideRow, AccountRow, TraceRow, ProviderCard, QueueChip, JobChip, ApprovalView, ImageChip, Theme, Caret }
 
 // No native frame: the title bar (titlebar.slint) draws the window
 // controls; a 1px line edges the window while it is not maximized.

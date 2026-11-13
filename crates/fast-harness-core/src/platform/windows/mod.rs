@@ -18,4 +18,4 @@ pub use open::{open_folder, open_url};
 pub use process::{ended_by_kill, ProcessGroup};
 pub use random::random_fill;
 pub use secret::{protect, unprotect};
-pub use window::{set_big_window_icon, thread_window};
+pub use window::{caret_timeout, set_big_window_icon, thread_window};

@@ -1,24 +1,19 @@
 //! Minimize, maximize or restore and the title-bar double click go through
 //! one Rust path that reads the real window state; the `win-maximized`
 //! property the restore glyph and the window edge follow is set from that
-//! state, and a timer re-reads it so Win+Up or Aero snap keep it in sync.
+//! state, and every resize re-reads it (`window_events`) so Win+Up, Aero
+//! snap or a restore from the taskbar keep it in sync. A 200 ms polling timer
+//! did that before and woke the idle window about 150 times per 30 s.
 
 use std::cell::Cell;
 use std::time::{Duration, Instant};
 
-use slint::{ComponentHandle, Timer, TimerMode};
+use slint::ComponentHandle;
 
 use crate::MainWindow;
 
 /// Two clicks on the empty title bar within this time maximize or restore.
 const DOUBLE_CLICK: Duration = Duration::from_millis(500);
-
-/// How often the real window state is re-read.
-const SYNC_EVERY: Duration = Duration::from_millis(200);
-
-thread_local! {
-    static SYNC: Timer = Timer::default();
-}
 
 /// True when a click at `now` follows the one at `last` within `DOUBLE_CLICK`.
 fn is_double(last: Option<Instant>, now: Instant) -> bool {
@@ -48,34 +43,32 @@ pub fn connect(ui: &MainWindow) {
             toggle(&ui);
         }
     });
-    start_sync(ui);
+    sync(ui);
 }
 
 /// Maximizes or restores from the real state, not from a property.
 fn toggle(ui: &MainWindow) {
-    let window = ui.window();
-    let maximize = !window.is_maximized();
-    window.set_maximized(maximize);
+    let maximize = !is_maximized(ui);
+    ui.window().set_maximized(maximize);
     ui.set_win_maximized(maximize);
 }
 
-fn sync(ui: &MainWindow) {
-    let maximized = ui.window().is_maximized();
+/// The live state of the native window (winit asks the OS). Slint's own
+/// `Window::is_maximized` lags until Slint has handled the resize, and the
+/// resize hook runs before that: it showed the glyph of the state before.
+fn is_maximized(ui: &MainWindow) -> bool {
+    use slint::winit_030::WinitWindowAccessor;
+    let window = ui.window();
+    (window.with_winit_window(|native| native.is_maximized()))
+        .unwrap_or_else(|| window.is_maximized())
+}
+
+/// Sets `win-maximized` from the real window state when it differs.
+pub fn sync(ui: &MainWindow) {
+    let maximized = is_maximized(ui);
     if ui.get_win_maximized() != maximized {
         ui.set_win_maximized(maximized);
     }
-}
-
-fn start_sync(ui: &MainWindow) {
-    sync(ui);
-    let weak = ui.as_weak();
-    SYNC.with(|timer| {
-        timer.start(TimerMode::Repeated, SYNC_EVERY, move || {
-            if let Some(ui) = weak.upgrade() {
-                sync(&ui);
-            }
-        });
-    });
 }
 
 #[cfg(test)]

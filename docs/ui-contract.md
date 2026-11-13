@@ -54,6 +54,8 @@ With `"approvals": "ask"` a call can wait for an answer (PLAN.md D64). Both fron
 - `AppearanceUi.pick`: callback
 - `AppearanceUi.reload`: callback
 - `AppearanceUi.themes`: property <[ThemeCard]>
+- `Caret.composer`: property <bool>
+- `Caret.resting`: property <bool>
 - `ConfigUi.action`: callback
 - `ConfigUi.files`: property <string>
 - `ConfigUi.folder`: property <string>
