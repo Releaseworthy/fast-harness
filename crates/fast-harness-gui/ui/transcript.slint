@@ -181,10 +181,12 @@ export component TranscriptView {
     // How far the view is above the bottom: exact while the last row is
     // laid out, whatever the ListView's height estimate.
     property <length> gap: list.content-y - root.bottom;
-    // `gap` and `content-height` at the last `content-y` change: the gap
-    // growing with an unchanged height is the user's scroll.
+    // `gap` at the last `content-y` change: reaching the bottom follows
+    // again. Leaving it is a user action only (`scrolled`, the bar's
+    // `scroll-to`): a growing gap is not, since the list moves `content-y`
+    // itself while it measures the rows of a session just shown, and that
+    // read as a scroll up (2026-11-13: Jump to latest after a switch).
     property <length> last-gap;
-    property <length> last-height;
     callback toggle(int);
     callback copy(string);
     callback link(string);
@@ -197,7 +199,6 @@ export component TranscriptView {
     public function to-bottom() {
         root.follow = true;
         list.content-y = root.bottom;
-        root.last-height = list.content-height;
     }
 
     list := ListView {
@@ -214,19 +215,14 @@ export component TranscriptView {
             root.follow = false;
         }
         changed content-y => {
-            if (root.gap > root.last-gap + 0.5px && self.content-height == root.last-height) {
-                root.follow = false;
-            } else if (root.gap <= 1px && root.last-gap > 1px) {
+            if (root.gap <= 1px && root.last-gap > 1px) {
                 root.follow = true;
             }
             root.last-gap = root.gap;
-            root.last-height = self.content-height;
         }
         changed content-height => {
             if (root.follow) {
                 self.content-y = root.bottom;
-                // A snap to the same `content-y` fires no `changed content-y`.
-                root.last-height = self.content-height;
             }
         }
     }

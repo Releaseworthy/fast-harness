@@ -178,3 +178,38 @@ fn the_wheel_over_the_bar_and_a_track_click_stop_following() {
     frames(&window, 200);
     assert!(!ui.get_transcript_follow(), "a click on the track pages up");
 }
+
+/// Replaces the rows as a session switch does (`show_run`: the rows, then
+/// Jump to latest in the same pass) and lets the list measure them.
+fn switch_to(
+    window: &MinimalSoftwareWindow,
+    ui: &MainWindow,
+    rows: &VecModel<MsgRow>,
+    new: Vec<MsgRow>,
+) {
+    rows.set_vec(new);
+    ui.invoke_to_bottom();
+    frames(window, 600);
+}
+
+/// Switching sessions (D60) ends at the bottom of the session shown, still
+/// following, whatever the heights of the session left and the one shown
+/// (2026-11-13: the real window showed Jump to latest after a switch).
+#[test]
+fn a_session_switch_ends_at_the_bottom_following() {
+    let (window, ui, rows) = following();
+    let long = || {
+        (0..3000)
+            .map(|_| row("user", &"word ".repeat(200)))
+            .collect::<Vec<_>>()
+    };
+    let short = || vec![row("user", "run it"), row("assistant", "done")];
+    switch_to(&window, &ui, &rows, short());
+    assert!(ui.get_transcript_follow(), "long to short follows");
+    switch_to(&window, &ui, &rows, long());
+    assert!(ui.get_transcript_follow(), "short to long follows");
+    switch_to(&window, &ui, &rows, short());
+    assert!(ui.get_transcript_follow(), "long to short again follows");
+    switch_to(&window, &ui, &rows, chat());
+    assert!(ui.get_transcript_follow(), "short to a chat follows");
+}
