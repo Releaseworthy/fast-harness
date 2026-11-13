@@ -234,6 +234,15 @@ Open from phase 24:
 - `scripts/apply-plugins.ts` has no tests; its `api` check was run by hand.
 - The front end crates match the `v1` enums with a wildcard arm where they match at all: a new `AgentEvent` is ignored there until handled, not a compile error.
 
+Open after phases 25 to 31 (2026-11-13; each phase's decision file has the detail):
+- 25 (D59): the model and effort picker lists and the model fetch job are still written twice (TUI and GUI); `-p` still runs its turn itself, not through the service, so a panic there ends the process; a crash log line written by a real panic in the window was not checked.
+- 26 (D60): opening a session still parses its log on the UI thread (48.9 ms for a 10 MB log); the index has a threads test but no two-process test; the sidebar's "Loading sessions…" row was not caught in a real capture; the TUI's waiting mark on the Sessions screen cannot be reached for the shown session's own turn (Ctrl+O is refused while a turn waits).
+- 28 (D61): `trace/detail.rs` and `trace/report.rs` read `data` by key (inside `trace/`, allowed); a log line that lacks a required key is skipped where the untyped readers half-read it.
+- 29 (D62, D63): themes are not on the shared `version` and `enabled` header and each loader still does its own walk; panel ids and MCP server names are now held to 64 characters; `Extensions` built without a home (library and test use) is not gated by trust; a `PreModelRequest` hook cannot add headers.
+- 31, approvals (D64): an allowed decision is not written to the trace; no integration test yet for an approval after a hook rewrote the arguments or for a subagent's request, and no parity table case; the GUI focus fix (b5b223d: only Decline is a Tab stop) has a test on the software backend and was not seen in the real window; a declined or cancelled tool row shows the red "failed" pill next to its word; the PNG captures of `scripts/console.ps1` are cut at 900 x 480 (the text captures are whole).
+- Not started: phase 27 (no gate, waits for the owner); the other items of phase 31 (cancel of a silent stream, background shell jobs and undo, image input), each its own yes; the Unix backend (G13 a: after the first tag).
+- Drive F: ran out of space once during phase 29 (`target/` was about 48 GB): only cargo's incremental caches were deleted.
+
 Open from phases 22 and 23:
 - `scripts/live-smoke.ps1`: run on 2026-11-13 after a second account was signed in, 6 of 6 at 4b5e0b0 and again at 6aae0c9.
 - Linux ran only in CI (the secret store tests are skipped there); macOS not at all. The symlink path and the Unix permission copy of `tools/atomic.rs` have no test.
