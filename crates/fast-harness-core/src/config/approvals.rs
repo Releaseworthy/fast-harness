@@ -141,6 +141,13 @@ pub fn subject(tool: &str, raw: &str, cwd: &Path) -> Subject {
     if tool == SHELL {
         if let Some(command) = text("command") {
             let key = command.split_whitespace().collect::<Vec<_>>().join(" ");
+            // A background job outlives the call: its own words and grants.
+            if args.get("background").and_then(Value::as_bool) == Some(true) {
+                return Subject {
+                    summary: clip(&format!("run in the background: {command}")),
+                    key: format!("background: {key}"),
+                };
+            }
             return Subject {
                 summary: clip(&format!("run: {command}")),
                 key,

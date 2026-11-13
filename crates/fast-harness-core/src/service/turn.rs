@@ -5,6 +5,7 @@
 
 use std::any::Any;
 use std::panic::{catch_unwind, AssertUnwindSafe};
+use std::path::Path;
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 use std::time::Instant;
@@ -109,13 +110,20 @@ impl Service {
             }
             Err(err) => {
                 // The conversation went with the closure: reopen it.
-                let home = self.host.home();
-                state.conv = Conversation::resume(&home, &session.cwd, &session.id).ok();
+                state.conv = reopen(&self.host.home(), session);
                 state.inbox = None;
                 Err(ServiceError::Failed(format!("turn thread: {err}")))
             }
         }
     }
+}
+
+/// The session's conversation read again from its log, keeping the
+/// session's background jobs (PLAN.md D68).
+fn reopen(home: &Path, session: &Session) -> Option<Conversation> {
+    let mut conv = Conversation::resume(home, &session.cwd, &session.id).ok()?;
+    conv.tool_session.share_jobs(session.jobs());
+    Some(conv)
 }
 
 impl Job {
@@ -175,8 +183,7 @@ impl Job {
         let leftover = self.inbox.leftover();
         let mut conv = self.conv;
         if panicked {
-            let home = self.host.home();
-            if let Ok(fresh) = Conversation::resume(&home, &self.session.cwd, &self.session.id) {
+            if let Some(fresh) = reopen(&self.host.home(), &self.session) {
                 conv = fresh;
             }
         }

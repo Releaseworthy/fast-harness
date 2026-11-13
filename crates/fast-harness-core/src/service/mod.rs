@@ -30,6 +30,7 @@ use crate::events::ApprovalRequest;
 use crate::events::TurnOutcome;
 use crate::session::{self, SessionSummary, Unfinished};
 use crate::stats::{self, Stats};
+use crate::tools::Jobs;
 use crate::trace;
 
 pub use queue::Status;
@@ -95,6 +96,8 @@ pub struct Session {
     pub queued: acp::Queued,
     /// Approval requests and answers (PLAN.md D64).
     gate: Arc<Gate>,
+    /// Background shell jobs, the same as the conversation's (PLAN.md D68).
+    jobs: Arc<Jobs>,
 }
 
 struct State {
@@ -118,6 +121,7 @@ struct State {
 impl Session {
     fn new(conv: Conversation, cwd: &Path, config: Settings) -> Session {
         let unfinished = conv.unfinished;
+        let jobs = conv.tool_session.jobs().clone();
         Session {
             id: conv.id.clone(),
             cwd: cwd.to_path_buf(),
@@ -136,7 +140,14 @@ impl Session {
             }),
             queued: Arc::default(),
             gate: Arc::default(),
+            jobs,
         }
+    }
+
+    /// The session's background shell jobs (PLAN.md D68): `list`,
+    /// `revision` and `wait_change` are what a view reads.
+    pub fn jobs(&self) -> Arc<Jobs> {
+        self.jobs.clone()
     }
 
     fn lock(&self) -> MutexGuard<'_, State> {
@@ -293,6 +304,8 @@ impl Service {
         session.wait();
         // Its background children stop and their registry goes (PLAN.md D67).
         crate::agent::children::forget(id);
+        // So do its background shell jobs (PLAN.md D68).
+        session.jobs.kill_all();
         Some(session)
     }
 

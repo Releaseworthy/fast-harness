@@ -45,12 +45,16 @@ impl Tool for ShellTool {
                 "Run a shell command with {shell} in the working directory. stdout and stderr \
                  are merged; the output ends with the exit code. On timeout or cancel the \
                  whole process tree is killed. Processes still running when the command ends \
-                 are killed too, so do not start background servers here."
+                 are killed too: for a server, a watcher or anything long, set `background: true`: \
+                 the command runs as a job of this session and the call returns its id at once \
+                 with its first output; find_tools loads job_output (reads more, waits for the \
+                 end), job_kill and job_list."
             ),
             schema: object_schema(
                 json!({
                     "command": {"type": "string", "description": "The command line to run."},
-                    "timeout_ms": {"type": "integer", "minimum": 1, "maximum": MAX_TIMEOUT_MS, "description": "Timeout in milliseconds. Default 120000, maximum 600000."}
+                    "timeout_ms": {"type": "integer", "minimum": 1, "maximum": MAX_TIMEOUT_MS, "description": "Timeout in milliseconds. Default 120000, maximum 600000. A background job has none."},
+                    "background": {"type": "boolean", "description": "Run as a background job until it ends, job_kill stops it or the session closes."}
                 }),
                 &["command"],
             ),
@@ -58,6 +62,16 @@ impl Tool for ShellTool {
     }
 
     fn run(&self, args: &Value, ctx: &ToolCtx<'_>) -> ToolOutput {
+        match args.get("background") {
+            None | Some(Value::Null) | Some(Value::Bool(false)) => {}
+            Some(Value::Bool(true)) => {
+                return match req_str(args, "command") {
+                    Ok(command) => super::job_tools::start(command, ctx),
+                    Err(message) => ToolOutput::err(message),
+                }
+            }
+            Some(_) => return ToolOutput::err("`background` must be true or false"),
+        }
         let parsed = req_str(args, "command").and_then(|command| {
             let timeout = opt_positive(args, "timeout_ms", DEFAULT_TIMEOUT_MS)?;
             Ok((command, timeout.min(MAX_TIMEOUT_MS)))
@@ -131,7 +145,7 @@ fn run_shell(command: &str, timeout_ms: u64, ctx: &ToolCtx<'_>) -> Result<ToolOu
     Ok(render(capture, ending?, timeout_ms))
 }
 
-fn shell_command(command: &str) -> Command {
+pub(super) fn shell_command(command: &str) -> Command {
     if cfg!(windows) {
         let mut cmd = Command::new(powershell());
         cmd.args(["-NoLogo", "-NoProfile", "-NonInteractive", "-Command"])

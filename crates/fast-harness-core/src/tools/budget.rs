@@ -5,10 +5,10 @@
 
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use std::time::SystemTime;
 
-use super::{ToolCtx, ToolOutput};
+use super::{Jobs, ToolCtx, ToolOutput};
 
 /// Start of the note a spilled result ends with.
 pub const SPILL_MARK: &str = "[full output: ";
@@ -24,6 +24,8 @@ pub struct ToolSession {
     /// `<session>.out`; `None` keeps nothing on disk.
     pub out_dir: Option<PathBuf>,
     reads: Mutex<HashMap<ReadKey, String>>,
+    /// Background shell jobs (PLAN.md D68), shared with the service session.
+    jobs: Arc<Jobs>,
 }
 
 /// A returned read: path, offset, limit, file size and modified time.
@@ -41,7 +43,19 @@ impl ToolSession {
         ToolSession {
             out_dir,
             reads: Mutex::new(HashMap::new()),
+            jobs: Arc::default(),
         }
+    }
+
+    /// The session's background jobs (PLAN.md D68).
+    pub fn jobs(&self) -> &Arc<Jobs> {
+        &self.jobs
+    }
+
+    /// Uses `jobs` from now on: a conversation reopened after a panic keeps
+    /// its session's jobs.
+    pub fn share_jobs(&mut self, jobs: Arc<Jobs>) {
+        self.jobs = jobs;
     }
 
     /// The call that already returned `key`, if any.
@@ -87,7 +101,7 @@ pub fn fit(name: &str, mut output: ToolOutput, ctx: &ToolCtx<'_>) -> ToolOutput 
     };
     let room = ctx.budget.saturating_sub(note.len());
     let body = match name {
-        "shell" => head_tail(&full, room),
+        "shell" | "job_output" => head_tail(&full, room),
         "subagent" => head_and_last_line(&full, room),
         _ => head(&full, room).to_string(),
     };

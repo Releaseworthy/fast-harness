@@ -82,7 +82,7 @@ impl<'r> Live<'r> {
 }
 
 /// The length of `bytes` without an incomplete UTF-8 sequence at its end.
-fn complete_end(bytes: &[u8]) -> usize {
+pub(super) fn complete_end(bytes: &[u8]) -> usize {
     let len = bytes.len();
     for back in 1..=len.min(TAIL) {
         let byte = bytes[len - back];

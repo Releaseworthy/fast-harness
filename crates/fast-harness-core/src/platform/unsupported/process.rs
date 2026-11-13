@@ -24,6 +24,11 @@ impl ProcessGroup {
     /// is nothing to release: leftover grandchildren keep running.
     pub fn close(self) {}
 
+    /// Kills what is left of the group after the child was reaped. Without
+    /// process trees nothing is known to be left, and the reaped pid may
+    /// already belong to another process: nothing is done.
+    pub fn kill_rest(&self) {}
+
     pub fn kill(&self) -> Result<(), PlatformError> {
         if !cfg!(unix) {
             return Err(PlatformError::Unsupported);

@@ -13,6 +13,7 @@ use crate::llm::ToolSpec;
 pub use budget::ToolSession;
 pub use command::CommandTool;
 pub use ext::Extensions;
+pub use jobs::{JobInfo, JobState, Jobs};
 pub use output::{Part, ToolOutput};
 
 mod args;
@@ -27,6 +28,9 @@ mod grep;
 pub mod hook_request;
 mod hook_run;
 pub mod hooks;
+mod job_buffer;
+pub mod job_tools;
+pub mod jobs;
 pub mod mcp;
 mod output;
 mod read;
@@ -324,7 +328,7 @@ impl Registry {
 }
 
 /// Registry with `find_tools` and the built-in tools: read, write, edit,
-/// shell, grep, glob.
+/// shell, grep, glob, job_output, job_kill, job_list.
 pub fn builtin() -> Registry {
     let mut registry = Registry::with_find();
     for tool in builtin_tools() {
@@ -335,14 +339,16 @@ pub fn builtin() -> Registry {
 
 /// The built-in tools in their fixed order.
 fn builtin_tools() -> Vec<Box<dyn Tool>> {
-    vec![
+    let mut tools: Vec<Box<dyn Tool>> = vec![
         Box::new(read::ReadTool),
         Box::new(write::WriteTool),
         Box::new(edit::EditTool),
         Box::new(shell::ShellTool),
         Box::new(grep::GrepTool),
         Box::new(glob::GlobTool),
-    ]
+    ];
+    tools.extend(job_tools::all());
+    tools
 }
 
 #[cfg(test)]

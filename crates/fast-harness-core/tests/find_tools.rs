@@ -48,7 +48,7 @@ fn search_ranks_names_then_parameters_then_descriptions() {
     assert_eq!(spec.name, find::FIND_TOOLS);
     assert!(spec
         .description
-        .contains("Tools: read, write, edit, shell, grep, glob."));
+        .contains("Tools: read, write, edit, shell, grep, glob, job_output, job_kill, job_list."));
     assert!(!spec.description.contains("\"properties\""));
 }
 
@@ -138,6 +138,12 @@ fn check_claude_bodies(transport: &ScriptedTransport) {
         json!({"type": "ephemeral", "ttl": "1h"})
     );
     assert!(tools[0].get("defer_loading").is_none());
+    // The job tools (D68) are deferred like the rest.
+    let names: Vec<&str> = tools.iter().filter_map(|t| t["name"].as_str()).collect();
+    assert!(
+        names.ends_with(&["job_output", "job_kill", "job_list"]),
+        "{names:?}"
+    );
     for tool in &tools[1..] {
         assert_eq!(tool["defer_loading"], json!(true), "{tool}");
         assert!(tool.get("cache_control").is_none());

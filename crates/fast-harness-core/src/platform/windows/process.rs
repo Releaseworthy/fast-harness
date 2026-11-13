@@ -69,6 +69,12 @@ impl ProcessGroup {
         drop(self);
     }
 
+    /// Kills what is left of the group after the child exited (a background
+    /// job's leftovers), so the pipes they hold close.
+    pub fn kill_rest(&self) {
+        let _ = self.kill();
+    }
+
     /// Kills every process in the group.
     pub fn kill(&self) -> Result<(), PlatformError> {
         // SAFETY: `self.job` is a valid job handle owned by `self`.

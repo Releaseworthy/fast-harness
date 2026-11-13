@@ -36,19 +36,21 @@ fn run(dir: &Path, name: &str, args: Value) -> ToolOutput {
 }
 
 #[test]
-fn builtin_lists_find_tools_then_six_tools_with_schemas() {
+fn builtin_lists_find_tools_then_nine_tools_with_schemas() {
     let registry = builtin();
     let names: Vec<&str> = registry.specs().iter().map(|s| s.name.as_str()).collect();
     let six = ["read", "write", "edit", "shell", "grep", "glob"];
+    let jobs = ["job_output", "job_kill", "job_list"];
     assert_eq!(names[0], "find_tools");
-    assert_eq!(names[1..], six);
+    assert_eq!(names[1..7], six);
+    assert_eq!(names[7..], jobs);
     assert!(registry.finds());
     for spec in &registry.specs()[1..] {
         assert!(!spec.description.is_empty());
         assert_eq!(spec.schema["type"], "object");
-        assert!(spec.schema["required"]
-            .as_array()
-            .is_some_and(|r| !r.is_empty()));
+        // job_list takes no argument (D68).
+        let required = spec.schema["required"].as_array();
+        assert!(spec.name == "job_list" || required.is_some_and(|r| !r.is_empty()));
     }
 }
 
