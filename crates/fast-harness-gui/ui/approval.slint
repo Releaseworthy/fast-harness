@@ -8,8 +8,10 @@ import { ApprovalView } from "types.slint";
 // request of the shown session will do, who asks, and three answers. It is
 // not a modal window: the transcript stays readable. No answer has the focus
 // or a default: the composer keeps it, Enter steers and Space types there.
-// Tab reaches the buttons (Decline first), and the keys.json `approval` keys
-// (Alt+Y, Alt+A, Alt+N by default) answer from anywhere in the window.
+// Only Decline is a Tab stop: the allow buttons have `tab-stop: false`, so
+// no sequence of Tab, Shift+Tab, Enter and Space can approve (D64). They
+// answer by a click or the keys.json `approval` keys (Alt+Y, Alt+A, Alt+N
+// by default), read from anywhere in the window.
 export component ApprovalPrompt inherits Rectangle {
     in property <ApprovalView> request;
     // "approve_once", "approve_session" or "decline".
@@ -89,10 +91,12 @@ export component ApprovalPrompt inherits Rectangle {
             ActionButton {
                 text: "Allow once (" + root.request.once-key + ")";
                 icon: Icons.check;
+                tab-stop: false;
                 clicked => { root.answer("approve_once"); }
             }
             ActionButton {
                 text: "Allow for this session (" + root.request.session-key + ")";
+                tab-stop: false;
                 clicked => { root.answer("approve_session"); }
             }
             Text {

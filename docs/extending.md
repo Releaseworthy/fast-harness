@@ -479,4 +479,4 @@ Scopes: `window` anywhere in the window, `composer` while the message box has th
 | `approve_session` | `alt+a` | approval | always | approval prompt: allow it for this session |
 | `decline` | `alt+n` | approval | always | approval prompt: decline the call |
 
-The GUI `approval` scope is live only while the approval prompt shows above the message box (D64) and is read anywhere in the window before the `window` keys. Like `window` keys, only keys with Ctrl, Alt or Meta, or function keys, answer, so typing never does: a binding to a bare letter does nothing there. Enter and Space never answer; Esc (`stop`) cancels the turn and with it the request.
+The GUI `approval` scope is live only while the approval prompt shows above the message box (D64) and is read anywhere in the window before the `window` keys. Like `window` keys, only keys with Ctrl, Alt or Meta, or function keys, answer, so typing never does: a binding to a bare letter does nothing there. Enter and Space never answer from the message box; Tab reaches only the Decline button (the allow buttons are not focus stops); Esc (`stop`) cancels the turn and with it the request.

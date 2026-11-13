@@ -13,6 +13,8 @@ include!("root_items.rs");
 #[cfg(test)]
 mod appearance_tests;
 #[cfg(test)]
+mod approval_focus_tests;
+#[cfg(test)]
 mod layout_tests;
 #[cfg(test)]
 mod panels_tests;

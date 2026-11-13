@@ -29,6 +29,11 @@ export component ActionButton inherits Rectangle {
     in property <string> icon;
     in property <string> variant: "secondary";
     in property <bool> enabled: true;
+    // false: Tab and Shift+Tab skip it; a click or a key chord still works
+    // and the screen reader still sees the button. The approval prompt's
+    // allow buttons use it (PLAN.md D64): no sequence of Tab, Enter and
+    // Space may approve. Do not remove (approval_focus_tests.rs).
+    in property <bool> tab-stop: true;
     out property <bool> has-focus: fs.has-focus;
     callback clicked();
     property <bool> primary: root.variant == "primary";
@@ -86,6 +91,7 @@ export component ActionButton inherits Rectangle {
     fs := FocusScope {
         enabled: root.enabled;
         focus-on-click: false;
+        focus-on-tab-navigation: root.tab-stop;
         key-pressed(event) => {
             if (event.text == Key.Return || event.text == " ") {
                 root.clicked();
