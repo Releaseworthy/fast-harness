@@ -38,8 +38,8 @@ Rules for anyone (human or agent) changing this repo. Read `ARCHITECTURE.md` fir
 - Google Antigravity (provider, Google accounts, OAuth client, quota, its pitfalls and live test) lives on branch `antigravity` at a143cfa, not on main: PLAN.md D53 says how to bring it back.
 - Thinking and thought signatures go back only to the model that made them (`Message.model`, trace version 3): Anthropic drops foreign thinking.
 - Never share one `CARGO_TARGET_DIR` between worktrees of this repo: cargo gives the members the same unit hash everywhere and judges freshness by file times, so a build silently tested another worktree's core (2026-11-12). One target per worktree; touch a source copied with `Copy-Item`.
-- Never take two `RuntimeHost::runtime()` guards in one statement: temporaries live to its end and the mutex deadlocks (TUI hang, 2026-11-13).
-- A session log line that lacks a required key reads as `Record::Raw` and is skipped (D61): test fixtures write whole lines.
+- Never take two `RuntimeHost::runtime()` guards in one statement: temporaries live to its end and the mutex deadlocks.
+- A log line lacking a required key reads as `Record::Raw` and is skipped (D61): fixtures write whole lines.
 - Every tool but `find_tools` is deferred (D30): tests that need all tools loaded build `Registry::new()` and add them, while `tools::builtin()` starts with `find_tools`. On Claude the `cache_control` breakpoint sits on `find_tools`, the last tool that is not deferred.
 - Context, cache, compaction, subagent, steering and extension work follows docs/efficiency-plan.md: the system prompt and tool list are frozen per session, messages are append-only, tool results shrink before the first send (never after).
 - Tool calls of one step run by effect (PLAN.md D54): a new tool that only reads declares `Effect::Read` and runs alongside other reads; anything else stays serial, in call order.
