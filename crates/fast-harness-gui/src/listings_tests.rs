@@ -12,6 +12,7 @@ fn summary(id: &str) -> SessionSummary {
         turns: 0,
         last_time: 0,
         unfinished: None,
+        parent: None,
     }
 }
 

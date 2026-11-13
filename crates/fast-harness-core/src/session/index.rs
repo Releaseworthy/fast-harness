@@ -16,7 +16,8 @@ use std::time::{Duration, UNIX_EPOCH};
 pub const INDEX_FILE: &str = "index.json";
 /// Format version of the index; another version is rebuilt.
 /// 2: titles of first prompts with images use the user's words (D70).
-pub const VERSION: u32 = 2;
+/// 3: the parent of a subagent session (D79).
+pub const VERSION: u32 = 3;
 /// How long a list waits for another process writing the index; after that
 /// it answers without writing.
 const WAIT: Duration = Duration::from_millis(500);
@@ -47,6 +48,8 @@ struct Cached {
     last_time: u64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     unfinished: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    parent: Option<String>,
 }
 
 impl Cached {
@@ -58,6 +61,7 @@ impl Cached {
             turns: s.turns,
             last_time: s.last_time,
             unfinished: s.unfinished.map(|u| u.word().to_string()),
+            parent: s.parent.clone(),
         }
     }
 
@@ -69,6 +73,7 @@ impl Cached {
             turns: self.turns,
             last_time: self.last_time,
             unfinished: self.unfinished.as_deref().and_then(Unfinished::from_word),
+            parent: self.parent.clone(),
         }
     }
 }

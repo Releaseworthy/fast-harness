@@ -223,6 +223,7 @@ fn session_rows() {
         turns: 0,
         last_time: 0,
         unfinished: None,
+        parent: None,
     };
     let row = session_row(&summary, Some("s1"), 120_000);
     assert_eq!(

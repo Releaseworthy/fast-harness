@@ -17,6 +17,7 @@ mod conversation;
 pub mod hooks;
 mod inbox;
 mod inbox_file;
+pub mod live;
 pub mod memory;
 mod model_hook;
 pub mod nested;
@@ -55,11 +56,9 @@ pub use subagent::{SubagentTool, NAME as SUBAGENT};
 
 /// The note of a turn refused because another process runs a turn of this
 /// session (its live `<id>.lock`, PLAN.md D49): two writers would interleave
-/// their events in one log. Nothing is logged. A subagent session has no lock.
+/// their events in one log. Nothing is logged. A subagent session has its
+/// lock too (PLAN.md D79): a send_message to it steers, never a 2nd turn.
 fn running_elsewhere(conv: &Conversation) -> Option<String> {
-    if conv.depth > 0 {
-        return None;
-    }
     let lock = lock::live_lock(&conv.log_path).filter(|lock| lock.pid != std::process::id())?;
     Some(lock::busy_note(&conv.id, &lock))
 }
@@ -218,6 +217,17 @@ impl Agent {
         inbox: &mut Inbox,
         sink: &mut dyn FnMut(AgentEvent),
     ) -> TurnOutcome {
+        // One turn at a time on a subagent session in this process (D79).
+        let _entered = match conv.depth {
+            0 => None,
+            _ => match live::enter(&conv.id) {
+                Ok(entered) => Some(entered),
+                Err(note) => {
+                    sink(AgentEvent::Error(note));
+                    return TurnOutcome::Failed;
+                }
+            },
+        };
         // A lost take (another process took the lock since the check) is
         // refused the same way.
         let refused = running_elsewhere(conv).map(Err);

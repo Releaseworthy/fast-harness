@@ -134,7 +134,9 @@ pub fn spawn(
         .name("fast-harness-gui-list".into())
         .spawn(move || {
             let working = Working::enter();
-            let listed = session::list(&home, &path).map_err(|err| err.to_string());
+            // Subagent sessions stay out of the sidebar (D79).
+            let listed = session::list(&home, &path).map(session::top_level);
+            let listed = listed.map_err(|err| err.to_string());
             drop(working);
             done(listed)
         })

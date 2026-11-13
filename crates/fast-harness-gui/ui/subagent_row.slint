@@ -14,19 +14,21 @@ export struct SubagentRow {
     progress: string,
     // How long a finished one ran.
     when: string,
+    // "Opus 4.5 · high · 12.3k tokens": its model, effort and tokens (D79).
+    detail: string,
 }
 
-// The subagents popover's state and the read-only child view (D74).
+// The subagents popover's state, and Back while a child session shows (D74, D79).
 export global SubagentsUi {
     in property <[SubagentRow]> rows;
     in property <int> running;
     out property <int> count: self.rows.length;
     in-out property <bool> open;
-    // The shown session is a subagent's, opened from the list: no composer.
-    in property <bool> read-only;
+    // The shown session is a subagent's, opened from a list: Back shows (D79).
+    in property <bool> in-child;
     // "parent session" or the parent's label, after "Back to".
     in property <string> back-label;
-    // Opens subagent `id`'s session read-only in the chat view.
+    // Opens subagent `id`'s session in the chat view, a full session (D79).
     callback open-child(string);
     // Back to the session the subagent was opened from.
     callback back();
@@ -44,7 +46,7 @@ export component SubagentItem inherits Rectangle {
     border-radius: Theme.radius-s;
     background: ta.has-hover || root.highlighted ? Theme.hover : transparent;
     accessible-role: list-item;
-    accessible-label: root.item.label + ": " + root.item.word + ", " + root.item.progress + ". Open read-only";
+    accessible-label: root.item.label + ": " + root.item.word + ", " + root.item.progress + ", " + root.item.detail + ". Open";
     accessible-action-default => { SubagentsUi.open-child(root.item.id); }
     ta := TouchArea {
         mouse-cursor: pointer;
@@ -85,12 +87,23 @@ export component SubagentItem inherits Rectangle {
                     font-size: Theme.font-xs;
                 }
             }
-            Text {
-                text: root.item.progress;
-                color: Theme.dim;
-                font-family: Theme.mono;
-                font-size: Theme.font-xs;
-                overflow: elide;
+            HorizontalLayout {
+                spacing: Theme.space-s;
+                Text {
+                    text: root.item.progress;
+                    color: Theme.dim;
+                    font-family: Theme.mono;
+                    font-size: Theme.font-xs;
+                    overflow: elide;
+                    horizontal-stretch: 1;
+                }
+                Text {
+                    text: root.item.detail;
+                    color: Theme.dim;
+                    font-size: Theme.font-xs;
+                    overflow: elide;
+                    horizontal-stretch: 0;
+                }
             }
         }
         Mark {

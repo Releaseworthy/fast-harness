@@ -65,7 +65,45 @@ component Tab inherits Rectangle {
     }
 }
 
-// Chat and Trace, then Subagents and Jobs while the shown session has any
+// Back to the parent session while a subagent's session shows (PLAN.md
+// D79): an arrow and "Back to <label>", cut at 220px; the full label is
+// the accessible one.
+component BackTab inherits Rectangle {
+    in property <string> label;
+    callback clicked();
+    width: row.preferred-width;
+    border-radius: Theme.radius-m;
+    background: ta.has-hover ? Theme.hover : transparent;
+    accessible-role: button;
+    accessible-label: "Back to " + root.label;
+    accessible-action-default => { root.clicked(); }
+    ta := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+    row := HorizontalLayout {
+        padding-left: Theme.space-s;
+        padding-right: Theme.space-m;
+        spacing: Theme.space-s;
+        Mark {
+            text: Icons.arrow-left;
+            font-size: Theme.font-m;
+            color: ta.has-hover ? Theme.text : Theme.dim;
+        }
+        Text {
+            text: "Back to " + root.label;
+            max-width: 220px;
+            overflow: elide;
+            font-size: Theme.font-s;
+            color: ta.has-hover ? Theme.text : Theme.dim;
+            vertical-alignment: center;
+            accessible-role: none;
+        }
+    }
+}
+
+// Back while a subagent's session shows (D79), Chat and Trace, then
+// Subagents and Jobs while the shown session has any
 // (D76: each opens its popover under it); while Accounts or a panel is
 // open, one more tab shows it, and its close button returns to Chat.
 // Settings and About are dialogs (dialog.slint), not tabs.
@@ -84,6 +122,10 @@ export component TabStrip inherits Rectangle {
         padding-bottom: Theme.space-s - 2px;
         spacing: Theme.space-xs;
         alignment: start;
+        if SubagentsUi.in-child: BackTab {
+            label: SubagentsUi.back-label;
+            clicked => { SubagentsUi.back(); }
+        }
         Tab {
             icon: Icons.comment-discussion;
             text: "Chat";

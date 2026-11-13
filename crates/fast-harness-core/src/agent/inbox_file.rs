@@ -15,12 +15,12 @@ pub(crate) struct Watch {
 }
 
 impl Inbox {
-    /// Takes the lock of `conv` and starts reading its inbox file. A
-    /// subagent session (depth above 0) has neither. Another process holding
+    /// Takes the lock of `conv` and starts reading its inbox file, a
+    /// subagent session's too (PLAN.md D79). Another process holding
     /// the lock is the error (`session::lock::busy_note`): the turn must not run.
     pub(crate) fn attach(&mut self, conv: &Conversation, cwd: &Path) -> Result<(), String> {
         self.stopped = false;
-        if conv.depth > 0 || self.file.is_some() {
+        if self.file.is_some() {
             return Ok(());
         }
         let cwd = cwd.to_string_lossy();

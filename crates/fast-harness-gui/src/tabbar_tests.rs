@@ -84,6 +84,7 @@ pub fn subagent(id: &str, running: bool) -> SubagentRow {
         word: word.into(),
         progress: "step 12 · grep".into(),
         when: if running { "" } else { "2m 05s" }.into(),
+        detail: "Opus 4.5 · high · 12.3k tokens".into(),
     }
 }
 
@@ -115,12 +116,12 @@ fn wire_children(ui: &MainWindow) -> Rc<RefCell<String>> {
         let subs = ui.global::<SubagentsUi>();
         subs.set_open(false);
         subs.set_back_label("parent session".into());
-        subs.set_read_only(true);
+        subs.set_in_child(true);
     });
     let weak = ui.as_weak();
     subs.on_back(move || {
         let ui = weak.upgrade().expect("window");
-        ui.global::<SubagentsUi>().set_read_only(false);
+        ui.global::<SubagentsUi>().set_in_child(false);
     });
     opened
 }
@@ -149,15 +150,14 @@ fn the_subagents_tab_opens_its_popover_and_a_row_opens_the_child() {
         "the popover draws under the tab"
     );
     let down = (90..300).step_by(6).map(|y| (x + 60.0, y as f32));
-    sweep(&window, down, || subs.get_read_only()).expect("a row opens the child");
+    sweep(&window, down, || subs.get_in_child()).expect("a row opens the child");
     assert_eq!((opened.borrow().as_str(), subs.get_open()), ("a", false));
     let child = render(&window);
-    let back =
-        (0..120).flat_map(|i| [620.0, 632.0, 644.0].map(|y| (W as f32 - 30.0 - i as f32 * 4.0, y)));
-    sweep(&window, back, || !subs.get_read_only()).expect("Back returns");
+    assert!(differ(&tabs, &child, 40..84) > 0, "Back draws before Chat");
+    sweep(&window, along_tabs(), || !subs.get_in_child()).expect("Back returns");
     assert!(
-        differ(&child, &render(&window), 600..672) > 0,
-        "the composer is back"
+        differ(&child, &render(&window), 40..84) > 0,
+        "Back leaves the tab row"
     );
     subs.set_rows(ModelRc::new(VecModel::from(Vec::<SubagentRow>::new())));
     subs.set_running(0);

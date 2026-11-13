@@ -33,6 +33,18 @@ pub struct SessionSummary {
     pub last_time: u64,
     /// The last turn can be resumed: paused, cancelled or interrupted (D39).
     pub unfinished: Option<Unfinished>,
+    /// The session that started this one as a subagent (its header's parent).
+    pub parent: Option<String>,
+}
+
+/// The sessions a person started: subagent sessions (a parent in the
+/// header) leave the sidebar lists and stay reachable from their parent
+/// (PLAN.md D79).
+pub fn top_level(sessions: Vec<SessionSummary>) -> Vec<SessionSummary> {
+    sessions
+        .into_iter()
+        .filter(|s| s.parent.is_none())
+        .collect()
 }
 
 const TITLE_CHARS: usize = 60;
@@ -158,6 +170,7 @@ fn summarize(header: trace::SessionHeader, events: &[TraceEvent]) -> SessionSumm
         turns,
         last_time,
         unfinished: unfinished(events),
+        parent: header.parent,
     }
 }
 

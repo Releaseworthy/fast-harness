@@ -128,6 +128,6 @@ fn tabbar_shots() {
         dialogs::close(&ui);
     }
     subs.set_back_label("Review the GUI tab bar".into());
-    subs.set_read_only(true);
+    subs.set_in_child(true);
     save("child");
 }

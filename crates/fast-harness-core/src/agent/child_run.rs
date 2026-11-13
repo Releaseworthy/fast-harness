@@ -1,6 +1,7 @@
 //! Building and running one subagent (PLAN.md D40).
 
-use std::sync::atomic::AtomicBool;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::mpsc::Sender;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -8,8 +9,9 @@ use serde_json::json;
 
 use super::child_tools;
 use super::children::{self, Children, Slot};
+use super::live;
 use super::subagent::{Spec, SubagentTool, NAME};
-use crate::agent::{Agent, AgentParts, Conversation, Inbox};
+use crate::agent::{Agent, AgentParts, Conversation, Inbox, Input};
 use crate::events::{AgentEvent, TurnOutcome};
 use crate::llm::catalog;
 use crate::tools::{self, ToolCtx, ToolOutput};
@@ -32,15 +34,21 @@ pub(super) fn start(
     if spec.background {
         return background(tool, spec, agent, conv, slot);
     }
+    // Its own stop, steer and pause (PLAN.md D79); the parent's stop reaches it.
+    let (steer, mut inbox) = Inbox::channel();
+    let own = Arc::new(AtomicBool::new(false));
     let mut fwd = Forward::new(&tool.children, &spec.label);
-    let output = run(
-        &agent,
-        &mut conv,
-        &spec.prompt,
-        ctx.cancel,
-        &mut Inbox::empty(),
-        &mut fwd,
-    );
+    let output = linked(ctx.cancel, &own, || {
+        let prompt = &spec.prompt;
+        run(
+            &agent,
+            &mut conv,
+            prompt,
+            (&own, steer),
+            &mut inbox,
+            &mut fwd,
+        )
+    });
     drop(slot);
     Ok(output)
 }
@@ -147,7 +155,7 @@ fn background(
 ) -> Result<ToolOutput, String> {
     let (steer, mut inbox) = Inbox::channel();
     let cancel = Arc::new(AtomicBool::new(false));
-    let id = tool.children.add_kid(cancel.clone(), steer);
+    let id = tool.children.add_kid(cancel.clone(), steer.clone());
     let session = conv.id.clone();
     let children = tool.children.clone();
     let (prompt, label, kid) = (spec.prompt.clone(), spec.label.clone(), id.clone());
@@ -155,7 +163,8 @@ fn background(
     let job = move || {
         let _slot = slot;
         let mut fwd = Forward::new(&children, &label);
-        let output = run(&agent, &mut conv, &prompt, &cancel, &mut inbox, &mut fwd);
+        let controls = (&cancel, steer);
+        let output = run(&agent, &mut conv, &prompt, controls, &mut inbox, &mut fwd);
         children.finish_kid(&kid, output.into_text(), budget);
     };
     let thread = std::thread::Builder::new().name(format!("subagent-{id}"));
@@ -175,11 +184,13 @@ fn run(
     agent: &Agent,
     conv: &mut Conversation,
     prompt: &str,
-    cancel: &AtomicBool,
+    (cancel, steer): (&Arc<AtomicBool>, Sender<Input>),
     inbox: &mut Inbox,
     fwd: &mut Forward,
 ) -> ToolOutput {
     fwd.session = conv.id.clone();
+    // A front end showing the child steers, pauses and stops it (D79).
+    let _live = live::run(&conv.id, cancel.clone(), steer);
     let running = |running| AgentEvent::Subagent {
         session: conv.id.clone(),
         running,
@@ -198,6 +209,26 @@ fn run(
         running: false,
     });
     result(text, &fwd.stats.line(&conv.id), outcome, &fwd.errors)
+}
+
+/// Runs `f` while a watcher copies the parent's stop into the child's own
+/// flag, so a stop of the parent stops the child and not the other way.
+fn linked<T>(parent: &AtomicBool, own: &AtomicBool, f: impl FnOnce() -> T) -> T {
+    let done = AtomicBool::new(false);
+    std::thread::scope(|scope| {
+        scope.spawn(|| {
+            while !done.load(Ordering::Relaxed) {
+                if parent.load(Ordering::Relaxed) {
+                    own.store(true, Ordering::SeqCst);
+                    return;
+                }
+                std::thread::sleep(Duration::from_millis(50));
+            }
+        });
+        let out = f();
+        done.store(true, Ordering::Relaxed);
+        out
+    })
 }
 
 /// The child's events as the parent sees them.
@@ -231,6 +262,7 @@ impl Forward {
     /// Descendants' subagent events go up unchanged; the child's own
     /// steps and tool calls become a progress line, at most every 500 ms.
     fn event(&mut self, event: AgentEvent) {
+        live::publish(&self.session, &event);
         match &event {
             AgentEvent::Subagent { .. }
             | AgentEvent::SubagentProgress { .. }

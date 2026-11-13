@@ -7,7 +7,7 @@ export { JobsTab, JobsUi, SubagentsUi, SubagentRow }
 
 // The shown session's subagents (PLAN.md D74, D76): a tab after Trace,
 // "Subagents 3" with a running dot while one runs; a click opens the
-// popover under it, a row opens that subagent's session read-only. Escape
+// popover under it, a row opens that subagent's session (D79). Escape
 // or a click outside closes it. TabStrip shows it only with subagents.
 export component SubagentsTab inherits Rectangle {
     // The height the popover may take, and its width at most.
@@ -99,72 +99,5 @@ export component SubagentsTab inherits Rectangle {
             return accept;
         }
         return reject;
-    }
-}
-// Instead of the composer while a subagent's session shows (D74): it is
-// read-only; Back (or Escape) returns to the session it was opened from.
-export component ReadOnlyNotice inherits Rectangle {
-    height: 40px;
-    border-radius: Theme.radius-l;
-    background: Theme.raised;
-    border-width: 1px;
-    border-color: Theme.line;
-    init => { fs.focus(); }
-    fs := FocusScope {
-        key-pressed(event) => {
-            if event.text == Key.Escape {
-                SubagentsUi.back();
-                return accept;
-            }
-            return reject;
-        }
-    }
-    HorizontalLayout {
-        padding-left: Theme.space-m;
-        padding-right: Theme.space-xs;
-        padding-top: 4px;
-        padding-bottom: 4px;
-        spacing: Theme.space-s;
-        Mark {
-            text: Icons.eye;
-            color: Theme.dim;
-            font-size: Theme.font-s;
-        }
-        Text {
-            text: "Subagent session, read-only";
-            color: Theme.dim;
-            font-size: Theme.font-s;
-            vertical-alignment: center;
-            horizontal-stretch: 1;
-            overflow: elide;
-        }
-        Rectangle {
-            width: back.preferred-width;
-            border-radius: Theme.radius-s;
-            background: ta.has-hover ? Theme.hover : transparent;
-            accessible-role: button;
-            accessible-label: "Back to " + SubagentsUi.back-label;
-            accessible-action-default => { SubagentsUi.back(); }
-            back := HorizontalLayout {
-                padding-left: Theme.space-s;
-                padding-right: Theme.space-s;
-                spacing: 6px;
-                Mark {
-                    text: Icons.arrow-left;
-                    color: Theme.accent;
-                    font-size: Theme.font-s;
-                }
-                Text {
-                    text: "Back to " + SubagentsUi.back-label;
-                    color: Theme.accent;
-                    font-size: Theme.font-s;
-                    vertical-alignment: center;
-                }
-            }
-            ta := TouchArea {
-                mouse-cursor: pointer;
-                clicked => { SubagentsUi.back(); }
-            }
-        }
     }
 }

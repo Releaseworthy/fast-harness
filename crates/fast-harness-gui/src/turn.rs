@@ -32,6 +32,10 @@ pub fn send(app: &mut App, ui: &MainWindow, text: &str) -> bool {
         crate::app::show_error(ui, crate::open_load::LOADING);
         return false;
     }
+    // A subagent its parent runs now takes the text as a steer (D79).
+    if let Some(id) = live_child(app) {
+        return fast_harness_core::agent::live::steer(&id, &text);
+    }
     if app.runs.shown.busy {
         // `/undo` is never a steer (D69): it waits for no turn's end.
         if fast_harness_core::app::undo_args(&text).is_some() {
@@ -68,13 +72,27 @@ pub fn remove_queued(app: &mut App, ui: &MainWindow, index: i32) {
     }
 }
 
+/// The shown session when its parent's turn runs it as a subagent (D79).
+fn live_child(app: &App) -> Option<String> {
+    let id = app.runs.id.clone()?;
+    fast_harness_core::agent::live::running(&id).then_some(id)
+}
+
 pub fn pause(app: &mut App, ui: &MainWindow) {
+    if let Some(id) = live_child(app) {
+        fast_harness_core::agent::live::pause(&id);
+        return app.refresh_status(ui);
+    }
     if (app.runs.shown.session.as_ref()).is_some_and(|session| session.pause()) {
         app.refresh_status(ui);
     }
 }
 
 pub fn stop(app: &mut App, ui: &MainWindow) {
+    if let Some(id) = live_child(app) {
+        fast_harness_core::agent::live::stop(&id);
+        return app.refresh_status(ui);
+    }
     let session = app.runs.shown.session.as_ref();
     if app.runs.shown.busy && session.is_some_and(|session| session.cancel()) {
         app.refresh_status(ui);

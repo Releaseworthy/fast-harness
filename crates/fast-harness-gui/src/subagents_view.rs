@@ -111,6 +111,7 @@ pub fn rows(children: &[Child], live: &HashMap<String, Live>) -> Vec<SubagentRow
             word: word.into(),
             progress: if running && !line.is_empty() { progress(line).into() } else { logged.into() },
             when: if running { String::new() } else { took_text(Some(took)) }.into(),
+            detail: Default::default(),
         }
     };
     children.iter().map(row).collect()
@@ -129,7 +130,7 @@ pub fn render(app: &App, ui: &MainWindow) {
     subs.set_rows(ModelRc::new(VecModel::from(rows)));
     let top = s.viewing.last();
     let shown = app.runs.id.as_deref();
-    subs.set_read_only(top.is_some_and(|v| Some(v.child.as_str()) == shown));
+    subs.set_in_child(top.is_some_and(|v| Some(v.child.as_str()) == shown));
     subs.set_back_label(top.map(|v| v.back.as_str()).unwrap_or_default().into());
 }
 
