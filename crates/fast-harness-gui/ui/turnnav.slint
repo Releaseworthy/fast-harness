@@ -1,7 +1,7 @@
 // The turn navigator (PLAN.md D77): a column of short ticks in the chat's
 // right gutter, one per user turn. The tick of the turn at the top of the
 // view is longer and darker; hovering a tick shows a card with the prompt
-// and the start of the reply; a click, Enter or Space scrolls to the turn.
+// and the start of the final reply; a click, Enter or Space scrolls to the turn.
 // The rows come from Rust (src/turn_nav.rs) once per transcript change.
 import { Theme, Card } from "parts.slint";
 import { FocusRing } from "widgets.slint";
@@ -28,16 +28,27 @@ export global TurnsUi {
     in-out property <length> nav-step;
     in-out property <bool> nav-shown;
     in-out property <length> column-right;
+    // The shown card's height (for the tests).
+    in-out property <length> card-height;
 }
 
 // The card left of a hovered tick: the prompt in bold on one line, the
-// reply's start in dim text on at most three.
+// final reply's start in dim text on at most three. Its height follows the
+// texts (D80).
 component TurnCard inherits Card {
     in property <TurnTick> tick;
     radius: Theme.radius-l;
     elevation: 1.5;
-    height: 98px;
-    VerticalLayout {
+    height: lay.preferred-height;
+    init => { TurnsUi.card-height = self.height; }
+    changed height => { TurnsUi.card-height = self.height; }
+    // One line of the preview's font, for the three-line cap.
+    line := Text {
+        visible: false;
+        text: "Xg";
+        font-size: Theme.font-s;
+    }
+    lay := VerticalLayout {
         padding-left: Theme.space-l;
         padding-right: Theme.space-l;
         padding-top: Theme.space-m;
@@ -55,6 +66,7 @@ component TurnCard inherits Card {
             text: root.tick.preview == "" ? "No reply yet" : root.tick.preview;
             color: Theme.dim;
             font-size: Theme.font-s;
+            max-height: 3 * line.preferred-height;
             wrap: word-wrap;
             overflow: elide;
         }

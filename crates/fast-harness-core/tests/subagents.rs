@@ -159,6 +159,27 @@ fn a_child_at_max_depth_has_no_subagent_tool() {
 }
 
 #[test]
+fn max_depth_zero_turns_subagents_off() {
+    let env = env("sub-off");
+    let responses = vec![
+        tool_reply(&[("t0", "find_tools", FIND_SUBAGENT)]),
+        tool_reply(&[("t1", "subagent", r#"{"prompt":"leaf"}"#)]),
+        text_reply("parent done"),
+    ];
+    let transport = Arc::new(ScriptedTransport::new(responses));
+    let mut parts = parts(&transport, key_auth(), &env.cwd);
+    parts.config.subagent.max_depth = 0;
+    let mut conv = Conversation::create(&env.home, &env.cwd, None).unwrap();
+    let agent = Agent::with_subagent(parts, &env.home, &conv.id);
+    agent.run_turn(&mut conv, "go", &AtomicBool::new(false), &mut |_| {});
+    let requests = transport.requests();
+    assert_eq!(requests.len(), 3, "no child request");
+    // The root keeps the tool (its list is frozen, D36); the call is refused.
+    assert!(requests[2].body.contains("subagents are off at this depth"));
+    assert!(requests[2].body.contains(r#""is_error":true"#));
+    assert!(child_logs(&env, &conv.id).is_empty(), "no child session");
+}
+#[test]
 fn model_and_effort_override_the_parent() {
     let env = env("sub-model");
     let sonnet = r#"{"prompt":"one","model":"claude-sonnet-5"}"#;

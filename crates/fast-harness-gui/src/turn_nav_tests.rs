@@ -32,16 +32,17 @@ fn one_tick_per_user_turn_at_its_row() {
         user("First question"),
         reply(""),
         reply("First answer."),
-        reply("Second step text."),
+        reply("Final answer."),
+        reply("  "),
         user("\n\n  Second question\nmore lines"),
         note(),
     ];
     let turns = turns(&items);
     let rows: Vec<(usize, usize)> = turns.iter().map(|t| (t.number, t.row)).collect();
-    assert_eq!(rows, [(1, 1), (2, 5)]);
+    assert_eq!(rows, [(1, 1), (2, 6)]);
     assert_eq!(turns[0].prompt, "First question");
-    // The first reply with words, not a later step's.
-    assert_eq!(turns[0].preview, "First answer.");
+    // The last reply with words (the final answer), not the first step's.
+    assert_eq!(turns[0].preview, "Final answer.");
     assert_eq!(turns[1].prompt, "Second question");
     assert_eq!(turns[1].preview, "", "no reply yet");
 }
