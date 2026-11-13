@@ -54,3 +54,8 @@ impl ProcessGroup {
         }
     }
 }
+
+/// True when an exit carries no code (a signal ended it, as a kill does).
+pub fn ended_by_kill(code: Option<i32>) -> bool {
+    code.is_none()
+}

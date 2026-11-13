@@ -87,6 +87,8 @@ struct Run {
     /// `Some` once the shell exited: its exit code, if any.
     exit: Option<Option<i32>>,
     killed: bool,
+    /// A kill was signalled; killed is set only when it ended the job.
+    kill_asked: bool,
     /// Pipes not yet at their end.
     pipes: u8,
 }
@@ -188,7 +190,7 @@ impl Jobs {
         let job = self.job(id)?;
         let deadline = Instant::now() + wait;
         let mut run = job.wait_until(deadline, cancel, |run| {
-            run.ended() || (!until_end && run.buffer.total() > run.cursor)
+            run.ended() || (!until_end && has_whole_text(run))
         });
         let (skipped, bytes) = run.buffer.since(run.cursor);
         let end = match run.ended() {
@@ -323,7 +325,7 @@ impl Job {
     fn signal_kill(&self) {
         let mut run = self.lock();
         if run.exit.is_none() {
-            run.killed = true;
+            run.kill_asked = true;
             drop(run);
             let _ = self.group.kill();
         }
@@ -429,8 +431,21 @@ fn wait_exit(mut child: Child, job: Arc<Job>) {
     std::thread::spawn(move || {
         let code = child.wait().ok().and_then(|status| status.code());
         job.group.kill_rest();
-        job.lock().exit = Some(code);
+        let mut run = job.lock();
+        run.killed = run.kill_asked && crate::platform::ended_by_kill(code);
+        run.exit = Some(code);
+        drop(run);
         job.changed.notify_all();
         job.revision.bump();
     });
+}
+
+/// New output holds a whole character (a partial UTF-8 sequence alone is
+/// not worth waking a reader for), or bytes left the ring.
+fn has_whole_text(run: &Run) -> bool {
+    if run.buffer.total() <= run.cursor {
+        return false;
+    }
+    let (skipped, bytes) = run.buffer.since(run.cursor);
+    skipped > 0 || complete_end(&bytes) > 0
 }

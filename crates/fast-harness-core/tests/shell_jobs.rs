@@ -264,3 +264,19 @@ fn find_tools_finds_the_job_tools_and_they_wait_to_be_loaded() {
         .description
         .contains("do not start background servers"));
 }
+
+#[test]
+fn a_read_waits_past_a_partial_character_for_the_whole_one() {
+    let env = env("jobs-utf8");
+    let jobs = tools::Jobs::default();
+    // The first byte of the euro sign, two seconds, then the other two.
+    let command = "$o = [Console]::OpenStandardOutput(); $o.Write([byte[]](0xE2), 0, 1); \
+        $o.Flush(); Start-Sleep 2; $o.Write([byte[]](0x82, 0xAC), 0, 2); $o.Flush(); Start-Sleep 30";
+    let id = jobs.start(command, &env.cwd, Some(&env.home)).unwrap();
+    let reading = jobs.read(&id, 20 * SECOND, false, None).unwrap();
+    assert_eq!(
+        reading.text, "\u{20ac}",
+        "never an empty read for a partial character"
+    );
+    jobs.kill_all();
+}

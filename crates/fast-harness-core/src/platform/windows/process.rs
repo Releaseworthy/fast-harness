@@ -25,7 +25,13 @@ use windows_sys::Win32::System::Threading::{
 use crate::platform::PlatformError;
 
 /// Exit code given to processes killed through [`ProcessGroup::kill`].
-const KILLED_EXIT_CODE: u32 = 1;
+/// Unusual on purpose: [nded_by_kill] tells a kill from a natural exit by it.
+const KILLED_EXIT_CODE: u32 = 0xF4A5_0001;
+
+/// True when a group member's exit code is the one [ProcessGroup::kill] gives.
+pub fn ended_by_kill(code: Option<i32>) -> bool {
+    code == Some(KILLED_EXIT_CODE as i32)
+}
 
 /// A spawned process and every process it starts.
 pub struct ProcessGroup {
