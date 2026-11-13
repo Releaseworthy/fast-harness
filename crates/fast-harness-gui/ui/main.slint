@@ -164,9 +164,9 @@ export component MainWindow inherits Window {
     in-out property <[AskQuestion]> questions;
     callback ask-toggle(int, int); callback ask-other(int, string); callback ask-reply(string, bool);
     property <bool> popup-shown: root.approval.id != "" || root.ask-id != "";
-    out property <length> popup-height: popup.height;
-    out property <length> chat-pad: transcript.pad;
-    changed popup-shown => { if self.popup-shown { popup.grab(); } else { composer.focus-input(); } }
+    out property <length> popup-height: popup.height; out property <length> popup-top: popup.absolute-position.y; out property <length> chat-pad: transcript.pad;
+    out property <length> chat-list-height: transcript.list-height; out property <length> chat-end: transcript.absolute-position.y + transcript.end-y;
+    changed popup-shown => { if self.popup-shown { popup.grab(); transcript.to-bottom(); } else { composer.focus-input(); } }
     changed ask-id => { if self.ask-id != "" { popup.grab(); } }
 
     // The approval keys, read before the window keys and only while the
@@ -322,7 +322,7 @@ export component MainWindow inherits Window {
                             transcript := TranscriptView {
                                 vertical-stretch: 1;
                                 rows: root.messages;
-                                pad: root.popup-shown ? popup.height + Theme.space-l + Theme.space-s : 0px;
+                                pad: root.popup-shown ? max(0px, chat.y + transcript.y + transcript.height - popup.y) : 0px;
                                 loading: root.loading;
                                 toggle(i) => { root.toggle(i); }
                                 step-toggle(i) => { root.step-toggle(i); }
@@ -341,7 +341,7 @@ export component MainWindow inherits Window {
                                 undo(force) => { root.undo-turn(force); }
                             }
                             Rectangle {
-                                height: root.popup-shown ? 0px : composer.preferred-height + Theme.space-s + Theme.space-l;
+                                height: composer.preferred-height + Theme.space-s + Theme.space-l;
                                 composer := Composer {
                                     visible: !root.popup-shown;
                                     x: (parent.width - self.width) / 2;

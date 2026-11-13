@@ -140,13 +140,16 @@ component MessageView {
     callback turn-toggle(int);
     // The row's index in the list.
     in property <int> row-index;
+    // The empty space at the end while the session popup shows (D81).
+    in property <length> pad;
+    property <bool> spacer: msg.kind == "spacer";
     property <length> side: Columns.chat(root.width);
     // D80: the rows of a turn sit 20px in, right of the turn's rail; the
     // rows of an open step 20px more, right of the step's rail.
     property <length> indent: msg.turn-rail ? 20px : 0px;
     property <bool> turn-line: msg.turn-line != "";
     property <bool> line: msg.step-summary != "" && !msg.turn-hidden;
-    property <bool> blank: msg.turn-hidden ? !root.turn-line : msg.folded && !root.line && (msg.kind != "assistant" || msg.text == "");
+    property <bool> blank: root.spacer || msg.turn-hidden ? !root.turn-line : msg.folded && !root.line && (msg.kind != "assistant" || msg.text == "");
     property <length> top: root.blank || msg.kind == "footer" ? 0px : msg.kind == "user" ? Theme.space-l : Theme.space-s;
     property <length> line-height: root.line ? 26px + Theme.space-xs : 0px;
     VerticalLayout {
@@ -197,6 +200,7 @@ component MessageView {
                 copy => { root.copy(msg.text); }
             }
             if msg.kind == "note": Note { msg: msg; }
+            if root.spacer: Rectangle { height: root.pad; }
             if msg.kind == "footer" && !msg.folded: Text {
                 text: msg.text;
                 font-size: Theme.font-xs;
@@ -244,9 +248,15 @@ export component TranscriptView {
     // word, above the rows shown until its result comes.
     in property <bool> loading;
     in-out property <bool> follow: true;
-    // Empty space after the last row: the session popup's height (D81).
+    // Empty space after the last row while the session popup shows (D81):
+    // the height of the "spacer" row Rust appends then, so the list keeps
+    // its full height and its last real row ends at the popup's top.
     in property <length> pad;
     changed pad => { if root.follow { list.content-y = root.bottom; } }
+    property <bool> spaced: root.rows.length > 0 && root.rows[root.rows.length - 1].kind == "spacer";
+    // The list's height and the bottom of its last real row (for the tests).
+    out property <length> list-height: list.height;
+    out property <length> end-y: list.content-y + list.content-height - (root.spaced ? root.pad : 0px);
     property <length> bottom: min(0px, list.visible-height - list.content-height);
     // How far the view is above the bottom: exact while the last row is
     // laid out, whatever the ListView's height estimate.
@@ -296,9 +306,7 @@ export component TranscriptView {
     }
     list := ListView {
         width: 100%;
-        // The frame keeps its size; the rows end above the popup (a ListView
-        // takes no child after its `for`, so the pad is cut from the list).
-        height: root.height - root.pad;
+        height: root.height;
         vertical-scrollbar-policy: ScrollBarPolicy.always-off;
         for item[i] in root.rows: MessageView {
             // The row under the view's top edge: the navigator's current turn.
@@ -323,6 +331,7 @@ export component TranscriptView {
             step-toggle(h) => { root.step-toggle(h); }
             turn-toggle(h) => { root.turn-toggle(h); }
             row-index: i;
+            pad: root.pad;
             link(u) => { root.link(u); }
         }
         scrolled => {

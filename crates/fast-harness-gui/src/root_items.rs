@@ -31,6 +31,7 @@ mod reflect;
 mod rows;
 mod runs;
 mod settings;
+mod spacer;
 mod child_pump;
 mod subagents_view;
 mod theme;

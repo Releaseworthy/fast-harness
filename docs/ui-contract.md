@@ -96,6 +96,7 @@ With `"approvals": "ask"` a call can wait for an answer (PLAN.md D64). Both fron
 - `MainWindow.attached`: property <[ImageChip]>
 - `MainWindow.busy`: property <bool>
 - `MainWindow.cancel-sign-in`: callback
+- `MainWindow.chat-list-height`: property <length>
 - `MainWindow.draft`: property <string>
 - `MainWindow.effort-index`: property <int>
 - `MainWindow.effort-picked`: callback
@@ -118,6 +119,7 @@ With `"approvals": "ask"` a call can wait for an answer (PLAN.md D64). Both fron
 - `MainWindow.pause`: callback
 - `MainWindow.picker-note`: property <string>
 - `MainWindow.pickers-opened`: callback
+- `MainWindow.popup-height`: property <length>
 - `MainWindow.providers`: property <[ProviderCard]>
 - `MainWindow.questions`: property <[AskQuestion]>
 - `MainWindow.queue`: callback

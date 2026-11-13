@@ -33,6 +33,8 @@ mod open_tests;
 #[cfg(test)]
 mod panels_tests;
 #[cfg(test)]
+mod popup_view_tests;
+#[cfg(test)]
 mod prompt_settings_tests;
 #[cfg(test)]
 mod rails_view_tests;

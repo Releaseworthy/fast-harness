@@ -5,7 +5,7 @@ use std::path::Path;
 
 use crate::{shots_png, ApprovalView, MainWindow};
 
-fn view() -> ApprovalView {
+pub fn view() -> ApprovalView {
     let text = "run: cargo test --workspace -- --test-threads=1 2>&1 | Tee-Object -FilePath target\\test.log; \
 git status --short; Write-Output 'tests done, now checking the tree before the commit'";
     ApprovalView {

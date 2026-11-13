@@ -25,9 +25,11 @@ pub trait Rows {
     }
 }
 
+// A trailing popup spacer (D81) stays last: the mirror counts and writes
+// the rows above it.
 impl Rows for VecModel<MsgRow> {
     fn count(&self) -> usize {
-        self.row_count()
+        crate::spacer::count(self)
     }
     fn get(&self, index: usize) -> Option<MsgRow> {
         self.row_data(index)
@@ -36,10 +38,12 @@ impl Rows for VecModel<MsgRow> {
         self.set_row_data(index, row);
     }
     fn push(&self, row: MsgRow) {
-        VecModel::push(self, row);
+        self.insert(crate::spacer::count(self), row);
     }
     fn replace(&self, rows: Vec<MsgRow>) {
+        let spaced = crate::spacer::count(self) < self.row_count();
         self.set_vec(rows);
+        crate::spacer::set(self, spaced);
     }
 }
 
