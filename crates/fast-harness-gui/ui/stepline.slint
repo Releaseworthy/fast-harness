@@ -1,0 +1,93 @@
+// The step line and rail of the chat (PLAN.md D73).
+import { Theme, Mark } from "parts.slint";
+import { Icons } from "icons.slint";
+import { BusySpinner, FocusRing } from "widgets.slint";
+
+// One step folded into a line: a chevron on the left (up when the step is
+// open) and what the step did in dim words, a running spinner and an error
+// mark next to the words that say so. A click, Enter or Space opens or
+// folds the step.
+export component StepLine inherits Rectangle {
+    in property <string> text;
+    // The words with counts: the accessible label.
+    in property <string> label;
+    in property <bool> open;
+    in property <bool> running;
+    in property <bool> failed;
+    callback toggled();
+    height: 26px;
+    border-radius: Theme.radius-s;
+    background: ta.has-hover ? Theme.hover : transparent;
+    animate background { duration: Theme.quick; }
+    accessible-role: button;
+    accessible-label: root.label;
+    accessible-description: root.open ? "Step open: activate to fold it" : "Step folded: activate to show every call";
+    accessible-action-default => { root.toggled(); }
+    forward-focus: fs;
+    HorizontalLayout {
+        padding-left: 2px;
+        padding-right: Theme.space-xs;
+        spacing: Theme.space-s;
+        Mark {
+            width: 14px;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+            text: root.open ? Icons.chevron-up : Icons.chevron-down;
+            color: Theme.dim;
+            font-size: Theme.font-s;
+        }
+        if root.running: VerticalLayout {
+            alignment: center;
+            BusySpinner { label: "Step running"; }
+        }
+        if root.failed: Mark {
+            vertical-alignment: center;
+            text: Icons.error;
+            color: Theme.error;
+            font-size: Theme.font-s;
+        }
+        Text {
+            horizontal-stretch: 1;
+            text: root.text;
+            color: ta.has-hover || fs.has-focus ? Theme.text : Theme.dim;
+            font-size: Theme.font-m;
+            vertical-alignment: center;
+            overflow: elide;
+        }
+    }
+    ta := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.toggled(); }
+    }
+    fs := FocusScope {
+        focus-on-click: false;
+        key-pressed(event) => {
+            if event.text == Key.Return || event.text == " " {
+                root.toggled();
+                return accept;
+            }
+            return reject;
+        }
+    }
+    if fs.has-focus: FocusRing { radius: Theme.radius-s; x: -2px; y: -2px; width: parent.width + 4px; height: parent.height + 4px; }
+}
+
+// The faint line on the left of an open step's rows: a 12 px hit area
+// whose click folds the step; it widens and darkens under the pointer.
+export component StepRail inherits Rectangle {
+    callback clicked();
+    width: 12px;
+    accessible-role: button;
+    accessible-label: "Collapse step";
+    accessible-action-default => { root.clicked(); }
+    Rectangle {
+        x: (parent.width - self.width) / 2;
+        width: rail.has-hover ? 3px : 1px;
+        border-radius: 1px;
+        background: rail.has-hover ? Theme.dim : Theme.line;
+    }
+    rail := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}

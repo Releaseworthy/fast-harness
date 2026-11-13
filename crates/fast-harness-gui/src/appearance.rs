@@ -3,6 +3,7 @@
 
 use std::path::{Path, PathBuf};
 
+use fast_harness_core::config::{save_setting, CHAT_FULL, CHAT_SUMMARY};
 use fast_harness_core::platform;
 use fast_harness_core::theme::{check, Theme as CoreTheme};
 use slint::{ComponentHandle, Model, ModelRc, VecModel};
@@ -104,6 +105,17 @@ pub fn show(app: &App, ui: &MainWindow) {
         dir.display()
     );
     ui.global::<AppearanceUi>().set_folder(folder.into());
+    (ui.global::<AppearanceUi>()).set_chat_full(app.rt.config.chat_full());
+}
+
+/// Applies `chatDetail` (D73) to the shown chat at once and saves it.
+fn set_chat_detail(app: &mut App, ui: &MainWindow, full: bool) {
+    let word = if full { CHAT_FULL } else { CHAT_SUMMARY };
+    app.rt.config.chat_detail = word.into();
+    app.mirror.set_full(full, &*app.rows);
+    if let Err(err) = save_setting(&app.rt.home, "chatDetail", serde_json::json!(word)) {
+        show_error(ui, format!("Cannot save the chat detail: {err}"));
+    }
 }
 
 /// Creates `<home>/themes` when missing and opens it in Explorer.
@@ -130,6 +142,17 @@ pub fn connect(ui: &MainWindow) {
             theme::set_greyscale(app, ui, level);
             show(app, ui);
         });
+    });
+    // The chat's step lines (D73): opened and folded here, switched off
+    // by `chatDetail`.
+    ui.on_step_toggle(|index| {
+        with_app(|app, _| {
+            let index = usize::try_from(index).unwrap_or(usize::MAX);
+            app.mirror.toggle_step(index, &*app.rows);
+        });
+    });
+    g.on_chat_detail_changed(|full| {
+        with_app(|app, ui| set_chat_detail(app, ui, full));
     });
     g.on_open_folder(|| {
         with_app(|app, ui| open_folder(app, ui));

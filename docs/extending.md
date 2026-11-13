@@ -28,6 +28,8 @@ fast-harness doctor                           what loaded, from where, what was 
 
 A broken user `config.json` stops the start with its error, as before. A broken project `config.json` or provider file is skipped, and `fast-harness doctor` names it with the parser's error.
 
+`chatDetail` (D73): `summary` (default) folds each step's tool activity in the GUI chat into one line that opens on a click; `full` shows every thinking block, tool card and step footer. Any other value reads as `summary`. Settings > Appearance switches it without a restart.
+
 ## Project trust
 
 The project is the nearest folder at or above the working directory that holds a `.fast-harness` folder (other than `~/.fast-harness` itself). A project folder can name endpoints and, later, commands, so nothing in it loads until you trust it once:

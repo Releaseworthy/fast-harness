@@ -91,9 +91,7 @@ impl Approvals {
     /// True when tool call `call_id` never ran because the gate ended it: the
     /// row says so in its word and is not a failed call (D64).
     pub fn kept_from_running(&self, call_id: &str) -> bool {
-        (self.word(call_id)).is_some_and(|word| {
-            matches!(word, "declined" | "cancelled" | "paused") || word.starts_with("refused")
-        })
+        (self.word(call_id)).is_some_and(gate_ended)
     }
 
     fn set(&mut self, call: &str, word: &'static str) {
@@ -111,4 +109,10 @@ impl Approvals {
     pub fn is_empty(&self) -> bool {
         self.words.is_empty()
     }
+}
+
+/// True for a word that says the gate ended the call before it ran:
+/// `declined`, `cancelled`, `paused` or `refused ...` (D64).
+pub fn gate_ended(word: &str) -> bool {
+    matches!(word, "declined" | "cancelled" | "paused") || word.starts_with("refused")
 }

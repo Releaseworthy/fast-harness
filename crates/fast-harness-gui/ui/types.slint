@@ -104,6 +104,21 @@ export struct MsgRow {
     // How the call's approval went (D64): "waiting for your answer",
     // "allowed once", "declined", ...; empty when it never asked. Live only.
     approval: string,
+    // The step line (D73) on a step's first row: what the step did in
+    // words; empty under `chatDetail: "full"` and on other rows.
+    step-summary: string,
+    // The line with counts (accessible label, tooltip).
+    step-label: string,
+    step-open: bool,
+    // The row of the step's line; an opened step's rows draw the rail
+    // (a faint line on the left) whose click folds the step.
+    step-head: int,
+    rail: bool,
+    step-running: bool,
+    step-failed: bool,
+    // The row's detail is folded into its step line (an assistant row keeps
+    // its text and folds its thinking).
+    folded: bool,
 }
 
 // The approval prompt (D64); an empty `id` for none. `title` says what the

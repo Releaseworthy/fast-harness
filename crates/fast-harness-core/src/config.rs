@@ -94,6 +94,10 @@ pub struct Config {
     /// newest npm release, checked at each start; a release such as
     /// `2.1.323` pins it. Read from the user layer at start.
     pub claude_code_version: String,
+    /// `chatDetail` (PLAN.md D73): `summary` (default) folds each step's
+    /// tool activity into one line in the GUI chat; `full` shows every
+    /// card. Anything else reads as `summary`.
+    pub chat_detail: String,
 }
 
 /// The `reflect` settings; a `null` model picks the cheapest priced one.
@@ -102,6 +106,10 @@ pub struct Config {
 pub struct ReflectConfig {
     pub model: Option<String>,
 }
+
+/// `chatDetail` values (D73).
+pub const CHAT_SUMMARY: &str = "summary";
+pub const CHAT_FULL: &str = "full";
 
 /// Default `agentsBytes`.
 pub const DEFAULT_AGENTS_BYTES: usize = 32 * 1024;
@@ -169,11 +177,17 @@ impl Default for Config {
             approvals: approvals::Approvals::Off,
             allow: approvals::Allow::default(),
             claude_code_version: "auto".into(),
+            chat_detail: CHAT_SUMMARY.into(),
         }
     }
 }
 
 impl Config {
+    /// True when the chat shows every step in full (`chatDetail: "full"`).
+    pub fn chat_full(&self) -> bool {
+        self.chat_detail.trim() == CHAT_FULL
+    }
+
     /// Reads `<app_home>/config.json` and applies the environment overrides.
     /// A file that cannot be read or parsed is an error message.
     pub fn load(app_home: &Path) -> Result<Config, String> {

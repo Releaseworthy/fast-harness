@@ -101,6 +101,7 @@ One file per decision in [docs/decisions/](docs/decisions/), moved there unchang
 - D69 [Undo of a turn's file changes](docs/decisions/D69.md)
 - D70 [Image input (core, TUI views)](docs/decisions/D70.md)
 - D71 [The Claude Code version follows the releases](docs/decisions/D71.md)
+- D73 [GUI chat step summaries](docs/decisions/D73.md): `chatDetail` summary (default) or full; each step folds into one line, a click opens it
 
 ## Architecture
 

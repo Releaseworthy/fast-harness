@@ -50,6 +50,7 @@ mod shots_tools;
 mod shots_trace;
 #[cfg(test)]
 mod side_tests;
+mod step_rows;
 #[cfg(test)]
 mod workspace_switch_tests;
 

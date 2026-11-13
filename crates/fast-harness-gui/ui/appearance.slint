@@ -43,6 +43,9 @@ export global AppearanceUi {
     callback greyscale-changed(int);
     callback open-folder();
     callback reload();
+    // `chatDetail` (D73): true shows every step in full.
+    in-out property <bool> chat-full;
+    callback chat-detail-changed(bool);
 }
 
 // A theme card: a mini window in the theme's colours, its name and kind.
@@ -239,6 +242,15 @@ export component Appearance {
         }
         if AppearanceUi.folder != "": Text { text: AppearanceUi.folder; color: Theme.dim; font-size: Theme.font-xs; wrap: word-wrap; }
         if AppearanceUi.notes != "": WarningBox { title: "Theme files"; detail: AppearanceUi.notes; }
+        Rectangle { height: Theme.space-s; }
+        Text { text: "Chat detail"; color: Theme.text; font-size: Theme.font-m; font-weight: 600; }
+        HorizontalLayout {
+            spacing: Theme.space-s;
+            alignment: start;
+            ActionButton { icon: !AppearanceUi.chat-full ? Icons.check : Icons.list-flat; text: "Step summaries"; clicked => { AppearanceUi.chat-full = false; AppearanceUi.chat-detail-changed(false); } }
+            ActionButton { icon: AppearanceUi.chat-full ? Icons.check : Icons.list-flat; text: "Full detail"; clicked => { AppearanceUi.chat-full = true; AppearanceUi.chat-detail-changed(true); } }
+        }
+        Text { text: AppearanceUi.chat-full ? "Full detail: every thinking block, tool card and step footer is shown." : "Step summaries: each step's tool activity folds into one line; click it to see every call."; color: Theme.dim; font-size: Theme.font-s; wrap: word-wrap; }
         Rectangle { height: Theme.space-s; }
         HorizontalLayout {
             spacing: Theme.space-s;

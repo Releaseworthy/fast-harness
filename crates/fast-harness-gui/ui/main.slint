@@ -120,6 +120,8 @@ export component MainWindow inherits Window {
     callback remove-workspace(string);
     callback open-page(string);
     callback toggle(int);
+    // Opens or folds the step whose line is on that row (D73).
+    callback step-toggle(int);
     callback open-url(string);
     // keys.json `reload_ui` and Settings: reload ~/.fast-harness/ui (fast-harness-gui-live, PLAN.md D51).
     callback reload-ui();
@@ -310,6 +312,7 @@ export component MainWindow inherits Window {
                                 rows: root.messages;
                                 loading: root.loading;
                                 toggle(i) => { root.toggle(i); }
+                                step-toggle(i) => { root.step-toggle(i); }
                                 copy(t) => { root.copy-text(t); }
                                 link(u) => { root.open-url(u); }
                             }

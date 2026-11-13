@@ -83,6 +83,7 @@ impl App {
     /// `arg`: the folder from the command line, if any (see `workspaces::start`).
     pub fn new(ui: &MainWindow, rt: Runtime, arg: Option<PathBuf>) -> App {
         let rows = Rc::new(VecModel::default());
+        let full = rt.config.chat_full();
         ui.set_messages(ModelRc::from(rows.clone()));
         let (side, cwd, error) = crate::workspaces::start(&rt.home, arg);
         if let Some(error) = error {
@@ -97,7 +98,7 @@ impl App {
             rt,
             runs: Runs::new(cwd.clone()),
             cwd,
-            mirror: Mirror::default(),
+            mirror: Mirror::new(full),
             rows,
             login_cancel: None,
             models: Vec::new(),
