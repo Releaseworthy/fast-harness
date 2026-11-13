@@ -54,7 +54,8 @@ pub struct Layers {
     /// `~/.fast-harness` or `FAST_HARNESS_HOME`.
     pub home: PathBuf,
     /// The nearest folder at or above the working directory that holds a
-    /// `.fast-harness` folder other than `home`.
+    /// `.fast-harness` folder other than `home`, below the user's home folder
+    /// ([`project_root`]).
     pub project: Option<PathBuf>,
     pub trusted: bool,
     /// The `AGENTS.md` files of `cwd` left out because their project is not
@@ -173,11 +174,16 @@ pub fn agents_trusted(home: &Path, dir: &Path) -> bool {
 }
 
 /// The nearest folder at or above `cwd` with a `.fast-harness` folder that
-/// is not `home` itself.
+/// is not `home`. The walk stops below the user's home folder: its
+/// `.fast-harness` is the user layer, never a project, even when
+/// `FAST_HARNESS_HOME` points elsewhere (a workspace under `%TEMP%`, inside
+/// the user folder on Windows, named the user folder an untrusted project).
 pub fn project_root(home: &Path, cwd: &Path) -> Option<PathBuf> {
     let home = trust::canonical(home);
+    let user = crate::platform::home_dir().map(|dir| trust::canonical(&dir));
     let cwd = trust::canonical(cwd);
     cwd.ancestors()
+        .take_while(|dir| user.as_deref() != Some(*dir))
         .find(|dir| {
             let settings = dir.join(PROJECT_DIR);
             settings.is_dir() && trust::canonical(&settings) != home

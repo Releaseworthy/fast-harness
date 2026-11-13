@@ -75,8 +75,8 @@ fn an_untrusted_projects_agents_md_is_not_in_the_system_prompt() {
         note.contains("/trust") && !note.contains(ROOT_RULE),
         "{note}"
     );
-    // What `/trust` trusts (a temp home does not hide `~/.fast-harness`,
-    // which then counts as a project folder above the temp folder).
+    // What `/trust` trusts: the repository root here (the walk for a
+    // project folder stops below the user's home folder).
     trust::trust(&env.home, &layers::trust_root(&env.home, &env.cwd)).unwrap();
     let (context, _) = Context::read_at(&env.home, &env.cwd, "m", "2026-11-13");
     assert!(context.system().contains(ROOT_RULE));
