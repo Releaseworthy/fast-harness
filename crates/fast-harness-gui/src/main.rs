@@ -49,6 +49,8 @@ mod shots_jobs;
 #[cfg(test)]
 mod shots_png;
 #[cfg(test)]
+mod shots_popup;
+#[cfg(test)]
 mod shots_prompt;
 #[cfg(test)]
 mod shots_rails;

@@ -94,7 +94,8 @@ component QuestionBlock inherits VerticalLayout {
         other-row := HorizontalLayout {
             padding: Theme.space-xs;
             spacing: Theme.space-s;
-            Choice { multi: root.q.multi; chosen: root.q.other-chosen; y: 6px; }
+            // Centred on the text box (a `y` in a layout sat it 6px high).
+            VerticalLayout { alignment: center; Choice { multi: root.q.multi; chosen: root.q.other-chosen; } }
             Rectangle {
                 horizontal-stretch: 1;
                 height: 28px;
