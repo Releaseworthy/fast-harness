@@ -166,7 +166,12 @@ fn draw_transcript(frame: &mut Frame, ui: &mut Ui, view: &mut View<'_>, area: Re
         styles: Styles::of(ui),
     };
     let t = view.transcript;
-    let lines = view.cache.lines_with(&t.items, &t.approvals, opts);
+    // A session opening on a worker says so, in a word (D60).
+    let loading = Line::styled(super::open::LOADING, opts.styles.dim());
+    let mut lines = view.cache.lines_with(&t.items, &t.approvals, opts);
+    if ui.loading {
+        lines.push(&loading);
+    }
     let height = usize::from(area.height);
     let first = ui.first_line(lines.len(), height);
     let visible: Vec<Line<'static>> = lines

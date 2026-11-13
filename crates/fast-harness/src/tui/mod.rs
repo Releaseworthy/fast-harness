@@ -17,6 +17,9 @@ mod loads;
 #[cfg(test)]
 mod loads_tests;
 mod markdown;
+mod open;
+#[cfg(test)]
+mod open_tests;
 mod panel_screen;
 #[cfg(test)]
 mod panel_screen_tests;

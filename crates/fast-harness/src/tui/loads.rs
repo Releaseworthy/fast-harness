@@ -55,7 +55,11 @@ pub fn read_trace(path: &Path) -> TraceRead {
     }
 }
 
-fn spawn(name: &str, tx: Sender<Msg>, job: impl FnOnce() -> Msg + Send + 'static) -> bool {
+pub(super) fn spawn(
+    name: &str,
+    tx: Sender<Msg>,
+    job: impl FnOnce() -> Msg + Send + 'static,
+) -> bool {
     let spawned = thread::Builder::new().name(name.into()).spawn(move || {
         let _ = tx.send(job());
     });

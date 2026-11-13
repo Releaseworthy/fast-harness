@@ -43,6 +43,13 @@ pub enum Msg {
     Sessions(u64, Result<Vec<SessionSummary>, String>),
     /// The Trace screen's read of `ticket` (D60).
     Trace(u64, super::loads::TraceRead),
+    /// The open of `generation` (D60): the session's log and its transcript,
+    /// or why it does not read. Boxed: it is far larger than the other
+    /// messages on the channel.
+    Opened(
+        u64,
+        Result<Box<fast_harness_core::view::opened::Opened>, String>,
+    ),
 }
 
 pub struct Tui {
@@ -56,6 +63,8 @@ pub struct Tui {
     pub(super) log_path: PathBuf,
     /// The reads of the Sessions and Trace screens on workers (D60).
     pub(super) loads: super::loads::Loads,
+    /// The opens of sessions on workers (D60): the newest one wins.
+    pub(super) opens: fast_harness_core::view::opened::Opening,
     pub transcript: Transcript,
     pub ui: Ui,
     pub cache: Cache,
@@ -113,6 +122,7 @@ impl Tui {
             session,
             log_path,
             loads: Default::default(),
+            opens: Default::default(),
             transcript,
             ui,
             cache: Cache::default(),
@@ -150,7 +160,7 @@ impl Tui {
     }
 
     /// A session was opened: its transcript is new, the queue its own.
-    fn shown(&mut self, unfinished: Option<fast_harness_core::session::Unfinished>) {
+    pub(super) fn shown(&mut self, unfinished: Option<fast_harness_core::session::Unfinished>) {
         self.transcript.revision += 1;
         self.ui.top = None;
         self.ui.current.clone_from(&self.session);
@@ -190,6 +200,7 @@ impl Tui {
             Msg::TurnDone(end) => self.turn_done(*end),
             Msg::Sessions(ticket, result) => self.sessions_loaded(ticket, result),
             Msg::Trace(ticket, result) => self.trace_loaded(ticket, result),
+            Msg::Opened(generation, result) => self.opened(generation, result),
             Msg::Notes(notes) => {
                 for note in notes {
                     self.note(NoteKind::Error, note);
@@ -340,39 +351,16 @@ impl Tui {
             Slash::Help(help) => return self.note(NoteKind::Info, help),
             Slash::Error(err) => return self.note(NoteKind::Error, err),
         };
+        if self.ui.loading {
+            self.ui.status = "a session is loading".into();
+            return;
+        }
         if self.current.running() {
             self.ui.status = "a turn is running".into();
             return;
         }
         self.transcript.push_user(text.clone());
         self.start(Start::Text(text));
-    }
-
-    fn open_session(&mut self, id: Option<&str>) {
-        if self.ui.running {
-            return;
-        }
-        let opened = self.rt().open_with_events(&self.cwd, id, false);
-        let opened = match opened {
-            Ok(opened) => opened,
-            Err(err) => return self.ui.status = err,
-        };
-        let transcript = load_transcript(&opened);
-        let conv = opened.0;
-        let (session, unfinished) = (conv.id.clone(), conv.unfinished);
-        let log_path = conv.log_path.clone();
-        match self.service.open(conv, &self.cwd) {
-            Ok(current) => {
-                current.set_answering(true);
-                self.ui.approvals = current.approvals();
-                self.service.close(&self.session);
-                (self.current, self.session) = (current, session);
-                (self.transcript, self.log_path) = (transcript, log_path);
-                self.shown(unfinished);
-                self.ui.status = format!("session {}", self.session);
-            }
-            Err(err) => self.ui.status = format!("{err:?}"),
-        }
     }
 
     fn open(&mut self, screen: Screen) {

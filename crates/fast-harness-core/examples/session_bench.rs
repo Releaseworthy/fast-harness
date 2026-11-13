@@ -1,17 +1,21 @@
-//! Time of the session list (gate G10, PLAN.md D60): seeds N logs of S bytes
-//! in a temporary home, then times `session::list` with no index (every log
-//! parsed), with a warm index (no log read) and `session::latest`, median of
-//! 3 each. The home is removed at the end.
+//! Time of the session list and of a session open (gate G10, PLAN.md D60):
+//! seeds N logs of S bytes in a temporary home, then times `session::list`
+//! with no index (every log parsed), with a warm index (no log read),
+//! `session::latest`, the open of the newest log as it was and as it is, and
+//! what that open now costs the UI thread (the ask and the worker's start),
+//! median of 3 each. The home is removed at the end.
 //!
 //! `cargo run --release -p fast-harness-core --example session_bench -- [logs] [kb]`
 
 use std::path::{Path, PathBuf};
+use std::thread;
 use std::time::{Duration, Instant};
 
 use fast_harness_core::agent::Conversation;
 use fast_harness_core::session::{self, index::INDEX_FILE};
 use fast_harness_core::trace::{self, SessionHeader, TraceWriter};
 use fast_harness_core::types::Message;
+use fast_harness_core::view::opened::{self, Opening};
 use fast_harness_core::view::Transcript;
 
 /// One log of at least `bytes`: turns of a user message of about 1 KB.
@@ -53,16 +57,18 @@ fn seed(home: &Path, cwd: &Path, logs: usize, bytes: usize) {
     }
 }
 
-fn median(mut f: impl FnMut()) -> Duration {
-    let mut times: Vec<Duration> = (0..3)
-        .map(|_| {
-            let start = Instant::now();
-            f();
-            start.elapsed()
-        })
-        .collect();
+fn median3(mut f: impl FnMut() -> Duration) -> Duration {
+    let mut times: Vec<Duration> = (0..3).map(|_| f()).collect();
     times.sort();
     times[1]
+}
+
+fn median(mut f: impl FnMut()) -> Duration {
+    median3(|| {
+        let start = Instant::now();
+        f();
+        start.elapsed()
+    })
 }
 
 /// The home and folder: `FAST_HARNESS_BENCH_HOME` and `FAST_HARNESS_BENCH_CWD`
@@ -100,6 +106,34 @@ fn open_times(home: &Path, cwd: &Path) -> (Duration, Duration) {
     (before, after)
 }
 
+/// What the open costs the UI thread now (D60, the GUI in fb5e4ba and the
+/// TUI): the ask and the worker's start, while the one parse runs on that
+/// worker. The workers are joined after the three timings, so the parse is
+/// not part of it.
+fn ui_thread_open(home: &Path, cwd: &Path) -> Duration {
+    let id = session::latest(home, cwd).expect("latest").expect("one").id;
+    let mut opening = Opening::default();
+    let mut workers = Vec::new();
+    let time = median3(|| {
+        let start = Instant::now();
+        let ask = opening.ask(Some(&id)).expect("a free run slot");
+        let (home, cwd) = (home.to_path_buf(), cwd.to_path_buf());
+        let id = ask.id.unwrap_or_default();
+        workers.push(thread::spawn(move || {
+            let _ = opened::load(&home, &cwd, &id);
+        }));
+        let spent = start.elapsed();
+        // The UI thread takes the result on a later pass; this frees the run
+        // slot for the next timing.
+        let _ = opening.arrive(ask.generation);
+        spent
+    });
+    for worker in workers {
+        let _ = worker.join();
+    }
+    time
+}
+
 fn main() {
     let mut args = std::env::args().skip(1);
     let logs: usize = args.next().and_then(|a| a.parse().ok()).unwrap_or(200);
@@ -132,6 +166,11 @@ fn main() {
         "open the newest: reopen + read + transcript {:.1} ms, reopen + transcript {:.1} ms",
         ms(before),
         ms(after)
+    );
+    let ui = ui_thread_open(&home, &cwd);
+    println!(
+        "open the newest on the UI thread after D60 (ask + worker start): {:.3} ms",
+        ms(ui)
     );
     if !keep {
         let _ = std::fs::remove_dir_all(&home);

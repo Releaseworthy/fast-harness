@@ -100,6 +100,9 @@ pub struct Ui {
     pub sessions: Vec<SessionSummary>,
     /// The Sessions screen's list is being read on a worker (D60).
     pub sessions_loading: bool,
+    /// A session's log is being opened on a worker (D60): the transcript says
+    /// so and no prompt starts.
+    pub loading: bool,
     pub models: Vec<ModelInfo>,
     /// The model list the pickers show: cached, then live.
     pub catalog: Vec<ModelInfo>,
@@ -157,6 +160,7 @@ impl Ui {
             account_provider: None,
             sessions: Vec::new(),
             sessions_loading: false,
+            loading: false,
             models: Vec::new(),
             catalog: builtin_models(),
             fetching: false,

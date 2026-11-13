@@ -18,6 +18,7 @@ pub struct Opened {
 /// its log, then the transcript from those events with the damaged-line note
 /// (`Transcript::opened`, D60). A log that does not read is the error.
 pub fn load(home: &Path, cwd: &Path, id: &str) -> Result<Opened, String> {
+    crate::ui_thread::forbid("session::open");
     let (conv, events) =
         Conversation::reopen(home, cwd, id).map_err(|err| format!("session {id}: {err}"))?;
     let view = Transcript::opened(&events, &conv.messages, conv.take_notes());
