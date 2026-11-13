@@ -19,6 +19,8 @@ mod composer_tests;
 #[cfg(test)]
 mod layout_tests;
 #[cfg(test)]
+mod loading_tests;
+#[cfg(test)]
 mod open_tests;
 #[cfg(test)]
 mod panels_tests;

@@ -200,17 +200,6 @@ export component TranscriptView {
         root.last-height = list.content-height;
     }
 
-    // The word shown while a session opens: a word, never colour only. It is
-    // a component (blocks.slint), since a plain layout under an `if` measures
-    // its wrapped text at its unwrapped width (pitfalls-gui).
-    if root.loading: Rectangle {
-        x: 0;
-        y: 0;
-        width: parent.width;
-        height: min(parent.height, loading-line.preferred-height);
-        loading-line := LoadingLine {}
-    }
-
     list := ListView {
         width: 100%;
         height: 100%;
@@ -252,6 +241,20 @@ export component TranscriptView {
             root.follow = false;
             list.content-y = y;
         }
+    }
+
+    // The word shown while a session opens: a word, never colour only. It is
+    // a component (blocks.slint), since a plain layout under an `if` measures
+    // its wrapped text at its unwrapped width (pitfalls-gui). It comes after
+    // the list, on an opaque strip: the rows of the session still shown
+    // (scrolled to its end) drew over it and hid it (2026-11-13).
+    if root.loading: Rectangle {
+        x: 0;
+        y: 0;
+        width: parent.width;
+        height: min(parent.height, loading-line.preferred-height);
+        background: Theme.surface;
+        loading-line := LoadingLine {}
     }
 
     // Jump to latest: a round gradient button with a halo on hover.
