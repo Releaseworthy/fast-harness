@@ -45,6 +45,8 @@ With `"approvals": "ask"` a call can wait for an answer (PLAN.md D64). Both fron
 ## Entries
 
 <!-- contract:start -->
+- `AppearanceUi.chat-detail-changed`: callback
+- `AppearanceUi.chat-full`: property <bool>
 - `AppearanceUi.failing`: property <[ThemeCard]>
 - `AppearanceUi.folder`: property <string>
 - `AppearanceUi.greyscale`: property <int>
@@ -131,6 +133,7 @@ With `"approvals": "ask"` a call can wait for an answer (PLAN.md D64). Both fron
 - `MainWindow.status-state`: property <string>
 - `MainWindow.status-timing`: property <string>
 - `MainWindow.status-tokens`: property <string>
+- `MainWindow.step-toggle`: callback
 - `MainWindow.stop`: callback
 - `MainWindow.title-bar-clicked`: callback
 - `MainWindow.to-bottom`: function

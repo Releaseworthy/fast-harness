@@ -7,6 +7,7 @@ import { ScrollBar } from "scrollbar.slint";
 import { ThinkingQuote, LoadingLine } from "blocks.slint";
 import { ToolFrame } from "toolcard.slint";
 import { RowThumbs } from "attach.slint";
+import { StepLine, StepRail } from "stepline.slint";
 
 // The user's message: a bubble on the right, at most 80% of the column.
 component UserBubble {
@@ -54,13 +55,15 @@ component UserBubble {
 
 component AssistantBlock {
     in property <MsgRow> msg;
+    // The step is folded (D73): the text stays, the thinking goes.
+    property <bool> thinking: msg.thinking != "" && !msg.folded;
     callback copy(string);
     callback toggle();
     callback link(string);
     VerticalLayout {
         spacing: Theme.space-s;
         // The speaker: a gradient tile with the bolt and the name.
-        if msg.text != "" || msg.thinking != "": HorizontalLayout {
+        if msg.text != "" || root.thinking: HorizontalLayout {
             spacing: Theme.space-s;
             alignment: start;
             Rectangle {
@@ -77,9 +80,9 @@ component AssistantBlock {
                 }
             }
             Text { text: "Fast Harness"; color: Theme.text; font-size: Theme.font-s; font-weight: 700; vertical-alignment: center; }
-            if msg.thinking != "": Rectangle { width: Theme.space-s; }
-            if msg.thinking != "": Mark { text: msg.expanded ? Icons.chevron-down : Icons.chevron-right; color: Theme.dim; font-size: Theme.font-s; }
-            if msg.thinking != "": LinkText {
+            if root.thinking: Rectangle { width: Theme.space-s; }
+            if root.thinking: Mark { text: msg.expanded ? Icons.chevron-down : Icons.chevron-right; color: Theme.dim; font-size: Theme.font-s; }
+            if root.thinking: LinkText {
                 text: msg.expanded ? "Hide thinking" : "Show thinking";
                 font-size: Theme.font-s;
                 vertical-alignment: center;
@@ -87,7 +90,7 @@ component AssistantBlock {
             }
         }
         // Wrapped text under an `if` sits in a component (ui/blocks.slint).
-        if msg.thinking != "" && msg.expanded: ThinkingQuote { text: msg.thinking; }
+        if root.thinking && msg.expanded: ThinkingQuote { text: msg.thinking; }
         if msg.text != "": StyledText {
             text: msg.body;
             default-color: Theme.text;
@@ -125,49 +128,76 @@ component Note {
     }
 }
 
+// One row. A step's first row carries its line (D73); the rows of an open
+// step sit indented right of the rail, and a folded row draws nothing.
 component MessageView {
     in property <MsgRow> msg;
     callback copy(string);
     callback toggle();
     callback link(string);
+    callback step-toggle(int);
+    property <length> side: Columns.side(root.width, Theme.column-width);
+    property <bool> line: msg.step-summary != "";
+    property <bool> blank: msg.folded && !root.line && (msg.kind != "assistant" || msg.text == "");
+    property <length> top: root.blank || msg.kind == "footer" ? 0px : msg.kind == "user" ? Theme.space-l : Theme.space-s;
+    property <length> line-height: root.line ? 26px + Theme.space-xs : 0px;
     VerticalLayout {
-        padding-left: Columns.side(root.width, Theme.column-width);
-        padding-right: Columns.side(root.width, Theme.column-width);
-        padding-top: msg.kind == "footer" ? 0px : msg.kind == "user" ? Theme.space-l : Theme.space-s;
+        padding-left: root.side;
+        padding-right: root.side;
+        padding-top: root.top;
         // A tool card keeps room for its elevation above the step line.
-        padding-bottom: msg.kind == "footer" ? Theme.space-s : msg.kind == "tool" ? Theme.space-s + 2px : 2px;
-        if msg.kind == "user": UserBubble {
-            msg: msg;
-            copy(t) => { root.copy(t); }
+        padding-bottom: root.blank ? 0px : msg.kind == "footer" ? Theme.space-s : msg.kind == "tool" && !msg.folded ? Theme.space-s + 2px : 2px;
+        spacing: Theme.space-xs;
+        if root.line: StepLine {
+            text: msg.step-summary;
+            label: msg.step-label;
+            open: msg.step-open;
+            running: msg.step-running;
+            failed: msg.step-failed;
+            toggled => { root.step-toggle(msg.step-head); }
         }
-        if msg.kind == "assistant": AssistantBlock {
-            msg: msg;
-            copy(t) => { root.copy(t); }
-            toggle => { root.toggle(); }
-            link(u) => { root.link(u); }
-        }
-        if msg.kind == "tool": ToolFrame {
-            tool: msg.tool;
-            error: msg.error;
-            not-run: msg.not-run;
-            expanded: msg.expanded;
-            toggle => { root.toggle(); }
-            status: true;
-            running: msg.running;
-            live: msg.live;
-            approval: msg.approval;
-            copy => { root.copy(msg.text); }
-        }
-        if msg.kind == "note": Note { msg: msg; }
-        if msg.kind == "footer": Text {
-            text: msg.text;
-            font-size: Theme.font-xs;
-            color: Theme.dim;
-            overflow: elide;
+        VerticalLayout {
+            padding-left: msg.rail ? 22px : 0px;
+            if msg.kind == "user": UserBubble {
+                msg: msg;
+                copy(t) => { root.copy(t); }
+            }
+            if msg.kind == "assistant": AssistantBlock {
+                msg: msg;
+                copy(t) => { root.copy(t); }
+                toggle => { root.toggle(); }
+                link(u) => { root.link(u); }
+            }
+            if msg.kind == "tool" && !msg.folded: ToolFrame {
+                tool: msg.tool;
+                error: msg.error;
+                not-run: msg.not-run;
+                expanded: msg.expanded;
+                toggle => { root.toggle(); }
+                status: true;
+                running: msg.running;
+                live: msg.live;
+                approval: msg.approval;
+                copy => { root.copy(msg.text); }
+            }
+            if msg.kind == "note": Note { msg: msg; }
+            if msg.kind == "footer" && !msg.folded: Text {
+                text: msg.text;
+                font-size: Theme.font-xs;
+                color: Theme.dim;
+                overflow: elide;
+            }
         }
     }
+    // The rail runs the row's whole height below its step line, so the
+    // rows of an open step join into one line.
+    if msg.rail: StepRail {
+        x: root.side + 2px + 7px - self.width / 2;
+        y: root.line ? root.top + root.line-height : 0px;
+        height: root.height - self.y;
+        clicked => { root.step-toggle(msg.step-head); }
+    }
 }
-
 // The transcript list. It follows the bottom while `follow` is true. Any
 // user scroll clears it at once: the wheel calls `scrolled` before its
 // animation moves `content-y` (so `content-y` cannot tell the direction
@@ -193,6 +223,7 @@ export component TranscriptView {
     // read as a scroll up (2026-11-13: Jump to latest after a switch).
     property <length> last-gap;
     callback toggle(int);
+    callback step-toggle(int);
     callback copy(string);
     callback link(string);
     // The themed bar's thumb centre in window coordinates (for the tests).
@@ -214,6 +245,7 @@ export component TranscriptView {
             msg: item;
             copy(t) => { root.copy(t); }
             toggle => { root.toggle(i); }
+            step-toggle(h) => { root.step-toggle(h); }
             link(u) => { root.link(u); }
         }
         scrolled => {

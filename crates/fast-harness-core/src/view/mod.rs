@@ -10,6 +10,7 @@ pub mod jobs;
 mod live_tail;
 pub mod opened;
 mod replay;
+mod steps;
 mod summary;
 pub mod tool_detail;
 mod tool_detail_fs;
@@ -18,6 +19,7 @@ pub mod undo;
 
 pub use approvals::Approvals;
 pub use live_tail::{LiveTail, LIVE_LINES, LIVE_LINE_BYTES};
+pub use steps::{step_range, summarize, StepSummary};
 pub use summary::tool_summary;
 pub use tool_detail::{
     tool_detail, Chip, Field, Line, LineKind, Tone, ToolDetail, ToolKind, MAX_LINES,
