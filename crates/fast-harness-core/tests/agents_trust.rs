@@ -108,6 +108,38 @@ fn an_untrusted_session_sends_no_agents_text_and_trust_brings_it_back() {
     assert!(bodies[1].contains(NESTED_RULE), "trusted: nested attached");
 }
 
+/// The notes an agent in `cwd` gets.
+fn notes_at(rt: &Runtime, cwd: &Path) -> Vec<String> {
+    let conv = rt.open_conversation(cwd, None, false).unwrap();
+    rt.agent(cwd, &conv).unwrap().1
+}
+
+fn untrusted(notes: &[String]) -> bool {
+    notes.iter().any(|n| n.contains("not trusted"))
+}
+
+#[test]
+fn an_untrusted_note_reaches_only_its_own_workspace() {
+    let env = env("agents-note-scope");
+    project(&env);
+    let other = env.cwd.parent().unwrap().join("other-workspace");
+    fs::create_dir_all(&other).unwrap();
+    let mut rt = Runtime::load_at(env.home.clone()).unwrap();
+    rt.use_project(&env.cwd).unwrap();
+    // A parked session of another folder runs before the project's own.
+    assert!(!untrusted(&notes_at(&rt, &other)), "another folder got it");
+    assert!(untrusted(&notes_at(&rt, &env.cwd)), "kept for its folder");
+    assert!(!untrusted(&notes_at(&rt, &env.cwd)), "handed out once");
+    // A switch away drops the note the project never handed out.
+    rt.use_project(&env.cwd).unwrap();
+    rt.use_project(&other).unwrap();
+    assert!(!untrusted(&notes_at(&rt, &other)), "stale after the switch");
+    assert!(!untrusted(&notes_at(&rt, &env.cwd)), "dropped, not parked");
+    rt.use_project(&env.cwd).unwrap();
+    assert!(untrusted(&notes_at(&rt, &env.cwd)), "back: queued again");
+    let _ = fs::remove_dir_all(&other);
+}
+
 #[test]
 fn a_folder_above_the_project_folder_follows_its_own_trust() {
     let env = env("agents-above");

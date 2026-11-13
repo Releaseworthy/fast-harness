@@ -48,8 +48,16 @@ pub struct Runtime {
     pub keys: Arc<crate::keys::Keys>,
     /// The `panels/*.json` files (PLAN.md D46): indexed only, no process.
     pub panels: Vec<crate::panels::PanelFile>,
-    /// Notes handed out once with the next agent (an untrusted project).
-    notes: Mutex<Vec<String>>,
+    /// Notes handed out once with the next agent; a project's note (an
+    /// untrusted project) only to an agent in that folder.
+    notes: Mutex<Vec<Note>>,
+}
+
+/// A queued note and the folder it is about (`None`: any agent).
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct Note {
+    pub scope: Option<PathBuf>,
+    pub text: String,
 }
 
 /// The provider and the credential source of one model.
@@ -96,7 +104,7 @@ impl Runtime {
             panels: Vec::new(),
             notes: Mutex::default(),
         };
-        runtime.apply(loaded);
+        runtime.apply(loaded, None);
         Ok(runtime)
     }
 
@@ -189,7 +197,7 @@ impl Runtime {
         if !config.memory {
             context.memory = None;
         }
-        let mut notes = self.take_notes();
+        let mut notes = self.take_notes_for(cwd);
         notes.extend(conv.take_notes());
         notes.extend(read_notes);
         let system = conv.system.clone().unwrap_or_else(|| context.system());
@@ -348,8 +356,6 @@ impl Runtime {
     /// Queues `note` for the next agent unless it is queued already.
     fn note(&self, note: String) {
         let mut notes = self.notes.lock().unwrap_or_else(|p| p.into_inner());
-        if !notes.contains(&note) {
-            notes.push(note);
-        }
+        settings::queue(&mut notes, None, note);
     }
 }

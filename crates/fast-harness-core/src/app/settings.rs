@@ -2,10 +2,10 @@
 //! (PLAN.md D41): loading both, the routes of custom providers, project
 //! trust and the one-time notes.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use super::{Route, Runtime};
+use super::{Note, Route, Runtime};
 use crate::auth::{AuthSource, StaticAuth};
 use crate::config::index::{ExtIndex, Item};
 use crate::config::layers::{self, kind_files, Layered, Layers};
@@ -141,6 +141,14 @@ pub fn provider_for(file: &ProviderFile, live: &Arc<LiveModels>) -> Arc<dyn Prov
     })
 }
 
+/// Queues `text` about `scope` unless the same note is queued already.
+pub(super) fn queue(notes: &mut Vec<Note>, scope: Option<PathBuf>, text: String) {
+    let note = Note { scope, text };
+    if !notes.contains(&note) {
+        notes.push(note);
+    }
+}
+
 fn env_value(key: &str) -> Option<String> {
     let value = std::env::var(key).ok()?;
     let value = value.trim();
@@ -152,7 +160,7 @@ impl Runtime {
     /// the provider files; an untrusted project queues its note once.
     pub fn use_project(&mut self, cwd: &Path) -> Result<(), String> {
         let settings = load_settings(&self.home, Some(cwd), &env_value)?;
-        self.apply(settings);
+        self.apply(settings, Some(cwd));
         Ok(())
     }
 
@@ -167,7 +175,9 @@ impl Runtime {
         ))
     }
 
-    pub(super) fn apply(&mut self, settings: Settings) {
+    /// Wires `settings`, loaded for the folder `scope` (`None`: the user
+    /// layer only).
+    pub(super) fn apply(&mut self, settings: Settings, scope: Option<&Path>) {
         let Settings {
             mut layered,
             providers,
@@ -202,26 +212,43 @@ impl Runtime {
             .map(|file| (provider_for(&file, self.catalog.live()), file))
             .chain(native)
             .collect();
-        let mut notes = self.notes.lock().unwrap_or_else(|p| p.into_inner());
-        for note in [layered.layers.untrusted_note(), keys.note()]
-            .into_iter()
-            .flatten()
-        {
-            if !notes.contains(&note) {
-                notes.push(note);
-            }
-        }
-        drop(notes);
+        self.queue_notes(layered.layers.untrusted_note(), keys.note(), scope);
         self.keys = Arc::new(keys);
         self.config = layered.config.clone();
         self.retire_model();
         self.layered = layered;
     }
 
-    /// The queued notes (an untrusted project), each handed out once.
+    /// Queues the notes of a load for `scope`: `untrusted` about that folder,
+    /// `keys` for any agent. The notes about the folder loaded before are
+    /// stale now (it was left or trusted); a later load queues them again.
+    fn queue_notes(&self, untrusted: Option<String>, keys: Option<String>, scope: Option<&Path>) {
+        let mut notes = self.notes.lock().unwrap_or_else(|p| p.into_inner());
+        notes.retain(|note| note.scope.is_none());
+        if let Some(note) = untrusted {
+            queue(&mut notes, scope.map(Path::to_path_buf), note);
+        }
+        if let Some(note) = keys {
+            queue(&mut notes, None, note);
+        }
+    }
+
+    /// Every queued note (an untrusted project), each handed out once.
     pub fn take_notes(&self) -> Vec<String> {
         let mut notes = self.notes.lock().unwrap_or_else(|p| p.into_inner());
-        std::mem::take(&mut *notes)
+        let taken = std::mem::take(&mut *notes);
+        taken.into_iter().map(|note| note.text).collect()
+    }
+
+    /// The queued notes for an agent in `cwd`: the global ones and those
+    /// about a folder `cwd` lies in; the rest stay queued for their folder.
+    pub fn take_notes_for(&self, cwd: &Path) -> Vec<String> {
+        let mut notes = self.notes.lock().unwrap_or_else(|p| p.into_inner());
+        let (mine, rest): (Vec<Note>, Vec<Note>) = std::mem::take(&mut *notes)
+            .into_iter()
+            .partition(|note| note.scope.as_deref().is_none_or(|s| cwd.starts_with(s)));
+        *notes = rest;
+        mine.into_iter().map(|note| note.text).collect()
     }
 
     /// A command line flag (`model`, `effort`) as the top layer.
