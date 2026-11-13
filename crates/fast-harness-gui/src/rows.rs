@@ -25,14 +25,21 @@ pub fn msg_row(item: &Item) -> MsgRow {
     msg_row_with(item, &Approvals::default())
 }
 
-/// [`msg_row`] with a tool call's approval word (D64), live only.
+/// [`msg_row`] with a tool call's approval word (D64). A call the gate ended
+/// (`declined`, `cancelled`, `paused`, `refused`) never ran: its row carries
+/// the word, no error edge, and the status pill says `not run`.
 pub fn msg_row_with(item: &Item, approvals: &Approvals) -> MsgRow {
     let row = msg_row_plain(item);
     match item {
-        Item::Tool { id, .. } => MsgRow {
-            approval: approvals.word(id).unwrap_or_default().into(),
-            ..row
-        },
+        Item::Tool { id, .. } => {
+            let kept = approvals.kept_from_running(id);
+            MsgRow {
+                approval: approvals.word(id).unwrap_or_default().into(),
+                not_run: kept,
+                error: row.error && !kept,
+                ..row
+            }
+        }
         _ => row,
     }
 }

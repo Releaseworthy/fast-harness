@@ -63,7 +63,9 @@ fn thinking_lines(thinking: &str, o: &Opts) -> Vec<Line<'static>> {
     lines
 }
 
-fn tool_lines(item: &Item, o: &Opts) -> Vec<Line<'static>> {
+/// `kept` is a call the approval gate ended before it ran (D64): it has a
+/// result, but it never ran, so it is not a failed call.
+fn tool_lines(item: &Item, kept: bool, o: &Opts) -> Vec<Line<'static>> {
     let Item::Tool {
         summary,
         output,
@@ -76,11 +78,12 @@ fn tool_lines(item: &Item, o: &Opts) -> Vec<Line<'static>> {
     };
     let st = &o.styles;
     // A mark per state, not only a colour: greyscale themes read the same.
-    let (mark, mark_style) = match (output, is_error) {
-        (None, _) if o.running => (SPINNER[o.frame % SPINNER.len()], st.accent()),
-        (None, _) => (st.icons.pending, st.dim()),
-        (Some(_), true) => (st.icons.error, st.error()),
-        (Some(_), false) => (st.icons.ok, st.success()),
+    let (mark, mark_style) = match (output, is_error, kept) {
+        (None, _, _) if o.running => (SPINNER[o.frame % SPINNER.len()], st.accent()),
+        (None, _, _) => (st.icons.pending, st.dim()),
+        (Some(_), _, true) => (st.icons.not_run, st.warning()),
+        (Some(_), true, false) => (st.icons.error, st.error()),
+        (Some(_), false, false) => (st.icons.ok, st.success()),
     };
     let head = clip(summary, o.width.saturating_sub(2));
     let mut lines = vec![Line::from(vec![
@@ -93,7 +96,11 @@ fn tool_lines(item: &Item, o: &Opts) -> Vec<Line<'static>> {
         push_rows(&mut lines, tail, st.dim(), o.width);
         return lines;
     };
-    let style = if *is_error { st.error() } else { st.dim() };
+    let style = if *is_error && !kept {
+        st.error()
+    } else {
+        st.dim()
+    };
     let rows: Vec<&str> = output.lines().filter(|l| !l.trim().is_empty()).collect();
     push_rows(
         &mut lines,
@@ -171,8 +178,8 @@ fn footer_line(item: &Item, width: usize, st: &Styles) -> Vec<Line<'static>> {
     text_lines(&kept.join(" · "), st.dim(), width, 2)
 }
 
-/// The lines of one item.
-pub fn item_lines(item: &Item, o: &Opts) -> Vec<Line<'static>> {
+/// The lines of one item; `kept` for a call the approval gate ended (D64).
+pub fn item_lines(item: &Item, kept: bool, o: &Opts) -> Vec<Line<'static>> {
     let width = o.width.max(1);
     let st = &o.styles;
     match item {
@@ -185,7 +192,7 @@ pub fn item_lines(item: &Item, o: &Opts) -> Vec<Line<'static>> {
             lines.extend(markdown::render(text, width, st));
             lines
         }
-        Item::Tool { .. } => tool_lines(item, o),
+        Item::Tool { .. } => tool_lines(item, kept, o),
         Item::Note { kind, text } => note_lines(*kind, text, width, st),
         Item::StepFooter { .. } => footer_line(item, width, st),
     }
@@ -201,6 +208,14 @@ fn word_of(item: &Item, approvals: &Approvals) -> Option<&'static str> {
     match item {
         Item::Tool { id, .. } => approvals.word(id),
         _ => None,
+    }
+}
+
+/// True for a call the gate declined, cancelled, paused or refused (D64).
+fn kept_of(item: &Item, approvals: &Approvals) -> bool {
+    match item {
+        Item::Tool { id, .. } => approvals.kept_from_running(id),
+        _ => false,
     }
 }
 
@@ -244,7 +259,7 @@ impl Cache {
             if index > 0 && spaced(item) {
                 lines.push(Line::default());
             }
-            lines.extend(item_lines(item, &o));
+            lines.extend(item_lines(item, kept_of(item, approvals), &o));
             // After the state mark, so a long head line cannot hide it.
             if let (Some(word), Some(head)) = (word, lines.iter_mut().find(|l| l.spans.len() > 1)) {
                 let span = Span::styled(format!("{word} · "), o.styles.warning());

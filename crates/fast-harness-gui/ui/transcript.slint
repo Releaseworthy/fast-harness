@@ -144,6 +144,7 @@ component MessageView {
         if msg.kind == "tool": ToolFrame {
             tool: msg.tool;
             error: msg.error;
+            not-run: msg.not-run;
             expanded: msg.expanded;
             toggle => { root.toggle(); }
             status: true;

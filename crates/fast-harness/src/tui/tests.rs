@@ -1,6 +1,7 @@
 //! Rendering into ratatui's TestBackend and the key state machine, without
 //! a real terminal, a runtime or a model.
 
+use fast_harness_core::events::{AgentEvent, ApprovalRequest};
 use fast_harness_core::llm::Timing;
 use fast_harness_core::types::{StopReason, Usage};
 use fast_harness_core::view::{Item, NoteKind, State, Transcript};
@@ -343,6 +344,118 @@ fn pasted_enter_becomes_a_newline() {
         })
         .collect();
     assert_eq!(mods, [KeyModifiers::ALT, KeyModifiers::NONE]);
+}
+
+/// A call the approval gate ended (`declined`, `cancelled`, `paused`,
+/// `refused`) never ran, so its row is not a failed row (PLAN.md D64).
+fn declined_call(transcript: &mut Transcript) {
+    transcript.apply(&AgentEvent::ToolCall {
+        id: "c1".into(),
+        name: "write".into(),
+        arguments: "{}".into(),
+    });
+    let mut request = ApprovalRequest::default();
+    request.id = "a1".into();
+    request.call_id = "c1".into();
+    request.tool = "write".into();
+    request.summary = "write file: a.txt".into();
+    request.arguments = "{}".into();
+    transcript.apply(&AgentEvent::ApprovalRequest(request));
+    transcript.apply(&AgentEvent::ApprovalDone {
+        id: "a1".into(),
+        answer: "declined".into(),
+    });
+    transcript.apply(&AgentEvent::ToolResult {
+        id: "c1".into(),
+        content: "not run: the user declined this call".into(),
+        is_error: true,
+        duration_ms: 3,
+    });
+}
+
+/// Bug: a declined call drew the error mark and red output, as if the tool
+/// had failed.
+#[test]
+fn a_call_the_gate_kept_shows_its_word_not_the_error_mark() {
+    let mut t = Transcript::new();
+    declined_call(&mut t);
+    let mut ui = Ui::new("model-x".into(), Some("high".into()));
+    let buffer = render(&mut ui, &t, 70, 12);
+    let screen = rows(&buffer);
+    let head = find(&screen, "declined");
+    let mark = ui.icons.not_run;
+    assert!(screen[head].contains(mark), "{}", screen.join("\n"));
+    let error = color(ui.theme.palette.error);
+    let out = find(&screen, "not run: the user declined this call");
+    let x = screen[out].find("not run").unwrap_or(0);
+    let col = screen[out][..x].chars().count() as u16;
+    assert_ne!(buffer[(col, out as u16)].fg, error, "the output is not red");
+    let head_x = screen[head].find(mark).unwrap_or(0);
+    let head_col = screen[head][..head_x].chars().count() as u16;
+    assert_ne!(
+        buffer[(head_col, head as u16)].fg,
+        error,
+        "not the error mark"
+    );
+}
+
+/// The same call on a replayed session (the `tool/approval` record, trace
+/// version 11) draws the same row.
+#[test]
+fn a_replayed_declined_call_is_not_a_failed_row() {
+    let event =
+        |kind: &str, seq: u64, data: serde_json::Value| fast_harness_core::trace::TraceEvent {
+            kind: kind.into(),
+            seq,
+            time: 0,
+            data,
+        };
+    let events = vec![
+        event(
+            "tool/call",
+            1,
+            serde_json::json!({"turn": 1, "step": 1, "callId": "c1",
+                "name": "write", "arguments": "{}"}),
+        ),
+        event(
+            "tool/result",
+            2,
+            serde_json::json!({"turn": 1, "step": 1, "durationMs": 3,
+                "message": {"role": "tool", "content": [{"type": "tool_result",
+                    "callId": "c1", "content": "not run: the user declined this call",
+                    "isError": true}]}}),
+        ),
+        event(
+            "tool/approval",
+            3,
+            serde_json::json!({"turn": 1, "step": 1, "callId": "c1",
+                "decision": "declined"}),
+        ),
+    ];
+    let t = Transcript::from_trace(&events);
+    assert_eq!(t.approvals.word("c1"), Some("declined"));
+    let mut ui = Ui::new("model-x".into(), Some("high".into()));
+    let screen = rows(&render(&mut ui, &t, 70, 12));
+    let head = find(&screen, "declined");
+    let mark = ui.icons.not_run;
+    assert!(screen[head].contains(mark), "{}", screen.join("\n"));
+    assert!(!screen.iter().any(|r| r.contains(ui.icons.error)));
+}
+
+/// A tool that ran and failed keeps the error mark and red output.
+#[test]
+fn a_tool_that_really_failed_keeps_the_error_mark() {
+    let mut t = Transcript::new();
+    t.items = vec![tool(Some("boom"), true)];
+    let mut ui = Ui::new("model-x".into(), Some("high".into()));
+    let buffer = render(&mut ui, &t, 70, 12);
+    let screen = rows(&buffer);
+    find(&screen, "✗ read README.md");
+    let out = find(&screen, "boom");
+    let x = screen[out].find("boom").unwrap_or(0);
+    let col = screen[out][..x].chars().count() as u16;
+    let error = color(ui.theme.palette.error);
+    assert_eq!(buffer[(col, out as u16)].fg, error, "the output stays red");
 }
 
 #[test]

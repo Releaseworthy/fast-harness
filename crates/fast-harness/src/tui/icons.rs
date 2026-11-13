@@ -23,6 +23,8 @@ pub struct Icons {
     pub response: &'static str,
     /// A tool call waiting for its result.
     pub pending: &'static str,
+    /// A call the approval gate ended before it ran (PLAN.md D64).
+    pub not_run: &'static str,
     /// The active account.
     pub account: &'static str,
     /// The "more below" badge.
@@ -46,6 +48,7 @@ pub const NERD: Icons = Icons {
     tool: "\u{EB6D}",     // cod-tools
     response: "\u{EB08}", // cod-hubot
     pending: "\u{EA82}",  // cod-history
+    not_run: "\u{EABD}",  // cod-circle_slash
     account: "\u{EB99}",  // cod-account
     more: "\u{EAB4}",     // cod-chevron_down
     settings: "\u{EB51}", // cod-settings_gear
@@ -66,6 +69,7 @@ pub const PLAIN: Icons = Icons {
     tool: "▸",
     response: "◆",
     pending: "○",
+    not_run: "⊘",
     account: "*",
     more: "↓",
     settings: "",
@@ -96,7 +100,7 @@ pub fn lead(mark: &str) -> String {
 #[cfg(test)]
 impl Icons {
     /// Every mark of the set, for the width tests.
-    pub fn all(&self) -> [&'static str; 16] {
+    pub fn all(&self) -> [&'static str; 17] {
         [
             self.app,
             self.chat,
@@ -111,6 +115,7 @@ impl Icons {
             self.tool,
             self.response,
             self.pending,
+            self.not_run,
             self.account,
             self.more,
             self.settings,

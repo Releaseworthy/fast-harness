@@ -81,6 +81,9 @@ export struct MsgRow {
     live: string,
     running: bool,
     error: bool,
+    // A call the approval gate ended before it ran (`declined`, `cancelled`,
+    // `paused`, `refused`): it is not a failed call (D64).
+    not-run: bool,
     // Thinking or tool output opened by the user.
     expanded: bool,
     // Note kind: retry, switch, error or info.

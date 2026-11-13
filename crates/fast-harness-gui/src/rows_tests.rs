@@ -231,3 +231,54 @@ fn session_rows() {
     );
     assert!(row.current);
 }
+
+/// A call the approval gate ended (`declined`, `cancelled`, `paused`,
+/// `refused`) never ran: its row is not a failed row (PLAN.md D64).
+fn declined_call() -> fast_harness_core::view::Transcript {
+    use fast_harness_core::events::{AgentEvent, ApprovalRequest};
+    use fast_harness_core::view::Transcript;
+    let mut view = Transcript::new();
+    view.apply(&AgentEvent::ToolCall {
+        id: "c1".into(),
+        name: "write".into(),
+        arguments: "{}".into(),
+    });
+    let mut request = ApprovalRequest::default();
+    request.id = "a1".into();
+    request.call_id = "c1".into();
+    request.tool = "write".into();
+    request.summary = "write file: a.txt".into();
+    request.arguments = "{}".into();
+    view.apply(&AgentEvent::ApprovalRequest(request));
+    view.apply(&AgentEvent::ApprovalDone {
+        id: "a1".into(),
+        answer: "declined".into(),
+    });
+    view.apply(&AgentEvent::ToolResult {
+        id: "c1".into(),
+        content: "not run: the user declined this call".into(),
+        is_error: true,
+        duration_ms: 3,
+    });
+    view
+}
+
+/// Bug: a declined call drew the red failed pill and the error border.
+#[test]
+fn a_call_the_gate_kept_is_not_a_failed_row() {
+    let view = declined_call();
+    let row = msg_row_with(&view.items[0], &view.approvals);
+    assert_eq!(row.approval, "declined");
+    assert!(!row.error, "not a failed call");
+    assert!(row.not_run, "the row says it was not run");
+}
+
+/// A tool that ran and failed keeps the failed state.
+#[test]
+fn a_tool_that_really_failed_is_a_failed_row() {
+    let view = declined_call();
+    let failed = msg_row(&tool(Some("boom"), true));
+    assert!(failed.error && !failed.not_run);
+    // A call that never asked keeps its plain state.
+    assert!(!failed.not_run && view.approvals.word("other").is_none());
+}

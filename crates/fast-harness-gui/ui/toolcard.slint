@@ -59,8 +59,10 @@ export global ToolStyle {
 export component ToolStatus inherits Rectangle {
     in property <bool> running;
     in property <bool> error;
+    // A call the gate ended before it ran: a neutral word, not `failed` (D64).
+    in property <bool> not-run;
     in property <string> label;
-    property <color> tone: root.running ? Theme.accent : root.error ? Theme.error : Theme.success;
+    property <color> tone: root.running ? Theme.accent : root.not-run ? Theme.dim : root.error ? Theme.error : Theme.success;
     border-radius: self.height / 2;
     border-width: 1px;
     border-color: root.tone.with-alpha(0.6);
@@ -75,12 +77,12 @@ export component ToolStatus inherits Rectangle {
             BusySpinner { label: "Running " + root.label; }
         }
         if !root.running: Mark {
-            text: root.error ? Icons.error : Icons.check;
+            text: root.error ? Icons.error : root.not-run ? Icons.circle-slash : Icons.check;
             color: root.tone;
             font-size: Theme.font-s;
         }
         Text {
-            text: root.running ? "running" : root.error ? "failed" : "done";
+            text: root.running ? "running" : root.not-run ? "not run" : root.error ? "failed" : "done";
             color: root.tone;
             font-size: Theme.font-xs;
             font-weight: 700;
@@ -306,6 +308,8 @@ component EdgeCard inherits Rectangle {
 component ToolHead inherits HorizontalLayout {
     in property <ToolView> tool;
     in property <bool> error;
+    // A call the approval gate ended: its status pill says `not run` (D64).
+    in property <bool> not-run;
     in property <bool> status;
     in property <bool> running;
     in property <string> caption;
@@ -352,7 +356,13 @@ component ToolHead inherits HorizontalLayout {
     if root.status: VerticalLayout {
         alignment: center;
         horizontal-stretch: 0;
-        ToolStatus { running: root.running; error: root.error; label: root.tool.name; height: 20px; }
+        ToolStatus {
+            running: root.running;
+            error: root.error;
+            not-run: root.not-run;
+            label: root.tool.name;
+            height: 20px;
+        }
     }
     if root.approval != "": HorizontalLayout {
         spacing: Theme.space-xs;
@@ -385,6 +395,9 @@ component ToolHead inherits HorizontalLayout {
 export component ToolFrame inherits Rectangle {
     in property <ToolView> tool;
     in property <bool> error;
+    // A call the approval gate ended before it ran: no error edge, and its
+    // status pill says `not run` (D64).
+    in property <bool> not-run;
     in property <bool> expanded;
     in property <bool> show-link: true;
     in property <float> elevation: 0.7;
@@ -413,6 +426,7 @@ export component ToolFrame inherits Rectangle {
         ToolHead {
             tool: root.tool;
             error: root.error;
+            not-run: root.not-run;
             status: root.status;
             running: root.running;
             caption: root.caption;
