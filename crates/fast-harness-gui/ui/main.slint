@@ -6,10 +6,11 @@ import { PillsRow, ReadOnlyNotice, JobsUi, SubagentsUi } from "subagents.slint";
 export { JobsUi, SubagentsUi, SubagentRow } from "subagents.slint";
 import { UndoRow } from "undo.slint";
 import { ApprovalPrompt } from "approval.slint";
-import { Theme } from "parts.slint";
+import { Theme, Columns } from "parts.slint";
 import { Dropdown } from "widgets.slint";
 import { Composer, Caret } from "composer.slint";
 import { TranscriptView } from "transcript.slint";
+export { TurnsUi, TurnTick } from "turnnav.slint";
 import { Sidebar } from "sidebar.slint";
 import { AccountsPage } from "accounts.slint";
 import { SettingsPage, AboutPage } from "pages.slint";
@@ -291,7 +292,7 @@ export component MainWindow inherits Window {
                         chat := VerticalLayout {
                             // The banner and the composer sit in a centred column;
                             // explicit geometry keeps the width out of the layout.
-                            property <length> column: min(self.width - 2 * Theme.space-l, Theme.column-width);
+                            property <length> column: self.width - 2 * Columns.chat(self.width);
                             if root.error-text != "": Rectangle {
                                 height: banner.preferred-height + Theme.space-m;
                                 banner := ErrorBanner {

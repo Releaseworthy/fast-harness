@@ -8,6 +8,7 @@ import { ThinkingQuote, LoadingLine } from "blocks.slint";
 import { ToolFrame } from "toolcard.slint";
 import { RowThumbs } from "attach.slint";
 import { StepLine, StepRail } from "stepline.slint";
+import { TurnNav, TurnsUi } from "turnnav.slint";
 
 // The user's message: a bubble on the right, at most 80% of the column.
 component UserBubble {
@@ -136,7 +137,7 @@ component MessageView {
     callback toggle();
     callback link(string);
     callback step-toggle(int);
-    property <length> side: Columns.side(root.width, Theme.column-width);
+    property <length> side: Columns.chat(root.width);
     property <bool> line: msg.step-summary != "";
     property <bool> blank: msg.folded && !root.line && (msg.kind != "assistant" || msg.text == "");
     property <length> top: root.blank || msg.kind == "footer" ? 0px : msg.kind == "user" ? Theme.space-l : Theme.space-s;
@@ -234,15 +235,52 @@ export component TranscriptView {
 
     public function to-bottom() {
         root.follow = true;
+        root.target = -1;
         list.content-y = root.bottom;
     }
 
+    // A navigator tick asked for row `row` at the top (D77). The list lays
+    // out only the rows in view and places the others by its average row
+    // height, so the share of the height brings the row into view; the row
+    // then pins the view to its top each time the list moves it (`pin`,
+    // `changed y`) until a user scroll.
+    property <int> target: -1;
+    public function go-row(row: int) {
+        root.follow = false;
+        root.target = row;
+        list.content-y = max(root.bottom, -list.content-height * row / max(1, root.rows.length));
+    }
+
+    function pin(i: int, y: length) {
+        list.content-y = max(root.bottom, min(0px, -y));
+        // `at-top` can flip and back in one pass while the list settles,
+        // and then its handler does not run: the pinned row is the top.
+        if list.content-y == -y {
+            TurnsUi.top-row = i;
+        }
+    }
     list := ListView {
         width: 100%;
         height: 100%;
         vertical-scrollbar-policy: ScrollBarPolicy.always-off;
         for item[i] in root.rows: MessageView {
+            // The row under the view's top edge: the navigator's current turn.
+            property <bool> at-top: self.y + list.content-y <= 1px && self.y + self.height + list.content-y > 1px;
             msg: item;
+            property <bool> pinned: i == root.target;
+            init => {
+                if self.pinned { root.pin(i, self.y); }
+            }
+            changed pinned => {
+                if self.pinned { root.pin(i, self.y); }
+            }
+            changed y => {
+                if self.pinned { root.pin(i, self.y); }
+                if self.at-top && root.target < 0 { TurnsUi.top-row = i; }
+            }
+            changed at-top => {
+                if self.at-top && root.target < 0 { TurnsUi.top-row = i; }
+            }
             copy(t) => { root.copy(t); }
             toggle => { root.toggle(i); }
             step-toggle(h) => { root.step-toggle(h); }
@@ -250,6 +288,7 @@ export component TranscriptView {
         }
         scrolled => {
             root.follow = false;
+            root.target = -1;
         }
         changed content-y => {
             if (root.gap <= 1px && root.last-gap > 1px) {
@@ -272,9 +311,32 @@ export component TranscriptView {
         visible-height: list.visible-height;
         scroll-to(y) => {
             root.follow = false;
+            root.target = -1;
             list.content-y = y;
         }
     }
+
+    // The turn navigator in the right gutter, between the column and the
+    // bar; shown from two turns on, when the gutter has room for it.
+    property <length> side: Columns.chat(root.width);
+    property <bool> nav-shown: TurnsUi.turns.length >= 2 && root.side >= 40px;
+    if root.nav-shown: TurnNav {
+        x: root.width - root.side + max(4px, min(14px, (root.side - 34px) / 2));
+        // Centred, clear of Jump to latest at the bottom right.
+        y: 60px;
+        height: max(0px, root.height - 120px);
+        room: root.height;
+        card-width: min(340px, root.width / 2);
+        top-row: TurnsUi.top-row;
+        go(row) => { root.go-row(row); }
+    }
+    function probe() {
+        TurnsUi.nav-shown = root.nav-shown;
+        TurnsUi.column-right = root.absolute-position.x + root.width - root.side;
+    }
+    init => { root.probe(); }
+    changed nav-shown => { root.probe(); }
+    changed side => { root.probe(); }
 
     // The word shown while a session opens: a word, never colour only. It is
     // a component (blocks.slint), since a plain layout under an `if` measures

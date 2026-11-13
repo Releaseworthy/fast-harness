@@ -51,8 +51,12 @@ mod shots_tools;
 #[cfg(test)]
 mod shots_trace;
 #[cfg(test)]
+mod shots_turns;
+#[cfg(test)]
 mod side_tests;
 mod step_rows;
+#[cfg(test)]
+mod turn_nav_view_tests;
 #[cfg(test)]
 mod workspace_switch_tests;
 

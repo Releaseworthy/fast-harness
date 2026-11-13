@@ -54,6 +54,8 @@ pub struct App {
     pub subagents: crate::subagents_view::Subagents,
     /// The undo running and the last conflict (D69 "Views").
     pub undo: crate::undo_view::UndoState,
+    /// The turn navigator's ticks last shown (D77).
+    pub nav: crate::turn_nav::Nav,
 }
 
 thread_local! {
@@ -116,6 +118,7 @@ impl App {
             jobs_panel: Default::default(),
             subagents: Default::default(),
             undo: Default::default(),
+            nav: Default::default(),
         }
     }
 
@@ -124,6 +127,9 @@ impl App {
         let run = &self.runs.shown;
         let (items, approvals) = (&run.view.items, &run.view.approvals);
         (self.mirror).sync_with(items, approvals, &*self.rows, run.turn_from);
+        if let Some(ui) = self.ui.upgrade() {
+            self.nav.show(&ui, items);
+        }
         // A user row's thumbnails still to decode (D70).
         crate::images_view::start_thumbs();
     }
@@ -190,6 +196,7 @@ impl App {
     pub fn show_run(&mut self, ui: &MainWindow) {
         let view = &self.runs.shown.view;
         (self.mirror).reset_with(&view.items, &view.approvals, &*self.rows);
+        self.nav.show(ui, &view.items);
         self.refresh_status(ui);
         self.refresh_run(ui);
         self.refresh_sessions(ui);
