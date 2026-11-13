@@ -312,6 +312,7 @@ fn shots() {
         let size = (WIDTH, HEIGHT);
         crate::shots_prompt::shot(&ui, &window, &dir, &core.id, size, || render(&window));
         crate::shots_appearance::shot(&ui, &dir, &core.id, size, || render(&window));
+        crate::shots_approval::shot(&ui, &dir, &core.id, size, || render(&window));
         shots_tools::shot(&ui, &window, &dir, &core.id, size);
         ui.set_messages(model(messages()));
     }

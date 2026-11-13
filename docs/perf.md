@@ -158,6 +158,20 @@ Idle, by the method of phase 21A (release builds of 47a1dc0 and of ae31d39, a fr
 
 The workers cost nothing at idle: they run when asked and end (15.6 ms is one tick of the process clock).
 
+## Phase 31 (G11): approval prompt (2026-11-13)
+
+Idle, by the method of phase 21A (release builds, a fresh empty `FAST_HARNESS_HOME`, 10 s idle then CPU over 30 s, alternated twice, measured by the parent). Before is ae31d39 (the build after phase 26B), after is 79f5554, so the row covers phases 28, 29 and 31 together. GPU not measured.
+
+| Measure | Before (ae31d39) | After (79f5554) |
+|---|---|---|
+| Private working set after 10 s idle | 18.1 and 18.2 MB | 18.2 and 18.2 MB |
+| Working set after 10 s idle | 56.8 and 43.7 MB | 56.9 and 43.8 MB |
+| Private bytes after 10 s idle | 74.4 and 74.4 MB | 74.4 and 74.4 MB |
+| CPU time over 30 s idle | 0.0 and 15.6 ms | 0.0 and 0.0 ms |
+| Release exe size | 29,162 KB | 29,846 KB (684 KB more over the three phases) |
+
+The prompt costs nothing at idle: it follows the request events of the shown session, with no timer and no polling.
+
 ## Experiments 2026-11-12 (phase 10, E1 to E6)
 
 Note (PLAN.md D53): the Antigravity measurements below were made on code that now lives on branch `antigravity` (a143cfa), not on main.
