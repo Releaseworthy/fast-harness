@@ -3,7 +3,9 @@
 
 use std::collections::VecDeque;
 use std::fmt;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
+use std::time::{Duration, Instant};
 
 #[non_exhaustive]
 pub struct HttpRequest<'a> {
@@ -15,6 +17,11 @@ pub struct HttpRequest<'a> {
     pub body: &'a [u8],
     /// Limit for connect and for each wait on response data; 0 means the transport default.
     pub timeout_ms: u32,
+    /// Set from another thread to end the call in any state (connecting,
+    /// waiting for the head or a body byte): send then returns
+    /// HttpErrorKind::Cancelled within [CANCEL_BOUND_MS] (PLAN.md D66).
+    /// A transport that ignores it is cancelled only between chunks.
+    pub cancel: Option<&'a AtomicBool>,
 }
 
 impl<'a> HttpRequest<'a> {
@@ -31,6 +38,7 @@ impl<'a> HttpRequest<'a> {
             headers,
             body,
             timeout_ms: 0,
+            cancel: None,
         }
     }
 
@@ -38,7 +46,23 @@ impl<'a> HttpRequest<'a> {
         self.timeout_ms = timeout_ms;
         self
     }
+
+    /// A request that cancel ends in any state (PLAN.md D66).
+    pub fn with_cancel(mut self, cancel: &'a AtomicBool) -> HttpRequest<'a> {
+        self.cancel = Some(cancel);
+        self
+    }
+
+    /// Whether the caller asked to cancel this call.
+    pub fn cancelled(&self) -> bool {
+        self.cancel.is_some_and(|flag| flag.load(Ordering::Relaxed))
+    }
 }
+
+/// How long a cancelled call may still block in a transport that honours
+/// [HttpRequest::cancel]: the bound the tests hold UreqTransport and
+/// ScriptedTransport to.
+pub const CANCEL_BOUND_MS: u64 = 500;
 
 /// Status and response headers. Header names are lowercase.
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -71,6 +95,8 @@ pub enum HttpErrorKind {
     /// The connection broke after the request was sent.
     Io,
     InvalidRequest,
+    /// [HttpRequest::cancel] was set: the call ended early.
+    Cancelled,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -160,14 +186,31 @@ pub struct RecordedRequest {
 pub struct ScriptedTransport {
     responses: Mutex<VecDeque<ScriptedResponse>>,
     requests: Mutex<Vec<RecordedRequest>>,
+    /// (call index, chunks sent before the silence).
+    silences: Mutex<Vec<(usize, usize)>>,
 }
+
+/// How long a scripted silence lasts when nobody cancels: then the call
+/// fails with `Timeout`, as a real read limit would.
+pub const SCRIPTED_SILENCE_MS: u64 = 10_000;
 
 impl ScriptedTransport {
     pub fn new(responses: Vec<ScriptedResponse>) -> ScriptedTransport {
         ScriptedTransport {
             responses: Mutex::new(responses.into()),
             requests: Mutex::default(),
+            silences: Mutex::default(),
         }
+    }
+
+    /// Call `call` (0-based) goes silent after `chunks` body chunks (0:
+    /// before the first byte) until its [`HttpRequest::cancel`] is set, or
+    /// for [`SCRIPTED_SILENCE_MS`], like a stream that stops sending.
+    pub fn with_silence(self, call: usize, chunks: usize) -> ScriptedTransport {
+        if let Ok(mut list) = self.silences.lock() {
+            list.push((call, chunks));
+        }
+        self
     }
 
     pub fn requests(&self) -> Vec<RecordedRequest> {
@@ -176,14 +219,14 @@ impl ScriptedTransport {
             .map(|list| list.clone())
             .unwrap_or_default()
     }
-}
 
-impl Transport for ScriptedTransport {
-    fn send(
-        &self,
-        req: &HttpRequest<'_>,
-        on_chunk: &mut dyn FnMut(&HttpHead, &[u8]) -> Flow,
-    ) -> Result<HttpHead, HttpError> {
+    fn silence_of(&self, call: usize) -> Option<usize> {
+        let list = self.silences.lock().ok()?;
+        list.iter().find(|(at, _)| *at == call).map(|(_, n)| *n)
+    }
+
+    /// Records `req`; returns its 0-based call index.
+    fn record(&self, req: &HttpRequest<'_>) -> usize {
         let record = RecordedRequest {
             method: req.method.to_string(),
             url: req.url.to_string(),
@@ -194,9 +237,37 @@ impl Transport for ScriptedTransport {
                 .collect(),
             body: String::from_utf8_lossy(req.body).into_owned(),
         };
-        if let Ok(mut list) = self.requests.lock() {
-            list.push(record);
+        match self.requests.lock() {
+            Ok(mut list) => {
+                list.push(record);
+                list.len() - 1
+            }
+            Err(_) => 0,
         }
+    }
+}
+
+/// A silent stream: nothing arrives until the call is cancelled or the
+/// scripted limit passes. Rechecks the flag every 5 ms.
+fn wait_silent(req: &HttpRequest<'_>) -> HttpError {
+    let start = Instant::now();
+    while start.elapsed() < Duration::from_millis(SCRIPTED_SILENCE_MS) {
+        if req.cancelled() {
+            return HttpError::new(HttpErrorKind::Cancelled, "cancelled");
+        }
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    HttpError::new(HttpErrorKind::Timeout, "scripted silence")
+}
+
+impl Transport for ScriptedTransport {
+    fn send(
+        &self,
+        req: &HttpRequest<'_>,
+        on_chunk: &mut dyn FnMut(&HttpHead, &[u8]) -> Flow,
+    ) -> Result<HttpHead, HttpError> {
+        let call = self.record(req);
+        let silence = self.silence_of(call);
         let next = self
             .responses
             .lock()
@@ -213,12 +284,18 @@ impl Transport for ScriptedTransport {
             status: response.status,
             headers: response.headers,
         };
-        for chunk in &response.chunks {
+        for (index, chunk) in response.chunks.iter().enumerate() {
+            if silence == Some(index) {
+                return Err(wait_silent(req));
+            }
             if on_chunk(&head, chunk) == Flow::Stop {
-                break;
+                return Ok(head);
             }
         }
-        Ok(head)
+        match silence {
+            Some(at) if at >= response.chunks.len() => Err(wait_silent(req)),
+            _ => Ok(head),
+        }
     }
 }
 
@@ -236,6 +313,7 @@ mod tests {
             headers: &[("a", "b")],
             body: b"hi",
             timeout_ms: 0,
+            cancel: None,
         };
         let mut seen = Vec::new();
         let head = transport
@@ -261,6 +339,7 @@ mod tests {
             headers: &[],
             body: b"",
             timeout_ms: 0,
+            cancel: None,
         };
         let mut count = 0;
         let head = transport.send(&req, &mut |_, _| {

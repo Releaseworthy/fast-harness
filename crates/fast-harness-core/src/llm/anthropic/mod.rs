@@ -202,6 +202,7 @@ impl Provider for Anthropic {
             headers: &headers,
             body: body.as_bytes(),
             timeout_ms: 0,
+            cancel: Some(req.cancel),
         };
         let mut run = Run {
             req,

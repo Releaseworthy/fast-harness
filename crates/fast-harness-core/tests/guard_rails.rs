@@ -78,11 +78,6 @@ const EXCEPTIONS: &[(&str, &str, usize)] = &[
         "main",
         51,
     ),
-    (
-        "crates/fast-harness-core/src/llm/openai/mod.rs",
-        "stream",
-        51,
-    ),
     ("crates/fast-harness-core/src/tools/find.rs", "run_with", 51),
 ];
 

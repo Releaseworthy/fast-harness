@@ -149,6 +149,7 @@ impl HttpConn {
             headers: &pairs,
             body: body.as_bytes(),
             timeout_ms: u32::try_from(call.timeout.as_millis()).unwrap_or(u32::MAX),
+            cancel: Some(call.cancel),
         };
         let mut bytes = Vec::new();
         let head = (self.transport)
@@ -159,7 +160,10 @@ impl HttpConn {
                     false => Flow::Continue,
                 }
             })
-            .map_err(|err| format!("{}: {:?}", self.url, err.kind))?;
+            .map_err(|err| match call.cancel.load(Ordering::Relaxed) {
+                true => "cancelled".to_string(),
+                false => format!("{}: {:?}", self.url, err.kind),
+            })?;
         let text = String::from_utf8_lossy(&bytes);
         let sse = head
             .header("content-type")

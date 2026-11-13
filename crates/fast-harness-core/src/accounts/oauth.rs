@@ -291,6 +291,7 @@ pub(crate) fn get_with_token(
         headers: &headers,
         body: b"",
         timeout_ms: REQUEST_TIMEOUT_MS,
+        cancel: None,
     };
     fetch(http, &req)
 }
@@ -329,6 +330,7 @@ fn post_token(
         headers: &headers,
         body: &bytes,
         timeout_ms,
+        cancel: None,
     };
     fetch(http, &req).map_err(OAuthError::Http)
 }

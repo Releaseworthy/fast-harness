@@ -23,6 +23,10 @@ pub(crate) const BETA_THINKING_BINDING_CONTROLS: &str = "thinking-binding-contro
 
 /// Largest non-streaming body kept (models list, error bodies).
 pub(crate) const MAX_BODY: usize = 8 * 1024 * 1024;
+/// Limit for connect and each wait of a GET (the model list, D66): nothing
+/// cancels it, and the pickers start no second fetch while one runs, so it
+/// must not inherit the 600 s read limit of a model call.
+pub const GET_TIMEOUT_MS: u32 = 20_000;
 
 /// Every header of one call, in send order. Secrets appear only here.
 pub(crate) fn headers(auth: &Auth, betas: &[&str]) -> Vec<(String, String)> {
@@ -79,7 +83,8 @@ pub(crate) fn get(
         url,
         headers: &refs,
         body: b"",
-        timeout_ms: 0,
+        timeout_ms: GET_TIMEOUT_MS,
+        cancel: None,
     };
     let mut body = Vec::new();
     let head = http
@@ -93,4 +98,34 @@ pub(crate) fn get(
         })
         .map_err(|err| error::from_transport(&err))?;
     Ok((head, body))
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Mutex;
+
+    use super::*;
+    use crate::http::HttpError;
+
+    /// Keeps the timeout of each request.
+    #[derive(Default)]
+    struct Limits(Mutex<Vec<u32>>);
+
+    impl Transport for Limits {
+        fn send(
+            &self,
+            req: &HttpRequest<'_>,
+            _: &mut dyn FnMut(&HttpHead, &[u8]) -> Flow,
+        ) -> Result<HttpHead, HttpError> {
+            self.0.lock().unwrap().push(req.timeout_ms);
+            Ok(HttpHead::new(200, Vec::new()))
+        }
+    }
+
+    #[test]
+    fn a_get_never_waits_the_model_call_read_limit() {
+        let limits = Limits::default();
+        get(&limits, "http://x/v1/models", &Auth::ApiKey("k".into())).unwrap();
+        assert_eq!(*limits.0.lock().unwrap(), vec![GET_TIMEOUT_MS]);
+    }
 }

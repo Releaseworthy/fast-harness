@@ -182,13 +182,8 @@ impl Provider for OpenAiChat {
         let bearer = format!("Bearer {key}");
         let headers = self.headers(&bearer, key.is_empty());
         let url = format!("{}/chat/completions", self.base_url);
-        let http_req = HttpRequest {
-            method: "POST",
-            url: &url,
-            headers: &headers,
-            body: body.as_bytes(),
-            timeout_ms: 0,
-        };
+        let http_req =
+            HttpRequest::new("POST", &url, &headers, body.as_bytes()).with_cancel(req.cancel);
         let mut run = Run {
             req,
             on_delta,

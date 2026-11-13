@@ -1,4 +1,9 @@
 //! The real HTTP transport: `ureq` with `rustls` and the OS certificate store (chunk 1A).
+//! A request with a cancel flag runs on its own thread so the cancel ends
+//! it in any state (`call`, `watch`, PLAN.md D66).
+
+mod call;
+mod watch;
 
 use std::io::{self, Read};
 use std::time::Duration;
@@ -6,7 +11,10 @@ use std::time::Duration;
 use ureq::config::AutoHeaderValue;
 use ureq::http;
 use ureq::tls::{RootCerts, TlsConfig};
+use ureq::unversioned::resolver::DefaultResolver;
 use ureq::Agent;
+
+pub use call::{live_calls, POLL_MS};
 
 use crate::http::{Flow, HttpError, HttpErrorKind, HttpHead, HttpRequest, Transport};
 
@@ -14,7 +22,8 @@ use crate::http::{Flow, HttpError, HttpErrorKind, HttpHead, HttpRequest, Transpo
 pub const DEFAULT_CONNECT_TIMEOUT_MS: u32 = 30_000;
 /// Limit for each wait on response bytes (headers or one body read) when
 /// `timeout_ms` is 0. Long: a thinking model can be silent for minutes,
-/// though Anthropic sends `ping` events in between.
+/// though Anthropic sends `ping` events in between. A cancel does not wait
+/// for it (D66).
 pub const DEFAULT_READ_TIMEOUT_MS: u32 = 600_000;
 /// Size of one body read handed to `on_chunk`.
 pub const CHUNK_BYTES: usize = 16 * 1024;
@@ -44,28 +53,31 @@ impl UreqTransport {
             .timeout_connect(Some(millis(DEFAULT_CONNECT_TIMEOUT_MS)))
             .timeout_per_read(Some(millis(DEFAULT_READ_TIMEOUT_MS)))
             .build();
+        // ureq's default connector and resolver; the connector only keeps
+        // each socket's shutdown handle for a cancel (D66).
+        let connector = watch::WatchedConnector::default();
         UreqTransport {
-            agent: config.new_agent(),
+            agent: Agent::with_parts(config, connector, DefaultResolver::default()),
         }
     }
+}
 
-    fn run<S: ureq::AsSendBody>(
-        &self,
-        request: http::Request<S>,
-        timeout_ms: u32,
-    ) -> Result<http::Response<ureq::Body>, HttpError> {
-        let request = if timeout_ms == 0 {
-            request
-        } else {
-            self.agent
-                .configure_request(request)
-                .timeout_connect(Some(millis(timeout_ms)))
-                .timeout_recv_response(Some(millis(timeout_ms)))
-                .timeout_per_read(Some(millis(timeout_ms)))
-                .build()
-        };
-        self.agent.run(request).map_err(map_ureq_error)
-    }
+fn run<S: ureq::AsSendBody>(
+    agent: &Agent,
+    request: http::Request<S>,
+    timeout_ms: u32,
+) -> Result<http::Response<ureq::Body>, HttpError> {
+    let request = if timeout_ms == 0 {
+        request
+    } else {
+        agent
+            .configure_request(request)
+            .timeout_connect(Some(millis(timeout_ms)))
+            .timeout_recv_response(Some(millis(timeout_ms)))
+            .timeout_per_read(Some(millis(timeout_ms)))
+            .build()
+    };
+    agent.run(request).map_err(map_ureq_error)
 }
 
 impl Transport for UreqTransport {
@@ -74,30 +86,46 @@ impl Transport for UreqTransport {
         req: &HttpRequest<'_>,
         on_chunk: &mut dyn FnMut(&HttpHead, &[u8]) -> Flow,
     ) -> Result<HttpHead, HttpError> {
-        let mut builder = http::Request::builder().method(req.method).uri(req.url);
-        for (name, value) in req.headers {
-            builder = builder.header(*name, *value);
+        match req.cancel {
+            Some(cancel) => call::send(&self.agent, req, cancel, on_chunk),
+            None => send_inline(&self.agent, req, on_chunk),
         }
-        let response = if req.body.is_empty() {
-            self.run(builder.body(()).map_err(invalid)?, req.timeout_ms)?
-        } else {
-            self.run(builder.body(req.body).map_err(invalid)?, req.timeout_ms)?
-        };
-        let (parts, body) = response.into_parts();
-        let head = HttpHead {
-            status: parts.status.as_u16(),
-            headers: parts
-                .headers
-                .iter()
-                .map(|(name, value)| {
-                    let value = String::from_utf8_lossy(value.as_bytes()).into_owned();
-                    (name.as_str().to_ascii_lowercase(), value)
-                })
-                .collect(),
-        };
-        read_body(body.into_reader(), &head, on_chunk)?;
-        Ok(head)
     }
+}
+
+/// The request on the calling thread; `req.cancel` is not read.
+fn send_inline(
+    agent: &Agent,
+    req: &HttpRequest<'_>,
+    on_chunk: &mut dyn FnMut(&HttpHead, &[u8]) -> Flow,
+) -> Result<HttpHead, HttpError> {
+    let mut builder = http::Request::builder().method(req.method).uri(req.url);
+    for (name, value) in req.headers {
+        builder = builder.header(*name, *value);
+    }
+    let response = if req.body.is_empty() {
+        run(agent, builder.body(()).map_err(invalid)?, req.timeout_ms)?
+    } else {
+        run(
+            agent,
+            builder.body(req.body).map_err(invalid)?,
+            req.timeout_ms,
+        )?
+    };
+    let (parts, body) = response.into_parts();
+    let head = HttpHead {
+        status: parts.status.as_u16(),
+        headers: parts
+            .headers
+            .iter()
+            .map(|(name, value)| {
+                let value = String::from_utf8_lossy(value.as_bytes()).into_owned();
+                (name.as_str().to_ascii_lowercase(), value)
+            })
+            .collect(),
+    };
+    read_body(body.into_reader(), &head, on_chunk)?;
+    Ok(head)
 }
 
 fn read_body(
@@ -184,6 +212,7 @@ mod tests {
             headers: &[],
             body: b"",
             timeout_ms: 1000,
+            cancel: None,
         };
         let err = transport
             .send(&req, &mut |_, _| Flow::Continue)
@@ -222,6 +251,7 @@ mod tests {
             headers: &[("anthropic-version", "2023-06-01")],
             body: b"",
             timeout_ms: 0,
+            cancel: None,
         };
         let mut body = Vec::new();
         let head = transport
