@@ -87,6 +87,52 @@ fn a_created_file_is_removed() {
 }
 
 #[test]
+fn one_file_named_two_ways_in_a_turn_is_one_file() {
+    let env = env("undo-alias");
+    let file = env.cwd.join("a.txt");
+    std::fs::write(&file, "zero").unwrap();
+    std::fs::create_dir_all(env.cwd.join("sub")).unwrap();
+    let script = vec![
+        write_call("c1", "a.txt", "one"),
+        write_call("c2", "sub/../a.txt", "two"),
+        text_reply("ok"),
+    ];
+    let (agent, _) = agent(&env, script);
+    let mut conv = Conversation::create(&env.home, &env.cwd, None).unwrap();
+    turn(&agent, &mut conv, "twice");
+    assert_eq!(read(&file), "two");
+    assert_eq!(conv.tool_session.undo().last().unwrap().files, 1);
+    let outcome = undo_conv(&mut conv, false).unwrap();
+    assert_eq!(outcome.refused, None, "{}", outcome.text());
+    assert_eq!(read(&file), "zero");
+}
+
+#[test]
+fn a_file_that_cannot_be_put_back_keeps_its_copy() {
+    let env = env("undo-keep");
+    let dir = env.cwd.join("d");
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("x.txt"), "zero").unwrap();
+    let script = vec![write_call("c1", "d/x.txt", "one"), text_reply("ok")];
+    let (agent, _) = agent(&env, script);
+    let mut conv = Conversation::create(&env.home, &env.cwd, None).unwrap();
+    turn(&agent, &mut conv, "change");
+    // The folder became a file: the forced undo cannot write x.txt back.
+    std::fs::remove_dir_all(&dir).unwrap();
+    std::fs::write(&dir, "a file now").unwrap();
+    let outcome = undo_conv(&mut conv, true).unwrap();
+    assert_eq!(outcome.errors.len(), 2, "{}", outcome.text());
+    let kept = outcome.errors[1].split("stay in ").nth(1).unwrap();
+    let copy = std::fs::read_dir(kept.trim_end_matches('.')).unwrap();
+    let blobs: Vec<_> = copy
+        .flatten()
+        .filter(|e| e.path().extension().is_some_and(|x| x == "bin"))
+        .collect();
+    assert_eq!(blobs.len(), 1, "the earlier content is not lost");
+    assert_eq!(std::fs::read(blobs[0].path()).unwrap(), b"zero");
+}
+
+#[test]
 fn a_conflict_changes_nothing_and_force_overwrites() {
     let env = env("undo-conflict");
     let (a, b) = (env.cwd.join("a.txt"), env.cwd.join("b.txt"));

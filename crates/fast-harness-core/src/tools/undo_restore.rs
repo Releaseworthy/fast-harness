@@ -141,7 +141,14 @@ fn restore(
     }
     manifest.undone = true;
     manifest.noted = false;
-    undo::drop_blobs(dir, manifest);
+    // A file not put back keeps its earlier content on disk: no blob goes.
+    match outcome.errors.is_empty() {
+        true => undo::drop_blobs(dir, manifest),
+        false => outcome.errors.push(format!(
+            "the earlier contents kept for this undo stay in {}",
+            undo::turn_dir(dir, manifest.turn).display()
+        )),
+    }
     undo::save(dir, manifest);
     Ok(outcome)
 }

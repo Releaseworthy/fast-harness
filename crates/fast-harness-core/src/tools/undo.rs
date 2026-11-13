@@ -159,7 +159,7 @@ impl UndoLog {
             turn,
             ..Manifest::default()
         });
-        if manifest.files.iter().any(|f| f.path == path) {
+        if manifest.files.iter().any(|f| same_file(&f.path, path)) {
             return;
         }
         let index = manifest.files.len();
@@ -185,11 +185,23 @@ impl UndoLog {
         let Some(manifest) = inner.turns.get_mut(&turn) else {
             return;
         };
-        if let Some(file) = manifest.files.iter_mut().find(|f| f.path == path) {
+        if let Some(file) = manifest.files.iter_mut().find(|f| same_file(&f.path, path)) {
             file.after = hash(bytes);
             save(&dir, manifest);
         }
     }
+}
+
+/// Whether `a` and `b` name one file (`sub/../a.txt` and `a.txt`, a
+/// drive letter or a name in another case on Windows, a link): `..`
+/// resolved by name, links of the existing part followed, case folded.
+fn same_file(a: &Path, b: &Path) -> bool {
+    let key = |path: &Path| {
+        let text = path.to_string_lossy();
+        crate::config::approvals::normal_path(&text, Path::new(""))
+            .unwrap_or_else(|| path.to_path_buf())
+    };
+    a == b || key(a) == key(b)
 }
 
 /// The caps and the bytes the session already keeps.
