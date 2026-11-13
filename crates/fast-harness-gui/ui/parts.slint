@@ -167,42 +167,38 @@ export component AccentFill inherits Rectangle {
     }
 }
 
-// A soft coloured halo around its parent (hover and focus): two rounded
-// rings of the glow colour. Drop shadows do not render in the software
-// renderer, so halos and shadows are stacked translucent rounded fills.
+// A coloured halo around its parent (hover and focus): one 3px ring of the
+// glow colour on whole pixels. Two stacked translucent rings (5px and 2px
+// out) read as a doubled, smeared edge (D75).
 export component Halo inherits Rectangle {
     in property <length> radius: Theme.radius-m;
     in property <float> strength: 1;
     Rectangle {
-        x: -5px;
-        y: -5px;
-        width: parent.width + 10px;
-        height: parent.height + 10px;
-        border-radius: root.radius + 5px;
-        background: Theme.glow.with-alpha(0.10 * root.strength);
-    }
-    Rectangle {
-        x: -2px;
-        y: -2px;
-        width: parent.width + 4px;
-        height: parent.height + 4px;
-        border-radius: root.radius + 2px;
-        background: Theme.glow.with-alpha(0.22 * root.strength);
+        x: -3px;
+        y: -3px;
+        width: parent.width + 6px;
+        height: parent.height + 6px;
+        border-radius: root.radius + 3px;
+        border-width: 3px;
+        border-color: Theme.glow.with-alpha(0.28 * root.strength);
     }
 }
 
-// Elevation under a card: three translucent shadow fills, offset down.
+// Elevation under a card: one blurred drop shadow. The OpenGL renderer
+// (the default, D75) draws it; the software renderer draws no drop shadow,
+// so there the card is flat. The fill sits under the card's own fill, same
+// shape, and never shows. Three offset translucent fills did this before
+// and drew stepped ghost edges under every card.
 export component Elevation inherits Rectangle {
     in property <length> radius: Theme.radius-l;
     in property <float> level: 1;
     property <float> k: (Theme.dark ? 1.6 : 1) * root.level;
-    for layer[i] in [{ o: 1px, s: 0px, a: 0.16 }, { o: 3px, s: 2px, a: 0.08 }, { o: 7px, s: 5px, a: 0.045 }]: Rectangle {
-        x: -layer.s;
-        y: layer.o - layer.s;
-        width: root.width + 2 * layer.s;
-        height: root.height + 2 * layer.s;
-        border-radius: root.radius + layer.s;
-        background: Theme.shadow.with-alpha(min(0.6, layer.a * root.k));
+    Rectangle {
+        border-radius: root.radius;
+        background: Theme.bg;
+        drop-shadow-blur: 6px * root.level;
+        drop-shadow-offset-y: 2px * root.level;
+        drop-shadow-color: Theme.shadow.with-alpha(min(0.6, 0.3 * root.k));
     }
 }
 

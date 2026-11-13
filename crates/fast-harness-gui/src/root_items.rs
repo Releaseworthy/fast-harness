@@ -9,6 +9,7 @@ mod appearance;
 mod approval;
 mod config_page;
 mod crash;
+mod display;
 mod drafts;
 mod format;
 mod host;
@@ -50,15 +51,9 @@ use std::sync::Arc;
 
 use fast_harness_core::app::Runtime;
 
-/// The software renderer on winit unless `SLINT_BACKEND` picks another one.
+/// The renderer and the UI scale (PLAN.md D75, `display`).
 fn select_backend() {
-    if std::env::var_os("SLINT_BACKEND").is_some() {
-        return;
-    }
-    let _ = slint::BackendSelector::new()
-        .backend_name("winit".into())
-        .renderer_name("software".into())
-        .select();
+    display::select();
 }
 
 /// The folder given on the command line, if it exists.
