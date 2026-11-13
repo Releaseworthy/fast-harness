@@ -27,6 +27,13 @@ pub(super) fn start(
     spec: &Spec,
     ctx: &ToolCtx<'_>,
 ) -> Result<ToolOutput, String> {
+    // `maxDepth` 0 turns subagents off; the tool list stays frozen (D36).
+    let max_depth = tool.parts.config.subagent.max_depth;
+    if tool.depth >= max_depth {
+        return Err(format!(
+            "subagents are off at this depth (subagent.maxDepth is {max_depth})"
+        ));
+    }
     let max = tool.parts.config.subagent.max_parallel.max(1);
     // Foreground calls wait for a place, background calls fail at once.
     let slot = tool.children.acquire(max, !spec.background, ctx.cancel)?;

@@ -74,6 +74,13 @@ With `"approvals": "ask"` a call can wait for an answer (PLAN.md D64). Both fron
 - `JobsUi.open`: property <bool>
 - `JobsUi.output`: property <string>
 - `JobsUi.running`: property <[JobChip]>
+- `LimitsUi.max-depth`: property <int>
+- `LimitsUi.max-depth-changed`: callback
+- `LimitsUi.max-parallel`: property <int>
+- `LimitsUi.max-parallel-changed`: callback
+- `LimitsUi.scale`: property <int>
+- `LimitsUi.scale-preview`: callback
+- `LimitsUi.scale-saved`: callback
 - `MainWindow.accounts`: property <[AccountRow]>
 - `MainWindow.accounts-message`: property <string>
 - `MainWindow.accounts-provider`: property <string>
@@ -149,6 +156,7 @@ With `"approvals": "ask"` a call can wait for an answer (PLAN.md D64). Both fron
 - `MainWindow.transcript-follow`: property <bool>
 - `MainWindow.transcript-thumb-x`: property <length>
 - `MainWindow.transcript-thumb-y`: property <length>
+- `MainWindow.turn-toggle`: callback
 - `MainWindow.ui-files`: property <bool>
 - `MainWindow.undo`: property <UndoBar>
 - `MainWindow.undo-turn`: callback
@@ -215,6 +223,7 @@ With `"approvals": "ask"` a call can wait for an answer (PLAN.md D64). Both fron
 - `Theme.text`: property <color>
 - `Theme.warning`: property <color>
 - `TraceProbe.content-height`: property <length>
+- `TurnsUi.card-height`: property <length>
 - `TurnsUi.column-right`: property <length>
 - `TurnsUi.hovered`: property <int>
 - `TurnsUi.nav-shown`: property <bool>

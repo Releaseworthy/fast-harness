@@ -196,3 +196,37 @@ fn the_chat_margins_are_symmetric_and_shrink_first() {
         "no overlap when narrow"
     );
 }
+
+/// Two turns: one with a one-word reply, one with a long final reply.
+fn short_and_long() -> Transcript {
+    let mut view = Transcript::new();
+    view.push_user("Short one");
+    view.apply(&AgentEvent::TextDelta("Done.".into()));
+    view.push_user("Long one");
+    let long = "The build passes and every step folds into one line. ".repeat(20);
+    view.apply(&AgentEvent::TextDelta(long));
+    view
+}
+
+fn card_height(window: &MinimalSoftwareWindow, ui: &MainWindow, index: usize) -> f32 {
+    let position = tick(ui, index);
+    window.dispatch_event(WindowEvent::PointerMoved { position });
+    frames(window, 50);
+    assert_eq!(ui.global::<TurnsUi>().get_hovered(), index as i32);
+    ui.global::<TurnsUi>().get_card_height()
+}
+
+#[test]
+fn the_card_is_as_tall_as_its_texts() {
+    let (window, ui) = window(WIDTH, HEIGHT);
+    show(&ui, &short_and_long());
+    frames(&window, 100);
+    let short = card_height(&window, &ui, 0);
+    let long = card_height(&window, &ui, 1);
+    assert!(short > 30.0 && short < 80.0, "a one-line reply: {short}");
+    assert!(long >= short + 20.0, "three lines {long} vs one {short}");
+    assert!(
+        long < short + 60.0,
+        "at most three lines: {long} vs {short}"
+    );
+}

@@ -53,6 +53,8 @@ pub struct Mirror {
     decos: Vec<Deco>,
     /// The first rows of the steps opened by the user.
     open: HashSet<usize>,
+    /// The first rows of the turns folded by the user (D80).
+    closed: HashSet<usize>,
     /// `chatDetail: "full"`.
     full: bool,
 }
@@ -76,6 +78,7 @@ impl Mirror {
     /// with the approval words of the tool rows; every step folds again.
     pub fn reset_with(&mut self, items: &[Item], approvals: &Approvals, model: &dyn Rows) {
         self.open.clear();
+        self.closed.clear();
         self.rebuild(items, approvals, model);
     }
 
@@ -97,6 +100,7 @@ impl Mirror {
             words: &self.words,
             full: self.full,
             open: &self.open,
+            closed: &self.closed,
         }
     }
 
@@ -123,12 +127,18 @@ impl Mirror {
             return items.len();
         }
         let start = step_range(items, from.min(self.items.len())).start;
+        // A folded turn's line counts the whole turn: redo it from its head.
+        let start = match crate::turn_rows::head_of(items, start) {
+            Some(head) if self.closed.contains(&head) => head.min(start),
+            _ => start,
+        };
         let words: Vec<_> = items[start..].iter().map(|i| word(i, approvals)).collect();
         let decos = Steps {
             items,
             words: &[&self.words[..start], &words[..]].concat(),
             full: self.full,
             open: &self.open,
+            closed: &self.closed,
         }
         .from(start);
         let mut written = 0;
@@ -187,6 +197,18 @@ impl Mirror {
         let range = step_range(&self.items, index);
         let decos = self.steps().step(range.start, range.end);
         self.redraw(range.start, decos, model);
+    }
+
+    /// Folds or opens the turn whose first row is `head` (D80).
+    pub fn toggle_turn(&mut self, head: usize, model: &dyn Rows) {
+        if head >= self.items.len() {
+            return;
+        }
+        if !self.closed.remove(&head) {
+            self.closed.insert(head);
+        }
+        let decos = self.steps().from(head);
+        self.redraw(head, decos, model);
     }
 
     /// Switches between step lines and full rows (`chatDetail`) in place.

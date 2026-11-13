@@ -25,11 +25,12 @@ export component StepLine inherits Rectangle {
     accessible-action-default => { root.toggled(); }
     forward-focus: fs;
     HorizontalLayout {
-        padding-left: 2px;
+        padding-left: 0px;
         padding-right: Theme.space-xs;
-        spacing: Theme.space-s;
+        spacing: 8px;
+        // 12 + 8: the words start at the indent of the rows below (20px).
         Mark {
-            width: 14px;
+            width: 12px;
             horizontal-alignment: center;
             vertical-alignment: center;
             text: root.open ? Icons.chevron-up : Icons.chevron-down;
@@ -75,16 +76,18 @@ export component StepLine inherits Rectangle {
 // The faint line on the left of an open step's rows: a 12 px hit area
 // whose click folds the step; it widens and darkens under the pointer.
 export component StepRail inherits Rectangle {
+    in property <string> label: "Collapse step";
     callback clicked();
     width: 12px;
     accessible-role: button;
-    accessible-label: "Collapse step";
+    accessible-label: root.label;
     accessible-action-default => { root.clicked(); }
     Rectangle {
         x: (parent.width - self.width) / 2;
-        width: rail.has-hover ? 3px : 1px;
+        width: rail.has-hover ? 3px : 2px;
         border-radius: 1px;
-        background: rail.has-hover ? Theme.dim : Theme.line;
+        // Theme.line vanished on light themes: the dim text colour, faint.
+        background: rail.has-hover ? Theme.dim : Theme.dim.with-alpha(0.32);
     }
     rail := TouchArea {
         mouse-cursor: pointer;

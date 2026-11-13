@@ -137,18 +137,31 @@ component MessageView {
     callback toggle();
     callback link(string);
     callback step-toggle(int);
+    callback turn-toggle(int);
+    // The row's index in the list.
+    in property <int> row-index;
     property <length> side: Columns.chat(root.width);
-    property <bool> line: msg.step-summary != "";
-    property <bool> blank: msg.folded && !root.line && (msg.kind != "assistant" || msg.text == "");
+    // D80: the rows of a turn sit 20px in, right of the turn's rail; the
+    // rows of an open step 20px more, right of the step's rail.
+    property <length> indent: msg.turn-rail ? 20px : 0px;
+    property <bool> turn-line: msg.turn-line != "";
+    property <bool> line: msg.step-summary != "" && !msg.turn-hidden;
+    property <bool> blank: msg.turn-hidden ? !root.turn-line : msg.folded && !root.line && (msg.kind != "assistant" || msg.text == "");
     property <length> top: root.blank || msg.kind == "footer" ? 0px : msg.kind == "user" ? Theme.space-l : Theme.space-s;
     property <length> line-height: root.line ? 26px + Theme.space-xs : 0px;
     VerticalLayout {
-        padding-left: root.side;
+        padding-left: root.side + root.indent;
         padding-right: root.side;
         padding-top: root.top;
         // A tool card keeps room for its elevation above the step line.
         padding-bottom: root.blank ? 0px : msg.kind == "footer" ? Theme.space-s : msg.kind == "tool" && !msg.folded ? Theme.space-s + 2px : 2px;
         spacing: Theme.space-xs;
+        if root.turn-line: StepLine {
+            text: msg.turn-line;
+            label: "Turn " + msg.turn-no + " folded: " + msg.turn-line;
+            open: false;
+            toggled => { root.turn-toggle(msg.turn-head); }
+        }
         if root.line: StepLine {
             text: msg.step-summary;
             label: msg.step-label;
@@ -158,7 +171,9 @@ component MessageView {
             toggled => { root.step-toggle(msg.step-head); }
         }
         VerticalLayout {
-            padding-left: msg.rail ? 22px : 0px;
+            visible: !msg.turn-hidden;
+            max-height: msg.turn-hidden ? 0px : 1000000px;
+            padding-left: msg.rail ? 20px : 0px;
             if msg.kind == "user": UserBubble {
                 msg: msg;
                 copy(t) => { root.copy(t); }
@@ -192,8 +207,16 @@ component MessageView {
     }
     // The rail runs the row's whole height below its step line, so the
     // rows of an open step join into one line.
-    if msg.rail: StepRail {
-        x: root.side + 2px + 7px - self.width / 2;
+    if msg.turn-rail: StepRail {
+        label: "Collapse turn " + msg.turn-no;
+        x: root.side;
+        // A small gap above the turn's first row.
+        y: msg.turn-head == root.row-index ? root.top : 0px;
+        height: root.height - self.y;
+        clicked => { root.turn-toggle(msg.turn-head); }
+    }
+    if msg.rail && !msg.turn-hidden: StepRail {
+        x: root.side + root.indent;
         y: root.line ? root.top + root.line-height : 0px;
         height: root.height - self.y;
         clicked => { root.step-toggle(msg.step-head); }
@@ -224,6 +247,7 @@ export component TranscriptView {
     // read as a scroll up (2026-11-13: Jump to latest after a switch).
     property <length> last-gap;
     callback toggle(int);
+    callback turn-toggle(int);
     callback step-toggle(int);
     callback copy(string);
     callback link(string);
@@ -284,6 +308,8 @@ export component TranscriptView {
             copy(t) => { root.copy(t); }
             toggle => { root.toggle(i); }
             step-toggle(h) => { root.step-toggle(h); }
+            turn-toggle(h) => { root.turn-toggle(h); }
+            row-index: i;
             link(u) => { root.link(u); }
         }
         scrolled => {

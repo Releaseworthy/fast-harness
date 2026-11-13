@@ -45,6 +45,8 @@ mod shots_png;
 #[cfg(test)]
 mod shots_prompt;
 #[cfg(test)]
+mod shots_rails;
+#[cfg(test)]
 mod shots_tabbar;
 #[cfg(test)]
 mod shots_tests;

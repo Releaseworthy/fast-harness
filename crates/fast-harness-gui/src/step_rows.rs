@@ -26,6 +26,15 @@ pub struct Deco {
     /// The row's detail is folded into the line (an assistant row keeps
     /// its text and folds its thinking).
     pub folded: bool,
+    /// The row belongs to an open turn and draws the turn's rail (D80).
+    pub turn_rail: bool,
+    /// The turn's first row (after the user message) and its number.
+    pub turn_head: usize,
+    pub turn_no: usize,
+    /// The folded turn's line, on its first row only.
+    pub turn_line: String,
+    /// The row's turn is folded: only its first row draws, as the line.
+    pub turn_hidden: bool,
 }
 
 /// Writes `deco` into `row`.
@@ -38,6 +47,11 @@ pub fn apply(row: &mut MsgRow, deco: &Deco) {
     row.step_running = deco.running;
     row.step_failed = deco.failed;
     row.folded = deco.folded;
+    row.turn_rail = deco.turn_rail;
+    row.turn_head = i32::try_from(deco.turn_head).unwrap_or(i32::MAX);
+    row.turn_no = i32::try_from(deco.turn_no).unwrap_or(i32::MAX);
+    row.turn_line = deco.turn_line.as_str().into();
+    row.turn_hidden = deco.turn_hidden;
 }
 
 /// How the chat shows the steps.
@@ -48,6 +62,8 @@ pub struct Steps<'a> {
     pub full: bool,
     /// The first rows of the steps the user opened.
     pub open: &'a HashSet<usize>,
+    /// The first rows of the turns the user folded (D80).
+    pub closed: &'a HashSet<usize>,
 }
 
 impl Steps<'_> {
@@ -58,14 +74,21 @@ impl Steps<'_> {
         while index < self.items.len() {
             let range = step_range(self.items, index);
             let end = range.end.max(index + 1);
-            out.extend(self.step(range.start, end));
+            out.extend(self.step_only(range.start, end));
             index = end;
         }
+        crate::turn_rows::decorate(self.items, self.words, start, &mut out, self.closed);
         out
     }
 
-    /// The decorations of one step, rows `start..end`.
+    /// The decorations of one step, rows `start..end`, with their turn part.
     pub fn step(&self, start: usize, end: usize) -> Vec<Deco> {
+        let mut out = self.step_only(start, end);
+        crate::turn_rows::decorate(self.items, self.words, start, &mut out, self.closed);
+        out
+    }
+
+    fn step_only(&self, start: usize, end: usize) -> Vec<Deco> {
         let mut out = vec![Deco::default(); end - start];
         let (items, words) = (&self.items[start..end], &self.words[start..end]);
         let head =

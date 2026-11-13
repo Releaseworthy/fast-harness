@@ -1,6 +1,6 @@
 //! The turn navigator's model (PLAN.md D77): one tick per user turn of the
 //! shown transcript, with the prompt's first line and the start of the
-//! reply for the hover card. Built from the view items after each
+//! final reply for the hover card. Built from the view items after each
 //! transcript sync and handed to the window only when it changed.
 
 use fast_harness_core::view::Item;
@@ -45,7 +45,7 @@ fn first_line(text: &str) -> String {
     elide(line, PROMPT_CHARS)
 }
 
-/// Every user turn of `items`, with the start of its first reply text.
+/// Every user turn of `items`, with the start of its final reply text.
 pub fn turns(items: &[Item]) -> Vec<Turn> {
     let mut out: Vec<Turn> = Vec::new();
     for (row, item) in items.iter().enumerate() {
@@ -57,7 +57,9 @@ pub fn turns(items: &[Item]) -> Vec<Turn> {
                 preview: String::new(),
             }),
             Item::Assistant { text, .. } if !text.trim().is_empty() => {
-                if let Some(turn) = out.last_mut().filter(|t| t.preview.is_empty()) {
+                // The last text of the turn wins: the card previews the
+                // final reply (D80), not the words before the first tool.
+                if let Some(turn) = out.last_mut() {
                     turn.preview = elide(text, PREVIEW_CHARS);
                 }
             }

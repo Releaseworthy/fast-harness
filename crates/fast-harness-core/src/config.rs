@@ -128,7 +128,9 @@ pub struct ToolsConfig {
 pub struct SubagentConfig {
     pub model: Option<String>,
     pub effort: Option<String>,
-    /// A session at this depth gets no `subagent` tool (the root is 0).
+    /// A session at this depth gets no `subagent` tool (the root is 0):
+    /// 1 lets the top-level session start subagents that cannot start their
+    /// own, 0 turns subagents off.
     pub max_depth: u32,
     /// Children of one session running at once.
     pub max_parallel: usize,
@@ -141,7 +143,7 @@ impl Default for SubagentConfig {
         SubagentConfig {
             model: None,
             effort: None,
-            max_depth: 2,
+            max_depth: 1,
             max_parallel: 4,
             output_bytes: DEFAULT_TOOL_OUTPUT_BYTES,
         }
@@ -353,6 +355,39 @@ pub fn save_setting(app_home: &Path, key: &str, value: Value) -> Result<(), Stri
             return Err(io::Error::other("not a JSON object"));
         };
         object.insert(key.to_string(), value);
+        let mut bytes = serde_json::to_vec_pretty(&root).map_err(io::Error::other)?;
+        bytes.push(b'\n');
+        Ok((bytes, ()))
+    });
+    changed.map_err(|err| format!("{}: {err}", path.display()))
+}
+
+/// Sets `section.key` to `value` in `<app_home>/config.json` (for example
+/// `subagent.maxDepth`), keeping the section's other keys and every other
+/// setting; a missing or non-object section starts empty. Same file rules
+/// as [`save_setting`].
+pub fn save_section_setting(
+    app_home: &Path,
+    section: &str,
+    key: &str,
+    value: Value,
+) -> Result<(), String> {
+    let path = app_home.join(FILE_NAME);
+    let changed = crate::store::update(&path, crate::store::WAIT, |current| {
+        let mut root = match current {
+            Some(bytes) => serde_json::from_slice::<Value>(&bytes).map_err(io::Error::other)?,
+            None => Value::Object(Map::new()),
+        };
+        let Some(object) = root.as_object_mut() else {
+            return Err(io::Error::other("not a JSON object"));
+        };
+        let entry = object.entry(section.to_string()).or_insert(Value::Null);
+        if !entry.is_object() {
+            *entry = Value::Object(Map::new());
+        }
+        if let Some(inner) = entry.as_object_mut() {
+            inner.insert(key.to_string(), value);
+        }
         let mut bytes = serde_json::to_vec_pretty(&root).map_err(io::Error::other)?;
         bytes.push(b'\n');
         Ok((bytes, ()))
