@@ -17,8 +17,9 @@ use ureq::Agent;
 use super::watch::{self, CallCtx};
 use crate::http::{Flow, HttpError, HttpErrorKind, HttpHead, HttpRequest};
 
-/// How often the calling thread rechecks the cancel flag.
-pub const POLL_MS: u64 = 10;
+/// How often the calling thread rechecks the cancel flag: 20 wakeups a
+/// second during a silent wait, a cancel seen within 50 ms (D66 bound 500).
+pub const POLL_MS: u64 = 50;
 
 static LIVE: AtomicUsize = AtomicUsize::new(0);
 

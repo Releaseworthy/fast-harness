@@ -227,3 +227,26 @@ fn calls_with_a_cancel_flag_reuse_one_pooled_connection() {
     assert!(server.join().unwrap(), "a second connection was opened");
     assert_no_live_calls();
 }
+
+/// Holds a silent call (no head) open for 10 s, then cancels: run by hand
+/// with `--ignored --nocapture` while sampling the process CPU time, to
+/// measure what the cancel poll costs during a long silent wait (D66).
+#[test]
+#[ignore]
+fn measure_a_long_silent_wait() {
+    let _serial = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
+    let (url, server) = silent_server(b"");
+    let (transport, cancel) = (UreqTransport::new(), AtomicBool::new(false));
+    let req = HttpRequest::new("GET", &url, &[], b"")
+        .with_timeout_ms(60_000)
+        .with_cancel(&cancel);
+    let result = thread::scope(|scope| {
+        scope.spawn(|| {
+            thread::sleep(Duration::from_secs(10));
+            cancel.store(true, Ordering::Relaxed);
+        });
+        transport.send(&req, &mut |_, _| Flow::Continue)
+    });
+    assert_eq!(result.unwrap_err().kind, HttpErrorKind::Cancelled);
+    drop(server.join());
+}
