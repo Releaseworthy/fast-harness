@@ -34,6 +34,7 @@ pub mod jobs;
 pub mod mcp;
 mod output;
 mod read;
+mod read_stream;
 mod shell;
 mod shell_live;
 pub mod skills;

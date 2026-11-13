@@ -1,9 +1,14 @@
 //! `read`: a text file with numbered lines, or an image (PLAN.md D70).
 
+use std::fs::File;
+use std::io::{BufReader, Cursor, Read};
+use std::path::Path;
+
 use serde_json::{json, Value};
 
 use super::args::{cut_chars, looks_binary, object_schema, opt_positive, req_str, resolve};
 use super::budget::ReadKey;
+use super::read_stream;
 use super::{Effect, Tool, ToolCtx, ToolOutput};
 use crate::llm::ToolSpec;
 use crate::media;
@@ -72,26 +77,60 @@ fn read(args: &Value, ctx: &ToolCtx<'_>) -> Result<ToolOutput, String> {
     if let Some(earlier) = session.and_then(|s| s.read_by(&key)) {
         return Ok(ToolOutput::ok(format!("[unchanged since call {earlier}]")));
     }
-    let bytes = std::fs::read(&path).map_err(|err| format!("cannot read {path_arg}: {err}"))?;
+    let output = read_file(path_arg, &path, (offset, limit), meta.len(), ctx)?;
+    if let Some(session) = session {
+        session.remember_read(key, ctx.call_id);
+    }
+    Ok(output)
+}
+
+/// Bytes read first to tell an image, a binary and a text file apart.
+const HEAD_BYTES: u64 = 8 * 1024;
+/// A text file up to this size is read whole (its line count is exact); a
+/// larger one is streamed only as far as the lines returned (`read_stream`).
+const WHOLE_TEXT_MAX: u64 = 4 * 1024 * 1024;
+
+/// The file's sniffed head decides how much more of it is read: an image
+/// over the cap and a binary file are refused from the head and the size.
+fn read_file(
+    path_arg: &str,
+    path: &Path,
+    (offset, limit): (u64, u64),
+    size: u64,
+    ctx: &ToolCtx<'_>,
+) -> Result<ToolOutput, String> {
+    let fail = |err: std::io::Error| format!("cannot read {path_arg}: {err}");
+    let mut file = File::open(path).map_err(fail)?;
+    let mut bytes = Vec::new();
+    (&mut file)
+        .take(HEAD_BYTES)
+        .read_to_end(&mut bytes)
+        .map_err(fail)?;
     if media::sniff::media_type(&bytes).is_some() {
-        let output = image(path_arg, &bytes, ctx)?;
-        if let Some(session) = session {
-            session.remember_read(key, ctx.call_id);
+        if size > media::MAX_BYTES {
+            let err = media::MediaError::TooLarge { bytes: size };
+            return Err(format!("{path_arg} is an image; not read: {err}"));
         }
-        return Ok(output);
+        let rest = media::MAX_BYTES + 1 - bytes.len() as u64;
+        file.take(rest).read_to_end(&mut bytes).map_err(fail)?;
+        return image(path_arg, &bytes, ctx);
     }
     if looks_binary(&bytes) {
         return Err(format!(
             "{path_arg} looks like a binary file (NUL byte in the first 8 KB); not shown"
         ));
     }
-    let text = String::from_utf8_lossy(&bytes);
     let room = ctx.budget.saturating_sub(RANGE_ROOM);
-    let out = number_lines(&text, offset, limit, room)?;
-    if let Some(session) = session {
-        session.remember_read(key, ctx.call_id);
+    if size > WHOLE_TEXT_MAX {
+        let reader = BufReader::new(Cursor::new(bytes).chain(file));
+        let shape = (offset, limit, room, MAX_LINE_CHARS);
+        return read_stream::prefix_lines(reader, shape, size).map(ToolOutput::ok);
     }
-    Ok(ToolOutput::ok(out))
+    file.take(WHOLE_TEXT_MAX)
+        .read_to_end(&mut bytes)
+        .map_err(fail)?;
+    let text = String::from_utf8_lossy(&bytes);
+    number_lines(&text, offset, limit, room).map(ToolOutput::ok)
 }
 
 /// An image file: kept in the session's media folder and returned as an

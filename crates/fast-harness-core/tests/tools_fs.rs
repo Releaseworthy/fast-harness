@@ -112,6 +112,49 @@ fn read_reports_errors() {
 }
 
 #[test]
+fn read_refuses_an_image_over_the_cap_from_its_size() {
+    let tmp = TempDir::new("read-big-image");
+    let mut png = b"\x89PNG\r\n\x1a\n".to_vec();
+    png.resize(fast_harness_core::media::MAX_BYTES as usize + 1, 0);
+    std::fs::write(tmp.0.join("big.png"), &png).unwrap();
+    let out = run(&tmp.0, "read", json!({"path": "big.png"}));
+    assert!(out.is_error(), "{}", out.text());
+    assert!(out.text().contains("not read"), "{}", out.text());
+    assert!(out.text().contains("the cap is"), "{}", out.text());
+}
+
+#[test]
+fn read_streams_only_a_prefix_of_a_huge_text_file() {
+    let tmp = TempDir::new("read-huge");
+    let line = "0123456789".repeat(10);
+    let text = format!("{line}\n").repeat(60_000); // 6 MB
+    std::fs::write(tmp.0.join("huge.txt"), &text).unwrap();
+    let out = run(&tmp.0, "read", json!({"path": "huge.txt"}));
+    assert!(!out.is_error(), "{}", out.text());
+    assert!(out.text().starts_with(&format!("1: {line}\n")));
+    assert!(out.text().contains("read only this far"), "{}", out.text());
+    assert!(!out.text().contains("of 60000"), "{}", out.text());
+    let deep = run(
+        &tmp.0,
+        "read",
+        json!({"path": "huge.txt", "offset": 59_999}),
+    );
+    assert!(deep.text().starts_with("59999: "), "{}", deep.text());
+    assert!(deep.text().contains("60000: "), "{}", deep.text());
+    assert!(
+        !deep.text().contains("read only this far"),
+        "{}",
+        deep.text()
+    );
+    let past = run(
+        &tmp.0,
+        "read",
+        json!({"path": "huge.txt", "offset": 60_001}),
+    );
+    assert!(past.is_error() && past.text().contains("past the end"));
+}
+
+#[test]
 fn edit_requires_a_unique_match_unless_replace_all() {
     let tmp = TempDir::new("edit");
     let file = tmp.0.join("f.txt");
