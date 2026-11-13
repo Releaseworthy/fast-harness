@@ -1,6 +1,6 @@
 import { Theme, Mark } from "parts.slint";
 import { Icons } from "icons.slint";
-import { FocusRing } from "widgets.slint";
+import { Pill, PopoverCard } from "pill.slint";
 import { JobsUi, JobItem } from "job_row.slint";
 export { JobsUi }
 
@@ -81,12 +81,14 @@ component JobsList inherits VerticalLayout {
 
 // The shown session's background jobs (PLAN.md D72): one small pill above
 // the composer, "N background jobs running" while N run; a click opens
-// the popover above it. Escape or a click outside closes it. main.slint
-// shows the bar only while `JobsUi.count > 0`.
+// the popover above it. Escape or a click outside closes it. subagents.slint
+// (PillsRow) shows the bar only while `JobsUi.count > 0`.
 export component JobsBar inherits Rectangle {
     in property <length> column;
     // The room above the pill the popover may take.
     in property <length> room: 480px;
+    // Right of the subagents pill when it shows (D74).
+    in property <length> offset;
     property <bool> open: JobsUi.open;
     property <int> hi: -1;
     // As DeepSeek Harness says it: the running jobs while one runs, else all.
@@ -102,59 +104,19 @@ export component JobsBar inherits Rectangle {
             popup.close();
         }
     }
-    pill := Rectangle {
-        x: (root.width - root.column) / 2;
+    pill := Pill {
+        x: (root.width - root.column) / 2 + root.offset;
         y: Theme.space-s;
-        width: row.preferred-width;
-        height: 24px;
-        border-radius: 12px;
-        background: ta.has-hover || root.open ? Theme.hover : Theme.raised;
-        border-width: 1px;
-        border-color: Theme.line;
-        accessible-role: button;
-        accessible-label: root.label;
-        accessible-action-default => { JobsUi.open = !JobsUi.open; }
-        row := HorizontalLayout {
-            padding-left: Theme.space-s + 2px;
-            padding-right: Theme.space-s + 2px;
-            spacing: 6px;
-            Mark {
-                text: JobsUi.running.length > 0 ? Icons.terminal : Icons.check;
-                color: JobsUi.running.length > 0 ? Theme.accent : Theme.dim;
-                font-size: Theme.font-xs;
-            }
-            Text {
-                text: root.label;
-                color: Theme.text;
-                font-size: Theme.font-xs;
-                vertical-alignment: center;
-            }
-            Mark {
-                text: root.open ? Icons.chevron-down : Icons.chevron-up;
-                color: Theme.dim;
-                font-size: Theme.font-xs;
-            }
-        }
-        fs := FocusScope {
-            key-pressed(event) => {
-                if event.text == Key.Return || event.text == " " {
-                    JobsUi.open = true;
-                    return accept;
-                }
-                return reject;
-            }
-        }
-        ta := TouchArea {
-            mouse-cursor: pointer;
-            clicked => {
-                fs.focus();
-                JobsUi.open = !JobsUi.open;
-            }
-        }
-        if fs.has-focus: FocusRing { radius: 14px; x: -3px; y: -3px; width: parent.width + 6px; height: parent.height + 6px; }
+        label: root.label;
+        icon: JobsUi.running.length > 0 ? Icons.terminal : Icons.check;
+        icon-color: JobsUi.running.length > 0 ? Theme.accent : Theme.dim;
+        open: root.open;
+        toggle => { JobsUi.open = !JobsUi.open; }
+        show => { JobsUi.open = true; }
     }
     popup := PopupWindow {
-        x: pill.x;
+        // Under the column's left edge, as the subagents popover.
+        x: (root.width - root.column) / 2;
         y: pill.y - self.height - 6px;
         width: min(root.column, 560px);
         height: min(list.preferred-height + 2px, root.room);
@@ -172,14 +134,7 @@ export component JobsBar inherits Rectangle {
             }
             key-pressed(event) => { return root.list-keys(event); }
         }
-        Rectangle {
-            background: Theme.surface;
-            border-radius: Theme.radius-l;
-            border-width: 1px;
-            border-color: Theme.border;
-            drop-shadow-blur: 12px;
-            drop-shadow-offset-y: 4px;
-            drop-shadow-color: #00000040;
+        PopoverCard {
             Flickable {
                 x: 1px;
                 y: 1px;

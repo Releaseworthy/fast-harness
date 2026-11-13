@@ -171,7 +171,7 @@ pub fn latest(app_home: &Path, cwd: &Path) -> io::Result<Option<SessionSummary>>
 }
 
 /// `<yyyymmdd-hhmmss-xxxx>.jsonl` (see [`super::new_id`]).
-fn is_id_name(name: &str) -> bool {
+pub(super) fn is_id_name(name: &str) -> bool {
     let Some(stem) = name.strip_suffix(".jsonl") else {
         return false;
     };
@@ -184,7 +184,7 @@ fn is_id_name(name: &str) -> bool {
 }
 
 /// `(file name, path)` of every log in `folder`; `None` when it is missing.
-fn logs(folder: &Path) -> io::Result<Option<Vec<(String, PathBuf)>>> {
+pub(super) fn logs(folder: &Path) -> io::Result<Option<Vec<(String, PathBuf)>>> {
     let entries = match std::fs::read_dir(folder) {
         Ok(entries) => entries,
         Err(err) if err.kind() == io::ErrorKind::NotFound => return Ok(None),

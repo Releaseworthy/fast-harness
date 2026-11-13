@@ -2,12 +2,14 @@
 //! Layout (docs/formats.md "Files on disk"):
 //! `<app_home>/sessions/<cwd slug>/<id>.jsonl` and `<id>.wire/`.
 
+mod children;
 pub mod compacted;
 pub mod coord;
 pub mod index;
 pub mod lock;
 mod unfinished;
 
+pub use children::{children, Child};
 pub use index::{latest, list, list_counted, Listing};
 pub use unfinished::{unfinished, Unfinished};
 

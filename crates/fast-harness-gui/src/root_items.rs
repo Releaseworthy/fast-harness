@@ -26,6 +26,7 @@ mod reflect;
 mod rows;
 mod runs;
 mod settings;
+mod subagents_view;
 mod theme;
 mod tool_rows;
 mod trace_load;
@@ -124,6 +125,7 @@ fn start_runtime(ui: &MainWindow, stop: &Arc<AtomicBool>) {
             app::install(app::App::new(&ui, rt, cwd));
             wire::connect(&ui);
             jobs_view::connect(&ui);
+    subagents_view::connect(&ui);
             undo_view::connect(&ui);
             images_view::connect(&ui);
             window_events::connect(&ui);

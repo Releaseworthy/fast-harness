@@ -5,7 +5,7 @@
 use std::path::Path;
 
 /// Every file of `ui/`, by name (a test compares the list with the folder).
-pub const FILES: [(&str, &str); 31] = [
+pub const FILES: [(&str, &str); 34] = [
     ("accounts.slint", include_str!("../ui/accounts.slint")),
     ("appearance.slint", include_str!("../ui/appearance.slint")),
     ("approval.slint", include_str!("../ui/approval.slint")),
@@ -21,6 +21,7 @@ pub const FILES: [(&str, &str); 31] = [
     ("panel_view.slint", include_str!("../ui/panel_view.slint")),
     ("panel.slint", include_str!("../ui/panel.slint")),
     ("parts.slint", include_str!("../ui/parts.slint")),
+    ("pill.slint", include_str!("../ui/pill.slint")),
     ("prompt_settings.slint", include_str!("../ui/prompt_settings.slint")),
     ("providers.slint", include_str!("../ui/providers.slint")),
     ("queue.slint", include_str!("../ui/queue.slint")),
@@ -29,6 +30,8 @@ pub const FILES: [(&str, &str); 31] = [
     ("scrollbar.slint", include_str!("../ui/scrollbar.slint")),
     ("sidebar.slint", include_str!("../ui/sidebar.slint")),
     ("steps.slint", include_str!("../ui/steps.slint")),
+    ("subagent_row.slint", include_str!("../ui/subagent_row.slint")),
+    ("subagents.slint", include_str!("../ui/subagents.slint")),
     ("textarea.slint", include_str!("../ui/textarea.slint")),
     ("titlebar.slint", include_str!("../ui/titlebar.slint")),
     ("toolcard.slint", include_str!("../ui/toolcard.slint")),

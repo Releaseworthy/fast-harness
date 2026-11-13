@@ -102,6 +102,7 @@ One file per decision in [docs/decisions/](docs/decisions/), moved there unchang
 - D70 [Image input (core, TUI views)](docs/decisions/D70.md)
 - D71 [The Claude Code version follows the releases](docs/decisions/D71.md)
 - D72 [GUI background jobs: a pill and a popover with the output](docs/decisions/D72.md)
+- D74 [GUI subagents: a pill, a popover and a read-only child view](docs/decisions/D74.md)
 
 ## Architecture
 

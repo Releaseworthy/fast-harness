@@ -1,0 +1,188 @@
+import { Theme, Mark } from "parts.slint";
+import { Icons } from "icons.slint";
+import { Pill, PopoverCard } from "pill.slint";
+import { JobsBar, JobsUi } from "jobs.slint";
+import { SubagentsUi, SubagentRow, SubagentItem } from "subagent_row.slint";
+export { JobsUi, SubagentsUi, SubagentRow }
+
+// The shown session's subagents (PLAN.md D74): a pill, "N subagents
+// running" while N run, else "N subagents"; a click opens the popover
+// above it, a row opens that subagent's session read-only. Escape or a
+// click outside closes it.
+export component SubagentsBar inherits Rectangle {
+    in property <length> column;
+    in property <length> room: 480px;
+    out property <length> pill-width: pill.width;
+    property <bool> open: SubagentsUi.open;
+    property <int> hi: -1;
+    property <int> shown: SubagentsUi.running > 0 ? SubagentsUi.running : SubagentsUi.count;
+    property <string> label: root.shown + (root.shown == 1 ? " subagent" : " subagents")
+        + (SubagentsUi.running > 0 ? " running" : "");
+    changed open => {
+        if root.open {
+            root.hi = -1;
+            popup.show();
+        } else {
+            popup.close();
+        }
+    }
+    pill := Pill {
+        x: (root.width - root.column) / 2;
+        y: Theme.space-s;
+        label: root.label;
+        icon: Icons.robot;
+        icon-color: SubagentsUi.running > 0 ? Theme.accent : Theme.dim;
+        open: root.open;
+        toggle => { SubagentsUi.open = !SubagentsUi.open; }
+        show => { SubagentsUi.open = true; }
+    }
+    popup := PopupWindow {
+        x: (root.width - root.column) / 2;
+        y: pill.y - self.height - 6px;
+        width: min(root.column, 560px);
+        height: min(list.preferred-height + 2px, root.room);
+        close-policy: close-on-click-outside;
+        forward-focus: keys;
+        keys := FocusScope {
+            focus-changed-event => {
+                if !self.has-focus {
+                    SubagentsUi.open = false;
+                }
+            }
+            key-pressed(event) => { return root.list-keys(event); }
+        }
+        PopoverCard {
+            Flickable {
+                x: 1px;
+                y: 1px;
+                width: parent.width - 2px;
+                height: parent.height - 2px;
+                content-height: list.preferred-height;
+                list := VerticalLayout {
+                    width: parent.width;
+                    padding: Theme.space-s;
+                    spacing: 2px;
+                    accessible-role: AccessibleRole.list;
+                    accessible-label: "Subagents";
+                    Text {
+                        text: "Subagents";
+                        color: Theme.dim;
+                        font-size: Theme.font-xs;
+                        font-weight: 600;
+                    }
+                    for r[i] in SubagentsUi.rows: SubagentItem {
+                        item: r;
+                        highlighted: i == root.hi;
+                    }
+                }
+            }
+        }
+    }
+
+    // Up and Down move between the rows, Enter opens one.
+    function list-keys(event: KeyEvent) -> EventResult {
+        if event.text == Key.DownArrow {
+            root.hi = min(SubagentsUi.count - 1, root.hi + 1);
+            return accept;
+        }
+        if event.text == Key.UpArrow {
+            root.hi = max(0, root.hi - 1);
+            return accept;
+        }
+        if event.text == Key.Return && root.hi >= 0 {
+            SubagentsUi.open-child(SubagentsUi.rows[root.hi].id);
+            return accept;
+        }
+        if event.text == Key.Escape {
+            popup.close();
+            return accept;
+        }
+        return reject;
+    }
+}
+
+// The row of pills above the composer: subagents first, then the
+// background jobs (D72), each only while it has something to list.
+export component PillsRow inherits Rectangle {
+    in property <length> column;
+    in property <length> room: 480px;
+    height: 24px + Theme.space-s;
+    subs := SubagentsBar {
+        visible: SubagentsUi.count > 0;
+        column: root.column;
+        room: root.room;
+    }
+    if JobsUi.count > 0: JobsBar {
+        column: root.column;
+        room: root.room;
+        offset: SubagentsUi.count > 0 ? subs.pill-width + Theme.space-s : 0px;
+    }
+}
+
+// Instead of the composer while a subagent's session shows (D74): it is
+// read-only; Back (or Escape) returns to the session it was opened from.
+export component ReadOnlyNotice inherits Rectangle {
+    height: 40px;
+    border-radius: Theme.radius-l;
+    background: Theme.raised;
+    border-width: 1px;
+    border-color: Theme.line;
+    init => { fs.focus(); }
+    fs := FocusScope {
+        key-pressed(event) => {
+            if event.text == Key.Escape {
+                SubagentsUi.back();
+                return accept;
+            }
+            return reject;
+        }
+    }
+    HorizontalLayout {
+        padding-left: Theme.space-m;
+        padding-right: Theme.space-xs;
+        padding-top: 4px;
+        padding-bottom: 4px;
+        spacing: Theme.space-s;
+        Mark {
+            text: Icons.eye;
+            color: Theme.dim;
+            font-size: Theme.font-s;
+        }
+        Text {
+            text: "Subagent session, read-only";
+            color: Theme.dim;
+            font-size: Theme.font-s;
+            vertical-alignment: center;
+            horizontal-stretch: 1;
+            overflow: elide;
+        }
+        Rectangle {
+            width: back.preferred-width;
+            border-radius: Theme.radius-s;
+            background: ta.has-hover ? Theme.hover : transparent;
+            accessible-role: button;
+            accessible-label: "Back to " + SubagentsUi.back-label;
+            accessible-action-default => { SubagentsUi.back(); }
+            back := HorizontalLayout {
+                padding-left: Theme.space-s;
+                padding-right: Theme.space-s;
+                spacing: 6px;
+                Mark {
+                    text: Icons.arrow-left;
+                    color: Theme.accent;
+                    font-size: Theme.font-s;
+                }
+                Text {
+                    text: "Back to " + SubagentsUi.back-label;
+                    color: Theme.accent;
+                    font-size: Theme.font-s;
+                    vertical-alignment: center;
+                }
+            }
+            ta := TouchArea {
+                mouse-cursor: pointer;
+                clicked => { SubagentsUi.back(); }
+            }
+        }
+    }
+}

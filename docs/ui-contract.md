@@ -178,6 +178,13 @@ With `"approvals": "ask"` a call can wait for an answer (PLAN.md D64). Both fron
 - `PromptUi.status`: property <string>
 - `PromptUi.text`: property <string>
 - `PromptUi.workspace`: property <string>
+- `SubagentsUi.back`: callback
+- `SubagentsUi.back-label`: property <string>
+- `SubagentsUi.open`: property <bool>
+- `SubagentsUi.open-child`: callback
+- `SubagentsUi.read-only`: property <bool>
+- `SubagentsUi.rows`: property <[SubagentRow]>
+- `SubagentsUi.running`: property <int>
 - `Theme.accent`: property <color>
 - `Theme.accent-surface`: property <color>
 - `Theme.accent2`: property <color>

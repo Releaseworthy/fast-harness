@@ -262,6 +262,10 @@ fn wires(id: &str) -> (Sink, Done) {
 /// changes; the rows, the status and the panels only when it is shown.
 fn deliver(id: &str, event: AgentEvent) {
     with_app(|app, ui| {
+        // Subagent events feed the pill, not the transcript (D74).
+        if crate::subagents_view::event(app, ui, &event) {
+            return;
+        }
         let Some(shown) = app.runs.apply(id, &event) else {
             return;
         };

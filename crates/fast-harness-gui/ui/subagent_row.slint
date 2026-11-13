@@ -1,0 +1,102 @@
+import { Theme, Mark } from "parts.slint";
+import { Icons } from "icons.slint";
+
+// One subagent of the shown session (PLAN.md D74), from src/subagents_view.rs.
+export struct SubagentRow {
+    id: string,
+    // The `subagent` call's description, else its first prompt.
+    label: string,
+    // "running", "finished", "failed" or "stopped": picks the glyph and the
+    // colour; `word` says it in text.
+    mark: string,
+    word: string,
+    // "step 40 · grep".
+    progress: string,
+    // How long a finished one ran.
+    when: string,
+}
+
+// The subagents popover's state and the read-only child view (D74).
+export global SubagentsUi {
+    in property <[SubagentRow]> rows;
+    in property <int> running;
+    out property <int> count: self.rows.length;
+    in-out property <bool> open;
+    // The shown session is a subagent's, opened from the list: no composer.
+    in property <bool> read-only;
+    // "parent session" or the parent's label, after "Back to".
+    in property <string> back-label;
+    // Opens subagent `id`'s session read-only in the chat view.
+    callback open-child(string);
+    // Back to the session the subagent was opened from.
+    callback back();
+}
+
+// One subagent: a mark and a word for its state (never colour alone), its
+// label, its latest step and tool, how long it ran. A click opens it.
+export component SubagentItem inherits Rectangle {
+    in property <SubagentRow> item;
+    in property <bool> highlighted;
+    property <color> tone: root.item.mark == "running" ? Theme.accent
+        : root.item.mark == "failed" ? Theme.error
+        : root.item.mark == "stopped" ? Theme.warning : Theme.success;
+    height: 44px;
+    border-radius: Theme.radius-s;
+    background: ta.has-hover || root.highlighted ? Theme.hover : transparent;
+    accessible-role: list-item;
+    accessible-label: root.item.label + ": " + root.item.word + ", " + root.item.progress + ". Open read-only";
+    accessible-action-default => { SubagentsUi.open-child(root.item.id); }
+    ta := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { SubagentsUi.open-child(root.item.id); }
+    }
+    HorizontalLayout {
+        padding-left: Theme.space-xs;
+        padding-right: Theme.space-s;
+        spacing: Theme.space-s;
+        Mark {
+            text: root.item.mark == "running" ? Icons.robot
+                : root.item.mark == "failed" ? Icons.error
+                : root.item.mark == "stopped" ? Icons.circle-slash : Icons.check;
+            color: root.tone;
+            font-size: Theme.font-s;
+        }
+        VerticalLayout {
+            horizontal-stretch: 1;
+            alignment: center;
+            spacing: 2px;
+            HorizontalLayout {
+                spacing: Theme.space-s;
+                Text {
+                    text: root.item.word;
+                    color: root.tone;
+                    font-size: Theme.font-xs;
+                }
+                Text {
+                    text: root.item.label;
+                    color: Theme.text;
+                    font-size: Theme.font-xs;
+                    overflow: elide;
+                    horizontal-stretch: 1;
+                }
+                Text {
+                    text: root.item.when;
+                    color: Theme.dim;
+                    font-size: Theme.font-xs;
+                }
+            }
+            Text {
+                text: root.item.progress;
+                color: Theme.dim;
+                font-family: Theme.mono;
+                font-size: Theme.font-xs;
+                overflow: elide;
+            }
+        }
+        Mark {
+            text: Icons.chevron-right;
+            color: ta.has-hover ? Theme.text : Theme.dim;
+            font-size: Theme.font-xs;
+        }
+    }
+}

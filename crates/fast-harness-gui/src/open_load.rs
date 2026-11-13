@@ -30,6 +30,15 @@ pub fn open(app: &mut App, ui: &MainWindow, id: &str) {
     }
 }
 
+/// Opens the shown session `id` again without the loading word: a running
+/// subagent shown read-only follows its log this way (D74).
+pub fn reload(app: &mut App, ui: &MainWindow, id: &str) {
+    let _ = ui;
+    if let Some(ask) = app.opens.ask(Some(id)) {
+        start(app, ui, ask.id.unwrap_or_default(), app.cwd.clone(), ask.generation);
+    }
+}
+
 /// A new session in `cwd`: nothing to parse, and a worker still running for
 /// another session is dropped when it comes.
 pub fn clear(app: &mut App, ui: &MainWindow) {
@@ -95,8 +104,9 @@ fn shown(app: &mut App, ui: &MainWindow, cwd: &Path, result: Result<Opened, Stri
             // The window shows approval requests and answers them (D64).
             session.set_answering(true);
             let run = Run::new(cwd.to_path_buf(), Some(session), view);
-            let dropped = app.runs.take(session_id, run);
-            if let Some(id) = dropped {
+            let dropped = app.runs.take(session_id.clone(), run);
+            // A reload replaced the same session: nothing to close.
+            if let Some(id) = dropped.filter(|id| *id != session_id) {
                 app.service.close(&id);
             }
             ui.set_loading(false);

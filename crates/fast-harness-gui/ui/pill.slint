@@ -1,0 +1,74 @@
+import { Theme, Mark } from "parts.slint";
+import { Icons } from "icons.slint";
+import { FocusRing } from "widgets.slint";
+
+// The small pill above the composer that opens a popover (PLAN.md D72,
+// D74): the jobs and the subagents pills look the same. A click, Enter or
+// Space asks for the popover.
+export component Pill inherits Rectangle {
+    in property <string> label;
+    in property <string> icon;
+    in property <color> icon-color;
+    in property <bool> open;
+    // A click: open or close. Enter or Space on the focused pill: open.
+    callback toggle();
+    callback show();
+    width: row.preferred-width;
+    height: 24px;
+    border-radius: 12px;
+    background: ta.has-hover || root.open ? Theme.hover : Theme.raised;
+    border-width: 1px;
+    border-color: Theme.line;
+    accessible-role: button;
+    accessible-label: root.label;
+    accessible-action-default => { root.toggle(); }
+    row := HorizontalLayout {
+        padding-left: Theme.space-s + 2px;
+        padding-right: Theme.space-s + 2px;
+        spacing: 6px;
+        Mark {
+            text: root.icon;
+            color: root.icon-color;
+            font-size: Theme.font-xs;
+        }
+        Text {
+            text: root.label;
+            color: Theme.text;
+            font-size: Theme.font-xs;
+            vertical-alignment: center;
+        }
+        Mark {
+            text: root.open ? Icons.chevron-down : Icons.chevron-up;
+            color: Theme.dim;
+            font-size: Theme.font-xs;
+        }
+    }
+    fs := FocusScope {
+        key-pressed(event) => {
+            if event.text == Key.Return || event.text == " " {
+                root.show();
+                return accept;
+            }
+            return reject;
+        }
+    }
+    ta := TouchArea {
+        mouse-cursor: pointer;
+        clicked => {
+            fs.focus();
+            root.toggle();
+        }
+    }
+    if fs.has-focus: FocusRing { radius: 14px; x: -3px; y: -3px; width: parent.width + 6px; height: parent.height + 6px; }
+}
+
+// The popover's card: surface, rounded border and the neutral shadow.
+export component PopoverCard inherits Rectangle {
+    background: Theme.surface;
+    border-radius: Theme.radius-l;
+    border-width: 1px;
+    border-color: Theme.border;
+    drop-shadow-blur: 12px;
+    drop-shadow-offset-y: 4px;
+    drop-shadow-color: #00000040;
+}

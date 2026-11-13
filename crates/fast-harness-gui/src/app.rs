@@ -50,6 +50,8 @@ pub struct App {
     pub jobs: fast_harness_core::view::jobs::Follow,
     /// The jobs popover and the worker reading one job's output (D72).
     pub jobs_panel: crate::jobs_view::Panel,
+    /// The subagents pill and the read-only subagent views (D74).
+    pub subagents: crate::subagents_view::Subagents,
     /// The undo running and the last conflict (D69 "Views").
     pub undo: crate::undo_view::UndoState,
 }
@@ -111,6 +113,7 @@ impl App {
             drafts: Default::default(),
             jobs: Default::default(),
             jobs_panel: Default::default(),
+            subagents: Default::default(),
             undo: Default::default(),
         }
     }
@@ -190,6 +193,7 @@ impl App {
         self.refresh_run(ui);
         self.refresh_sessions(ui);
         crate::jobs_view::follow(self, ui);
+        crate::subagents_view::follow(self, ui);
         ui.set_page("chat".into());
         ui.invoke_to_bottom();
     }

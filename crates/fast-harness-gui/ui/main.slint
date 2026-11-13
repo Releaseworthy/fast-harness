@@ -2,8 +2,8 @@ import { Palette } from "std-widgets.slint";
 import { MsgRow, SessionRow, SideRow, AccountRow, TraceRow, ProviderCard, QueueChip, JobChip, ApprovalView, UndoBar, ImageChip } from "types.slint";
 import { QueueRow } from "queue.slint";
 import { AttachRow } from "attach.slint";
-import { JobsBar, JobsUi } from "jobs.slint";
-export { JobsUi } from "jobs.slint";
+import { PillsRow, ReadOnlyNotice, JobsUi, SubagentsUi } from "subagents.slint";
+export { JobsUi, SubagentsUi, SubagentRow } from "subagents.slint";
 import { UndoRow } from "undo.slint";
 import { ApprovalPrompt } from "approval.slint";
 import { Theme } from "parts.slint";
@@ -317,9 +317,9 @@ export component MainWindow inherits Window {
                             if root.attached.length > 0: AttachRow {
                                 column: chat.column; chips: root.attached; remove(i) => { root.remove-image(i); }
                             }
-                            // The shown session's background jobs (D72).
-                            if JobsUi.count > 0: JobsBar { column: chat.column; room: transcript.height; }
-                            if root.undo.turn > 0: UndoRow {
+                            // The shown session's subagents (D74) and background jobs (D72).
+                            if JobsUi.count > 0 || SubagentsUi.count > 0: PillsRow { column: chat.column; room: transcript.height; }
+                            if root.undo.turn > 0 && !SubagentsUi.read-only: UndoRow {
                                 column: chat.column; bar: root.undo; busy: root.busy;
                                 undo(force) => { root.undo-turn(force); }
                             }
@@ -336,8 +336,11 @@ export component MainWindow inherits Window {
                                 }
                             }
                             Rectangle {
-                                height: composer.preferred-height + Theme.space-s + Theme.space-l;
+                                height: (SubagentsUi.read-only ? 40px : composer.preferred-height) + Theme.space-s + Theme.space-l;
+                                // A subagent's session is read-only (D74).
+                                if SubagentsUi.read-only: ReadOnlyNotice { x: (parent.width - self.width) / 2; y: Theme.space-s; width: chat.column; }
                                 composer := Composer {
+                                    visible: !SubagentsUi.read-only;
                                     x: (parent.width - self.width) / 2;
                                     y: Theme.space-s;
                                     width: chat.column;
