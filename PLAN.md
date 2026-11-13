@@ -98,6 +98,7 @@ One file per decision in [docs/decisions/](docs/decisions/), moved there unchang
 - D66 [Cancel of a silent stream](docs/decisions/D66.md)
 - D67 [Registries become values](docs/decisions/D67.md)
 - D68 [Background shell jobs](docs/decisions/D68.md)
+- D69 [Undo of a turn's file changes](docs/decisions/D69.md)
 
 ## Architecture
 
