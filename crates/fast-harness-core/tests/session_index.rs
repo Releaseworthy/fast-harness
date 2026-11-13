@@ -192,14 +192,19 @@ fn a_damaged_or_old_index_is_rebuilt_and_an_unwritable_one_still_lists() {
         assert_eq!((listing.parsed, listing.written), (7, true));
         assert_eq!(listing.sessions, full_parse(&env));
     }
-    // A read-only index cannot be replaced: every list parses and answers.
+    // A read-only index cannot be replaced on Windows: every list parses and
+    // answers. Elsewhere a rename replaces a read-only file, so the first
+    // list rebuilds the index (an unwritable folder has no test there).
     std::fs::write(&index, "{}").unwrap();
     let mut perms = std::fs::metadata(&index).unwrap().permissions();
     perms.set_readonly(true);
     std::fs::set_permissions(&index, perms.clone()).unwrap();
-    for _ in 0..2 {
+    for round in 0..2 {
         let listing = session::list_counted(&env.home, &env.cwd).unwrap();
-        assert_eq!((listing.parsed, listing.written), (7, false));
+        match cfg!(windows) {
+            true => assert_eq!((listing.parsed, listing.written), (7, false)),
+            false => assert_eq!(listing.written, round == 0),
+        }
         assert_eq!(listing.sessions, full_parse(&env));
     }
     #[allow(clippy::permissions_set_readonly_false)] // the test's own file
