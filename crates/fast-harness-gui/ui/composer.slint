@@ -88,7 +88,9 @@ export component Composer inherits Rectangle {
                 text: root.busy ? "Stop" : "Send";
                 variant: root.busy ? "secondary" : "primary";
                 min-width: 96px;
-                enabled: !root.loading;
+                // Send waits for an opening session; Stop always stops the
+                // shown session's running turn (composer_tests.rs).
+                enabled: root.busy || !root.loading;
                 clicked => {
                     if (root.busy) {
                         root.stop();
