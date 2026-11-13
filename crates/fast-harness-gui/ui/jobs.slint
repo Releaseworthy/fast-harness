@@ -1,0 +1,82 @@
+import { Theme, Mark } from "parts.slint";
+import { Icons } from "icons.slint";
+import { IconButton } from "widgets.slint";
+import { JobChip } from "types.slint";
+
+// One background job of the shown session (PLAN.md D68): a mark and a word
+// for its state (never colour alone), its id, its command on one line, and
+// Stop while it runs.
+component JobLine inherits Rectangle {
+    in property <JobChip> job;
+    callback kill();
+    property <bool> running: root.job.mark == "running";
+    property <color> tone: root.running ? Theme.accent
+        : root.job.mark == "failed" ? Theme.error
+        : root.job.mark == "killed" ? Theme.warning : Theme.success;
+    height: Theme.control-height;
+    border-radius: Theme.radius-m;
+    background: Theme.raised;
+    border-width: 1px;
+    border-color: Theme.line;
+    accessible-role: list-item;
+    accessible-label: root.job.id + " " + root.job.command + ": " + root.job.word;
+    HorizontalLayout {
+        padding-left: Theme.space-m;
+        padding-right: root.running ? 2px : Theme.space-m;
+        spacing: Theme.space-s;
+        Mark {
+            text: root.running ? Icons.terminal
+                : root.job.mark == "failed" ? Icons.error
+                : root.job.mark == "killed" ? Icons.circle-slash : Icons.check;
+            color: root.tone;
+            font-size: Theme.font-s;
+        }
+        Text {
+            text: root.job.id;
+            color: Theme.text;
+            font-size: Theme.font-xs;
+            font-weight: 600;
+            vertical-alignment: center;
+        }
+        Text {
+            text: root.job.command;
+            color: Theme.dim;
+            font-size: Theme.font-s;
+            vertical-alignment: center;
+            overflow: elide;
+            horizontal-stretch: 1;
+        }
+        Text {
+            text: root.job.word;
+            color: root.tone;
+            font-size: Theme.font-xs;
+            vertical-alignment: center;
+        }
+        if root.running: IconButton {
+            icon: Icons.debug-stop;
+            label: "Stop " + root.job.id + " and its process tree";
+            icon-size: Theme.font-s;
+            clicked => { root.kill(); }
+        }
+    }
+}
+
+// The jobs of the shown session side by side, centred in a chat `column`;
+// `kill(id)` stops job `id`. main.slint shows it only while there are jobs.
+export component JobsRow inherits Rectangle {
+    in property <[JobChip]> jobs;
+    in property <length> column;
+    callback kill(string);
+    height: strip.preferred-height + Theme.space-s;
+    strip := HorizontalLayout {
+        x: (parent.width - self.width) / 2;
+        y: Theme.space-s;
+        width: root.column;
+        height: self.preferred-height;
+        spacing: 4px;
+        for j in root.jobs: JobLine {
+            job: j;
+            kill => { root.kill(j.id); }
+        }
+    }
+}

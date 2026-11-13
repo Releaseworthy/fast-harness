@@ -1,6 +1,7 @@
 import { Palette } from "std-widgets.slint";
-import { MsgRow, SessionRow, SideRow, AccountRow, TraceRow, ProviderCard, QueueChip, ApprovalView } from "types.slint";
+import { MsgRow, SessionRow, SideRow, AccountRow, TraceRow, ProviderCard, QueueChip, JobChip, ApprovalView } from "types.slint";
 import { QueueChips } from "queue.slint";
+import { JobsRow } from "jobs.slint";
 import { ApprovalPrompt } from "approval.slint";
 import { Theme } from "parts.slint";
 import { Dropdown } from "widgets.slint";
@@ -21,7 +22,7 @@ import { TabStrip, StatusBar, ErrorBanner } from "panel.slint";
 // The icon font (Symbols Nerd Font subset); `Theme.symbols` names it.
 import "../fonts/FastHarnessIcons.ttf";
 
-export { MsgRow, SessionRow, SideRow, AccountRow, TraceRow, ProviderCard, QueueChip, ApprovalView, Theme }
+export { MsgRow, SessionRow, SideRow, AccountRow, TraceRow, ProviderCard, QueueChip, JobChip, ApprovalView, Theme }
 
 // No native frame: the title bar (titlebar.slint) draws the window
 // controls; a 1px line edges the window while it is not maximized.
@@ -79,6 +80,9 @@ export component MainWindow inherits Window {
     in-out property <string> draft <=> composer.text;
     // Steers not yet read and queued follow-ups of the shown session.
     in property <[QueueChip]> queue-chips;
+    // The shown session's background jobs (D68); Stop calls kill-job(id).
+    in property <[JobChip]> jobs;
+    callback kill-job(string);
     // How the shown session's last turn stopped when Resume applies.
     in property <string> resume-word;
     in-out property <string> error-text;
@@ -311,6 +315,11 @@ export component MainWindow inherits Window {
                                     chips: root.queue-chips;
                                     remove(i) => { root.remove-queued(i); }
                                 }
+                            }
+                            if root.jobs.length > 0: JobsRow {
+                                column: chat.column;
+                                jobs: root.jobs;
+                                kill(id) => { root.kill-job(id); }
                             }
                             // Only while a request waits: no row otherwise.
                             if root.approval.id != "": Rectangle {

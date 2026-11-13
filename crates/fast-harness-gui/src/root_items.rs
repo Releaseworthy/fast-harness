@@ -12,6 +12,7 @@ mod crash;
 mod drafts;
 mod format;
 mod host;
+mod jobs_view;
 mod keys;
 mod listings;
 mod mirror;
@@ -82,7 +83,11 @@ fn run(ui: MainWindow, note: Option<String>) {
         });
         let _ = slint::run_event_loop();
         // Every panel's process tree ends with the window (PLAN.md D46).
-        app::with_app(|app, _| app.panels.stop_all());
+        // So does the worker watching the shown session's jobs (D68).
+        app::with_app(|app, _| {
+            app.panels.stop_all();
+            app.jobs.stop();
+        });
         let _ = ui.hide();
     }
     stop.store(true, Ordering::SeqCst);
@@ -111,6 +116,7 @@ fn start_runtime(ui: &MainWindow, stop: &Arc<AtomicBool>) {
             let (pool, http) = (rt.pool.clone(), rt.transport.clone());
             app::install(app::App::new(&ui, rt, cwd));
             wire::connect(&ui);
+            jobs_view::connect(&ui);
             wire::first_paint();
             accounts::start_poller(pool, http, stop.clone());
         }

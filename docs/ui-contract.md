@@ -75,7 +75,9 @@ With `"approvals": "ask"` a call can wait for an answer (PLAN.md D64). Both fron
 - `MainWindow.effort-picked`: callback
 - `MainWindow.efforts`: property <[string]>
 - `MainWindow.error-text`: property <string>
+- `MainWindow.jobs`: property <[JobChip]>
 - `MainWindow.key-action`: callback
+- `MainWindow.kill-job`: callback
 - `MainWindow.loading`: property <bool>
 - `MainWindow.login-url`: property <string>
 - `MainWindow.messages`: property <[MsgRow]>

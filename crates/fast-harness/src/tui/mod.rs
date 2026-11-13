@@ -12,6 +12,9 @@ mod drafts_tests;
 mod draw;
 mod icons;
 mod input;
+mod jobs;
+#[cfg(test)]
+mod jobs_tests;
 mod keys;
 #[cfg(test)]
 mod keys_tests;

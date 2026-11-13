@@ -251,6 +251,30 @@ impl Jobs {
             };
         }
     }
+
+    /// [`Jobs::wait_change`] with no timeout that also ends, with `None`,
+    /// once `stop` is set and [`Jobs::wake`] is called: a view's worker
+    /// waits here for as long as its session is shown (no timer).
+    pub fn wait_change_or_stop(&self, since: u64, stop: &AtomicBool) -> Option<u64> {
+        let mut count = self.revision.lock();
+        loop {
+            // Read under the lock: `wake` takes it before it notifies, so a
+            // stop set after this check still wakes the wait below.
+            if stop.load(Ordering::SeqCst) {
+                return None;
+            }
+            if *count != since {
+                return Some(*count);
+            }
+            count = (self.revision.changed.wait(count)).unwrap_or_else(|p| p.into_inner());
+        }
+    }
+
+    /// Wakes every [`Jobs::wait_change_or_stop`] so it reads its stop flag.
+    pub fn wake(&self) {
+        let _count = self.revision.lock();
+        self.revision.changed.notify_all();
+    }
 }
 
 impl Drop for Jobs {

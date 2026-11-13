@@ -46,6 +46,8 @@ pub struct App {
     pub opens: crate::open_load::Opens,
     /// Each session's unsent composer text (D65).
     pub drafts: fast_harness_core::app::drafts::Drafts,
+    /// The worker watching the shown session's background jobs (D68).
+    pub jobs: fast_harness_core::view::jobs::Follow,
 }
 
 thread_local! {
@@ -103,6 +105,7 @@ impl App {
             opens: Default::default(),
             // The window starts with a new session.
             drafts: Default::default(),
+            jobs: Default::default(),
         }
     }
 
@@ -175,6 +178,7 @@ impl App {
         self.refresh_status(ui);
         self.refresh_run(ui);
         self.refresh_sessions(ui);
+        crate::jobs_view::follow(self, ui);
         ui.set_page("chat".into());
         ui.invoke_to_bottom();
     }

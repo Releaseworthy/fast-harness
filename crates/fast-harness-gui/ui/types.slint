@@ -150,6 +150,15 @@ export struct QueueChip {
     text: string,
 }
 
+// A background job of the shown session (PLAN.md D68): `mark` is its
+// state's name (running, exited, failed, killed), `word` says it in text.
+export struct JobChip {
+    id: string,
+    command: string,
+    word: string,
+    mark: string,
+}
+
 export struct SessionRow {
     id: string,
     title: string,

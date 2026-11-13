@@ -139,6 +139,8 @@ pub struct Ui {
     pub approvals: Vec<fast_harness_core::events::ApprovalRequest>,
     /// The shown session's id (the Sessions screen marks it when it waits).
     pub current: String,
+    /// The shown session's background jobs (D68): the line above the input.
+    pub jobs: Vec<fast_harness_core::view::jobs::JobRow>,
 }
 
 impl Ui {
@@ -163,6 +165,7 @@ impl Ui {
             sessions: Vec::new(),
             sessions_loading: false,
             loading: false,
+            jobs: Vec::new(),
             models: Vec::new(),
             catalog: builtin_models(),
             facts: Default::default(),

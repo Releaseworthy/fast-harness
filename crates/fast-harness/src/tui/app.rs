@@ -50,6 +50,8 @@ pub enum Msg {
         u64,
         Result<Box<fast_harness_core::view::opened::Opened>, String>,
     ),
+    /// The shown session's jobs, posted by the watch of generation (D68).
+    Jobs(u64, Vec<fast_harness_core::tools::JobInfo>),
 }
 
 pub struct Tui {
@@ -65,6 +67,8 @@ pub struct Tui {
     pub(super) loads: super::loads::Loads,
     /// The opens of sessions on workers (D60): the newest one wins.
     pub(super) opens: fast_harness_core::view::opened::Opening,
+    /// The worker watching the shown session's jobs (D68).
+    pub(super) jobs: fast_harness_core::view::jobs::Follow,
     /// Each session's unsent prompt (D65); `fresh` while the shown session
     /// is a new one, not sent yet, whose draft is the new session's.
     pub(super) drafts: fast_harness_core::app::drafts::Drafts,
@@ -131,6 +135,7 @@ impl Tui {
             log_path,
             loads: Default::default(),
             opens: Default::default(),
+            jobs: Default::default(),
             drafts,
             fresh,
             transcript,
@@ -176,6 +181,7 @@ impl Tui {
         self.ui.top = None;
         self.ui.current.clone_from(&self.session);
         self.show_queue();
+        self.follow_jobs();
         if let Some(state) = unfinished {
             self.ui.status = format!("the last turn was {}: /resume continues it", state.word());
         }
@@ -212,6 +218,7 @@ impl Tui {
             Msg::Sessions(ticket, result) => self.sessions_loaded(ticket, result),
             Msg::Trace(ticket, result) => self.trace_loaded(ticket, result),
             Msg::Opened(generation, result) => self.opened(generation, result),
+            Msg::Jobs(generation, list) => self.jobs_arrived(generation, list),
             Msg::Notes(notes) => {
                 for note in notes {
                     self.note(NoteKind::Error, note);
@@ -347,8 +354,8 @@ impl Tui {
             }
             return;
         }
-        // `/panel [id]` (PLAN.md D46).
-        if self.panel_command(&text) {
+        // `/panel [id]` (PLAN.md D46), `/kill <job-id>` (D68).
+        if self.panel_command(&text) || self.kill_command(&text) {
             return;
         }
         // `/reflect [apply]` runs off the UI thread (PLAN.md D50).

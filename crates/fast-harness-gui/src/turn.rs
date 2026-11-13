@@ -186,6 +186,8 @@ fn launch(app: &mut App, ui: &MainWindow, id: &str, start: Start) -> bool {
         app.sync_rows();
         app.refresh_status(ui);
         app.refresh_run(ui);
+        // The first turn opened the session in the service: its jobs (D68).
+        crate::jobs_view::follow(app, ui);
     }
     // The sidebar marks the session running.
     app.refresh_sessions(ui);

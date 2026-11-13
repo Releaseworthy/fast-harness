@@ -112,11 +112,13 @@ pub fn draw(frame: &mut Frame, ui: &mut Ui, view: &mut View<'_>, now_ms: u64) {
     };
     let queue_rows = if chat { ui.queue_rows() } else { Vec::new() };
     let prompt = super::approval::lines(ui, &st, width, usize::from(area.height / 2));
-    let [head, tabs, body, queue, asked, input, hint] = Layout::vertical([
+    let [head, tabs, body, queue, jobs, asked, input, hint] = Layout::vertical([
         Constraint::Length(1),
         Constraint::Length(1),
         Constraint::Min(1),
         Constraint::Length(queue_rows.len() as u16),
+        // The shown session's background jobs, only while it has some (D68).
+        Constraint::Length(u16::from(chat && !ui.jobs.is_empty())),
         Constraint::Length(super::approval::height(&prompt)),
         Constraint::Length(input_height),
         Constraint::Length(1),
@@ -134,16 +136,25 @@ pub fn draw(frame: &mut Frame, ui: &mut Ui, view: &mut View<'_>, now_ms: u64) {
         }
         Screen::Chat => {
             draw_transcript(frame, ui, view, body);
-            let lines: Vec<Line> = (queue_rows.iter())
-                .map(|row| Line::styled(clip(row, width), st.dim()))
-                .collect();
-            frame.render_widget(Paragraph::new(lines), queue);
+            draw_waiting(frame, ui, &st, &queue_rows, [queue, jobs]);
             draw_input(frame, ui, &rows, cursor, input);
             picker::draw(frame, ui, input, body);
         }
         _ => panels::draw(frame, ui, body, now_ms),
     }
     draw_hint(frame, ui, &st, hint);
+}
+
+/// The rows above the input: steers and the queue, then the jobs (D68).
+fn draw_waiting(frame: &mut Frame, ui: &Ui, st: &Styles, rows: &[String], areas: [Rect; 2]) {
+    let width = usize::from(areas[0].width);
+    let lines: Vec<Line> = (rows.iter())
+        .map(|row| Line::styled(clip(row, width), st.dim()))
+        .collect();
+    frame.render_widget(Paragraph::new(lines), areas[0]);
+    if let Some(line) = super::jobs::line(&ui.jobs, st) {
+        frame.render_widget(Paragraph::new(line), areas[1]);
+    }
 }
 
 /// The bottom line: the status when one is set, else the key hints.
