@@ -2,7 +2,7 @@ import { Palette } from "std-widgets.slint";
 import { MsgRow, SessionRow, SideRow, AccountRow, TraceRow, ProviderCard, QueueChip, JobChip, ApprovalView, UndoBar, ImageChip } from "types.slint";
 import { QueueRow } from "queue.slint";
 import { AttachRow } from "attach.slint";
-import { PillsRow, ReadOnlyNotice, JobsUi, SubagentsUi } from "subagents.slint";
+import { ReadOnlyNotice, JobsUi, SubagentsUi } from "subagents.slint";
 export { JobsUi, SubagentsUi, SubagentRow } from "subagents.slint";
 import { UndoRow } from "undo.slint";
 import { ApprovalPrompt } from "approval.slint";
@@ -12,7 +12,8 @@ import { Composer, Caret } from "composer.slint";
 import { TranscriptView } from "transcript.slint";
 import { Sidebar } from "sidebar.slint";
 import { AccountsPage } from "accounts.slint";
-import { SettingsPage, AboutPage } from "pages.slint";
+import { Dialogs } from "dialog.slint";
+export { DialogUi } from "dialog.slint";
 export { PromptUi } from "prompt_settings.slint";
 export { AppearanceUi, ThemeCard } from "appearance.slint";
 export { ConfigUi, ConfigRow } from "config_settings.slint";
@@ -280,6 +281,7 @@ export component MainWindow inherits Window {
                 VerticalLayout {
                     TabStrip {
                         page: root.page;
+                        room: root.height - 140px;
                         open-page(p) => { root.open-page(p); }
                     }
                     Rectangle {
@@ -318,8 +320,6 @@ export component MainWindow inherits Window {
                             if root.attached.length > 0: AttachRow {
                                 column: chat.column; chips: root.attached; remove(i) => { root.remove-image(i); }
                             }
-                            // The shown session's subagents (D74) and background jobs (D72).
-                            if JobsUi.count > 0 || SubagentsUi.count > 0: PillsRow { column: chat.column; room: transcript.height; }
                             if root.undo.turn > 0 && !SubagentsUi.read-only: UndoRow {
                                 column: chat.column; bar: root.undo; busy: root.busy;
                                 undo(force) => { root.undo-turn(force); }
@@ -421,22 +421,6 @@ export component MainWindow inherits Window {
                             toggle(i) => { root.trace-toggle(i); }
                             copy(t) => { root.copy-text(t); }
                         }
-                        if root.page == "settings": SettingsPage {
-                            width: parent.width;
-                            height: parent.height;
-                            models: root.models;
-                            model-headers: root.model-headers;
-                            efforts: root.efforts;
-                            model-index <=> root.model-index;
-                            effort-index <=> root.effort-index;
-                            note: root.picker-note;
-                            model-picked(i) => { root.model-picked(i); }
-                            effort-picked(i) => { root.effort-picked(i); }
-                            pickers-opened => { root.pickers-opened(); }
-                            refreshing: root.models-refreshing;
-                            ui-files: root.ui-files;
-                            reload-ui => { root.reload-ui(); }
-                        }
                         // The one panel view (PLAN.md D46): Settings > Configuration
                         // or /panel opens it; the status line says "process ended"
                         // with a "!" mark when the process died.
@@ -465,11 +449,6 @@ export component MainWindow inherits Window {
                                 wrap: word-wrap;
                             }
                         }
-                        if root.page == "about": AboutPage {
-                            width: parent.width;
-                            height: parent.height;
-                            version: root.version;
-                        }
                     }
                     StatusBar {
                         state: root.status-state;
@@ -489,6 +468,15 @@ export component MainWindow inherits Window {
             }
         }
     }
+    }
+    // Settings and About open over everything (D76); the focus comes back.
+    Dialogs {
+        models: root.models; model-headers: root.model-headers; efforts: root.efforts;
+        model-index <=> root.model-index; effort-index <=> root.effort-index;
+        note: root.picker-note; refreshing: root.models-refreshing; ui-files: root.ui-files; version: root.version;
+        model-picked(i) => { root.model-picked(i); } effort-picked(i) => { root.effort-picked(i); }
+        pickers-opened => { root.pickers-opened(); } reload-ui => { root.reload-ui(); }
+        closed => { if !SubagentsUi.read-only { composer.focus-input(); } }
     }
     // The window edge (no shadow on a frameless window).
     if !root.win-maximized: Rectangle {

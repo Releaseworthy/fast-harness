@@ -1,4 +1,4 @@
-//! The jobs pill in the whole window (PLAN.md D68 "Views", D72): eight jobs keep
+//! The Jobs tab in the whole window (PLAN.md D68 "Views", D72): eight jobs keep
 //! the transcript's rows drawn (a guard: a blank transcript with eight jobs
 //! was seen once in the real window on 2026-11-13 and not reproduced since).
 
@@ -79,8 +79,9 @@ fn many_jobs_keep_the_transcript_drawn() {
         .set_running(ModelRc::new(VecModel::from(jobs(8))));
     let shot1 = frames(&window);
     let after = ui.get_transcript_content_height();
-    let top = (W * 300) as usize;
-    let differ = (0..top).filter(|&i| shot0[i] != shot1[i]).count();
+    // Under the tab bar (the Jobs tab shows there, D76), down to row 300.
+    let (bar, top) = ((W * 90) as usize, (W * 300) as usize);
+    let differ = (bar..top).filter(|&i| shot0[i] != shot1[i]).count();
     let mut empty = rows();
     empty.clear();
     ui.global::<crate::JobsUi>()

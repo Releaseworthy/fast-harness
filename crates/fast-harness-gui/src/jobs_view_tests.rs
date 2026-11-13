@@ -15,16 +15,18 @@ use slint::{ComponentHandle, ModelRc, PhysicalSize, SharedString, VecModel};
 use super::{chips, took_text, Panel};
 
 slint::slint! {
-    import { JobsBar, JobsUi } from "ui/jobs.slint";
+    import { JobsTab, JobsUi } from "ui/jobs.slint";
     import { JobChip } from "ui/types.slint";
     export { JobChip, JobsUi }
     export component JobsHarness inherits Window {
         width: 600px;
         height: 400px;
-        VerticalLayout {
-            Rectangle {}
-            // As in main.slint: no pill while the session has no jobs.
-            if JobsUi.count > 0: JobsBar { column: 560px; room: 360px; }
+        // As in the tab bar (panel.slint): no Jobs tab without jobs.
+        HorizontalLayout {
+            y: 0;
+            height: 40px;
+            alignment: start;
+            if JobsUi.count > 0: JobsTab { room: 340px; span: 560px; }
         }
     }
 }
@@ -155,21 +157,22 @@ fn the_pill_shows_only_with_jobs_and_its_popover_closes_with_escape() {
     jobs.set_running(model(&running));
     jobs.set_finished(model(&finished));
     let pill = render(&window);
-    assert_ne!(empty, pill, "the pill draws with jobs");
+    assert_ne!(empty, pill, "the tab draws with jobs");
     let closed = Rc::new(std::cell::Cell::new(0));
     let count = closed.clone();
     jobs.on_closed(move || count.set(count.get() + 1));
-    // A click on the pill (bottom left of the column) opens the popover.
-    click(&window, 60.0, 388.0);
+    // A click on the Jobs tab (top left) opens the popover under it.
+    click(&window, 40.0, 20.0);
     assert!(jobs.get_open(), "the click opens the popover");
     let open = render(&window);
     assert_ne!(pill, open, "the popover draws");
-    // A click on the last row (just above the popover's bottom edge) asks
-    // for its output and keeps the popover open.
+    // A click on the last row (the popover starts at y 44: Running, one
+    // row, Finished 3, then rows of 29px) asks for its output and keeps the
+    // popover open.
     let asked = Rc::new(std::cell::RefCell::new(String::new()));
     let sink = asked.clone();
     jobs.on_expand(move |id| *sink.borrow_mut() = id.to_string());
-    click(&window, 200.0, 350.0);
+    click(&window, 200.0, 196.0);
     assert_eq!((asked.borrow().as_str(), jobs.get_open()), ("job-4", true));
     jobs.set_expanded("job-1".into());
     jobs.set_output("line one\nline two\n".into());
@@ -178,9 +181,10 @@ fn the_pill_shows_only_with_jobs_and_its_popover_closes_with_escape() {
     key(&window, slint::platform::Key::Escape.into());
     assert!(!jobs.get_open() && closed.get() == 1, "Escape closes it, closed() once");
     let after = render(&window);
-    let popover = (0..W * 300).filter(|&i| after[i] != pill[i]).count();
+    // Under the tab (the tab itself keeps its focus ring).
+    let popover = (W * 50..W * 300).filter(|&i| after[i] != pill[i]).count();
     assert_eq!(popover, 0, "the popover area is clear again");
     jobs.set_running(model(&[]));
     jobs.set_finished(model(&[]));
-    assert_eq!(empty, render(&window), "no pill without jobs");
+    assert_eq!(empty, render(&window), "no tab without jobs");
 }

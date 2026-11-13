@@ -5,6 +5,7 @@
 import { Theme, Mark } from "parts.slint";
 import { Icons } from "icons.slint";
 import { IconButton } from "widgets.slint";
+import { DialogUi } from "dialog.slint";
 
 // A flat text menu button. The open page reads in the text colour, bold,
 // with a 2px accent underline, so the state never rests on colour alone.
@@ -75,11 +76,11 @@ export component TitleBar inherits Rectangle {
             }
             VerticalLayout {
                 alignment: center;
-                MenuButton { text: "Settings"; selected: root.page == "settings"; clicked => { root.open-page("settings"); } }
+                MenuButton { text: "Settings"; selected: DialogUi.open == "settings"; clicked => { root.open-page("settings"); } }
             }
             VerticalLayout {
                 alignment: center;
-                MenuButton { text: "About"; selected: root.page == "about"; clicked => { root.open-page("about"); } }
+                MenuButton { text: "About"; selected: DialogUi.open == "about"; clicked => { root.open-page("about"); } }
             }
             // Clicks on the empty bar: the app maximizes or restores on a
             // double click (the move area delays the press, so the

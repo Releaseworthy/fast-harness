@@ -479,7 +479,7 @@ Scopes: `window` anywhere in the window, `composer` while the message box has th
 | `open_accounts` | `f2` | window | always | accounts page |
 | `open_trace` | `f3` | window | always | trace page |
 | `reload_ui` | `f5` | window | always | reload ~/.fast-harness/ui (fast-harness-gui-live, `docs/ui-contract.md`) |
-| `open_settings` | `ctrl+,` | window | always | settings page |
+| `open_settings` | `ctrl+,` | window | always | Settings dialog |
 | `focus_composer` | `ctrl+l` | window | always | focus the message box |
 | `approve_once` | `alt+y` | approval | always | approval prompt: allow this call once |
 | `approve_session` | `alt+a` | approval | always | approval prompt: allow it for this session |

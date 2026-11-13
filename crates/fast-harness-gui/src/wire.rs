@@ -129,6 +129,13 @@ pub fn connect_minimal(ui: &MainWindow) {
 }
 
 fn open_page(app: &mut crate::app::App, ui: &MainWindow, page: &str) {
+    // Settings and About are dialogs over the shown page (D76).
+    if crate::dialogs::open(ui, page) {
+        if page == "settings" {
+            prompt_settings::show(app, ui, "");
+        }
+        return;
+    }
     match page {
         "accounts" => {
             // The page opens on the provider cards.
@@ -136,7 +143,6 @@ fn open_page(app: &mut crate::app::App, ui: &MainWindow, page: &str) {
             accounts::refresh(app, ui);
         }
         "trace" => app.refresh_trace(ui),
-        "settings" => prompt_settings::show(app, ui, ""),
         _ => {}
     }
     ui.set_page(page.into());

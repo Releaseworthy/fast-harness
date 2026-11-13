@@ -45,6 +45,8 @@ mod shots_png;
 #[cfg(test)]
 mod shots_prompt;
 #[cfg(test)]
+mod shots_tabbar;
+#[cfg(test)]
 mod shots_tests;
 #[cfg(test)]
 mod shots_tools;
@@ -53,6 +55,8 @@ mod shots_trace;
 #[cfg(test)]
 mod side_tests;
 mod step_rows;
+#[cfg(test)]
+mod tabbar_tests;
 #[cfg(test)]
 mod workspace_switch_tests;
 

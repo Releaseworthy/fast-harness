@@ -2,43 +2,74 @@ import { Theme, Mark } from "parts.slint";
 import { Icons } from "icons.slint";
 import { FocusRing } from "widgets.slint";
 
-// The small pill above the composer that opens a popover (PLAN.md D72,
-// D74): the jobs and the subagents pills look the same. A click, Enter or
-// Space asks for the popover.
-export component Pill inherits Rectangle {
-    in property <string> label;
+// A tab after Chat and Trace that opens a popover under it (PLAN.md D76;
+// the subagents D74 and the background jobs D72): an icon, the word, the
+// count in a badge with a dot while something runs (the shape, not the
+// colour alone, says it; the accessible label says "running"). A click,
+// Enter or Space asks for the popover; the chat stays visible under it.
+export component PopTab inherits Rectangle {
     in property <string> icon;
-    in property <color> icon-color;
+    in property <string> text;
+    in property <int> count;
+    in property <bool> running;
+    // The accessible label: "Subagents: 3, 2 running".
+    in property <string> label;
     in property <bool> open;
-    // A click: open or close. Enter or Space on the focused pill: open.
+    // A click: open or close. Enter or Space on the focused tab: open.
     callback toggle();
     callback show();
     width: row.preferred-width;
-    height: 24px;
-    border-radius: 12px;
-    background: ta.has-hover || root.open ? Theme.hover : Theme.raised;
-    border-width: 1px;
-    border-color: Theme.line;
+    border-radius: Theme.radius-m;
+    background: ta.has-hover || root.open ? Theme.hover : transparent;
+    animate background { duration: Theme.quick; }
     accessible-role: button;
     accessible-label: root.label;
     accessible-action-default => { root.toggle(); }
     row := HorizontalLayout {
-        padding-left: Theme.space-s + 2px;
+        padding-left: Theme.space-m;
         padding-right: Theme.space-s + 2px;
-        spacing: 6px;
+        spacing: Theme.space-s;
         Mark {
             text: root.icon;
-            color: root.icon-color;
-            font-size: Theme.font-xs;
+            font-size: Theme.font-m;
+            color: root.running ? Theme.accent : Theme.dim;
         }
         Text {
-            text: root.label;
-            color: Theme.text;
-            font-size: Theme.font-xs;
+            text: root.text;
+            font-size: Theme.font-s;
+            font-weight: 500;
+            color: root.open ? Theme.text : Theme.dim;
             vertical-alignment: center;
+            accessible-role: none;
+        }
+        VerticalLayout {
+            alignment: center;
+            Rectangle {
+                height: 18px;
+                width: max(18px, badge.preferred-width);
+                border-radius: 9px;
+                background: Theme.raised;
+                border-width: 1px;
+                border-color: Theme.line;
+                badge := HorizontalLayout {
+                    padding-left: 6px;
+                    padding-right: 6px;
+                    spacing: 4px;
+                    alignment: center;
+                    if root.running: Mark { text: Icons.circle-filled; color: Theme.accent; font-size: 7px; }
+                    Text {
+                        text: root.count;
+                        color: Theme.text;
+                        font-size: Theme.font-xs;
+                        font-weight: 600;
+                        vertical-alignment: center;
+                        accessible-role: none;
+                    }
+                }
+            }
         }
         Mark {
-            text: root.open ? Icons.chevron-down : Icons.chevron-up;
+            text: root.open ? Icons.chevron-up : Icons.chevron-down;
             color: Theme.dim;
             font-size: Theme.font-xs;
         }
@@ -59,7 +90,7 @@ export component Pill inherits Rectangle {
             root.toggle();
         }
     }
-    if fs.has-focus: FocusRing { radius: 14px; x: -3px; y: -3px; width: parent.width + 6px; height: parent.height + 6px; }
+    if fs.has-focus: FocusRing { radius: Theme.radius-m + 3px; x: -3px; y: -3px; width: parent.width + 6px; height: parent.height + 6px; }
 }
 
 // The popover's card: surface, rounded border and the neutral shadow.

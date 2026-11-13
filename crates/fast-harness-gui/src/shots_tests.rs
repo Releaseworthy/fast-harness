@@ -273,7 +273,8 @@ fn shots() {
             };
             ui.set_accounts_provider(provider.into());
             ui.set_trace_mode(if shot == "steps" { "steps" } else { "timeline" }.into());
-            ui.set_page(page.into());
+            let dialog = crate::dialogs::open(&ui, page);
+            ui.set_page(if dialog { "chat" } else { page }.into());
             ui.set_error_text(
                 if page == "chat" {
                     "Cannot list the sessions: access denied"
@@ -285,6 +286,7 @@ fn shots() {
             let png = shots_png::encode(WIDTH, HEIGHT, &render(&window));
             let path = dir.join(format!("{}-{shot}.png", core.id));
             std::fs::write(&path, png).expect("write png");
+            crate::dialogs::close(&ui);
         }
         ui.set_page("chat".into());
         ui.set_error_text("".into());

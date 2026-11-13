@@ -73,6 +73,7 @@ pub fn open(app: &mut App, ui: &MainWindow, id: &str) -> Result<(), String> {
     g.set_id(id.into());
     g.set_title(panel.file.title.as_str().into());
     g.set_icon(glyph(&panel.file.icon).into());
+    crate::dialogs::close(ui);
     ui.set_page("panel".into());
     show(app, ui);
     Ok(())

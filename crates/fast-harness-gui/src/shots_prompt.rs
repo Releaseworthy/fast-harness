@@ -54,11 +54,11 @@ pub fn shot(
     render: impl Fn() -> Vec<u8>,
 ) {
     fill(ui);
-    ui.set_page("settings".into());
+    crate::dialogs::open(ui, "settings");
     render();
     scroll(window, -2000.0);
     let png = shots_png::encode(size.0, size.1, &render());
     std::fs::write(dir.join(format!("{theme}-prompt.png")), png).expect("write png");
     scroll(window, 2000.0);
-    ui.set_page("chat".into());
+    crate::dialogs::close(ui);
 }

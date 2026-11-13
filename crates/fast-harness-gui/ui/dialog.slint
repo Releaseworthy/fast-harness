@@ -1,0 +1,142 @@
+// Settings and About open as modal dialogs over the window (PLAN.md D76),
+// not as pages next to Chat and Trace.
+import { Theme, Card } from "parts.slint";
+import { Icons } from "icons.slint";
+import { IconButton } from "widgets.slint";
+import { SettingsBody, AboutBody } from "pages.slint";
+
+// Which dialog is open: "", "settings" or "about" (src/dialogs.rs).
+export global DialogUi {
+    in-out property <string> open;
+}
+
+// A modal dialog: a dimmed backdrop over the whole window and a centred
+// card sized to its content, at most 80% of the window, with its own
+// scroll. Escape, the close button or a click on the backdrop close it; the
+// focus moves into it and `closed` lets the window take it back.
+component ModalDialog inherits Rectangle {
+    in property <string> title;
+    // The content's width; the card adds its padding.
+    in property <length> content-width: 640px;
+    callback closed();
+    property <length> pad: Theme.space-xl;
+    property <length> head: 52px;
+    property <length> card-w: min(root.content-width + 2 * root.pad, root.width * 0.8);
+    property <length> card-h: min(inner.preferred-height + root.head + 1px, root.height * 0.8);
+    init => { fs.focus(); }
+
+    function close() {
+        DialogUi.open = "";
+        root.closed();
+    }
+
+    // The neutral popup shadow role, dimmed: the window under it stays visible.
+    Rectangle { background: Theme.shadow.with-alpha(0.6); }
+    TouchArea {
+        clicked => { root.close(); }
+        // Nothing under the backdrop scrolls while the dialog is open.
+        scroll-event(e) => { return accept; }
+    }
+    fs := FocusScope {
+        x: (root.width - root.card-w) / 2;
+        y: (root.height - root.card-h) / 2;
+        width: root.card-w;
+        height: root.card-h;
+        accessible-role: groupbox;
+        accessible-label: root.title + " dialog";
+        key-pressed(event) => {
+            if event.text == Key.Escape {
+                root.close();
+                return accept;
+            }
+            return reject;
+        }
+        Card { radius: Theme.radius-xl; elevation: 2; }
+        // A click on the card stays in the dialog.
+        TouchArea { }
+        Rectangle {
+            x: 0;
+            y: 0;
+            height: root.head;
+            HorizontalLayout {
+                padding-left: root.pad;
+                padding-right: Theme.space-m;
+                spacing: Theme.space-m;
+                Text {
+                    text: root.title;
+                    color: Theme.text;
+                    font-size: Theme.font-l;
+                    font-weight: 700;
+                    vertical-alignment: center;
+                    horizontal-stretch: 1;
+                }
+                VerticalLayout {
+                    alignment: center;
+                    IconButton {
+                        icon: Icons.close;
+                        label: "Close " + root.title;
+                        clicked => { root.close(); }
+                    }
+                }
+            }
+            Rectangle { y: parent.height - 1px; height: 1px; background: Theme.line; }
+        }
+        flick := Flickable {
+            x: 1px;
+            y: root.head;
+            width: parent.width - 2px;
+            height: parent.height - root.head - 1px;
+            content-height: inner.preferred-height;
+            inner := VerticalLayout {
+                width: flick.width;
+                padding: root.pad - 1px;
+                padding-top: Theme.space-l;
+                @children
+            }
+        }
+    }
+}
+
+// The dialogs MainWindow lays over everything else (main.slint passes the
+// settings' lists and callbacks through).
+export component Dialogs inherits Rectangle {
+    in property <[string]> models;
+    in property <[bool]> model-headers;
+    in property <[string]> efforts;
+    in-out property <int> model-index;
+    in-out property <int> effort-index;
+    in property <string> note;
+    in property <bool> refreshing;
+    in property <bool> ui-files;
+    in property <string> version;
+    callback model-picked(int);
+    callback effort-picked(int);
+    callback pickers-opened();
+    callback reload-ui();
+    // A dialog closed (the window gives the focus back).
+    callback closed();
+    if DialogUi.open == "settings": ModalDialog {
+        title: "Settings";
+        closed => { root.closed(); }
+        SettingsBody {
+            models: root.models;
+            model-headers: root.model-headers;
+            efforts: root.efforts;
+            model-index <=> root.model-index;
+            effort-index <=> root.effort-index;
+            note: root.note;
+            refreshing: root.refreshing;
+            ui-files: root.ui-files;
+            model-picked(i) => { root.model-picked(i); }
+            effort-picked(i) => { root.effort-picked(i); }
+            pickers-opened => { root.pickers-opened(); }
+            reload-ui => { root.reload-ui(); }
+        }
+    }
+    if DialogUi.open == "about": ModalDialog {
+        title: "About";
+        content-width: 560px;
+        closed => { root.closed(); }
+        AboutBody { version: root.version; }
+    }
+}

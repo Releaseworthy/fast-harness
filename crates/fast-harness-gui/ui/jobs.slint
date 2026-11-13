@@ -1,6 +1,6 @@
 import { Theme, Mark } from "parts.slint";
 import { Icons } from "icons.slint";
-import { Pill, PopoverCard } from "pill.slint";
+import { PopTab, PopoverCard } from "pill.slint";
 import { JobsUi, JobItem } from "job_row.slint";
 export { JobsUi }
 
@@ -79,23 +79,19 @@ component JobsList inherits VerticalLayout {
     }
 }
 
-// The shown session's background jobs (PLAN.md D72): one small pill above
-// the composer, "N background jobs running" while N run; a click opens
-// the popover above it. Escape or a click outside closes it. subagents.slint
-// (PillsRow) shows the bar only while `JobsUi.count > 0`.
-export component JobsBar inherits Rectangle {
-    in property <length> column;
-    // The room above the pill the popover may take.
+// The shown session's background jobs (PLAN.md D72, D76): a tab after
+// Trace (and Subagents), "Jobs 2" with a running dot while one runs; a
+// click opens the popover under it. Escape or a click outside closes it.
+// TabStrip (panel.slint) shows it only while `JobsUi.count > 0`.
+export component JobsTab inherits Rectangle {
+    // The height the popover may take, and its width at most.
     in property <length> room: 480px;
-    // Right of the subagents pill when it shows (D74).
-    in property <length> offset;
+    in property <length> span: 560px;
     property <bool> open: JobsUi.open;
     property <int> hi: -1;
-    // As DeepSeek Harness says it: the running jobs while one runs, else all.
-    property <int> shown: JobsUi.running.length > 0 ? JobsUi.running.length : JobsUi.count;
-    property <string> label: root.shown + (root.shown == 1 ? " background job" : " background jobs")
-        + (JobsUi.running.length > 0 ? " running" : "");
-    height: 24px + Theme.space-s;
+    width: tab.width;
+    // A tab that comes back starts closed (its popover went with it).
+    init => { JobsUi.open = false; }
     changed open => {
         if root.open {
             root.hi = -1;
@@ -104,21 +100,21 @@ export component JobsBar inherits Rectangle {
             popup.close();
         }
     }
-    pill := Pill {
-        x: (root.width - root.column) / 2 + root.offset;
-        y: Theme.space-s;
-        label: root.label;
-        icon: JobsUi.running.length > 0 ? Icons.terminal : Icons.check;
-        icon-color: JobsUi.running.length > 0 ? Theme.accent : Theme.dim;
+    tab := PopTab {
+        height: root.height;
+        icon: Icons.terminal;
+        text: "Jobs";
+        count: JobsUi.count;
+        running: JobsUi.running.length > 0;
+        label: "Background jobs: " + JobsUi.count + (JobsUi.running.length > 0 ? ", " + JobsUi.running.length + " running" : "");
         open: root.open;
         toggle => { JobsUi.open = !JobsUi.open; }
         show => { JobsUi.open = true; }
     }
     popup := PopupWindow {
-        // Under the column's left edge, as the subagents popover.
-        x: (root.width - root.column) / 2;
-        y: pill.y - self.height - 6px;
-        width: min(root.column, 560px);
+        x: 0;
+        y: root.height + 4px;
+        width: min(root.span, 560px);
         height: min(list.preferred-height + 2px, root.room);
         close-policy: close-on-click-outside;
         forward-focus: keys;

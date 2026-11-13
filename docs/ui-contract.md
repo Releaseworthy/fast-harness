@@ -63,6 +63,7 @@ With `"approvals": "ask"` a call can wait for an answer (PLAN.md D64). Both fron
 - `ConfigUi.folder`: property <string>
 - `ConfigUi.open-folder`: callback
 - `ConfigUi.rows`: property <[ConfigRow]>
+- `DialogUi.open`: property <string>
 - `JobsUi.clear`: callback
 - `JobsUi.closed`: callback
 - `JobsUi.dropped`: property <bool>

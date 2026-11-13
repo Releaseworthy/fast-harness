@@ -20,7 +20,7 @@ fn write(dir: &Path, name: &str, size: (u32, u32), rgb: &[u8]) {
 /// `<theme>-chat-grey100.png` and, for Dark, `dark-appearance-custom.png`.
 pub fn shot(ui: &MainWindow, dir: &Path, id: &str, size: (u32, u32), render: impl Fn() -> Vec<u8>) {
     let core = by_id(id);
-    ui.set_page("settings".into());
+    crate::dialogs::open(ui, "settings");
     appearance::fill(ui, id, 0);
     write(dir, &format!("{id}-appearance"), size, &render());
     theme::apply(ui, core, 50);
@@ -31,7 +31,7 @@ pub fn shot(ui: &MainWindow, dir: &Path, id: &str, size: (u32, u32), render: imp
         custom(ui, dir, size, &render);
     }
     appearance::fill(ui, id, 0);
-    ui.set_page("chat".into());
+    crate::dialogs::close(ui);
     // The chat at greyscale 100: gradients, halos and marks in pure greys.
     theme::apply(ui, core, 100);
     write(dir, &format!("{id}-chat-grey100"), size, &render());
