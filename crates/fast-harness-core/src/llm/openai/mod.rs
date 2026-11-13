@@ -56,7 +56,9 @@ impl OpenAiChat {
             .map(|m| m.efforts.clone())
             .unwrap_or_default();
         let max_output = entry.as_ref().and_then(|m| m.max_output);
-        request::build(req, self.wire_model(req.model), max_output, &efforts).to_string()
+        let vision = entry.is_some_and(|m| m.images);
+        let model = self.wire_model(req.model);
+        request::build(req, model, max_output, &efforts, vision).to_string()
     }
 
     /// The request headers: JSON, SSE, the bearer unless the key is empty,

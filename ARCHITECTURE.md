@@ -52,6 +52,7 @@ Change one only together with every user of it.
 - Tool calls of one step run by effect (see Threads).
 - `shell` with `background: true` starts a job of the session (`tools/jobs.rs`): `job_output`, `job_kill`, `job_list` read, stop and list it; `Service::close` and the last handle kill the jobs, 8 run at most, output keeps the newest 64 KiB plus a log (D68).
 - `write` and `edit` keep each file's prior state once per turn in `<session>.undo/turn-N/` (`tools/undo.rs`, 16 MiB per turn, 64 MiB per session); `Session::undo_last_turn(force)`, `/undo` and `_fh/undo` restore the newest turn not undone, all or nothing unless forced; the model gets an `[undo]` note with the next user message; trace `undo` (D69).
+- Images (D70): `Block::Image`/`Part::Image` hold an `ImageRef` to `<session>.media/<sha256>.<ext>` (`media`: png/jpeg/gif/webp, 3.75 MB, 8000 px, no downscale); `read` returns images; `llm::images::prepare` reads the bytes per request or sends `[image not sent: ...]` (models without images, missing files, count limits); `Session::attach_image_*` queue images for the next prompt.
 - `AgentEvent::ToolProgress` is live only: never traced, never sent to the model.
 - Trust gates project files: nothing in `<project>/.fast-harness/` and no project `AGENTS.md` (root to cwd or nested) is read until the user trusts the project once (`config/trust.rs`, `trusted.json`, `layers::agents_trusted`, D62).
 - Approvals (`approvals: ask`, off by default) gate `Write` and `Run` calls after the PreToolUse hooks and fail closed: only the user layer allows or turns them off (`agent/approval.rs`, D64).
@@ -98,7 +99,7 @@ By decision title; each is `docs/decisions/Dnn.md`.
 | models, effort, catalog | D13 D16 D17 D24 D67 |
 | system prompt, context, cache | D18 D31 D36 |
 | tool results, compaction | D37 D38 |
-| tools, approvals | D30 D34 D54 D58 D64 D68 D69 |
+| tools, approvals | D30 D34 D54 D58 D64 D68 D69 D70 |
 | steering, subagents, turn runner | D39 D40 D59 |
 | settings layers, extension files | D41 D42 D43 D44 D45 D46 D47 D51 |
 | plugins | D52 D57 D58 |

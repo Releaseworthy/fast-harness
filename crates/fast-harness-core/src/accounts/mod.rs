@@ -1,6 +1,6 @@
 //! Claude accounts: encrypted store, usage, automatic switching.
 //!
-//! - `crypto`: base64 and SHA-256 (PKCE, secret encoding).
+//! - `crypto`: re-export of `crate::crypto` (base64 and SHA-256, PKCE, secret encoding).
 //! - `model`: the account record.
 //! - `store`: `~/.fast-harness/accounts.json`, secrets encrypted with `platform::protect`.
 //! - `usage`: usage windows from response headers and from the usage endpoint.
@@ -10,7 +10,7 @@
 //! - `pool`: the Anthropic accounts as the agent's `AuthSource`, with failover.
 //! - `providers`: the per-provider summaries the Accounts views open on.
 
-pub mod crypto;
+pub use crate::crypto;
 pub mod model;
 pub mod oauth;
 pub mod order;

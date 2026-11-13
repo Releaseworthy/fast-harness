@@ -108,9 +108,13 @@ impl Turn<'_> {
                 is_error: output.is_error(),
             };
             let size = (output.bytes(), output.spilled());
+            // A result's images follow its block (PLAN.md D70).
+            let images: Vec<Block> = output.images().cloned().map(Block::Image).collect();
+            let mut content = vec![block];
+            content.extend(images);
             let message = Message {
                 role: Role::Tool,
-                content: vec![block.clone()],
+                content,
                 model: None,
             };
             traced(self.conv.trace.tool_result_sized(
@@ -120,7 +124,7 @@ impl Turn<'_> {
                 duration_ms,
                 size,
             ))?;
-            blocks.push(block);
+            blocks.extend(message.content);
         }
         self.conv.messages.push(Message {
             role: Role::Tool,

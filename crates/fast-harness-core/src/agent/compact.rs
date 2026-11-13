@@ -326,5 +326,12 @@ fn estimate(conv: &Conversation, history: &[Message]) -> u64 {
         .iter()
         .map(|message| serde_json::to_string(message).map_or(0, |text| text.len()))
         .sum();
-    ((system + tools + messages) / 4) as u64
+    ((system + tools + messages) / 4) as u64 + image_tokens(history)
+}
+
+/// The images' own estimate (PLAN.md D70): their reference counts as text
+/// above, their pixels here.
+pub(crate) fn image_tokens(history: &[Message]) -> u64 {
+    let images = history.iter().flat_map(Message::images);
+    images.map(crate::media::tokens).sum()
 }

@@ -7,6 +7,7 @@
 pub mod acp;
 pub mod approve;
 pub mod config;
+pub mod images;
 pub mod json;
 mod methods;
 mod prompt;

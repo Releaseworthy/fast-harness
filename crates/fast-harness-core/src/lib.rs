@@ -1,8 +1,8 @@
 //! Portable core of fast-harness.
 //!
 //! Layering (a module never imports a higher one):
-//! `types` / `theme` / `ui_thread` -> `http` / `sse` / `platform` -> `store` / `net`
-//! -> `llm` / `tools` / `auth` / `config` -> `trace` / `session` / `events` / `keys`
+//! `types` / `theme` / `ui_thread` -> `http` / `sse` / `platform` -> `crypto` / `store` / `net`
+//! -> `media` -> `llm` / `tools` / `auth` / `config` -> `trace` / `session` / `events` / `keys`
 //! -> `workspaces` / `accounts` -> `agent` -> `view` / `panels` / `stats` -> `reflect`
 //! -> `service` -> `ext` -> `app`.
 //! `ext` is the native plugin API (PLAN.md D52); the generated
@@ -16,11 +16,13 @@ pub mod agent;
 pub mod app;
 pub mod auth;
 pub mod config;
+pub mod crypto;
 pub mod events;
 pub mod ext;
 pub mod http;
 pub mod keys;
 pub mod llm;
+pub mod media;
 pub mod net;
 pub mod panels;
 pub mod platform;

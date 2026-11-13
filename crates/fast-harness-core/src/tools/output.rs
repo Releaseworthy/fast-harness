@@ -1,16 +1,21 @@
-//! What a tool call returns (PLAN.md D58): parts (text now, another kind
-//! later) behind constructors and accessors, so a new part kind changes no
-//! plugin and no caller.
+//! What a tool call returns (PLAN.md D58): parts (text, images since D70)
+//! behind constructors and accessors, so a new part kind changes no plugin
+//! and no caller.
 
 use std::borrow::Cow;
 
-/// One piece of a tool's output. A later kind (an image) comes as a new
-/// variant; the fields of a variant never change.
+use crate::types::ImageRef;
+
+/// One piece of a tool's output. A later kind comes as a new variant; the
+/// fields of a variant never change.
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum Part {
     /// Text the model reads.
     Text(String),
+    /// An image kept in the session's media folder (PLAN.md D70), sent to
+    /// the model with the result where the provider takes images.
+    Image(ImageRef),
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -49,6 +54,19 @@ impl ToolOutput {
         output
     }
 
+    /// A text line and an image (PLAN.md D70).
+    pub fn image(text: impl Into<String>, image: ImageRef) -> ToolOutput {
+        ToolOutput::from_parts(vec![Part::Text(text.into()), Part::Image(image)], false)
+    }
+
+    /// The image parts, in order.
+    pub fn images(&self) -> impl Iterator<Item = &ImageRef> {
+        self.parts.iter().filter_map(|part| match part {
+            Part::Image(image) => Some(image),
+            _ => None,
+        })
+    }
+
     pub fn parts(&self) -> &[Part] {
         &self.parts
     }
@@ -66,6 +84,7 @@ impl ToolOutput {
     pub fn into_text(self) -> String {
         match <[Part; 1]>::try_from(self.parts) {
             Ok([Part::Text(text)]) => text,
+            Ok(parts) => parts.iter().filter_map(Part::text).collect(),
             Err(parts) => parts.iter().filter_map(Part::text).collect(),
         }
     }
@@ -111,6 +130,7 @@ impl Part {
     pub fn text(&self) -> Option<&str> {
         match self {
             Part::Text(text) => Some(text),
+            Part::Image(_) => None,
         }
     }
 }
@@ -141,5 +161,24 @@ mod tests {
         cut.set_size(3, Some("f.txt".into()));
         assert_eq!(cut.parts(), [Part::Text("xy".into())]);
         assert_eq!((cut.bytes(), cut.spilled()), (3, Some("f.txt")));
+    }
+
+    #[test]
+    fn an_image_part_is_kept_beside_the_text_and_never_in_it() {
+        let image = ImageRef::new("/m/a.png", "image/png", 9, (2, 2));
+        let mut out = ToolOutput::image("a.png: png 2x2", image.clone());
+        assert_eq!((out.text(), out.bytes()), ("a.png: png 2x2".into(), 14));
+        out.set_text("cut".into());
+        out.push_text("!");
+        assert_eq!(
+            out.parts(),
+            [
+                Part::Text("cut".into()),
+                Part::Image(image.clone()),
+                Part::Text("!".into())
+            ]
+        );
+        assert_eq!(out.images().collect::<Vec<_>>(), [&image]);
+        assert_eq!(out.into_text(), "cut!");
     }
 }

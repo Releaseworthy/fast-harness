@@ -5,8 +5,9 @@
 
 use serde_json::{json, Map, Value};
 
+use crate::llm::images::{self, Prepared};
 use crate::llm::{find, ChatRequest, ToolSpec};
-use crate::types::{Block, Message, Role};
+use crate::types::{Block, ImageRef, Message, Role};
 
 /// The tools of this request: every tool, or with deferred loading
 /// `find_tools` plus the tools found so far, in list order.
@@ -53,51 +54,104 @@ fn assistant(message: &Message) -> Value {
     Value::Object(out)
 }
 
+/// A data URL `image_url` part (PLAN.md D70).
+fn image_part(image: &ImageRef, prepared: &Prepared<'_>) -> Value {
+    let url = format!("data:{};base64,{}", image.media_type, prepared.data(image));
+    json!({"type": "image_url", "image_url": {"url": url}})
+}
+
+/// The user content: a string without images, else text and image parts.
+struct UserContent {
+    text: String,
+    parts: Vec<Value>,
+}
+
+impl UserContent {
+    fn push_text(&mut self, piece: &str) {
+        if !self.text.is_empty() {
+            self.text.push_str("\n\n");
+        }
+        self.text.push_str(piece);
+    }
+
+    fn push_image(&mut self, part: Value) {
+        if !self.text.is_empty() {
+            let text = std::mem::take(&mut self.text);
+            self.parts.push(json!({"type": "text", "text": text}));
+        }
+        self.parts.push(part);
+    }
+
+    fn message(mut self) -> Option<Value> {
+        if self.parts.is_empty() {
+            return (!self.text.is_empty()).then(|| json!({"role": "user", "content": self.text}));
+        }
+        if !self.text.is_empty() {
+            self.parts.push(json!({"type": "text", "text": self.text}));
+        }
+        Some(json!({"role": "user", "content": self.parts}))
+    }
+}
+
 /// A user or tool message: one `role: tool` message per result, then the
-/// text (a steer after results) as a user message.
-fn user(message: &Message, out: &mut Vec<Value>) {
-    let mut text = String::new();
+/// images of the results as a user message (a tool message takes text
+/// only), then the text (a steer after results) as a user message.
+fn user(message: &Message, prepared: &Prepared<'_>, out: &mut Vec<Value>) {
+    let empty = || UserContent {
+        text: String::new(),
+        parts: Vec::new(),
+    };
+    let (mut content, mut results) = (empty(), empty());
+    let mut call: Option<&str> = None;
     for block in &message.content {
         match block {
             Block::ToolResult {
                 call_id, content, ..
-            } => out.push(json!({"role": "tool", "tool_call_id": call_id, "content": content})),
-            Block::Text { text: piece } => {
-                if !text.is_empty() {
-                    text.push_str("\n\n");
-                }
-                text.push_str(piece);
+            } => {
+                out.push(json!({"role": "tool", "tool_call_id": call_id, "content": content}));
+                call = Some(call_id);
             }
+            Block::Text { text: piece } => content.push_text(piece),
+            Block::Image(image) => match call.filter(|_| message.role == Role::Tool) {
+                Some(id) => {
+                    results.push_text(&format!("[image of tool result {id}]"));
+                    results.push_image(image_part(image, prepared));
+                }
+                None => content.push_image(image_part(image, prepared)),
+            },
             _ => {}
         }
     }
-    if !text.is_empty() {
-        out.push(json!({"role": "user", "content": text}));
-    }
+    out.extend(results.message());
+    out.extend(content.message());
 }
 
-/// The `messages` array. Reasoning of earlier answers is not sent back.
-pub fn messages(system: &str, history: &[Message]) -> Vec<Value> {
+/// The `messages` array. Reasoning of earlier answers is not sent back;
+/// images go only when the model takes them (`vision`), else as text.
+pub fn messages(system: &str, history: &[Message], vision: bool) -> Vec<Value> {
+    let prepared = images::prepare(history, vision);
     let mut out = Vec::with_capacity(history.len() + 1);
     if !system.is_empty() {
         out.push(json!({"role": "system", "content": system}));
     }
-    for message in history {
+    for message in prepared.messages.iter() {
         match message.role {
             Role::Assistant => out.push(assistant(message)),
-            Role::User | Role::Tool => user(message, &mut out),
+            Role::User | Role::Tool => user(message, &prepared, &mut out),
         }
     }
     out
 }
 
 /// The whole body. `max_output` caps `max_tokens`; `efforts` are the
-/// effort words the model takes (`reasoning_effort` is sent only for one).
+/// effort words the model takes (`reasoning_effort` is sent only for one);
+/// `vision`: the model takes images (`"images": true` in its file).
 pub fn build(
     req: &ChatRequest<'_>,
     model: &str,
     max_output: Option<u64>,
     efforts: &[String],
+    vision: bool,
 ) -> Value {
     let mut max_tokens = u64::from(req.max_tokens);
     if let Some(cap) = max_output.filter(|cap| *cap > 0) {
@@ -108,7 +162,7 @@ pub fn build(
         "stream": true,
         "stream_options": {"include_usage": true},
         "max_tokens": max_tokens,
-        "messages": messages(req.system, req.messages),
+        "messages": messages(req.system, req.messages, vision),
     });
     let tools: Vec<Value> = visible(req).into_iter().map(tool_json).collect();
     if !tools.is_empty() {

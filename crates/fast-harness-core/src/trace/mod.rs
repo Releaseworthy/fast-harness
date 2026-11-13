@@ -38,7 +38,10 @@ use serde_json::Value;
 /// like a steer.
 /// Version 11: `tool/approval` events (PLAN.md D64): how an approval request
 /// ended, so a replay shows the same word a live transcript showed.
-pub const VERSION: u32 = 12;
+/// Version 12: `undo` events (PLAN.md D69).
+/// Version 13: `image` blocks in user and tool messages (PLAN.md D70), an
+/// image held by reference to `<session>.media/<sha>.<ext>`.
+pub const VERSION: u32 = 13;
 
 /// The oldest version the reader accepts; a resumed log keeps its own header.
 pub const MIN_VERSION: u32 = 1;

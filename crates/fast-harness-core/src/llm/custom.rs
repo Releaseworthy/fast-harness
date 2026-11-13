@@ -52,6 +52,9 @@ pub struct ModelFile {
     pub compaction: CompactionPatch,
     /// `anthropic`, `implicit` or `none` (informational for now).
     pub cache: Option<String>,
+    /// The model takes images (`image_url` parts, PLAN.md D70); false (the
+    /// default) sends a text placeholder instead.
+    pub images: bool,
 }
 
 /// US dollars per million tokens. `cacheRead` defaults to `input`,

@@ -106,7 +106,7 @@ pub use crate::panels::{Host, Incoming, NativePanel as Panel, Place};
 pub use crate::tools::hook_request::RequestChange;
 pub use crate::tools::hooks::{Answer, HookEvent, NativeHook as Hook};
 pub use crate::tools::{Effect, Part, Progress, Tool, ToolCtx, ToolOutput, ToolSession};
-pub use crate::types::{Block, Message, Role, StopReason, Usage};
+pub use crate::types::{Block, ImageRef, Message, Role, StopReason, Usage};
 
 /// What the plugins of a build registered. Filled once at start by
 /// `fast_harness_plugins::register_all`, then read by every settings load

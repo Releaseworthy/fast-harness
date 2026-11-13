@@ -37,7 +37,8 @@ use text::functions;
 const LAYERS: &[&[&str]] = &[
     &["types", "theme", "ui_thread"],
     &["http", "sse", "platform"],
-    &["store", "net"],
+    &["crypto", "store", "net"],
+    &["media"],
     &["llm", "tools", "auth", "config"],
     &["trace", "session", "events", "keys"],
     &["workspaces", "accounts"],

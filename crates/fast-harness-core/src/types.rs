@@ -50,6 +50,42 @@ pub enum Block {
         #[serde(default)]
         is_error: bool,
     },
+    /// An image held by reference (trace version 13, PLAN.md D70). In a user
+    /// message it is the user's; in a tool message it belongs to the
+    /// `ToolResult` before it. The bytes are read when a request is built.
+    Image(ImageRef),
+}
+
+/// An image file kept under the session folder (`<session>.media/<sha>.<ext>`,
+/// PLAN.md D70): never inline in the trace.
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[non_exhaustive]
+pub struct ImageRef {
+    /// Absolute path of the media file.
+    pub path: String,
+    /// `image/png`, `image/jpeg`, `image/gif` or `image/webp`.
+    pub media_type: String,
+    pub bytes: u64,
+    pub width: u32,
+    pub height: u32,
+}
+
+impl ImageRef {
+    pub fn new(
+        path: impl Into<String>,
+        media_type: impl Into<String>,
+        bytes: u64,
+        (width, height): (u32, u32),
+    ) -> ImageRef {
+        ImageRef {
+            path: path.into(),
+            media_type: media_type.into(),
+            bytes,
+            width,
+            height,
+        }
+    }
 }
 
 impl Block {
@@ -96,6 +132,14 @@ impl Message {
 
     pub fn user(text: impl Into<String>) -> Message {
         Message::new(Role::User, vec![Block::text(text)])
+    }
+
+    /// The images of this message, in order.
+    pub fn images(&self) -> impl Iterator<Item = &ImageRef> {
+        self.content.iter().filter_map(|block| match block {
+            Block::Image(image) => Some(image),
+            _ => None,
+        })
     }
 
     /// An assistant message of one text block.

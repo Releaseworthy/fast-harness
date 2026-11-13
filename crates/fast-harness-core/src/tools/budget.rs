@@ -4,11 +4,17 @@
 //! the end of the result.
 
 use std::collections::HashMap;
-use std::path::PathBuf;
-use std::sync::{Arc, Mutex};
+use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::SystemTime;
 
 use super::{Jobs, ToolCtx, ToolOutput, UndoLog};
+use crate::types::ImageRef;
+
+/// A poisoned lock still holds a usable list.
+fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
+    mutex.lock().unwrap_or_else(|e| e.into_inner())
+}
 
 /// Start of the note a spilled result ends with.
 pub const SPILL_MARK: &str = "[full output: ";
@@ -28,6 +34,10 @@ pub struct ToolSession {
     jobs: Arc<Jobs>,
     /// Prior states of the files `write` and `edit` change (PLAN.md D69).
     undo: Arc<UndoLog>,
+    /// `<session>.media`: images kept by reference (PLAN.md D70).
+    media_dir: Option<PathBuf>,
+    /// Images attached for the next user message (PLAN.md D70).
+    attached: Mutex<Vec<ImageRef>>,
 }
 
 /// A returned read: path, offset, limit, file size and modified time.
@@ -44,12 +54,36 @@ impl ToolSession {
     pub fn new(out_dir: Option<PathBuf>) -> ToolSession {
         // `<id>.out` -> `<id>.undo`, beside it.
         let undo_dir = out_dir.as_ref().map(|dir| dir.with_extension("undo"));
+        let media_dir = out_dir.as_ref().map(|dir| dir.with_extension("media"));
         ToolSession {
             out_dir,
+            media_dir,
+            attached: Mutex::default(),
             reads: Mutex::new(HashMap::new()),
             jobs: Arc::default(),
             undo: Arc::new(UndoLog::new(undo_dir)),
         }
+    }
+
+    /// `<session>.media`, where images are kept (PLAN.md D70); `None`
+    /// without a session folder.
+    pub fn media_dir(&self) -> Option<&Path> {
+        self.media_dir.as_deref()
+    }
+
+    /// Queues an image for the next user message.
+    pub fn attach(&self, image: ImageRef) {
+        lock(&self.attached).push(image);
+    }
+
+    /// The images queued for the next user message, in order.
+    pub fn attached(&self) -> Vec<ImageRef> {
+        lock(&self.attached).clone()
+    }
+
+    /// Takes the queued images (the next user message carries them).
+    pub fn take_attached(&self) -> Vec<ImageRef> {
+        std::mem::take(&mut *lock(&self.attached))
     }
 
     /// The session's undo store (PLAN.md D69).

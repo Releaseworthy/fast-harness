@@ -21,8 +21,9 @@ use super::live::LiveModels;
 use super::models::ModelSpec;
 use super::thinking;
 use super::wire;
+use crate::llm::images::{self, Prepared};
 use crate::llm::{find, ChatRequest, ToolSpec};
-use crate::types::{Block, Message, Role};
+use crate::types::{Block, ImageRef, Message, Role};
 
 /// The identity block that must open the system prompt in OAuth mode.
 pub(crate) const CLAUDE_CODE_IDENTITY: &str =
@@ -245,6 +246,9 @@ fn convert_messages(
     oauth: bool,
     cache: &Value,
 ) -> Vec<Value> {
+    // Every Claude model takes images (platform.claude.com vision, 2026-11-13).
+    let prepared = images::prepare(messages, true);
+    let messages = &prepared.messages[..];
     let calls = if find::deferring(tools) {
         find::find_call_ids(messages)
     } else {
@@ -259,8 +263,7 @@ fn convert_messages(
     let mut previous_was_tool = false;
     for message in messages {
         let (role, blocks) = match message.role {
-            Role::User => ("user", user_blocks(&message.content, &finds)),
-            Role::Tool => ("user", user_blocks(&message.content, &finds)),
+            Role::User | Role::Tool => ("user", user_blocks(&message.content, &finds, &prepared)),
             Role::Assistant => (
                 "assistant",
                 assistant_blocks(&message.content, message.model.as_deref(), oauth),
@@ -294,7 +297,10 @@ fn mark_last_message(messages: &mut [Value], cache: &Value) {
         return;
     }
     if let Some(block) = last["content"].as_array_mut().and_then(|c| c.last_mut()) {
-        if block["type"] == "text" || block["type"] == "tool_result" {
+        if matches!(
+            block["type"].as_str(),
+            Some("text" | "tool_result" | "image")
+        ) {
             block["cache_control"] = cache.clone();
         }
     }
@@ -315,7 +321,7 @@ fn results_first(content: &mut Vec<Value>) {
     }
 }
 
-fn user_blocks(content: &[Block], finds: &Finds<'_>) -> Vec<Value> {
+fn user_blocks(content: &[Block], finds: &Finds<'_>, prepared: &Prepared<'_>) -> Vec<Value> {
     let mut out = Vec::new();
     // What find results say beyond their references, sent after the results.
     let mut after = Vec::new();
@@ -344,12 +350,38 @@ fn user_blocks(content: &[Block], finds: &Finds<'_>) -> Vec<Value> {
                     "is_error": is_error,
                 }));
             }
+            Block::Image(image) => add_image(&mut out, image_json(image, prepared.data(image))),
             _ => {}
         }
     }
     out.extend(after);
     results_first(&mut out);
     out
+}
+
+/// A base64 image block (PLAN.md D70).
+fn image_json(image: &ImageRef, data: &str) -> Value {
+    let source = json!({"type": "base64", "media_type": image.media_type, "data": data});
+    json!({"type": "image", "source": source})
+}
+
+/// An image right after a tool result goes inside it (its content becomes
+/// blocks); any other image is a block of the message.
+fn add_image(out: &mut Vec<Value>, image: Value) {
+    let Some(result) = out.last_mut().filter(|b| b["type"] == "tool_result") else {
+        out.push(image);
+        return;
+    };
+    if let Some(text) = result["content"].as_str() {
+        let text = text.to_string();
+        result["content"] = match text.is_empty() {
+            true => json!([]),
+            false => json!([{"type": "text", "text": text}]),
+        };
+    }
+    if let Some(content) = result["content"].as_array_mut() {
+        content.push(image);
+    }
 }
 
 fn assistant_blocks(content: &[Block], model: Option<&str>, oauth: bool) -> Vec<Value> {

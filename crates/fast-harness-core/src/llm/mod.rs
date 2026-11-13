@@ -6,6 +6,7 @@ pub mod anthropic;
 pub mod catalog;
 pub mod custom;
 pub mod find;
+pub mod images;
 pub mod openai;
 
 pub use catalog::Catalog;

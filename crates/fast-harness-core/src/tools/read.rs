@@ -1,4 +1,4 @@
-//! `read`: a text file with numbered lines.
+//! `read`: a text file with numbered lines, or an image (PLAN.md D70).
 
 use serde_json::{json, Value};
 
@@ -6,6 +6,7 @@ use super::args::{cut_chars, looks_binary, object_schema, opt_positive, req_str,
 use super::budget::ReadKey;
 use super::{Effect, Tool, ToolCtx, ToolOutput};
 use crate::llm::ToolSpec;
+use crate::media;
 
 const DEFAULT_LIMIT: u64 = 2000;
 const MAX_LINE_CHARS: usize = 2000;
@@ -23,7 +24,9 @@ impl Tool for ReadTool {
             description: "Read a UTF-8 text file. Lines come numbered as \"N: text\" (1-based). \
                 Whole lines from offset fit one result budget; the last line names \
                 the range and where to continue. A range already returned and unchanged answers \
-                \"[unchanged since call ID]\". Directories and binary files are refused."
+                \"[unchanged since call ID]\". A png, jpeg, gif or webp file comes back as \
+                an image with a line giving its size and token cost. Directories and other \
+                binary files are refused."
                 .into(),
             schema: object_schema(
                 json!({
@@ -38,7 +41,7 @@ impl Tool for ReadTool {
 
     fn run(&self, args: &Value, ctx: &ToolCtx<'_>) -> ToolOutput {
         match read(args, ctx) {
-            Ok(text) => ToolOutput::ok(text),
+            Ok(output) => output,
             Err(message) => ToolOutput::err(message),
         }
     }
@@ -47,7 +50,7 @@ impl Tool for ReadTool {
 /// Room kept for the range line at the end.
 const RANGE_ROOM: usize = 96;
 
-fn read(args: &Value, ctx: &ToolCtx<'_>) -> Result<String, String> {
+fn read(args: &Value, ctx: &ToolCtx<'_>) -> Result<ToolOutput, String> {
     let path_arg = req_str(args, "path")?;
     let offset = opt_positive(args, "offset", 1)?;
     let limit = opt_positive(args, "limit", DEFAULT_LIMIT)?;
@@ -67,9 +70,16 @@ fn read(args: &Value, ctx: &ToolCtx<'_>) -> Result<String, String> {
     };
     let session = ctx.session.filter(|_| !ctx.call_id.is_empty());
     if let Some(earlier) = session.and_then(|s| s.read_by(&key)) {
-        return Ok(format!("[unchanged since call {earlier}]"));
+        return Ok(ToolOutput::ok(format!("[unchanged since call {earlier}]")));
     }
     let bytes = std::fs::read(&path).map_err(|err| format!("cannot read {path_arg}: {err}"))?;
+    if media::sniff::media_type(&bytes).is_some() {
+        let output = image(path_arg, &bytes, ctx)?;
+        if let Some(session) = session {
+            session.remember_read(key, ctx.call_id);
+        }
+        return Ok(output);
+    }
     if looks_binary(&bytes) {
         return Err(format!(
             "{path_arg} looks like a binary file (NUL byte in the first 8 KB); not shown"
@@ -81,7 +91,19 @@ fn read(args: &Value, ctx: &ToolCtx<'_>) -> Result<String, String> {
     if let Some(session) = session {
         session.remember_read(key, ctx.call_id);
     }
-    Ok(out)
+    Ok(ToolOutput::ok(out))
+}
+
+/// An image file: kept in the session's media folder and returned as an
+/// image part after a line with its size and token cost.
+fn image(path_arg: &str, bytes: &[u8], ctx: &ToolCtx<'_>) -> Result<ToolOutput, String> {
+    let dir = ctx.session.and_then(|s| s.media_dir()).ok_or_else(|| {
+        format!("{path_arg} is an image; not shown: there is no session folder to keep it in")
+    })?;
+    let image = media::attach_bytes(dir, bytes, None)
+        .map_err(|err| format!("{path_arg} is an image; not shown: {err}"))?;
+    let line = format!("{path_arg}: image, {}", media::label(&image));
+    Ok(ToolOutput::image(line, image))
 }
 
 /// Whole lines from `offset`, at most `limit` of them and `room` bytes (at

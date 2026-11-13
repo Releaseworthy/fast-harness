@@ -10,7 +10,7 @@ use crate::auth::Lease;
 use crate::events::{AgentEvent, TurnOutcome};
 use crate::llm::Completion;
 use crate::tools::hooks::RequestChange;
-use crate::types::{Block, Message, StopReason, Usage};
+use crate::types::{Block, ImageRef, Message, StopReason, Usage};
 
 /// The error shown when the prompt no longer fits the context window.
 pub const OVERFLOW_NOTE: &str = "the conversation no longer fits the model's context window, even after a compaction: start a new session";
@@ -159,7 +159,7 @@ impl Turn<'_> {
         let note = join_notes(note, self.conv.tool_session.undo().take_note());
         match text {
             Some(text) => {
-                let message = user_message(note, text);
+                let message = user_message(note, text, &self.conv.tool_session.take_attached());
                 traced(self.conv.trace.user_message(self.turn, &message))?;
                 self.conv.messages.push(message);
                 self.preload()?;
@@ -315,9 +315,10 @@ impl Turn<'_> {
     }
 }
 
-/// The user message of a turn: the context update first when there is one.
-fn user_message(note: Option<String>, text: &str) -> Message {
-    let mut message = Message::user(text);
+/// The user message of a turn: the context update first when there is one,
+/// then the attached images (PLAN.md D70) and the text.
+fn user_message(note: Option<String>, text: &str, images: &[ImageRef]) -> Message {
+    let mut message = crate::media::user_message(text, images);
     if let Some(note) = note {
         let text = format!("{note}\n\n");
         message.content.insert(0, Block::Text { text });
