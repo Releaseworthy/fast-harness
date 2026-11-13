@@ -8,11 +8,10 @@ use windows_sys::Win32::System::Threading::GetCurrentThreadId;
 use windows_sys::Win32::UI::WindowsAndMessaging::{
     EnumThreadWindows, GetSystemMetrics, GetWindow, GetWindowLongPtrW, IsWindowVisible, LoadImageW,
     SendMessageW, SystemParametersInfoW, GWLP_HINSTANCE, GW_OWNER, ICON_BIG, IMAGE_ICON,
-    LR_DEFAULTCOLOR, SM_CXICON, SM_CYICON, SPI_GETCARETTIMEOUT, SPI_GETFONTSMOOTHING,
-    SPI_GETFONTSMOOTHINGORIENTATION, SPI_GETFONTSMOOTHINGTYPE, WM_SETICON,
+    LR_DEFAULTCOLOR, SM_CXICON, SM_CYICON, SPI_GETCARETTIMEOUT, WM_SETICON,
 };
 
-use crate::platform::{LcdOrder, PlatformError};
+use crate::platform::PlatformError;
 
 /// How long a text caret blinks after the last input (`SPI_GETCARETTIMEOUT`,
 /// 5000 ms by default); `None` when the call fails or gives 0.
@@ -25,29 +24,6 @@ pub fn caret_timeout() -> Option<Duration> {
     (ok != 0 && ms != 0).then(|| Duration::from_millis(u64::from(ms)))
 }
 
-/// One DWORD-sized system parameter, or `None` when the call fails.
-fn spi_u32(action: u32) -> Option<u32> {
-    let mut value: u32 = 0;
-    // SAFETY: the three SPI_GETFONTSMOOTHING* actions write one BOOL or UINT
-    // (4 bytes) through `pvparam`, which points at `value` for the whole
-    // call; no profile is written (flags 0).
-    let ok = unsafe { SystemParametersInfoW(action, 0, (&mut value as *mut u32).cast(), 0) };
-    (ok != 0).then_some(value)
-}
-
-/// The subpixel order of ClearType text, or `None` when font smoothing is
-/// off or set to standard (grayscale) smoothing.
-pub fn lcd_text_order() -> Option<LcdOrder> {
-    const CLEARTYPE: u32 = 2; // FE_FONTSMOOTHINGCLEARTYPE
-    const ORIENTATION_BGR: u32 = 0; // FE_FONTSMOOTHINGORIENTATIONBGR
-    if spi_u32(SPI_GETFONTSMOOTHING)? == 0 || spi_u32(SPI_GETFONTSMOOTHINGTYPE)? != CLEARTYPE {
-        return None;
-    }
-    match spi_u32(SPI_GETFONTSMOOTHINGORIENTATION) {
-        Some(ORIENTATION_BGR) => Some(LcdOrder::Bgr),
-        _ => Some(LcdOrder::Rgb),
-    }
-}
 /// The resource id of the icon group `fast-harness-gui/build.rs` embeds.
 const ICON_GROUP: usize = 1;
 

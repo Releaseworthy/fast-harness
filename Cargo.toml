@@ -1,7 +1,6 @@
 [workspace]
 resolver = "2"
 members = ["crates/fast-harness-core", "crates/fast-harness", "crates/fast-harness-gui", "crates/fast-harness-plugins"]
-exclude = ["vendor"]
 
 [workspace.package]
 version = "0.1.0"
@@ -22,7 +21,7 @@ ignore = "0.4.34"
 ratatui = "0.30.2"
 crossterm = "0.29.0"
 pulldown-cmark = { version = "0.13.6", default-features = false }
-slint = { version = "1.18.1", default-features = false, features = ["std", "compat-1-2", "accessibility", "backend-winit", "renderer-software", "renderer-femtovg", "renderer-skia", "unstable-winit-030"] }
+slint = { version = "1.18.1", default-features = false, features = ["std", "compat-1-2", "accessibility", "backend-winit", "renderer-software", "renderer-skia", "unstable-winit-030"] }
 slint-build = "1.18.1"
 # Optional variant only (fast-harness-gui-live, feature ui-files), pending owner OK (PLAN.md D1, D51).
 slint-interpreter = { version = "=1.18.1", default-features = false, features = ["std", "compat-1-2", "display-diagnostics"] }
@@ -51,10 +50,5 @@ debug = 1
 # A plugin's git dependency on fast-harness-core resolves to this checkout, so
 # plugins and the binaries share one core; written by scripts/apply-plugins.ts
 # only when plugins.toml lists plugins (an unused patch makes cargo warn).
-# Subpixel text in the Skia renderer (docs/decisions/D78.md): Slint's crate
-# with a four-line patch; update it with Slint as D78 says.
-[patch.crates-io]
-i-slint-renderer-skia = { path = "vendor/i-slint-renderer-skia" }
-
 # BEGIN PLUGIN PATCH
 # END PLUGIN PATCH

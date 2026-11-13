@@ -11,20 +11,14 @@
 //!
 //! Renderer (D78): `auto` (default) is Slint's winit default, Skia: on
 //! Windows Direct3D 12 through wgpu (AutoVsync, so FIFO), else Skia's own
-//! CPU raster surface; FemtoVG (OpenGL, vsync) and then the software renderer
-//! only when the Skia renderer itself cannot start. `skia`, `femtovg` and
-//! `software` force one. The software renderer blits partial frames with GDI
-//! and no vsync: scrolling and resizing tore (D75). `SLINT_BACKEND` overrides
-//! the setting.
-//!
-//! Text (D78): `textAntialiasing` `subpixel` (the default when Windows has
-//! ClearType on) or `grayscale`, passed to the patched Skia renderer
-//! (`vendor/i-slint-renderer-skia`) as `SLINT_SKIA_TEXT_AA` = `rgb`, `bgr`
-//! or `grayscale`. Only Skia draws subpixel text. A preset variable wins.
+//! CPU raster surface, and the software renderer only when the Skia renderer
+//! itself cannot start. `skia` (alias `d3d`, `directx`) and `software` force
+//! one; any other value reads as `auto`. The software renderer blits partial
+//! frames with GDI and no vsync: scrolling and resizing tore (D75).
+//! `SLINT_BACKEND` overrides the setting. Text is Slint's grayscale
+//! anti-aliasing on both renderers (no subpixel text, owner 2026-11-14).
 
 use std::path::Path;
-
-use fast_harness_core::platform::LcdOrder;
 
 /// The UI scale when the settings give none.
 pub const DEFAULT_SCALE: f32 = 1.0;
@@ -33,43 +27,21 @@ const SCALE_RANGE: (f32, f32) = (0.5, 4.0);
 /// What `select` applies.
 #[derive(Debug, PartialEq)]
 pub struct Plan {
-    /// A winit renderer name, or `None` for Slint's default (Skia, then
-    /// FemtoVG, then software).
+    /// A winit renderer name, or `None` for Slint's default (Skia on
+    /// Direct3D 12, then Skia on the CPU, then software).
     pub renderer: Option<&'static str>,
     /// The `SLINT_SCALE_FACTOR` to set, or `None` to leave the one set.
     pub scale: Option<f32>,
     /// False when `SLINT_BACKEND` picks the backend.
     pub select: bool,
-    /// The `SLINT_SKIA_TEXT_AA` to set, or `None` to leave the one set.
-    pub text_aa: Option<&'static str>,
-}
-
-/// The `SLINT_SKIA_TEXT_AA` value for the `textAntialiasing` setting and the
-/// system's ClearType order `lcd` (`None`: ClearType off).
-pub fn text_aa(setting: Option<&str>, lcd: Option<LcdOrder>) -> &'static str {
-    let order = match setting {
-        Some("grayscale") => None,
-        Some("subpixel") => Some(lcd.unwrap_or(LcdOrder::Rgb)),
-        _ => lcd,
-    };
-    match order {
-        Some(LcdOrder::Rgb) => "rgb",
-        Some(LcdOrder::Bgr) => "bgr",
-        None => "grayscale",
-    }
 }
 
 /// The plan for the user settings `config` (the parsed `config.json`, or
-/// null), the environment lookup `env` and the ClearType order `lcd`.
-pub fn plan(
-    config: &serde_json::Value,
-    env: &dyn Fn(&str) -> Option<String>,
-    lcd: Option<LcdOrder>,
-) -> Plan {
+/// null) and the environment lookup `env`.
+pub fn plan(config: &serde_json::Value, env: &dyn Fn(&str) -> Option<String>) -> Plan {
     let renderer = match config.get("renderer").and_then(|v| v.as_str()) {
         Some("software") | Some("sw") => Some("software"),
-        Some("femtovg") | Some("gl") => Some("femtovg"),
-        Some("skia") | Some("d3d") => Some("skia"),
+        Some("skia") | Some("d3d") | Some("directx") => Some("skia"),
         _ => None,
     };
     let preset = env("SLINT_SCALE_FACTOR")
@@ -80,17 +52,8 @@ pub fn plan(
         .map(|f| f as f32)
         .filter(|f| f.is_finite())
         .map_or(DEFAULT_SCALE, |f| f.clamp(SCALE_RANGE.0, SCALE_RANGE.1));
-    Plan {
-        renderer,
-        scale: (!preset).then_some(scale),
-        select: env("SLINT_BACKEND").is_none(),
-        text_aa: env("SLINT_SKIA_TEXT_AA").is_none().then(|| {
-            let setting = config.get("textAntialiasing").and_then(|v| v.as_str());
-            text_aa(setting, lcd)
-        }),
-    }
+    Plan { renderer, scale: (!preset).then_some(scale), select: env("SLINT_BACKEND").is_none() }
 }
-
 /// The user layer settings, or null when they are missing or unreadable
 /// (the runtime reports a broken file later).
 fn user_settings(home: Option<&Path>) -> serde_json::Value {
@@ -104,13 +67,10 @@ fn user_settings(home: Option<&Path>) -> serde_json::Value {
 /// (it sets an environment variable) and before the window is created.
 pub fn select() {
     let home = fast_harness_core::platform::app_home();
-    let lcd = fast_harness_core::platform::lcd_text_order();
-    let plan = plan(&user_settings(home.as_deref()), &|k| std::env::var(k).ok(), lcd);
+    let plan = plan(&user_settings(home.as_deref()), &|k| std::env::var(k).ok());
+
     if let Some(scale) = plan.scale {
         std::env::set_var("SLINT_SCALE_FACTOR", scale.to_string());
-    }
-    if let Some(text_aa) = plan.text_aa {
-        std::env::set_var("SLINT_SKIA_TEXT_AA", text_aa);
     }
     if !plan.select {
         return;
