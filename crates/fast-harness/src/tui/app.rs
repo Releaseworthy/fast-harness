@@ -358,7 +358,12 @@ impl Tui {
         if text.trim() == "/trust" {
             let trusted = self.rt().trust_project(&self.cwd);
             match trusted {
-                Ok(note) => self.note(NoteKind::Info, note),
+                Ok(note) => {
+                    // The reload may bring the project's provider files (D67).
+                    let facts = self.rt().catalog.clone();
+                    self.ui.facts = facts;
+                    self.note(NoteKind::Info, note)
+                }
                 Err(err) => self.note(NoteKind::Error, err),
             }
             return;
