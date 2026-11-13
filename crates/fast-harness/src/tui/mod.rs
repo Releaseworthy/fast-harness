@@ -7,6 +7,8 @@ mod app;
 mod approval;
 #[cfg(test)]
 mod approval_tests;
+#[cfg(test)]
+mod drafts_tests;
 mod draw;
 mod icons;
 mod input;

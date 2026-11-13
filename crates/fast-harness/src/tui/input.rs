@@ -1,5 +1,7 @@
 //! The multi-line prompt editor with a history of earlier prompts.
 
+use fast_harness_core::app::drafts::Draft;
+
 use super::wrap::{clusters, text_width};
 
 #[derive(Default)]
@@ -35,6 +37,25 @@ impl Input {
         self.text.clear();
         self.cursor = 0;
         self.browsing = None;
+    }
+
+    /// The text and its cursor, taken out: another session's draft shows (D65).
+    pub fn take_draft(&mut self) -> Draft {
+        let draft = Draft {
+            text: std::mem::take(&mut self.text),
+            cursor: self.cursor,
+        };
+        self.clear();
+        draft
+    }
+
+    /// Shows a session's draft; a cursor off a character boundary goes to
+    /// the end.
+    pub fn show_draft(&mut self, draft: Draft) {
+        self.clear();
+        let fits = draft.text.is_char_boundary(draft.cursor);
+        self.cursor = if fits { draft.cursor } else { draft.text.len() };
+        self.text = draft.text;
     }
 
     pub fn insert(&mut self, text: &str) {

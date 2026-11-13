@@ -65,6 +65,10 @@ pub struct Tui {
     pub(super) loads: super::loads::Loads,
     /// The opens of sessions on workers (D60): the newest one wins.
     pub(super) opens: fast_harness_core::view::opened::Opening,
+    /// Each session's unsent prompt (D65); `fresh` while the shown session
+    /// is a new one, not sent yet, whose draft is the new session's.
+    pub(super) drafts: fast_harness_core::app::drafts::Drafts,
+    pub(super) fresh: bool,
     pub transcript: Transcript,
     pub ui: Ui,
     pub cache: Cache,
@@ -109,6 +113,10 @@ impl Tui {
         let transcript = load_transcript(&opened);
         let conv = opened.0;
         let (session, unfinished) = (conv.id.clone(), conv.unfinished);
+        // A log with no messages yet is a new session (D65).
+        let fresh = conv.messages.is_empty();
+        let drafts =
+            fast_harness_core::app::drafts::Drafts::new((!fresh).then_some(session.as_str()));
         let log_path = conv.log_path.clone();
         let current = service.open(conv, &cwd).map_err(|err| format!("{err:?}"))?;
         // The TUI shows approval requests and answers them (D64).
@@ -123,6 +131,8 @@ impl Tui {
             log_path,
             loads: Default::default(),
             opens: Default::default(),
+            drafts,
+            fresh,
             transcript,
             ui,
             cache: Cache::default(),
@@ -358,6 +368,10 @@ impl Tui {
         if self.current.running() {
             self.ui.status = "a turn is running".into();
             return;
+        }
+        // The new session's prompt now belongs to its id (D65).
+        if std::mem::take(&mut self.fresh) {
+            self.drafts.created(&self.session);
         }
         self.transcript.push_user(text.clone());
         self.start(Start::Text(text));
