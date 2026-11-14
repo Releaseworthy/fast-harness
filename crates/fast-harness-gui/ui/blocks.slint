@@ -8,6 +8,7 @@
 // (src/layout_tests.rs checks the .slint files).
 import { Theme, Mark } from "parts.slint";
 import { ActionButton } from "widgets.slint";
+import { SelectableText } from "selectable.slint";
 
 // Thinking: a gradient bar and the dim italic text.
 export component ThinkingQuote inherits Rectangle {
@@ -18,7 +19,7 @@ export component ThinkingQuote inherits Rectangle {
             width: 2px;
             background: @linear-gradient(180deg, Theme.accent 0%, Theme.accent2 100%);
         }
-        Text {
+        SelectableText {
             text: root.text;
             color: Theme.dim;
             font-size: Theme.font-s;
@@ -40,7 +41,7 @@ export component CodeBox inherits Rectangle {
     HorizontalLayout {
         padding: Theme.space-s + 2px;
         padding-left: Theme.space-m;
-        Text {
+        SelectableText {
             text: root.text;
             color: Theme.text;
             font-family: Theme.mono;

@@ -31,6 +31,7 @@ mod fold_view_tests;
 mod jobs_layout_tests;
 #[cfg(test)]
 mod layout_tests;
+mod list_host;
 #[cfg(test)]
 mod loading_tests;
 #[cfg(test)]
@@ -49,6 +50,8 @@ mod real_child_scroll_bar_tests;
 mod real_child_scroll_tests;
 #[cfg(test)]
 mod real_child_tests;
+#[cfg(test)]
+mod real_trace_scroll_tests;
 #[cfg(test)]
 mod scroll_tests;
 #[cfg(test)]
@@ -80,8 +83,10 @@ mod side_tests;
 mod step_rows;
 #[cfg(test)]
 mod tabbar_tests;
+mod trace_list;
 #[cfg(test)]
 mod turn_nav_view_tests;
+mod virtual_list;
 #[cfg(test)]
 mod workspace_switch_tests;
 

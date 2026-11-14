@@ -237,7 +237,21 @@ With `"approvals": "ask"` a call can wait for an answer (PLAN.md D64). Both fron
 - `Theme.surface`: property <color>
 - `Theme.text`: property <color>
 - `Theme.warning`: property <color>
+- `TraceList.anchor`: callback
+- `TraceList.list-height`: property <length>
+- `TraceList.measured`: callback
+- `TraceList.offset`: property <length>
+- `TraceList.probes`: property <[int]>
+- `TraceList.slots`: property <[int]>
+- `TraceList.sync`: callback
+- `TraceList.tops`: property <[length]>
+- `TraceList.width`: property <length>
 - `TraceProbe.content-height`: property <length>
+- `TraceProbe.list-top`: property <length>
+- `TraceProbe.thumb-x`: property <length>
+- `TraceProbe.thumb-y`: property <length>
+- `TraceProbe.view-y`: property <length>
+- `TraceProbe.visible-height`: property <length>
 - `TurnsUi.card-height`: property <length>
 - `TurnsUi.column-left`: property <length>
 - `TurnsUi.column-right`: property <length>

@@ -240,6 +240,10 @@ impl Chat {
         if (after - before).abs() <= 2.0 {
             return;
         }
+        // A fold that left the row above the view brings it to the top.
+        if before < 0.0 && (0.0..=crate::virtual_list::MARGIN + 2.0).contains(&after) {
+            return;
+        }
         let (end, bottom) = (self.ui.get_chat_end(), self.top() + self.view());
         let at_top = self.y().abs() < 0.5 && after < before && after > FAR;
         if at_top || ((end - bottom).abs() <= 2.0 && after > before) {

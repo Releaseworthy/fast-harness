@@ -3,8 +3,9 @@
 //! The session and its helpers: `real_child_scroll_tests`.
 
 use crate::fold_view_tests::shot;
-use crate::real_child_scroll_tests::{open, Chat, CHILDREN};
+use crate::real_child_scroll_tests::{open, Chat, Place, CHILDREN};
 use crate::real_child_tests::{click_child, pump};
+use crate::virtual_list::MARGIN;
 
 /// Pages up to the top, down to the end and up again (the view opens at
 /// the end): an error when the view/content ratio (the thumb's share of
@@ -116,5 +117,48 @@ fn real_child_scroll_a_thumb_drag_moves_the_view_steadily() {
         (chat.y() - end).abs() <= 1.0,
         "the drag to the track's end stops at content-y {:.0}, not the end {end:.0}",
         chat.y()
+    );
+}
+
+/// The folded turns' heads.
+fn folded(chat: &Chat) -> Vec<i32> {
+    let rows = chat.rows();
+    let lines = rows.iter().filter(|r| !r.turn_line.is_empty());
+    lines.map(|r| r.turn_head).collect()
+}
+
+/// The owner, 2026-11-14: a fold clicked low in a long open turn, its top
+/// above the view, brings the folded turn's line to the view's top; the
+/// line stayed where the clicked row's top was, above the view.
+#[test]
+#[ignore = "reads the owner's sessions under C:\\Users\\Yamasaki"]
+fn real_child_scroll_a_fold_brings_the_folded_row_into_view() {
+    let chat = open("fold-into-view");
+    chat.own_rows();
+    chat.go_to(Place::Middle);
+    let pick = chat.pick((-20.0, -0.05), true, |r| r.turn_rail);
+    let (row, y) = pick.expect("an open turn's row whose top is above the view");
+    let before = folded(&chat);
+    shot(&chat.window, "fold-into-view-before");
+    chat.click(chat.left() + 6.0, chat.top() + 4.0);
+    let rows = chat.rows();
+    let new = |r: &&crate::MsgRow| !r.turn_line.is_empty() && !before.contains(&r.turn_head);
+    let Some(line) = rows.iter().find(new).cloned() else {
+        panic!(
+            "a click on the rail at the view's top (row {} at y {y:.0}) folded nothing",
+            row.item
+        );
+    };
+    let at = chat.row_y(line.item);
+    shot(&chat.window, "fold-into-view-after");
+    eprintln!(
+        "turn {} folded (row {} was at y {y:.0}): its line at y {at:.1}",
+        line.turn_head, row.item
+    );
+    assert!(
+        (-0.5..=MARGIN + 2.0).contains(&at),
+        "the folded turn {}'s line is at y {at:.1}, not at the view's top (0 to {} px)",
+        line.turn_head,
+        MARGIN + 2.0
     );
 }
