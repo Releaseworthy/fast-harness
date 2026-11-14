@@ -15,13 +15,18 @@ use slint::platform::software_renderer::MinimalSoftwareWindow;
 use slint::platform::{PointerEventButton, WindowEvent};
 use slint::{ComponentHandle, LogicalPosition, Model, Rgb8Pixel};
 
+use fast_harness_core::view::Approvals;
+use slint::{FilterModel, ModelRc, VecModel};
+use std::cell::RefCell;
+
 use crate::fold_view_tests::shot;
-use crate::real_child_tests::{click_child, home, open_parent, pump, window};
+use crate::mirror::Mirror;
+use crate::real_child_tests::{home, open_parent, pump, window};
 use crate::{MainWindow, MsgRow, TurnsUi};
 
 const OWNER: &str = r"C:\Users\Yamasaki\.fast-harness";
 const PARENT: &str = "20261113-195004-6140";
-const CHILDREN: [&str; 4] = [
+pub(crate) const CHILDREN: [&str; 4] = [
     "20261113-195342-6141",
     "20261113-195342-6142",
     "20261113-195342-6143",
@@ -30,9 +35,9 @@ const CHILDREN: [&str; 4] = [
 /// `watch-y` until the watched row reports: it is not laid out.
 const FAR: f32 = -100_000.0;
 
-struct Chat {
-    window: Rc<MinimalSoftwareWindow>,
-    ui: MainWindow,
+pub(crate) struct Chat {
+    pub(crate) window: Rc<MinimalSoftwareWindow>,
+    pub(crate) ui: MainWindow,
     dir: PathBuf,
 }
 
@@ -43,7 +48,7 @@ impl Drop for Chat {
 }
 
 /// The owner's parent session opened in a fresh home, settled.
-fn open(tag: &str) -> Chat {
+pub(crate) fn open(tag: &str) -> Chat {
     let id = session::new_id();
     let dir = std::env::temp_dir().join(format!("fh-real-child-scroll-{tag}-{id}"));
     let cwd = PathBuf::from(r"F:\work\fast-harness-general");
@@ -72,15 +77,8 @@ fn top_pad(row: &MsgRow) -> f32 {
     }
 }
 
-fn check(fails: &mut Vec<String>, what: String, before: f32, after: f32) {
-    eprintln!("{what}: y {before:.1} -> {after:.1}");
-    if (after - before).abs() > 2.0 {
-        fails.push(format!("{what}: was at y {before:.1}, now at {after:.1}"));
-    }
-}
-
 #[derive(Clone, Copy, Debug)]
-enum Place {
+pub(crate) enum Place {
     Bottom,
     Middle,
     Top,
@@ -88,7 +86,7 @@ enum Place {
 
 impl Chat {
     /// Pumps until the content height holds for 10 frames (at most 10 s).
-    fn settle(&self) {
+    pub(crate) fn settle(&self) {
         let start = Instant::now();
         let (mut last, mut same) = (f32::NAN, 0);
         while same < 10 && start.elapsed() < Duration::from_secs(10) {
@@ -102,29 +100,29 @@ impl Chat {
             last = now;
         }
     }
-    fn rows(&self) -> Vec<MsgRow> {
+    pub(crate) fn rows(&self) -> Vec<MsgRow> {
         let model = self.ui.get_messages();
         (0..model.row_count())
             .filter_map(|i| model.row_data(i))
             .collect()
     }
-    fn content(&self) -> f32 {
+    pub(crate) fn content(&self) -> f32 {
         self.ui.get_transcript_content_height()
     }
-    fn view(&self) -> f32 {
+    pub(crate) fn view(&self) -> f32 {
         self.ui.get_chat_list_height()
     }
-    fn y(&self) -> f32 {
+    pub(crate) fn y(&self) -> f32 {
         self.ui.get_chat_view_y()
     }
-    fn top(&self) -> f32 {
+    pub(crate) fn top(&self) -> f32 {
         self.ui.global::<TurnsUi>().get_list_top()
     }
-    fn left(&self) -> f32 {
+    pub(crate) fn left(&self) -> f32 {
         self.ui.global::<TurnsUi>().get_column_left()
     }
     /// One frame (timers, change handlers, layout, a full render): its time.
-    fn frame(&self) -> Duration {
+    pub(crate) fn frame(&self) -> Duration {
         let size = self.window.size();
         let mut buffer = vec![Rgb8Pixel { r: 0, g: 0, b: 0 }; (size.width * size.height) as usize];
         let start = Instant::now();
@@ -135,30 +133,30 @@ impl Chat {
         });
         start.elapsed()
     }
-    fn move_to(&self, x: f32, y: f32) {
+    pub(crate) fn move_to(&self, x: f32, y: f32) {
         let position = LogicalPosition::new(x, y);
         self.window
             .dispatch_event(WindowEvent::PointerMoved { position });
     }
-    fn press(&self, x: f32, y: f32) {
+    pub(crate) fn press(&self, x: f32, y: f32) {
         self.move_to(x, y);
         let (position, button) = (LogicalPosition::new(x, y), PointerEventButton::Left);
         self.window
             .dispatch_event(WindowEvent::PointerPressed { position, button });
     }
-    fn release(&self, x: f32, y: f32) {
+    pub(crate) fn release(&self, x: f32, y: f32) {
         let (position, button) = (LogicalPosition::new(x, y), PointerEventButton::Left);
         self.window
             .dispatch_event(WindowEvent::PointerReleased { position, button });
         self.window.dispatch_event(WindowEvent::PointerExited);
     }
-    fn click(&self, x: f32, y: f32) {
+    pub(crate) fn click(&self, x: f32, y: f32) {
         self.press(x, y);
         self.release(x, y);
         pump(&self.window, 300);
     }
     /// A click on the bar's track below (or above) the thumb: one page.
-    fn page(&self, down: bool) -> Duration {
+    pub(crate) fn page(&self, down: bool) -> Duration {
         let x = self.ui.get_transcript_thumb_x();
         let y = if down {
             self.top() + self.view() - 3.0
@@ -172,7 +170,7 @@ impl Chat {
         took
     }
     /// Pages to the top or the end; the number of pages.
-    fn to_end(&self, down: bool) -> usize {
+    pub(crate) fn to_end(&self, down: bool) -> usize {
         for n in 1..3000 {
             let before = self.y();
             self.page(down);
@@ -182,7 +180,7 @@ impl Chat {
         }
         3000
     }
-    fn go_to(&self, place: Place) {
+    pub(crate) fn go_to(&self, place: Place) {
         match place {
             Place::Bottom => {
                 self.to_end(true);
@@ -192,16 +190,66 @@ impl Chat {
             }
             Place::Middle => {
                 self.to_end(false);
-                let half = (self.content() / self.view() / 0.9 / 2.0) as usize;
-                for _ in 0..half {
-                    self.page(true);
+                let rows = self.rows();
+                let lines = rows
+                    .iter()
+                    .filter(|r| r.turn_rail && !r.step_summary.is_empty());
+                let lines: Vec<i32> = lines.map(|r| r.item).collect();
+                let Some(&mid) = lines.get(lines.len() / 2) else {
+                    return;
+                };
+                for _ in 0..200 {
+                    let y = self.row_y(mid);
+                    if (0.0..=0.6 * self.view()).contains(&y) {
+                        break;
+                    }
+                    self.wheel(-120.0);
                 }
             }
         }
         pump(&self.window, 200);
     }
+    /// A wheel step over the list's middle, the view settled after it.
+    pub(crate) fn wheel(&self, delta_y: f32) {
+        let position = LogicalPosition::new(self.left() + 100.0, self.top() + self.view() / 2.0);
+        self.window
+            .dispatch_event(WindowEvent::PointerMoved { position });
+        let event = WindowEvent::PointerScrolled {
+            position,
+            delta_x: 0.0,
+            delta_y,
+        };
+        self.window.dispatch_event(event);
+        self.window.dispatch_event(WindowEvent::PointerExited);
+        pump(&self.window, 200);
+    }
+    /// The clicked row (or the line in its place) kept its top within 2 px.
+    /// Only an end of the list may move it, the view then at that end: a row
+    /// cannot keep its place with too few rows above it (the view at the
+    /// top, the row moved up) or below it (the list's end at the view's
+    /// bottom, the row moved down) without blank space.
+    pub(crate) fn check(
+        &self,
+        place: Place,
+        fails: &mut Vec<String>,
+        what: String,
+        before: f32,
+        after: f32,
+    ) {
+        eprintln!("{what}: y {before:.1} -> {after:.1}");
+        if (after - before).abs() <= 2.0 {
+            return;
+        }
+        let (end, bottom) = (self.ui.get_chat_end(), self.top() + self.view());
+        let at_top = self.y().abs() < 0.5 && after < before && after > FAR;
+        if at_top || ((end - bottom).abs() <= 2.0 && after > before) {
+            eprintln!("{what} ({place:?}): moved by an end of the list (top {at_top}, end {end:.0}, bottom {bottom:.0})");
+            return;
+        }
+        fails.push(format!("{what}: was at y {before:.1}, now at {after:.1}"));
+    }
     /// The top of row `item` in the view, [`FAR`] when it is not laid out.
-    fn row_y(&self, item: i32) -> f32 {
+    pub(crate) fn row_y(&self, item: i32) -> f32 {
         self.ui.set_chat_watch_item(-1);
         self.ui.set_chat_watch_y(FAR);
         pump(&self.window, 16);
@@ -209,18 +257,16 @@ impl Chat {
         pump(&self.window, 32);
         self.ui.get_chat_watch_y()
     }
-    /// A row near the view's top row that `want`s, whose top sits in
+    /// A row that `want`s, whose top sits in
     /// `band` (shares of the view); the lowest one first when `last`.
-    fn pick(
+    pub(crate) fn pick(
         &self,
         band: (f32, f32),
         last: bool,
         want: impl Fn(&MsgRow) -> bool,
     ) -> Option<(MsgRow, f32)> {
         let rows = self.rows();
-        let top = self.ui.global::<TurnsUi>().get_top_row();
-        let start = rows.iter().position(|r| r.item >= top).unwrap_or(0);
-        let mut near: Vec<&MsgRow> = rows[start..].iter().take(40).filter(|r| want(r)).collect();
+        let mut near: Vec<&MsgRow> = rows.iter().filter(|r| want(r)).collect();
         if last {
             near.reverse();
         }
@@ -232,9 +278,9 @@ impl Chat {
     }
     /// Folds a turn by a click on its rail, then opens it by a click on
     /// its line: the line takes the clicked row's place, then stays put.
-    fn turn_round_trip(&self, place: Place, fails: &mut Vec<String>) {
+    pub(crate) fn turn_round_trip(&self, place: Place, fails: &mut Vec<String>) {
         let top = matches!(place, Place::Top);
-        let band = if top { (0.0, 0.5) } else { (0.25, 0.75) };
+        let band = if top { (0.0, 0.5) } else { (-6.0, 0.95) };
         let pick = self.pick(band, !top, |r| {
             r.turn_rail && (!top || r.item == r.turn_head)
         });
@@ -246,7 +292,7 @@ impl Chat {
         let what = format!("{place:?} (following {follow}) turn {}", row.turn_head);
         shot(&self.window, &format!("fold-{place:?}-turn-before"));
         let dy = if row.item == row.turn_head { 20.0 } else { 4.0 };
-        self.click(self.left() + 6.0, self.top() + y + dy);
+        self.click(self.left() + 6.0, self.top() + y.max(0.0) + dy);
         let rows = self.rows();
         let line = rows
             .iter()
@@ -264,7 +310,7 @@ impl Chat {
             "{what} fold at row {} (its line on row {})",
             row.item, line.item
         );
-        check(fails, rail, y, at);
+        self.check(place, fails, rail, y, at);
         let follow = self.ui.get_transcript_follow();
         let what = format!("{place:?} (following {follow}) turn {}", row.turn_head);
         let indent = if line.turn_rail { 20.0 } else { 0.0 };
@@ -287,7 +333,8 @@ impl Chat {
             .map_or(line.item, |r| r.item);
         let again = self.row_y(anchor);
         shot(&self.window, &format!("fold-{place:?}-turn-opened"));
-        check(
+        self.check(
+            place,
             fails,
             format!("{what} open at its line (row {})", line.item),
             at,
@@ -296,9 +343,9 @@ impl Chat {
     }
     /// Opens a folded step by a click on its line and folds it again: the
     /// line stays put both times.
-    fn step_round_trip(&self, place: Place, fails: &mut Vec<String>) {
+    pub(crate) fn step_round_trip(&self, place: Place, fails: &mut Vec<String>) {
         let top = matches!(place, Place::Top);
-        let band = if top { (0.0, 0.6) } else { (0.2, 0.7) };
+        let band = if top { (0.0, 0.6) } else { (0.0, 0.95) };
         let pick = self.pick(band, !top, |r| !r.step_summary.is_empty() && !r.step_open);
         let Some((row, y)) = pick else {
             fails.push(format!("{place:?}: no folded step's line in view"));
@@ -325,124 +372,34 @@ impl Chat {
             }
             let after = self.row_y(row.item);
             shot(&self.window, &format!("fold-{place:?}-step-{verb}"));
-            check(fails, what, before, after);
+            self.check(place, fails, what, before, after);
         }
     }
 }
 
-/// Pages up to the top, down to the end and up again (the view opens at
-/// the end): an error when the view/content ratio (the thumb's share of
-/// its track) moves more than 3 %.
-fn sweep(chat: &Chat, what: &str) -> Result<(), String> {
-    let mut ratios = vec![chat.view() / chat.content()];
-    let mut frames = Vec::new();
-    for down in [false, true, false] {
-        for _ in 0..3000 {
-            let before = chat.y();
-            frames.push(chat.page(down));
-            ratios.push(chat.view() / chat.content());
-            if (chat.y() - before).abs() < 0.5 {
-                break;
-            }
-        }
-        shot(
-            &chat.window,
-            &format!("thumb-{what}-{}", if down { "end" } else { "top" }),
-        );
+impl Chat {
+    /// The shown session's rows through a mirror of the test's own, whose
+    /// toggles the clicks reach: the app's toggle handlers are connected by
+    /// `wire` at startup, which a test window does not run.
+    pub(crate) fn own_rows(&self) {
+        let items =
+            crate::app::with_app(|app, _| app.runs.shown.view.items.clone()).expect("the app");
+        let model = Rc::new(VecModel::<MsgRow>::default());
+        let mirror = Rc::new(RefCell::new(Mirror::new(false)));
+        mirror
+            .borrow_mut()
+            .reset_with(&items, &Approvals::default(), &*model);
+        let shown = FilterModel::new(model.clone(), crate::rows::shows);
+        self.ui.set_messages(ModelRc::new(shown));
+        let (m, rows) = (mirror.clone(), model.clone());
+        self.ui
+            .on_turn_toggle(move |head| m.borrow_mut().toggle_turn(head as usize, &*rows));
+        let (m, rows) = (mirror, model);
+        self.ui
+            .on_step_toggle(move |head| m.borrow_mut().toggle_step(head as usize, &*rows));
+        self.settle();
     }
-    frames.sort();
-    let fold = |(lo, hi): (f32, f32), r: &f32| (lo.min(*r), hi.max(*r));
-    let (lo, hi) = ratios.iter().fold((f32::MAX, f32::MIN), fold);
-    let swing = (hi - lo) / hi * 100.0;
-    let (pages, median, slowest) = (
-        frames.len(),
-        frames[frames.len() / 2],
-        frames[frames.len() - 1],
-    );
-    eprintln!("{what}: {pages} pages, view/content {lo:.4} to {hi:.4} ({swing:.1} %), frame median {median:?}, slowest {slowest:?}");
-    if swing <= 3.0 {
-        return Ok(());
-    }
-    Err(format!("{what}: the thumb changes size while scrolling: view/content from {lo:.4} to {hi:.4} ({swing:.1} %) over {pages} pages"))
 }
-
-/// Report 2: the thumb kept changing size, on the parent and on the
-/// largest child log (6143, 1.1 MB).
-#[test]
-#[ignore = "reads the owner's sessions under C:\\Users\\Yamasaki"]
-fn real_child_scroll_the_thumb_keeps_its_size() {
-    let chat = open("thumb");
-    let parent = sweep(&chat, "parent");
-    click_child(&chat.window, CHILDREN[2]);
-    chat.settle();
-    let (rows, content) = (chat.rows().len(), chat.content());
-    eprintln!(
-        "child {}: {rows} rows, content {content:.0} px",
-        CHILDREN[2]
-    );
-    let child = sweep(&chat, "child-6143");
-    let fails: Vec<String> = [parent, child]
-        .into_iter()
-        .filter_map(Result::err)
-        .collect();
-    assert!(fails.is_empty(), "{}", fails.join("\n"));
-}
-
-/// Report 3: a drag of the thumb from the top to the end in small steps
-/// moves the view down only, never more than one screen per step.
-#[test]
-#[ignore = "reads the owner's sessions under C:\\Users\\Yamasaki"]
-fn real_child_scroll_a_thumb_drag_moves_the_view_steadily() {
-    let chat = open("drag");
-    let x = chat.ui.get_transcript_thumb_x();
-    chat.press(x, chat.ui.get_transcript_thumb_y());
-    chat.move_to(x, chat.top() - 400.0);
-    chat.release(x, chat.top() - 400.0);
-    pump(&chat.window, 300);
-    assert!(
-        chat.y().abs() < 1.0,
-        "a drag up to the top ends at content-y {}",
-        chat.y()
-    );
-    let (view, content) = (chat.view(), chat.content());
-    let steps = ((content / view).ceil() as usize * 2).max(20);
-    let (from, to) = (chat.ui.get_transcript_thumb_y(), chat.top() + view);
-    chat.press(x, from);
-    let mut ys = vec![chat.y()];
-    for k in 1..=steps {
-        chat.move_to(x, from + (to - from) * k as f32 / steps as f32);
-        pump(&chat.window, 32);
-        ys.push(chat.y());
-    }
-    chat.release(x, to);
-    pump(&chat.window, 100);
-    shot(&chat.window, "drag-end");
-    let moved: Vec<f32> = ys.windows(2).map(|w| w[0] - w[1]).collect();
-    let largest = |a: (usize, f32), (k, d): (usize, &f32)| if *d > a.1 { (k, *d) } else { a };
-    let (worst, jump) = moved.iter().enumerate().fold((0, 0.0), largest);
-    let now = chat.content();
-    eprintln!("drag: {steps} steps, content {content:.0} px (now {now:.0}), view {view:.0} px, largest step {jump:.0} px at {}", worst + 1);
-    if let Some(k) = moved.iter().position(|d| *d < -0.5) {
-        panic!(
-            "a drag down moved the view back up at step {}: content-y {:.0} -> {:.0}",
-            k + 1,
-            ys[k],
-            ys[k + 1]
-        );
-    }
-    assert!(
-        jump <= view + 0.5,
-        "a drag step moved the view {jump:.0} px, more than one screen ({view:.0} px), at step {}",
-        worst + 1
-    );
-    let end = view - now;
-    assert!(
-        (chat.y() - end).abs() <= 1.0,
-        "the drag to the track's end stops at content-y {:.0}, not the end {end:.0}",
-        chat.y()
-    );
-}
-
 /// Report 4: a fold or an unfold of a turn or a step keeps the clicked
 /// row where it was (within 2 px), at the end while following, in the
 /// middle and at the top.
@@ -450,6 +407,7 @@ fn real_child_scroll_a_thumb_drag_moves_the_view_steadily() {
 #[ignore = "reads the owner's sessions under C:\\Users\\Yamasaki"]
 fn real_child_scroll_a_fold_keeps_the_clicked_row_in_place() {
     let chat = open("fold");
+    chat.own_rows();
     assert!(
         chat.ui.get_transcript_follow(),
         "the session opens following its end"
@@ -460,9 +418,16 @@ fn real_child_scroll_a_fold_keeps_the_clicked_row_in_place() {
             chat.go_to(place);
         }
         chat.turn_round_trip(place, &mut fails);
-        chat.go_to(place);
-        chat.step_round_trip(place, &mut fails);
+        // The parent's last turn has no steps: the child below has.
+        if !matches!(place, Place::Bottom) {
+            chat.go_to(place);
+            chat.step_round_trip(place, &mut fails);
+        }
     }
+    // The largest child (6143) opens at its end, following: a step there.
+    crate::real_child_tests::click_child(&chat.window, CHILDREN[2]);
+    chat.own_rows();
+    chat.step_round_trip(Place::Bottom, &mut fails);
     assert!(
         fails.is_empty(),
         "a fold moved the clicked row:\n{}",

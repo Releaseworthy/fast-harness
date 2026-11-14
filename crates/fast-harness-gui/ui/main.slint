@@ -55,7 +55,7 @@ export component MainWindow inherits Window {
     out property <length> transcript-thumb-x: transcript.thumb-x;
     out property <length> transcript-thumb-y: transcript.thumb-y;
     out property <length> transcript-content-height: transcript.content-height;
-    out property <length> chat-view-y: transcript.view-y; in property <int> chat-watch-item: -1; in-out property <length> chat-watch-y <=> transcript.watch-y; in property <[int]> chat-slots; in property <[length]> chat-tops; in-out property <length> chat-offset; in property <MsgRow> chat-probe-row; out property <length> chat-probe-height: transcript.probe-height; out property <length> chat-width: transcript.width; callback chat-sync(); callback chat-anchor(int, int, bool); callback chat-go(int);
+    out property <length> chat-view-y: transcript.view-y; in property <int> chat-watch-item: -1; in-out property <length> chat-watch-y <=> transcript.watch-y; in property <[int]> chat-slots; in property <[length]> chat-tops; in-out property <length> chat-offset; in property <[int]> chat-probes; callback chat-measured(int, int, length); out property <length> chat-width: transcript.width; callback chat-sync(); callback chat-anchor(int, int, bool); callback chat-go(int);
     in property <[SideRow]> side-rows;
     in property <[AccountRow]> accounts;
     // The Accounts page: the provider cards and the open provider ("" for the cards).
@@ -323,7 +323,7 @@ export component MainWindow inherits Window {
                             transcript := TranscriptView {
                                 vertical-stretch: 1;
                                 rows: root.messages;
-                                watch-item: root.chat-watch-item; slots: root.chat-slots; tops: root.chat-tops; offset <=> root.chat-offset; probe-row: root.chat-probe-row; sync => { root.chat-sync(); } anchor(i, h, t) => { root.chat-anchor(i, h, t); } go-row(r) => { root.chat-go(r); }
+                                watch-item: root.chat-watch-item; slots: root.chat-slots; tops: root.chat-tops; offset <=> root.chat-offset; probes: root.chat-probes; measured(s, i, h) => { root.chat-measured(s, i, h); } sync => { root.chat-sync(); } anchor(i, h, t) => { root.chat-anchor(i, h, t); } go-row(r) => { root.chat-go(r); }
                                 pad: root.popup-shown ? max(0px, chat.y + transcript.y + transcript.height - popup.y) : 0px;
                                 loading: root.loading;
                                 toggle(i) => { root.toggle(i); }

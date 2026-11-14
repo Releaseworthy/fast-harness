@@ -151,8 +151,10 @@ fn a_turn_folds_by_its_user_row_and_its_rows_hide() {
         .turn_line;
     assert!(line.starts_with("1 step · Answer 2"), "{line}");
     let after = chat.bottom();
+    // 100 px, not 150: the answer rows lost their speaker tile and name
+    // (22 px and a gap, 2026-11-14); with them back this passed at 150.
     assert!(
-        after + 150 < before,
+        after + 100 < before,
         "the turn's rows still draw: {before} -> {after}"
     );
 }

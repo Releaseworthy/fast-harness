@@ -4,13 +4,17 @@
 //! (i-slint-core 1.18.1 `update_visible_instances`), and the chat's rows
 //! run from 24 px to about 2900 px: the scroll bar's thumb changed size as
 //! the view moved, a drag of the thumb jumped and a fold moved the view.
-//! Here each row's height is measured once, at the list's width, by a
-//! hidden copy of the row (`probe` in ui/transcript.slint) and kept; a row
-//! not measured yet counts with an estimate from its kind and text (never
-//! from other rows) until a timer measures it, the rows nearest the view
-//! first, a few milliseconds per frame. The rows' tops are the prefix sums
-//! of these heights (`tops`, the last one the content height), and the
-//! view lays out only the rows in and around it (`window`).
+//!
+//! Each row's height is kept here once a laid out copy of the row reports
+//! it (`measured`): the drawn rows, and a lane of rows laid out off screen
+//! a batch per frame, nearest the view first, until every row is known. A
+//! row not measured yet counts with an estimate from its kind and text,
+//! never from other rows. Slint builds a row's `if` parts only when its
+//! renderer visits the row (i-slint-core 1.18.1 `item_rendering.rs`), and
+//! never under an empty clip, so a `visible: false` copy measured only its
+//! paddings: the lane is visible, off screen and unclipped. The rows' tops
+//! are the prefix sums of the heights (`tops`, the last one the content
+//! height), and the view lays out only the rows in and around it.
 //!
 //! The view keeps its place through every change: following, it holds the
 //! end; after a toggle (`pin`), the clicked row, or the line that took its
@@ -20,7 +24,7 @@
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::rc::{Rc, Weak};
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use slint::{ComponentHandle, Model, ModelRc, Timer, TimerMode, VecModel};
 
@@ -28,8 +32,9 @@ use crate::{MainWindow, MsgRow, Theme, TurnsUi};
 
 /// Rows laid out above and below the view, in view heights.
 const OVERSCAN: f32 = 0.5;
-/// The background measuring's time per frame, and its frame.
-const BUDGET: Duration = Duration::from_millis(6);
+/// The lane's rows per batch, and the frames a batch may take to report.
+const BATCH: usize = 12;
+const PATIENCE: u32 = 10;
 const TICK: Duration = Duration::from_millis(16);
 
 /// A row's height and the row it was found for.
@@ -60,9 +65,12 @@ pub struct ChatList {
     known: HashMap<i64, Known>,
     rows: Vec<MsgRow>,
     keys: Vec<i64>,
+    by_item: bool,
     tops: Vec<f32>,
     shown: Rc<VecModel<f32>>,
     window: Rc<VecModel<i32>>,
+    probes: Rc<VecModel<i32>>,
+    waited: u32,
     span: (usize, usize),
     style: (f32, f32),
     anchor: Option<Anchor>,
@@ -84,12 +92,19 @@ pub fn attach(ui: &MainWindow) {
         inner.me = Rc::downgrade(&list);
         ui.set_chat_tops(ModelRc::from(inner.shown.clone()));
         ui.set_chat_slots(ModelRc::from(inner.window.clone()));
+        ui.set_chat_probes(ModelRc::from(inner.probes.clone()));
     }
     let (weak, shared) = (ui.as_weak(), list.clone());
     ui.on_chat_sync(move || with(&shared, &weak, ChatList::sync));
     let (weak, shared) = (ui.as_weak(), list.clone());
     ui.on_chat_anchor(move |row, head, turn| {
         with(&shared, &weak, |list, ui| list.pin(ui, row, head, turn));
+    });
+    let (weak, shared) = (ui.as_weak(), list.clone());
+    ui.on_chat_measured(move |row, item, height| {
+        with(&shared, &weak, |list, ui| {
+            list.measured(ui, row, item, height)
+        });
     });
     let (weak, shared) = (ui.as_weak(), list.clone());
     ui.on_chat_go(move |item| with(&shared, &weak, |list, ui| list.go(ui, item)));
@@ -123,27 +138,32 @@ fn prefix(heights: &[f32]) -> Vec<f32> {
 /// A row's height before it is measured: from its kind and its text's
 /// length at the list's width, never from other rows.
 fn estimate(row: &MsgRow, width: f32) -> f32 {
+    // A row that draws nothing (a folded step's row) is 0 px tall, and its
+    // height never changes, so it may never report one.
+    if !crate::rows::shows(row) {
+        return 0.0;
+    }
     let column = (width.min(860.0) - 80.0).max(200.0);
     let per_line = (column / 7.5).max(20.0);
     let lines = |text: &str| -> f32 {
         let count = |line: &str| (line.chars().count() as f32 / per_line).ceil().max(1.0);
         text.lines().map(count).sum()
     };
-    match row.kind.as_str() {
+    let line = if row.step_summary.is_empty() || row.turn_hidden {
+        0.0
+    } else {
+        30.0
+    };
+    let body = match row.kind.as_str() {
         "user" => 64.0 + 20.0 * lines(&row.text),
-        "assistant" if row.text.is_empty() => {
-            if row.thinking.is_empty() || row.folded {
-                10.0
-            } else {
-                34.0
-            }
-        }
+        "assistant" if row.text.is_empty() => 10.0,
         "assistant" => 36.0 + 20.0 * lines(&row.text),
-        "tool" if row.folded => 34.0,
+        "tool" if row.folded => 10.0,
         "tool" => 52.0,
         "note" => 12.0 + 16.0 * lines(&row.text),
         _ => 28.0,
-    }
+    };
+    line + body
 }
 
 impl ChatList {
@@ -179,6 +199,35 @@ impl ChatList {
             turn,
             screen,
         });
+    }
+
+    /// A laid out copy of list row `row` (transcript row `item`) reports
+    /// its height: kept, and the list placed again when it is news.
+    pub fn measured(&mut self, ui: &MainWindow, row: i32, item: i32, height: f32) {
+        let Ok(i) = usize::try_from(row) else {
+            return;
+        };
+        let Some(data) = ui.get_messages().row_data(i).filter(|r| r.item == item) else {
+            return;
+        };
+        let key = if self.by_item {
+            i64::from(item)
+        } else {
+            i as i64
+        };
+        let known = self.known.get(&key);
+        let same =
+            known.is_some_and(|k| k.exact && k.row == data && (k.height - height).abs() < 0.01);
+        if same || data.kind == "spacer" {
+            return;
+        }
+        let known = Known {
+            row: data,
+            height,
+            exact: true,
+        };
+        self.known.insert(key, known);
+        self.sync(ui);
     }
 
     /// A navigator tick: row `item` (or the next one shown) at the top.
@@ -225,28 +274,34 @@ impl ChatList {
             }
         };
         self.keys = self.rows.iter().enumerate().map(key).collect();
+        self.by_item = by_item;
         if self.known.len() > 2 * self.keys.len() + 64 {
             let keep: HashSet<i64> = self.keys.iter().copied().collect();
             self.known.retain(|k, _| keep.contains(k));
         }
     }
 
-    /// Row `i`'s height: measured, else an estimate (kept until measured).
+    /// Row `i`'s height: measured; for a row that changed since, its last
+    /// height until it reports again; else an estimate.
     fn height(&mut self, i: usize, pad: f32) -> f32 {
-        let row = &self.rows[i];
+        let (row, key) = (&self.rows[i], self.keys[i]);
         if row.kind == "spacer" {
             return pad;
         }
-        if let Some(known) = self.known.get(&self.keys[i]).filter(|k| k.row == *row) {
-            return known.height;
+        if !crate::rows::shows(row) {
+            return 0.0;
         }
-        let height = estimate(row, self.style.0);
+        let height = match self.known.get(&key) {
+            Some(known) if known.row == *row => return known.height,
+            Some(known) => known.height,
+            None => estimate(row, self.style.0),
+        };
         let known = Known {
             row: row.clone(),
             height,
             exact: false,
         };
-        self.known.insert(self.keys[i], known);
+        self.known.insert(key, known);
         height
     }
 
@@ -254,23 +309,18 @@ impl ChatList {
     fn exact(&self, i: usize) -> bool {
         let row = &self.rows[i];
         let known = self.known.get(&self.keys[i]);
-        row.kind == "spacer" || known.is_some_and(|k| k.exact && k.row == *row)
+        row.kind == "spacer"
+            || !crate::rows::shows(row)
+            || known.is_some_and(|k| k.exact && k.row == *row)
     }
 
-    /// The tops from the heights, the scroll position that keeps `hold`
-    /// and the window around it, its rows measured; then the view's turn.
+    /// The tops from the heights, then the scroll position that keeps
+    /// `hold` and the window around it, handed to the view.
     fn place(&mut self, ui: &MainWindow, hold: &Hold) {
         let (view, pad) = (ui.get_chat_list_height(), ui.get_chat_pad());
-        let mut offset = 0.0;
-        for _ in 0..4 {
-            let heights: Vec<f32> = (0..self.rows.len()).map(|i| self.height(i, pad)).collect();
-            self.tops = prefix(&heights);
-            offset = self.offset_for(hold, view);
-            let (a, b) = self.span_at(offset, view);
-            if !self.measure(ui, a..b, None) {
-                break;
-            }
-        }
+        let heights: Vec<f32> = (0..self.rows.len()).map(|i| self.height(i, pad)).collect();
+        self.tops = prefix(&heights);
+        let offset = self.offset_for(hold, view);
         self.show(ui, offset, view, hold);
     }
 
@@ -326,39 +376,6 @@ impl ChatList {
         (a.min(b), b)
     }
 
-    /// Measures the rows of `rows` not measured yet (until `until`, when
-    /// given) through the hidden row; true when it measured any.
-    fn measure(
-        &mut self,
-        ui: &MainWindow,
-        rows: impl Iterator<Item = usize>,
-        until: Option<Instant>,
-    ) -> bool {
-        let mut any = false;
-        for i in rows {
-            if until.is_some_and(|t| Instant::now() >= t) {
-                break;
-            }
-            if self.exact(i) {
-                continue;
-            }
-            ui.set_chat_probe_row(self.rows[i].clone());
-            let height = ui.get_chat_probe_height();
-            let known = Known {
-                row: self.rows[i].clone(),
-                height,
-                exact: true,
-            };
-            self.known.insert(self.keys[i], known);
-            any = true;
-        }
-        if any {
-            // An empty row: a running tool's spinner never ticks unseen.
-            ui.set_chat_probe_row(MsgRow::default());
-        }
-        any
-    }
-
     /// Hands the tops, the window and the scroll position to the view.
     fn show(&mut self, ui: &MainWindow, offset: f32, view: f32, hold: &Hold) {
         if self.shown.iter().ne(self.tops.iter().copied()) {
@@ -398,10 +415,13 @@ impl ChatList {
         self.span = (a, b);
     }
 
-    /// Starts or stops the timer that measures the rows not measured yet.
+    /// Starts or stops the lane that measures the rows not measured yet.
     fn background(&mut self, ui: &MainWindow) {
         if (0..self.rows.len()).all(|i| self.exact(i)) {
             self.timer.stop();
+            if self.probes.row_count() > 0 {
+                self.probes.set_vec(Vec::new());
+            }
             return;
         }
         if self.timer.running() {
@@ -415,18 +435,42 @@ impl ChatList {
         });
     }
 
-    /// One frame of background measuring, the rows nearest the view first,
-    /// then a sync that keeps the view in place.
+    /// One frame of the lane: while its batch has not reported, wait (a
+    /// row that never reports keeps its estimate after `PATIENCE` frames);
+    /// then the next batch, the window's rows and the nearest first.
     fn tick(&mut self, ui: &MainWindow) {
-        let until = Instant::now() + BUDGET;
-        let ((a, b), n) = (self.span, self.rows.len());
-        let near = (0..n)
-            .flat_map(move |d| [b + d, a.wrapping_sub(d + 1)])
-            .filter(move |i| *i < n);
-        if self.measure(ui, near, Some(until)) {
-            self.sync(ui);
-        } else {
-            self.background(ui);
+        let n = self.rows.len();
+        let late: Vec<usize> = self
+            .probes
+            .iter()
+            .filter_map(|s| usize::try_from(s).ok())
+            .collect();
+        let late: Vec<usize> = late
+            .into_iter()
+            .filter(|i| *i < n && !self.exact(*i))
+            .collect();
+        if !late.is_empty() && self.waited < PATIENCE {
+            self.waited += 1;
+            return;
         }
+        for i in late {
+            if let Some(known) = self.known.get_mut(&self.keys[i]) {
+                known.exact = true;
+            }
+        }
+        self.waited = 0;
+        let (a, b) = self.span;
+        let around = (0..n).flat_map(move |d| [b + d, a.wrapping_sub(d + 1)]);
+        let order = (a..b).chain(around).filter(move |i| *i < n);
+        let batch: Vec<i32> = order
+            .filter(|i| !self.exact(*i))
+            .take(BATCH)
+            .map(|i| i as i32)
+            .collect();
+        if batch.is_empty() {
+            self.background(ui);
+            return;
+        }
+        self.probes.set_vec(batch);
     }
 }

@@ -97,6 +97,7 @@ With `"approvals": "ask"` a call can wait for an answer (PLAN.md D64). Both fron
 - `MainWindow.busy`: property <bool>
 - `MainWindow.cancel-sign-in`: callback
 - `MainWindow.chat-list-height`: property <length>
+- `MainWindow.chat-view-y`: property <length>
 - `MainWindow.draft`: property <string>
 - `MainWindow.effort-index`: property <int>
 - `MainWindow.effort-picked`: callback
@@ -221,6 +222,7 @@ With `"approvals": "ask"` a call can wait for an answer (PLAN.md D64). Both fron
 - `Theme.dark`: property <bool>
 - `Theme.dim`: property <color>
 - `Theme.error`: property <color>
+- `Theme.font-m`: property <length>
 - `Theme.glow`: property <color>
 - `Theme.greyscale`: property <bool>
 - `Theme.greyscale-level`: property <int>

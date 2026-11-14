@@ -247,16 +247,17 @@ export component TranscriptView {
     // its full height and its last real row ends at the popup's top.
     in property <length> pad;
     // From src/chat_list.rs: the list rows to draw, every row's top and the
-    // end, the scroll position, and the row to measure.
+    // end, the scroll position, and the rows to measure off screen.
     in property <[int]> slots;
     in property <[length]> tops;
     in-out property <length> offset;
-    in property <MsgRow> probe-row;
-    out property <length> probe-height: probe.preferred-height;
+    in property <[int]> probes;
     // The row the tests watch (its `item`) and its top in the view.
     in property <int> watch-item: -1;
     in-out property <length> watch-y;
     callback sync();
+    // A laid out row's height: list row, its `item`, its height.
+    callback measured(int, int, length);
     // A row's toggle is about to run: the row (list index), the step's or
     // turn's head, a turn's or not; Rust keeps the row in place.
     callback anchor(int, int, bool);
@@ -319,19 +320,27 @@ export component TranscriptView {
         clip: true;
         for slot in root.slots: MessageView {
             property <bool> watched: self.msg.item == root.watch-item;
+            property <length> natural: self.preferred-height;
+            // Set at creation: its handler runs after the first frame, once
+            // the row's `if` parts are built, so even a row whose height
+            // never changes reports it.
+            property <bool> born;
             x: 0;
             y: root.tops[slot] - root.offset;
             width: parent.width;
-            height: root.tops[slot + 1] - root.tops[slot];
+            height: self.natural;
             msg: root.rows[slot];
             row-index: self.msg.item;
             pad: root.pad;
             init => {
+                self.born = true;
                 if self.watched { root.watch-y = self.y; }
             }
+            changed born => { root.measured(slot, self.msg.item, self.natural); }
             changed watched => { if self.watched { root.watch-y = self.y; } }
             changed y => { if self.watched { root.watch-y = self.y; } }
             changed msg => { root.stale = true; }
+            changed natural => { root.measured(slot, self.msg.item, self.natural); }
             copy(t) => { root.copy(t); }
             toggle => {
                 root.anchor(slot, -1, false);
@@ -351,24 +360,24 @@ export component TranscriptView {
             link(u) => { root.link(u); }
         }
     }
-    // The hidden copy of a row that Rust measures: placed and sized, so it
-    // never counts in the list's own size.
-    Rectangle {
-        x: 0;
+    // The lane: rows laid out off screen, a batch at a time, so their
+    // heights are known before they show (src/chat_list.rs). Visible and
+    // unclipped: Slint builds a row's `if` parts only when its renderer
+    // visits the row, and never under `visible: false` or an empty clip.
+    for slot in root.probes: MessageView {
+        property <length> natural: self.preferred-height;
+        property <bool> born;
+        x: -100000px;
         y: 0;
-        width: 0;
-        height: 0;
-        probe := MessageView {
-            visible: false;
-            x: 0;
-            y: 0;
-            width: root.width;
-            msg: root.probe-row;
-            pad: root.pad;
-            row-index: -2;
-        }
+        width: root.width;
+        height: self.natural;
+        msg: root.rows[slot];
+        row-index: -2;
+        pad: root.pad;
+        init => { self.born = true; }
+        changed born => { root.measured(slot, self.msg.item, self.natural); }
+        changed natural => { root.measured(slot, self.msg.item, self.natural); }
     }
-
     bar := ScrollBar {
         x: parent.width - self.width;
         height: parent.height;
