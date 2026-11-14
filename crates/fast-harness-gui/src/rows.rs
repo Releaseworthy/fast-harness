@@ -101,6 +101,24 @@ fn tone(kind: NoteKind) -> &'static str {
     }
 }
 
+/// Whether `row` draws anything, as `MessageView`'s `blank` in
+/// `ui/transcript.slint` decides (keep the two in step); the popup spacer
+/// always draws its height. The chat list gets only these rows: Slint
+/// 1.18.1's ListView estimates the rows it has not laid out from those it
+/// has, and the 0 px rows of folded steps (a finished subagent is one turn
+/// of them, ending on its folded usage footer) left its estimate at 0 and
+/// the view empty (2026-11-14, `real_child_tests.rs`).
+pub fn shows(row: &MsgRow) -> bool {
+    if row.kind == crate::spacer::KIND {
+        return true;
+    }
+    if row.turn_hidden {
+        return !row.turn_line.is_empty();
+    }
+    let line = !row.step_summary.is_empty();
+    !(row.folded && !line && (row.kind != "assistant" || row.text.is_empty()))
+}
+
 /// The dim line under a step; empty for any other item.
 pub fn footer_text(item: &Item) -> String {
     let Item::StepFooter {

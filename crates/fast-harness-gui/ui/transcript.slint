@@ -327,7 +327,7 @@ export component TranscriptView {
     public function go-row(row: int) {
         root.follow = false;
         root.target = row;
-        list.content-y = max(root.bottom, -list.content-height * row / max(1, root.rows.length));
+        list.content-y = max(root.bottom, -list.content-height * row / max(1, root.rows.length, root.rows.length > 0 ? root.rows[root.rows.length - 1].item + 1 : 0));
     }
 
     function pin(i: int, y: length) {
@@ -361,27 +361,30 @@ export component TranscriptView {
             // The row under the view's top edge: the navigator's current turn.
             property <bool> at-top: self.y + list.content-y <= 1px && self.y + self.height + list.content-y > 1px;
             msg: item;
-            property <bool> pinned: i == root.target;
+            // `i` counts the rows the list gets (rows that draw nothing are
+            // left out, `rows::shows`); turns, targets and toggles speak of
+            // `item.item`, the row's index in the transcript.
+            property <bool> pinned: item.item == root.target;
             init => {
                 root.at-end(i, self.y + self.height);
-                if self.pinned { root.pin(i, self.y); }
+                if self.pinned { root.pin(item.item, self.y); }
             }
             changed pinned => {
-                if self.pinned { root.pin(i, self.y); }
+                if self.pinned { root.pin(item.item, self.y); }
             }
             changed height => { root.at-end(i, self.y + self.height); }
             changed y => {
                 root.at-end(i, self.y + self.height);
-                if self.pinned { root.pin(i, self.y); }
-                if self.at-top && root.target < 0 { TurnsUi.top-row = i; }
-                if self.at-top { root.seek(i); }
+                if self.pinned { root.pin(item.item, self.y); }
+                if self.at-top && root.target < 0 { TurnsUi.top-row = item.item; }
+                if self.at-top { root.seek(item.item); }
             }
             changed at-top => {
-                if self.at-top && root.target < 0 { TurnsUi.top-row = i; }
-                if self.at-top { root.seek(i); }
+                if self.at-top && root.target < 0 { TurnsUi.top-row = item.item; }
+                if self.at-top { root.seek(item.item); }
             }
             copy(t) => { root.copy(t); }
-            toggle => { root.toggle(i); }
+            toggle => { root.toggle(item.item); }
             step-toggle(h) => { root.step-toggle(h); }
             turn-toggle(h) => { root.turn-toggle(h); }
             row-index: i;
@@ -405,9 +408,21 @@ export component TranscriptView {
             }
         }
         changed content-height => {
-            if (root.follow) {
+            if (root.follow && root.exact) {
                 self.content-y = root.follow-y;
             }
+        }
+    }
+
+    // Following while the last row's real end is not known: one view per
+    // frame toward the list's estimate of the bottom, until the last row is
+    // laid out (`at-end`, `exact`). It runs only then, so an idle window
+    // gets no frames from it.
+    Timer {
+        interval: 16ms;
+        running: root.follow && !root.exact && root.target < 0 && root.rows.length > 0 && list.content-y > root.bottom + 0.5px;
+        triggered => {
+            list.content-y = max(root.bottom, list.content-y - list.visible-height);
         }
     }
 

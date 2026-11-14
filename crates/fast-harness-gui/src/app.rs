@@ -90,7 +90,8 @@ impl App {
     pub fn new(ui: &MainWindow, rt: Runtime, arg: Option<PathBuf>) -> App {
         let rows = Rc::new(VecModel::default());
         let full = rt.config.chat_full();
-        ui.set_messages(ModelRc::from(rows.clone()));
+        // The list gets only the rows that draw (`rows::shows`).
+        ui.set_messages(ModelRc::new(slint::FilterModel::new(rows.clone(), crate::rows::shows)));
         let (side, cwd, error) = crate::workspaces::start(&rt.home, arg);
         if let Some(error) = error {
             show_error(ui, error);

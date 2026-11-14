@@ -35,16 +35,23 @@ impl Rows for VecModel<MsgRow> {
         self.row_data(index)
     }
     fn set(&self, index: usize, row: MsgRow) {
-        self.set_row_data(index, row);
+        self.set_row_data(index, stamped(row, index));
     }
     fn push(&self, row: MsgRow) {
-        self.insert(crate::spacer::count(self), row);
+        let index = crate::spacer::count(self);
+        self.insert(index, stamped(row, index));
     }
     fn replace(&self, rows: Vec<MsgRow>) {
         let spaced = crate::spacer::count(self) < self.row_count();
-        self.set_vec(rows);
+        self.set_vec(rows.into_iter().enumerate().map(|(i, row)| stamped(row, i)).collect::<Vec<_>>());
         crate::spacer::set(self, spaced);
     }
+}
+
+/// `row` knowing its own index (`MsgRow::item`).
+pub fn stamped(mut row: MsgRow, index: usize) -> MsgRow {
+    row.item = i32::try_from(index).unwrap_or(i32::MAX);
+    row
 }
 
 #[derive(Default)]
