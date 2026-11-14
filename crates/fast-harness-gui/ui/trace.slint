@@ -1,7 +1,7 @@
 // The Trace page: the timeline of the session log (what the user sent, each
 // request, the thinking, the response, tool calls and results) and the
 // step table. Marks and words carry every state next to the colour.
-import { ListView, ScrollView } from "std-widgets.slint";
+import { ScrollView } from "std-widgets.slint";
 import { ScrollBar } from "scrollbar.slint";
 import { TraceRow } from "types.slint";
 import { Theme, Columns, LinkText, Mark, AccentFill, PageTitle } from "parts.slint";
@@ -10,11 +10,19 @@ import { ActionButton, FocusRing } from "widgets.slint";
 import { ThinkingQuote, CodeBox } from "blocks.slint";
 import { StepsTable } from "steps.slint";
 import { ToolFrame } from "toolcard.slint";
+import { SelectableText } from "selectable.slint";
 
 // The timeline rows' height as the list measured it (read by the layout
 // tests: the page sits under an `if`, so a global carries it out).
 export global TraceProbe {
     in-out property <length> content-height;
+    // The scroll position, the view's height and top, and the themed bar's
+    // thumb centre in window coordinates (for the scroll tests).
+    in-out property <length> view-y;
+    in-out property <length> visible-height;
+    in-out property <length> list-top;
+    in-out property <length> thumb-x;
+    in-out property <length> thumb-y;
 }
 
 // The mark and its colour for each entry kind.
@@ -90,7 +98,7 @@ component UserBody inherits Rectangle {
         padding: Theme.space-s + 2px;
         padding-left: Theme.space-l - 2px;
         padding-right: Theme.space-l - 2px;
-        Text { text: root.text; color: Theme.text; font-size: Theme.font-m; wrap: word-wrap; }
+        SelectableText { text: root.text; font-size: Theme.font-m; }
     }
 }
 
@@ -100,7 +108,7 @@ component EntryBody {
     VerticalLayout {
         if entry.kind == "user": UserBody { text: root.shown; }
         if entry.kind == "thinking": ThinkingQuote { text: root.shown; }
-        if entry.kind == "response": Text {
+        if entry.kind == "response": SelectableText {
             text: root.shown;
             color: Theme.text;
             font-size: Theme.font-m;
@@ -111,7 +119,7 @@ component EntryBody {
             text: root.shown;
             error: entry.error;
         }
-        if entry.kind == "failure" || entry.kind == "retry" || entry.kind == "switch": Text {
+        if entry.kind == "failure" || entry.kind == "retry" || entry.kind == "switch": SelectableText {
             text: root.shown;
             color: Theme.dim;
             font-size: Theme.font-s;
@@ -230,6 +238,118 @@ component ModeSwitch inherits Rectangle {
     }
 }
 
+// The timeline's list (src/trace_list.rs): the entries to draw, every
+// entry's top and the end, the scroll position, the entries to measure off
+// screen, and the view's size; Rust places them on `sync`.
+export global TraceList {
+    in property <[int]> slots;
+    in property <[length]> tops;
+    in-out property <length> offset;
+    in property <[int]> probes;
+    in-out property <length> list-height;
+    in-out property <length> width;
+    callback sync();
+    // A laid out entry's height: list row, its index, its height.
+    callback measured(int, int, length);
+    // An entry's Show all / Show less is about to run: Rust keeps it in place.
+    callback anchor(int, int, bool);
+}
+
+// The timeline (2026-11-14): its own virtual list with measured entry
+// heights, as the chat's (src/virtual_list.rs), not Slint's ListView, whose
+// content height came from the rows it had laid out, so the thumb changed
+// size while dragging.
+component TraceTimeline inherits Rectangle {
+    in property <[TraceRow]> entries;
+    callback toggle(int);
+    callback copy(string);
+    property <length> total: TraceList.tops.length > 0 ? TraceList.tops[TraceList.tops.length - 1] : 0px;
+    property <length> max-offset: max(0px, root.total - root.height);
+    property <length> offset: TraceList.offset;
+    property <int> count: root.entries.length;
+    property <length> font: Theme.font-m;
+    // A drawn entry changed: one sync for all of them.
+    property <bool> stale;
+    function sync() {
+        TraceList.width = root.width;
+        TraceList.list-height = root.height;
+        TraceProbe.visible-height = root.height;
+        TraceProbe.list-top = root.absolute-position.y;
+        TraceList.sync();
+    }
+    init => { root.sync(); }
+    changed entries => { root.sync(); }
+    changed count => { root.sync(); }
+    changed width => { root.sync(); }
+    changed height => { root.sync(); }
+    changed font => { root.sync(); }
+    changed stale => {
+        if root.stale {
+            root.stale = false;
+            root.sync();
+        }
+    }
+    changed total => { TraceProbe.content-height = root.total; }
+    changed offset => { TraceProbe.view-y = -root.offset; }
+    function scroll(y: length) {
+        TraceList.offset = max(0px, min(root.max-offset, y));
+        root.sync();
+    }
+    TouchArea {
+        scroll-event(e) => {
+            root.scroll(TraceList.offset - e.delta-y);
+            return accept;
+        }
+    }
+    Rectangle {
+        clip: true;
+        for slot in TraceList.slots: TraceEntryView {
+            property <length> natural: self.preferred-height;
+            property <bool> born;
+            x: 0;
+            y: TraceList.tops[slot] - TraceList.offset;
+            width: parent.width;
+            height: self.natural;
+            entry: root.entries[slot];
+            init => { self.born = true; }
+            changed born => { TraceList.measured(slot, slot, self.natural); }
+            changed natural => { TraceList.measured(slot, slot, self.natural); }
+            changed entry => { root.stale = true; }
+            toggle => {
+                TraceList.anchor(slot, -1, false);
+                root.toggle(slot);
+                root.sync();
+            }
+            copy(t) => { root.copy(t); }
+        }
+    }
+    // The lane: entries laid out off screen, a batch at a time (visible and
+    // unclipped: Slint builds `if` parts only when its renderer visits them).
+    for slot in TraceList.probes: TraceEntryView {
+        property <length> natural: self.preferred-height;
+        property <bool> born;
+        x: -100000px;
+        y: 0;
+        width: root.width;
+        height: self.natural;
+        entry: root.entries[slot];
+        init => { self.born = true; }
+        changed born => { TraceList.measured(slot, slot, self.natural); }
+        changed natural => { TraceList.measured(slot, slot, self.natural); }
+    }
+    ScrollBar {
+        x: parent.width - self.width;
+        height: parent.height;
+        content-y: -TraceList.offset;
+        content-height: root.total;
+        visible-height: root.height;
+        scroll-to(y) => { root.scroll(-y); }
+        init => { TraceProbe.thumb-x = self.thumb-x; TraceProbe.thumb-y = self.thumb-y; }
+        changed thumb-x => { TraceProbe.thumb-x = self.thumb-x; }
+        changed thumb-y => { TraceProbe.thumb-y = self.thumb-y; }
+    }
+}
+
 export component TracePage inherits Rectangle {
     in property <[TraceRow]> entries;
     in property <[[string]]> steps;
@@ -270,27 +390,11 @@ export component TracePage inherits Rectangle {
             vertical-alignment: center;
             height: 80px;
         }
-        if root.mode == "timeline": Rectangle {
+        if root.mode == "timeline": TraceTimeline {
             vertical-stretch: 1;
-            timeline := ListView {
-                width: 100%;
-                height: 100%;
-                vertical-scrollbar-policy: ScrollBarPolicy.always-off;
-                for item[i] in root.entries: TraceEntryView {
-                    entry: item;
-                    toggle => { root.toggle(i); }
-                    copy(t) => { root.copy(t); }
-                }
-                changed content-height => { TraceProbe.content-height = self.content-height; }
-            }
-            ScrollBar {
-                x: parent.width - self.width;
-                height: parent.height;
-                content-y: timeline.content-y;
-                content-height: timeline.content-height;
-                visible-height: timeline.visible-height;
-                scroll-to(y) => { timeline.content-y = y; }
-            }
+            entries: root.entries;
+            toggle(i) => { root.toggle(i); }
+            copy(t) => { root.copy(t); }
         }
         if root.mode == "steps": StepsTable {
             vertical-stretch: 1;

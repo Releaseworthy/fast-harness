@@ -9,6 +9,7 @@ import { ToolFrame } from "toolcard.slint";
 import { RowThumbs } from "attach.slint";
 import { StepLine, StepRail, Rails } from "stepline.slint";
 import { TurnNav, TurnsUi } from "turnnav.slint";
+import { SelectableText } from "selectable.slint";
 
 // The user's message: a bubble on the right, at most 80% of the column.
 component UserBubble {
@@ -36,7 +37,7 @@ component UserBubble {
                     VerticalLayout {
                         spacing: Theme.space-xs;
                         if msg.images.length > 0: RowThumbs { images: msg.images; }
-                        Text {
+                        SelectableText {
                             text: msg.shown;
                             wrap: word-wrap;
                             color: Theme.text;
@@ -106,7 +107,7 @@ component Note {
             color: root.tint;
             font-size: Theme.font-m;
         }
-        Text {
+        SelectableText {
             text: msg.shown;
             wrap: word-wrap;
             font-size: Theme.font-s;

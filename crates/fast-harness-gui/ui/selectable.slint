@@ -1,0 +1,18 @@
+// Text the mouse can select (a drag; a double click picks a word, a triple
+// click the paragraph) and Ctrl+C copies (2026-11-14). Slint 1.18.1's Text
+// and StyledText are not selectable, so blocks of plain text are a read-only
+// TextInput drawn as the Text was. In i-slint-core 1.18.1 items/text.rs a
+// press grabs the mouse, so a drag selects within this one block and never
+// scrolls the list or hits a fold header; the wheel is ignored and passes on
+// to the list; read-only, it opens no IME and Cut, Paste, Undo and typing do
+// nothing, while Copy and Select All work.
+import { Theme } from "parts.slint";
+
+export component SelectableText inherits TextInput {
+    read-only: true;
+    single-line: false;
+    wrap: word-wrap;
+    color: Theme.text;
+    selection-background-color: Theme.selection;
+    selection-foreground-color: Theme.text;
+}
