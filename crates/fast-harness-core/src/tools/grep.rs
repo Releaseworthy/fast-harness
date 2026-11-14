@@ -119,7 +119,7 @@ fn search_file(search: &mut Search, base: &Path, path: &Path) {
             continue;
         }
         search.shown += 1;
-        let line = cut_chars(line, MAX_LINE_CHARS);
+        let line = clip(&search.regex, line);
         shown.push(format!("  {}: {line}", index + 1));
     }
     if hidden > 0 {
@@ -131,6 +131,49 @@ fn search_file(search: &mut Search, base: &Path, path: &Path) {
     }
 }
 
+/// Characters kept before a match that starts past the first
+/// [`MAX_LINE_CHARS`] of its line.
+const LEAD_CHARS: usize = MAX_LINE_CHARS / 4;
+
+/// `line` within [`MAX_LINE_CHARS`] characters: its start when the first
+/// match ends inside it, else a window from a little before that match,
+/// `...` on each cut side and a note with the window's columns and the
+/// matches left outside it.
+fn clip(regex: &Regex, line: &str) -> String {
+    let total = line.chars().count();
+    let Some(first) = regex.find(line).filter(|_| total > MAX_LINE_CHARS) else {
+        return cut_chars(line, MAX_LINE_CHARS);
+    };
+    let start = line[..first.start()].chars().count();
+    let end = start + first.as_str().chars().count();
+    if end <= MAX_LINE_CHARS {
+        return cut_chars(line, MAX_LINE_CHARS);
+    }
+    let from = start.saturating_sub(LEAD_CHARS).min(total - MAX_LINE_CHARS);
+    let to = from + MAX_LINE_CHARS;
+    let byte = |column: usize| {
+        line.char_indices()
+            .nth(column)
+            .map_or(line.len(), |(i, _)| i)
+    };
+    let (a, b) = (byte(from), byte(to));
+    let outside = regex
+        .find_iter(line)
+        .filter(|m| m.start() < a || m.start() >= b)
+        .count();
+    let mark = |cut: bool| if cut { "..." } else { "" };
+    let (left, right) = (mark(from > 0), mark(to < total));
+    let shown = &line[a..b];
+    let mut out = format!(
+        "{left}{shown}{right} [line cut: columns {}-{to} of {total}",
+        from + 1
+    );
+    if outside > 0 {
+        out.push_str(&format!("; {outside} more matches outside"));
+    }
+    out.push(']');
+    out
+}
 fn render(search: &Search) -> String {
     if search.groups.is_empty() {
         return "No matches.".to_string();
