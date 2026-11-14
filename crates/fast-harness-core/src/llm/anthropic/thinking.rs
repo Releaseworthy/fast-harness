@@ -31,8 +31,9 @@ const MIN_OUTPUT_TOKENS: u32 = 1024;
 pub(crate) struct Plan {
     pub thinking: Option<Value>,
     pub output_config: Option<Value>,
-    /// Managed models: effort of the trailing `system` message.
-    pub trailing_effort: Option<String>,
+    /// Managed models: the effort of the `system` message after each user
+    /// turn, when it differs from the top-level `high` (`request::build`).
+    pub turn_effort: Option<String>,
     pub max_tokens: u32,
     pub betas: Vec<&'static str>,
 }
@@ -158,7 +159,8 @@ fn live_effort(levels: &[String], level: &str) -> String {
 }
 
 /// pi-ai `supportsMidConvoEffort`: always adaptive with prefix-mismatch
-/// dropping, top-level effort `high`, the chosen effort in a trailing system message.
+/// dropping, top-level effort `high`, a different chosen effort in a system
+/// message after each user turn (kept in place, so earlier thinking stays bound).
 fn managed(plan: &mut Plan, spec: Option<&ModelSpec>, effort: Option<&str>) {
     plan.thinking = Some(json!({
         "type": "adaptive",
@@ -167,7 +169,7 @@ fn managed(plan: &mut Plan, spec: Option<&ModelSpec>, effort: Option<&str>) {
     }));
     plan.output_config = Some(json!({"effort": "high"}));
     let level = effort.filter(|level| *level != "off").unwrap_or("high");
-    plan.trailing_effort = Some(map_effort(spec, level));
+    plan.turn_effort = Some(map_effort(spec, level)).filter(|level| level != "high");
     plan.betas = vec![
         wire::BETA_MID_CONVERSATION_OUTPUT_CONFIG,
         wire::BETA_THINKING_BINDING_CONTROLS,
@@ -220,7 +222,9 @@ mod tests {
         assert_eq!(haiku.thinking.unwrap()["budget_tokens"], 16_384);
         assert_eq!(plan(find("claude-haiku-4-5"), None, 10).thinking, None);
         let managed = plan(find("claude-opus-5-5"), Some("off"), 0);
-        assert_eq!(managed.trailing_effort.as_deref(), Some("high"));
+        assert_eq!(managed.turn_effort, None);
+        let low = plan(find("claude-opus-5-5"), Some("low"), 0);
+        assert_eq!(low.turn_effort.as_deref(), Some("low"));
         assert_eq!(
             plan(None, Some("max"), 5).output_config,
             Some(json!({"effort": "max"}))

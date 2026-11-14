@@ -102,11 +102,8 @@ pub(crate) fn build(
     let cache = cache_control(req.cache.system_1h || req.cache.messages_1h);
     let tail = cache_control(req.cache.messages_1h);
     let plan = thinking::plan_model(live, req.model, spec, req.effort, req.max_tokens);
-    let mut messages = convert_messages(req.messages, req.tools, oauth, &tail);
-    if let Some(effort) = &plan.trailing_effort {
-        messages
-            .push(json!({"role": "system", "content": [], "output_config": {"effort": effort}}));
-    }
+    let effort = plan.turn_effort.as_deref();
+    let messages = convert_messages(req.messages, req.tools, oauth, &tail, effort);
     let mut body = Map::new();
     body.insert("model".into(), json!(req.model));
     body.insert("messages".into(), Value::Array(messages));
@@ -211,7 +208,21 @@ struct Finds<'a> {
     oauth: bool,
 }
 
-impl Finds<'_> {
+impl<'a> Finds<'a> {
+    /// The find calls of `messages` when the tools defer, else none.
+    fn new(messages: &'a [Message], tools: &'a [ToolSpec], oauth: bool) -> Finds<'a> {
+        let calls = if find::deferring(tools) {
+            find::find_call_ids(messages)
+        } else {
+            HashSet::new()
+        };
+        Finds {
+            calls,
+            tools,
+            oauth,
+        }
+    }
+
     /// The content of a successful find result: one `tool_reference` per
     /// loaded tool that the request sends (any other name is a 400) and
     /// nothing else, because the API rejects references next to a text block
@@ -240,25 +251,22 @@ impl Finds<'_> {
     }
 }
 
+/// The `messages` array. With a per-turn `effort` (managed models), an
+/// effort-only `system` message follows every user message with new input,
+/// so it sits at the same place on every later request: a message that
+/// moves or disappears changes the prefix that each later thinking block is
+/// bound to, and the API drops those blocks (`prefix_binding_mismatch`).
 fn convert_messages(
     messages: &[Message],
     tools: &[ToolSpec],
     oauth: bool,
     cache: &Value,
+    effort: Option<&str>,
 ) -> Vec<Value> {
     // Every Claude model takes images (platform.claude.com vision, 2026-11-13).
     let prepared = images::prepare(messages, true);
     let messages = &prepared.messages[..];
-    let calls = if find::deferring(tools) {
-        find::find_call_ids(messages)
-    } else {
-        HashSet::new()
-    };
-    let finds = Finds {
-        calls,
-        tools,
-        oauth,
-    };
+    let finds = Finds::new(messages, tools, oauth);
     let mut out: Vec<Value> = Vec::new();
     let mut previous_was_tool = false;
     for message in messages {
@@ -283,14 +291,25 @@ fn convert_messages(
         }
         previous_was_tool = is_tool;
         out.push(json!({"role": role, "content": blocks}));
+        if message.role == Role::User {
+            out.extend(effort.map(effort_message));
+        }
     }
     mark_last_message(&mut out, cache);
     out
 }
 
-/// Puts the cache breakpoint on the last block of a trailing user message.
+/// An effort-only `system` message (per-message effort, beta
+/// `mid-conversation-output-config-2026-07-01`): right after a user turn with
+/// new input, the reply to that turn uses `effort`.
+fn effort_message(effort: &str) -> Value {
+    json!({"role": "system", "content": [], "output_config": {"effort": effort}})
+}
+
+/// Puts the cache breakpoint on the last block of a trailing user message
+/// (an effort `system` message after it carries no content to cache).
 fn mark_last_message(messages: &mut [Value], cache: &Value) {
-    let Some(last) = messages.last_mut() else {
+    let Some(last) = messages.iter_mut().rev().find(|m| m["role"] != "system") else {
         return;
     };
     if last["role"] != "user" {
@@ -432,3 +451,7 @@ fn tool_use(id: &str, name: &str, arguments: &str, oauth: bool) -> Value {
     };
     json!({"type": "tool_use", "id": normalize_tool_id(id), "name": name, "input": input})
 }
+
+#[cfg(test)]
+#[path = "request_prefix_tests.rs"]
+mod prefix_tests;

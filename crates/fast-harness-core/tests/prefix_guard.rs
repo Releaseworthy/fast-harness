@@ -121,14 +121,11 @@ fn session(case: Case, change: Change) -> (Vec<Value>, String) {
     (bodies, conv.id)
 }
 
-/// The messages at `pointer` without the trailing Claude effort entry
-/// (`role: system`, the tail that may change on every call by design).
+/// Every message at `pointer`, a Claude effort entry (`role: system`)
+/// included: thinking binds to all of it, so nothing is exempt (an effort
+/// entry that moved on every call made the API drop all earlier thinking).
 fn history<'a>(body: &'a Value, pointer: &str) -> &'a [Value] {
-    let all = body.pointer(pointer).and_then(Value::as_array).unwrap();
-    match all.split_last() {
-        Some((last, rest)) if last["role"] == "system" => rest,
-        _ => all,
-    }
+    body.pointer(pointer).and_then(Value::as_array).unwrap()
 }
 
 fn check(case: Case, change: Change) {

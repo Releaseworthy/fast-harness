@@ -184,11 +184,13 @@ fn oauth_golden_request() {
         Some("claude-code-20250219,oauth-2025-04-20,mid-conversation-output-config-2026-07-01,thinking-binding-controls-2026-08-01")
     );
     let cache = json!({"type": "ephemeral"});
+    // The effort message stays right after the user turn it applies to, so
+    // the thinking that follows keeps its prefix on every later request.
     let mut messages = expected_messages(&cache, "Read");
-    messages
-        .as_array_mut()
-        .unwrap()
-        .push(json!({"role": "system", "content": [], "output_config": {"effort": "low"}}));
+    messages.as_array_mut().unwrap().insert(
+        1,
+        json!({"role": "system", "content": [], "output_config": {"effort": "low"}}),
+    );
     let want = json!({
         "model": "claude-opus-5-5",
         "max_tokens": 4096,
