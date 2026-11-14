@@ -12,7 +12,6 @@ use slint::platform::software_renderer::{MinimalSoftwareWindow, RepaintBufferTyp
 use slint::platform::{Platform, WindowAdapter};
 use slint::{ComponentHandle, ModelRc, PhysicalSize, Rgb8Pixel, VecModel};
 
-use crate::rows::markdown;
 use crate::{MainWindow, MsgRow, TraceProbe, TraceRow};
 
 const WIDTH: u32 = 1000;
@@ -179,7 +178,7 @@ fn thinking(text: &str) -> MsgRow {
     MsgRow {
         kind: "assistant".into(),
         text: "Answer.".into(),
-        body: markdown("Answer."),
+        blocks: crate::rows::reply_blocks("Answer."),
         thinking: text.into(),
         expanded: true,
         ..MsgRow::default()

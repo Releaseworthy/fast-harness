@@ -123,7 +123,8 @@ export component MainWindow inherits Window {
     callback select-workspace(string);
     callback remove-workspace(string);
     callback open-page(string);
-    callback toggle(int);
+    // Thinking or tool output (toggle), a tool card in an open run (card-toggle).
+    callback toggle(int); callback card-toggle(int);
     // Opens or folds the step whose line is on that row (D73).
     callback step-toggle(int);
     // Folds or opens the turn whose first row is the argument (D80).
@@ -327,9 +328,8 @@ export component MainWindow inherits Window {
                                 watch-item: root.chat-watch-item; slots: root.chat-slots; tops: root.chat-tops; offset <=> root.chat-offset; probes: root.chat-probes; measured(s, i, h) => { root.chat-measured(s, i, h); } sync => { root.chat-sync(); } anchor(i, h, t) => { root.chat-anchor(i, h, t); } go-row(r) => { root.chat-go(r); }
                                 pad: root.popup-shown ? max(0px, chat.y + transcript.y + transcript.height - popup.y) : 0px;
                                 loading: root.loading;
-                                toggle(i) => { root.toggle(i); }
-                                step-toggle(i) => { root.step-toggle(i); }
-            turn-toggle(i) => { root.turn-toggle(i); }
+                                toggle(i) => { root.toggle(i); } card-toggle(i) => { root.card-toggle(i); }
+                                step-toggle(i) => { root.step-toggle(i); } turn-toggle(i) => { root.turn-toggle(i); }
                                 copy(t) => { root.copy-text(t); }
                                 link(u) => { root.open-url(u); }
                             }

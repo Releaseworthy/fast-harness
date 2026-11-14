@@ -20,9 +20,6 @@ pub trait Rows {
     fn set(&self, index: usize, row: MsgRow);
     fn push(&self, row: MsgRow);
     fn replace(&self, rows: Vec<MsgRow>);
-    fn expanded(&self, index: usize) -> bool {
-        self.get(index).is_some_and(|r| r.expanded)
-    }
 }
 
 // A trailing popup spacer (D81) stays last: the mirror counts and writes
@@ -178,7 +175,9 @@ impl Mirror {
             Some(row) => row,
             None => {
                 let mut row = msg_row_with(item, approvals);
-                row.expanded = model.expanded(index);
+                let old = model.get(index);
+                row.expanded = old.as_ref().is_some_and(|r| r.expanded);
+                row.card_open = old.is_some_and(|r| r.card_open);
                 row
             }
         };
@@ -254,6 +253,15 @@ impl Mirror {
     #[cfg(test)]
     fn item_count(&self) -> usize {
         self.items.len()
+    }
+}
+
+/// Opens or folds the tool card of row `index` inside an open run (the
+/// owner, 2026-11-15: a tool call there is one line until clicked).
+pub fn toggle_card(model: &VecModel<MsgRow>, index: usize) {
+    if let Some(mut row) = model.row_data(index) {
+        row.card_open = !row.card_open;
+        model.set_row_data(index, row);
     }
 }
 

@@ -104,10 +104,7 @@ fn long_transcript_texts_stay_under_the_renderer_limit() {
     assert!(drawn_lines(&answer.thinking) <= max, "thinking");
     let shown = crate::trace_rows::expanded(&long);
     assert!(drawn_lines(&shown) <= max);
-    assert!(
-        answer.body == markdown(&shown),
-        "answer drawn from the cut text"
-    );
+    assert_eq!(slint::Model::row_count(&answer.blocks), crate::md_blocks::blocks(&shown).len(), "answer drawn from the cut text");
 }
 
 #[test]

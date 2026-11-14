@@ -71,6 +71,35 @@ export struct ImageChip {
     index: int,
 }
 
+// A table cell of a reply (src/md_blocks.rs): inline markdown and the
+// column's share of the table's width.
+export struct MdCell {
+    text: styled-text,
+    share: float,
+}
+
+// A table row: `head` for the header row (bold, tinted), `odd` for zebra.
+export struct MdRow {
+    cells: [MdCell],
+    head: bool,
+    odd: bool,
+}
+
+// One markdown block of a reply (src/md_blocks.rs). `kind`: p, h, li,
+// code, rule or table. `text` is the inline markdown, `code` a code
+// block's text, `level` a heading's level, `indent` the list depth,
+// `marker` an item's bullet or number, `quote` the block quote depth.
+export struct MdBlock {
+    kind: string,
+    text: styled-text,
+    code: string,
+    level: int,
+    indent: int,
+    marker: string,
+    quote: int,
+    rows: [MdRow],
+}
+
 // One transcript entry. `kind`: user, assistant, tool, note or footer.
 export struct MsgRow {
     kind: string,
@@ -80,8 +109,6 @@ export struct MsgRow {
     text: string,
     // `text` as drawn: cut under the software renderer's i16 pixel limit.
     shown: string,
-    // Assistant text parsed from markdown.
-    body: styled-text,
     thinking: string,
     // Tool name and one-line summary of its arguments.
     title: string,
@@ -132,6 +159,14 @@ export struct MsgRow {
     turn-no: int,
     turn-line: string,
     turn-hidden: bool,
+    // The reply's markdown blocks (ui/markdown.slint draws them).
+    blocks: [MdBlock],
+    // A tool row inside an open run is one line; the user opened its card.
+    card-open: bool,
+    // The tool call's duration ("620 ms"); empty while it runs.
+    took: string,
+    // The thinking's first line: its folded line.
+    thought: string,
 }
 
 // The approval prompt (D64); an empty `id` for none. `title` says what the

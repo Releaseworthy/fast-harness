@@ -27,6 +27,7 @@ fast-harness-core.workspace = true
 fast-harness-plugins.workspace = true
 slint.workspace = true
 serde_json.workspace = true
+pulldown-cmark.workspace = true
 slint-interpreter = { workspace = true, optional = true }
 
 [build-dependencies]

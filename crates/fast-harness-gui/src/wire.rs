@@ -45,9 +45,7 @@ pub fn connect(ui: &MainWindow) {
     ui.on_open_page(|page| {
         with_app(|app, ui| open_page(app, ui, &page));
     });
-    ui.on_toggle(|index| {
-        with_app(|app, _| mirror::toggle(&app.rows, usize::try_from(index).unwrap_or(usize::MAX)));
-    });
+    connect_toggles(ui);
     ui.on_refresh_trace(|| {
         with_app(|app, ui| app.refresh_trace(ui));
     });
@@ -158,5 +156,16 @@ pub fn first_paint() {
         app.refresh_status(ui);
         app.refresh_run(ui);
         accounts::refresh(app, ui);
+    });
+}
+
+/// A row's thinking or tool output (`toggle`) and a tool card inside an
+/// open run (`card-toggle`, the owner 2026-11-15).
+fn connect_toggles(ui: &MainWindow) {
+    ui.on_toggle(|index| {
+        with_app(|app, _| mirror::toggle(&app.rows, usize::try_from(index).unwrap_or(usize::MAX)));
+    });
+    ui.on_card_toggle(|index| {
+        with_app(|app, _| mirror::toggle_card(&app.rows, usize::try_from(index).unwrap_or(usize::MAX)));
     });
 }

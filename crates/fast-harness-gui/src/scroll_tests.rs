@@ -9,7 +9,6 @@ use slint::platform::software_renderer::{MinimalSoftwareWindow, RepaintBufferTyp
 use slint::platform::{Platform, PointerEventButton, WindowAdapter, WindowEvent};
 use slint::{ComponentHandle, LogicalPosition, Model, PhysicalSize, Rgb8Pixel, VecModel};
 
-use crate::rows::markdown;
 use crate::{MainWindow, MsgRow};
 
 const WIDTH: u32 = 1100;
@@ -28,7 +27,7 @@ fn row(kind: &str, text: &str) -> MsgRow {
         kind: kind.into(),
         text: text.into(),
         shown: text.into(),
-        body: markdown(text),
+        blocks: crate::rows::reply_blocks(text),
         ..MsgRow::default()
     }
 }

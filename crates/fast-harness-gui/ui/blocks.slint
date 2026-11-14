@@ -13,7 +13,10 @@ import { SelectableText } from "selectable.slint";
 // Thinking: a gradient bar and the dim italic text.
 export component ThinkingQuote inherits Rectangle {
     in property <string> text;
+    // The indent of a thinking opened from its line (ui/detailline.slint).
+    in property <length> inset;
     HorizontalLayout {
+        padding-left: root.inset;
         spacing: Theme.space-m;
         Rectangle {
             width: 2px;

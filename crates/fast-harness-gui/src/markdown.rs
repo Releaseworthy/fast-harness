@@ -7,7 +7,80 @@
 //! code span, a quote its plain line, a rule nothing, and `<` an escaped
 //! character outside code spans. What still fails falls back to plain text.
 
-use slint::StyledText;
+use slint::{ModelRc, StyledText, VecModel};
+
+use crate::md_blocks::{blocks, shares, Block, Kind};
+use crate::{MdBlock, MdCell, MdRow};
+
+/// A reply as the blocks `ui/markdown.slint` draws (src/md_blocks.rs).
+pub fn reply_blocks(text: &str) -> ModelRc<MdBlock> {
+    let list: Vec<MdBlock> = blocks(text).into_iter().map(md_block).collect();
+    ModelRc::new(VecModel::from(list))
+}
+
+fn md_block(block: Block) -> MdBlock {
+    let kind = match block.kind {
+        Kind::Para => "p",
+        Kind::Heading => "h",
+        Kind::Item => "li",
+        Kind::Code => "code",
+        Kind::Rule => "rule",
+        Kind::Table => "table",
+    };
+    let (text, code) = match block.kind {
+        Kind::Heading => (markdown(&bold(&block.text)), String::new()),
+        Kind::Code => (StyledText::default(), block.text),
+        Kind::Rule | Kind::Table => (StyledText::default(), String::new()),
+        _ => (markdown(&block.text), String::new()),
+    };
+    let int = |n: usize| i32::try_from(n).unwrap_or(i32::MAX);
+    MdBlock {
+        kind: kind.into(),
+        text,
+        code: code.into(),
+        level: int(block.level),
+        indent: int(block.indent),
+        marker: block.marker.into(),
+        quote: int(block.quote),
+        rows: table_rows(&block.rows),
+    }
+}
+
+/// A table's rows, every row padded to the widest one's columns.
+fn table_rows(rows: &[Vec<String>]) -> ModelRc<MdRow> {
+    let shares = shares(rows);
+    let list: Vec<MdRow> = rows
+        .iter()
+        .enumerate()
+        .map(|(index, row)| {
+            let cells: Vec<MdCell> = shares
+                .iter()
+                .enumerate()
+                .map(|(column, share)| {
+                    let text = row.get(column).map(String::as_str).unwrap_or("");
+                    let text = if index == 0 { bold(text) } else { text.to_string() };
+                    MdCell { text: markdown(&text), share: *share }
+                })
+                .collect();
+            MdRow {
+                cells: ModelRc::new(VecModel::from(cells)),
+                head: index == 0,
+                odd: index % 2 == 0 && index > 0,
+            }
+        })
+        .collect();
+    ModelRc::new(VecModel::from(list))
+}
+
+/// `text` bold (headings, header cells); empty stays empty.
+fn bold(text: &str) -> String {
+    let text = text.replace("**", "");
+    if text.trim().is_empty() {
+        String::new()
+    } else {
+        format!("**{}**", text.trim())
+    }
+}
 
 /// Assistant text as styled text; plain text when the markdown is refused.
 pub fn markdown(text: &str) -> StyledText {

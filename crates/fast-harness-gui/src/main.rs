@@ -21,6 +21,8 @@ mod child_view_tests;
 #[cfg(test)]
 mod composer_tests;
 #[cfg(test)]
+mod detail_view_tests;
+#[cfg(test)]
 mod drafts_tests;
 #[cfg(test)]
 mod dropdown_tests;
@@ -58,6 +60,8 @@ mod shots_appearance;
 mod shots_approval;
 #[cfg(test)]
 mod shots_compact;
+#[cfg(test)]
+mod shots_details;
 #[cfg(test)]
 mod shots_jobs;
 #[cfg(test)]

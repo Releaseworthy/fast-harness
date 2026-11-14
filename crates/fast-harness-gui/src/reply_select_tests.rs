@@ -6,7 +6,6 @@ use slint::{ComponentHandle, ModelRc, VecModel};
 
 use crate::fold_view_tests::shot;
 use crate::real_child_tests::{pump, window};
-use crate::rows::markdown;
 use crate::{MainWindow, MsgRow, ReplySelect};
 
 const REPLY: &str = "## Plan\n\nRun **cargo test** first, then read [the log](https://example.com) and `cargo fmt`.\n- one\n- two";
@@ -17,7 +16,7 @@ fn row(item: i32, kind: &str, text: &str) -> MsgRow {
         kind: kind.into(),
         text: text.into(),
         shown: text.into(),
-        body: markdown(text),
+        blocks: crate::rows::reply_blocks(text),
         ..MsgRow::default()
     }
 }

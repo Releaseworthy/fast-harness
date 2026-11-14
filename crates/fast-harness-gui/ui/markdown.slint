@@ -1,0 +1,168 @@
+// A reply's markdown blocks (src/md_blocks.rs, the owner 2026-11-15):
+// headings larger, list items after their marker, code in a monospace box,
+// a quote with a bar on the left, a rule, a table as a grid. Every part
+// that holds wrapped text is a component (ui/blocks.slint, slint#13655), so
+// a row measures its real height for the chat's virtual list.
+import { Theme } from "parts.slint";
+import { CodeBox } from "blocks.slint";
+import { MdBlock, MdRow, MdCell } from "types.slint";
+
+// Inline markdown, wrapped.
+component MdText inherits Rectangle {
+    in property <styled-text> text;
+    in property <length> size: Theme.font-m;
+    callback link(string);
+    VerticalLayout {
+        StyledText {
+            text: root.text;
+            default-color: Theme.text;
+            default-font-size: root.size;
+            link-color: Theme.accent;
+            link-clicked(url) => { root.link(url); }
+        }
+    }
+}
+
+// A list item: its marker (bullet, number or task box) and its text.
+component MdItem inherits Rectangle {
+    in property <MdBlock> block;
+    callback link(string);
+    HorizontalLayout {
+        spacing: 4px;
+        Text {
+            width: 22px;
+            text: root.block.marker;
+            color: Theme.dim;
+            font-size: Theme.font-m;
+            horizontal-alignment: right;
+        }
+        MdText {
+            text: root.block.text;
+            link(url) => { root.link(url); }
+        }
+    }
+}
+
+// A thematic break.
+component MdRule inherits Rectangle {
+    height: Theme.space-m;
+    Rectangle {
+        y: (parent.height - 1px) / 2;
+        height: 1px;
+        background: Theme.line;
+    }
+}
+
+// One table cell: its column's share of the width, a line on its right.
+component MdCellView inherits Rectangle {
+    in property <MdCell> cell;
+    callback link(string);
+    HorizontalLayout {
+        padding-left: Theme.space-s;
+        padding-right: Theme.space-s;
+        padding-top: Theme.space-xs;
+        padding-bottom: Theme.space-xs;
+        MdText {
+            text: root.cell.text;
+            size: Theme.font-s;
+            link(url) => { root.link(url); }
+        }
+    }
+    Rectangle {
+        x: parent.width - 1px;
+        width: 1px;
+        background: Theme.line;
+    }
+}
+
+// One table row: the header tinted, every other body row striped.
+component MdRowView inherits Rectangle {
+    in property <MdRow> data;
+    callback link(string);
+    background: root.data.head ? Theme.code : root.data.odd ? Theme.hover.with-alpha(0.5) : transparent;
+    HorizontalLayout {
+        for cell in root.data.cells: MdCellView {
+            // Widths by column share: nothing preferred, stretched by share.
+            min-width: 0px;
+            preferred-width: 0px;
+            horizontal-stretch: cell.share;
+            cell: cell;
+            link(url) => { root.link(url); }
+        }
+    }
+    Rectangle {
+        y: parent.height - 1px;
+        height: 1px;
+        background: Theme.line;
+    }
+}
+
+// A table: rows of cells sized by their column's share, a frame around.
+component MdTable inherits Rectangle {
+    in property <[MdRow]> rows;
+    callback link(string);
+    border-radius: Theme.radius-s;
+    VerticalLayout {
+        for row in root.rows: MdRowView {
+            data: row;
+            link(url) => { root.link(url); }
+        }
+    }
+    Rectangle {
+        border-width: 1px;
+        border-color: Theme.line;
+        border-radius: Theme.radius-s;
+    }
+}
+
+// One block: indented by its list depth, a bar per quote level.
+export component MdBlockView inherits Rectangle {
+    in property <MdBlock> block;
+    callback link(string);
+    property <bool> quoted: root.block.quote > 0;
+    HorizontalLayout {
+        // An item's marker sits in its level's indent; a code block or a
+        // second paragraph of an item lines up with the item's text.
+        padding-left: root.block.kind == "li" ? max(0, root.block.indent - 1) * 26px : root.block.indent * 26px;
+        spacing: root.quoted ? Theme.space-m : 0px;
+        Rectangle {
+            width: root.quoted ? 3px : 0px;
+            background: Theme.dim.with-alpha(0.35);
+        }
+        VerticalLayout {
+            padding-top: root.block.kind == "h" ? Theme.space-xs : 0px;
+            if root.block.kind == "p": MdText {
+                text: root.block.text;
+                link(url) => { root.link(url); }
+            }
+            if root.block.kind == "h": MdText {
+                text: root.block.text;
+                size: root.block.level <= 1 ? Theme.font-xl : root.block.level == 2 ? Theme.font-l : root.block.level == 3 ? 16px : Theme.font-m;
+                link(url) => { root.link(url); }
+            }
+            if root.block.kind == "li": MdItem {
+                block: root.block;
+                link(url) => { root.link(url); }
+            }
+            if root.block.kind == "code": CodeBox { text: root.block.code; }
+            if root.block.kind == "rule": MdRule { }
+            if root.block.kind == "table": MdTable {
+                rows: root.block.rows;
+                link(url) => { root.link(url); }
+            }
+        }
+    }
+}
+
+// A reply: its blocks in order.
+export component MdReply inherits Rectangle {
+    in property <[MdBlock]> blocks;
+    callback link(string);
+    VerticalLayout {
+        spacing: Theme.space-s;
+        for block in root.blocks: MdBlockView {
+            block: block;
+            link(url) => { root.link(url); }
+        }
+    }
+}

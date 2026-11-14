@@ -4,7 +4,9 @@ import { Theme, LinkText, Columns, Mark, AccentFill, Elevation, Card, Halo } fro
 import { Icons } from "icons.slint";
 import { BusySpinner, IconButton } from "widgets.slint";
 import { ScrollBar } from "scrollbar.slint";
-import { ThinkingQuote, LoadingLine } from "blocks.slint";
+import { LoadingLine } from "blocks.slint";
+import { MdReply } from "markdown.slint";
+import { DetailLine, DetailIcons, DetailLook, ThinkingPart } from "detailline.slint";
 import { ToolFrame } from "toolcard.slint";
 import { RowThumbs } from "attach.slint";
 import { StepLine, StepRail, Rails } from "stepline.slint";
@@ -65,31 +67,23 @@ component AssistantBlock {
     callback link(string);
     VerticalLayout {
         spacing: Theme.space-s;
-        // Show thinking. No speaker tile or name: no logo or "Fast Harness"
-        // inside the chat (the owner, 2026-11-14).
-        if root.thinking: HorizontalLayout {
-            spacing: Theme.space-s;
-            alignment: start;
-            if root.thinking: Mark { text: msg.expanded ? Icons.chevron-down : Icons.chevron-right; color: Theme.dim; font-size: Theme.font-s; }
-            if root.thinking: LinkText {
-                text: msg.expanded ? "Hide thinking" : "Show thinking";
-                font-size: Theme.font-s;
-                vertical-alignment: center;
-                clicked => { root.toggle(); }
-            }
+        // Thinking is one line; open, its text one level in with a rail
+        // (the owner, 2026-11-15). No speaker tile or name: no logo or
+        // "Fast Harness" inside the chat (the owner, 2026-11-14).
+        if root.thinking: ThinkingPart {
+            text: msg.thinking;
+            first: msg.thought;
+            open: msg.expanded;
+            toggled => { root.toggle(); }
         }
-        // Wrapped text under an `if` sits in a component (ui/blocks.slint).
-        if root.thinking && msg.expanded: ThinkingQuote { text: msg.thinking; }
-        // Slint 1.18.1's StyledText takes every press and release (i-slint-core
+        // The reply's markdown blocks (ui/markdown.slint). Slint 1.18.1's
+        // StyledText takes every press and release (i-slint-core
         // items/text.rs), so a double click never reaches an area under it,
         // and one over it would take the links' clicks: select mode starts
         // from the Select link.
-        if msg.text != "" && !root.selecting: StyledText {
-            text: msg.body;
-            default-color: Theme.text;
-            default-font-size: Theme.font-m;
-            link-color: Theme.accent;
-            link-clicked(url) => { root.link(url); }
+        if msg.text != "" && !root.selecting: MdReply {
+            blocks: msg.blocks;
+            link(url) => { root.link(url); }
         }
         // Select mode (src/reply_select.rs): the plain text, selectable.
         if msg.text != "" && root.selecting: ReplyText { text: ReplySelect.text; }
@@ -142,6 +136,7 @@ component MessageView {
     callback link(string);
     callback step-toggle(int);
     callback turn-toggle(int);
+    callback card-toggle();
     // The row's index in the transcript (`item`).
     in property <int> row-index;
     // The empty space at the end while the session popup shows (D81).
@@ -160,12 +155,15 @@ component MessageView {
     property <bool> blank: root.spacer || msg.turn-hidden ? !root.turn-line : msg.folded && !root.line && (msg.kind != "assistant" || msg.text == "");
     property <length> top: root.blank || msg.kind == "footer" ? 0px : msg.kind == "user" ? Theme.space-l : Theme.space-s;
     property <length> line-height: root.line ? 26px + Theme.space-xs : 0px;
+    // A tool call inside an open run is one line (the owner, 2026-11-15);
+    // its click opens the card under it, one level in, with a rail.
+    property <bool> tool-line: root.shown && msg.kind == "tool" && msg.rail && !msg.folded;
     VerticalLayout {
         padding-left: root.side;
         padding-right: root.side;
         padding-top: root.top;
         // A tool card keeps room for its elevation above the step line.
-        padding-bottom: root.blank ? 0px : msg.kind == "footer" ? Theme.space-s : msg.kind == "tool" && !msg.folded ? Theme.space-s + 2px : 2px;
+        padding-bottom: root.blank ? 0px : msg.kind == "footer" ? Theme.space-s : msg.kind == "tool" && !msg.folded && (!root.tool-line || msg.card-open) ? Theme.space-s + 2px : 2px;
         spacing: Theme.space-xs;
         if root.turn-line: StepLine {
             text: msg.turn-line;
@@ -187,7 +185,20 @@ component MessageView {
         // wins over max-height), so the rows after the fold drew blank
         // (D80, 2026-11-14). The parts are components, so `if` is safe
         // from slint#13655.
+        if root.tool-line: DetailLine {
+            icon: DetailIcons.of(msg.tool.kind);
+            name: msg.tool.name != "" ? msg.tool.name : msg.title;
+            text: msg.tool.target != "" ? msg.tool.target : msg.summary;
+            took: msg.took;
+            open: msg.card-open;
+            running: msg.running;
+            failed: msg.error;
+            not-run: msg.not-run ? msg.approval : "";
+            toggled => { root.card-toggle(); }
+        }
         VerticalLayout {
+            // An opened card sits one level in (the owner, 2026-11-15).
+            padding-left: root.tool-line ? DetailLook.indent : 0px;
             if root.shown && msg.kind == "user": UserBubble {
                 msg: msg;
                 copy(t) => { root.copy(t); }
@@ -198,7 +209,7 @@ component MessageView {
                 toggle => { root.toggle(); }
                 link(u) => { root.link(u); }
             }
-            if root.shown && msg.kind == "tool" && !msg.folded: ToolFrame {
+            if root.shown && msg.kind == "tool" && !msg.folded && (!root.tool-line || msg.card-open): ToolFrame {
                 tool: msg.tool;
                 error: msg.error;
                 not-run: msg.not-run;
@@ -233,6 +244,13 @@ component MessageView {
             Rails.turn = self.hovered ? msg.turn-head : Rails.turn == msg.turn-head ? -1 : Rails.turn;
         }
         clicked => { root.turn-toggle(msg.turn-head); }
+    }
+    if root.tool-line && msg.card-open: StepRail {
+        label: "Collapse " + msg.title;
+        x: root.side + DetailLook.rail-x;
+        y: root.top + root.line-height + DetailLook.height + Theme.space-xs;
+        height: root.height - self.y;
+        clicked => { root.card-toggle(); }
     }
     if msg.rail && !msg.turn-hidden: StepRail {
         x: root.step-x;
@@ -285,6 +303,7 @@ export component TranscriptView {
     callback toggle(int);
     callback turn-toggle(int);
     callback step-toggle(int);
+    callback card-toggle(int);
     callback copy(string);
     callback link(string);
     property <length> total: root.tops.length > 0 ? root.tops[root.tops.length - 1] : 0px;
@@ -366,6 +385,12 @@ export component TranscriptView {
                 ReplySelect.item = -1;
                 root.anchor(slot, -1, false);
                 root.toggle(self.msg.item);
+                root.sync();
+            }
+            card-toggle => {
+                ReplySelect.item = -1;
+                root.anchor(slot, -1, false);
+                root.card-toggle(self.msg.item);
                 root.sync();
             }
             step-toggle(h) => {

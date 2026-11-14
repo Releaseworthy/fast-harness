@@ -11,7 +11,6 @@ use slint::platform::software_renderer::{MinimalSoftwareWindow, RepaintBufferTyp
 use slint::platform::{Platform, WindowAdapter};
 use slint::{ComponentHandle, ModelRc, PhysicalSize, Rgb8Pixel, SharedString, VecModel};
 
-use crate::rows::markdown;
 use crate::{
     shots_png, shots_tools, shots_trace, theme, AccountRow, MainWindow, MsgRow, SideRow, TraceRow,
 };
@@ -49,7 +48,7 @@ fn msg(kind: &str, text: &str) -> MsgRow {
         kind: kind.into(),
         text: text.into(),
         shown: text.into(),
-        body: markdown(text),
+        blocks: crate::rows::reply_blocks(text),
         ..MsgRow::default()
     }
 }

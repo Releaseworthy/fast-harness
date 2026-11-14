@@ -95,6 +95,7 @@ impl Host for Chat {
             return true;
         };
         (before.expanded && !after.expanded)
+            || (before.card_open && !after.card_open)
             || (!before.folded && after.folded)
             || (before.step_open && !after.step_open)
             || (!before.turn_hidden && after.turn_hidden)

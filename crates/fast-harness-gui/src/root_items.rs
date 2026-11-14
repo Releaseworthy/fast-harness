@@ -22,6 +22,7 @@ mod spawn_settings;
 mod turn_rows;
 mod listings;
 mod markdown;
+mod md_blocks;
 mod mirror;
 mod model_refresh;
 mod open_load;

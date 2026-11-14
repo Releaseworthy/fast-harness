@@ -1362,6 +1362,7 @@ version = "0.1.0"
 dependencies = [
  "fast-harness-core",
  "fast-harness-plugins",
+ "pulldown-cmark",
  "serde_json",
  "slint",
  "slint-build",

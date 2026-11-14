@@ -12,7 +12,7 @@ use crate::tool_rows::tool_view;
 use crate::trace_rows::expanded;
 use crate::{AccountRow, MsgRow, SessionRow};
 
-pub use crate::markdown::markdown;
+pub use crate::markdown::reply_blocks;
 
 /// Every drawn text goes through [xpanded]: the software renderer lays a
 /// Text out in `i16` pixels, so a longer one draws its lines over each other
@@ -54,8 +54,9 @@ fn msg_row_plain(item: &Item) -> MsgRow {
             ..row("user", text)
         },
         Item::Assistant { text, thinking, .. } => MsgRow {
-            body: markdown(&expanded(text)),
+            blocks: reply_blocks(&expanded(text)),
             thinking: expanded(thinking).into(),
+            thought: first_line(thinking).into(),
             ..row("assistant", text)
         },
         Item::Tool {
@@ -77,6 +78,7 @@ fn msg_row_plain(item: &Item) -> MsgRow {
                 live: live.as_ref().map(|tail| tail.text()).unwrap_or_default().into(),
                 running: output.is_none(),
                 error: *is_error,
+                took: duration_ms.map(took).unwrap_or_default().into(),
                 tool: tool_view(name, &detail),
                 ..row("tool", output.as_deref().unwrap_or(""))
             }
@@ -86,6 +88,21 @@ fn msg_row_plain(item: &Item) -> MsgRow {
             ..row("note", text)
         },
         Item::StepFooter { .. } => row("footer", &footer_text(item)),
+    }
+}
+
+/// The first non-empty line of `text`, at most 200 characters.
+fn first_line(text: &str) -> String {
+    let line = text.lines().map(str::trim).find(|l| !l.is_empty()).unwrap_or("");
+    line.chars().take(200).collect()
+}
+
+/// A tool call's duration in words: "620 ms", "2.9 s", "3 min 4 s".
+pub fn took(ms: u64) -> String {
+    match ms {
+        0..=999 => format!("{ms} ms"),
+        1000..=59_999 => format!("{:.1} s", ms as f64 / 1000.0),
+        _ => format!("{} min {} s", ms / 60_000, ms % 60_000 / 1000),
     }
 }
 
