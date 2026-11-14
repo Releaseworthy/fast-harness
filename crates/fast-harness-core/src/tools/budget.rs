@@ -20,6 +20,11 @@ pub const SPILL_MARK: &str = "[full output: ";
 /// The shell keeps a quarter of the room as head (2 KB of 8 KB), the rest
 /// as tail: errors are at the end.
 const SHELL_HEAD_SHARE: usize = 4;
+/// Lines the shell keeps from the start of a cut result; the whole text is
+/// in the spill file.
+pub const SHELL_HEAD_LINES: usize = 40;
+/// Lines the shell keeps from the end of a cut result.
+pub const SHELL_TAIL_LINES: usize = 60;
 
 /// What the tools of one session share: where spill files go and the read
 /// ranges already returned. A resumed session starts with no ranges.
@@ -159,10 +164,12 @@ struct ReadSpan {
 pub fn fit(name: &str, mut output: ToolOutput, ctx: &ToolCtx<'_>) -> ToolOutput {
     let full = output.text().into_owned();
     output.set_size(full.len(), None);
-    if full.len() <= ctx.budget {
+    let lines = full.lines().count();
+    let head_tail_kept = SHELL_HEAD_LINES + SHELL_TAIL_LINES;
+    let too_many_lines = keeps_head_tail(name) && lines > head_tail_kept;
+    if full.len() <= ctx.budget && !too_many_lines {
         return output;
     }
-    let lines = full.lines().count();
     let spilled = spill(ctx, &full);
     let note = match &spilled {
         Some(path) => format!(
@@ -177,7 +184,7 @@ pub fn fit(name: &str, mut output: ToolOutput, ctx: &ToolCtx<'_>) -> ToolOutput 
     };
     let room = ctx.budget.saturating_sub(note.len());
     let body = match name {
-        "shell" | "job_output" => head_tail(&full, room),
+        _ if keeps_head_tail(name) => head_tail(&full, room),
         "subagent" => head_and_last_line(&full, room),
         _ => head(&full, room).to_string(),
     };
@@ -238,21 +245,53 @@ fn tail(text: &str, room: usize) -> &str {
     }
 }
 
-/// A quarter of `room` from the start and the rest from the end, with a
-/// marker naming the bytes left out.
+/// Does tool `name` keep the head and the tail of a cut result (errors are
+/// at the end of a command's output)?
+fn keeps_head_tail(name: &str) -> bool {
+    matches!(name, "shell" | "job_output")
+}
+
+/// A quarter of `room` from the start and the rest from the end, at most
+/// [`SHELL_HEAD_LINES`] and [`SHELL_TAIL_LINES`] lines, with a marker
+/// naming the lines and bytes left out.
 fn head_tail(text: &str, room: usize) -> String {
-    let marker_room = 48;
+    let marker_room = 64;
     let usable = room.saturating_sub(marker_room);
-    let first = head(text, usable / SHELL_HEAD_SHARE);
-    let last = tail(text, usable - usable / SHELL_HEAD_SHARE);
+    let first = first_lines(head(text, usable / SHELL_HEAD_SHARE), SHELL_HEAD_LINES);
+    let last = last_lines(
+        tail(text, usable - usable / SHELL_HEAD_SHARE),
+        SHELL_TAIL_LINES,
+    );
     let cut = text.len().saturating_sub(first.len() + last.len());
+    let total = text.lines().count();
+    let kept = first.lines().count() + last.lines().count();
+    let cut_lines = total.saturating_sub(kept);
     let mut out = first.to_string();
     if !out.ends_with('\n') {
         out.push('\n');
     }
-    out.push_str(&format!("[... {cut} bytes cut ...]\n"));
+    out.push_str(&format!("[... {cut_lines} lines, {cut} bytes cut ...]\n"));
     out.push_str(last);
     out
+}
+
+/// The first `count` lines of `text` (with their newlines).
+fn first_lines(text: &str, count: usize) -> &str {
+    match text.match_indices('\n').nth(count.saturating_sub(1)) {
+        Some((index, _)) if count > 0 => &text[..=index],
+        _ if count == 0 => "",
+        _ => text,
+    }
+}
+
+/// The last `count` lines of `text`; a final newline does not start a line.
+fn last_lines(text: &str, count: usize) -> &str {
+    let body = text.strip_suffix('\n').unwrap_or(text);
+    match body.rmatch_indices('\n').nth(count.saturating_sub(1)) {
+        Some((index, _)) if count > 0 => &text[index + 1..],
+        _ if count == 0 => "",
+        _ => text,
+    }
 }
 
 /// The answer cut to fit with its last line (the subagent stats) kept.

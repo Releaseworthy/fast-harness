@@ -14,7 +14,8 @@ use crate::llm::ToolSpec;
 use crate::media;
 
 const DEFAULT_LIMIT: u64 = 2000;
-const MAX_LINE_CHARS: usize = 2000;
+/// A longer line is cut (minified code, logs): grep finds the part needed.
+pub(crate) const MAX_LINE_CHARS: usize = 800;
 
 pub(crate) struct ReadTool;
 
@@ -29,7 +30,7 @@ impl Tool for ReadTool {
             description: "Read a UTF-8 text file. Lines come numbered as \"N: text\" (1-based). \
                 Without offset and limit only the file's head comes back (grep first, then \
                 read line ranges); whole lines fit one result budget; the last line names the \
-                range and where to continue. Lines already returned and unchanged answer \
+                range and where to continue; a line over 800 characters is cut. Lines already returned and unchanged answer \
                 \"[unchanged since call ID]\". A png, jpeg, gif or webp file comes back as \
                 an image with a line giving its size and token cost. Directories and other \
                 binary files are refused."

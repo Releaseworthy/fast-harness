@@ -2,6 +2,7 @@
 
 use super::diff::line_diff;
 use super::tool_detail::{count, size, Call, LineKind, Tone, ToolDetail};
+use crate::tools::BASE_MARK;
 
 const MINUS: char = '\u{2212}';
 
@@ -172,7 +173,10 @@ fn grep_groups(out: &str) -> (Vec<Group<'_>>, Option<String>) {
     let mut cut = None;
     let mut more = None;
     let mut current = "";
-    for line in out.lines().filter(|l| !l.is_empty()) {
+    for line in out
+        .lines()
+        .filter(|l| !l.is_empty() && !l.starts_with(BASE_MARK))
+    {
         if let Some(rest) = line.strip_prefix("[results cut at ") {
             cut = rest.split(' ').next().map(str::to_string);
             continue;
@@ -211,7 +215,10 @@ pub(crate) fn glob(detail: &mut ToolDetail, call: &Call<'_>) {
         return detail.chip("no files", Tone::Plain);
     }
     let mut more = 0;
-    for line in out.lines().filter(|l| !l.is_empty()) {
+    for line in out
+        .lines()
+        .filter(|l| !l.is_empty() && !l.starts_with(BASE_MARK))
+    {
         let hidden = line
             .strip_prefix('[')
             .and_then(|r| r.split_once(" more files not shown"));

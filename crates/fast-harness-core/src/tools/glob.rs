@@ -5,7 +5,7 @@ use std::time::SystemTime;
 
 use serde_json::{json, Value};
 
-use super::args::{display_rel, object_schema, opt_str, req_str, resolve};
+use super::args::{display_rel, object_schema, opt_str, req_str, resolve, search_base};
 use super::walk::files;
 use super::{Effect, Tool, ToolCtx, ToolOutput};
 use crate::llm::ToolSpec;
@@ -25,7 +25,8 @@ impl Tool for GlobTool {
             description: "Find files whose path matches a glob pattern (gitignore syntax: \
                 \"*.rs\" matches at any depth, \"src/**/*.ts\" is anchored to `path`). \
                 Respects .gitignore and skips hidden files. Returns at most 100 paths, newest \
-                modification first, relative to the working directory."
+                modification first, relative to the working directory, or to `path` when \
+                given (a first line names it)."
                 .into(),
             schema: object_schema(
                 json!({
@@ -54,6 +55,7 @@ fn glob(args: &Value, ctx: &ToolCtx<'_>) -> Result<String, String> {
     if !root.is_dir() {
         return Err(format!("not a directory: {}", root.display()));
     }
+    let (base, header) = search_base(ctx.cwd, &root);
     let mut found: Vec<(SystemTime, String)> = Vec::new();
     for entry in files(&root, Some(pattern))? {
         if ctx.cancel.load(Ordering::Relaxed) {
@@ -64,14 +66,15 @@ fn glob(args: &Value, ctx: &ToolCtx<'_>) -> Result<String, String> {
             .ok()
             .and_then(|meta| meta.modified().ok())
             .unwrap_or(SystemTime::UNIX_EPOCH);
-        found.push((modified, display_rel(ctx.cwd, entry.path())));
+        found.push((modified, display_rel(base, entry.path())));
     }
     if found.is_empty() {
         return Ok("No files found.".to_string());
     }
     found.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| a.1.cmp(&b.1)));
     let total = found.len();
-    let mut out: Vec<String> = found.into_iter().take(MAX_FILES).map(|(_, p)| p).collect();
+    let mut out: Vec<String> = header.into_iter().collect();
+    out.extend(found.into_iter().take(MAX_FILES).map(|(_, p)| p));
     if total > MAX_FILES {
         out.push(format!(
             "[{} more files not shown; narrow the pattern or path]",

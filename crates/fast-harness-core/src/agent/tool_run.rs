@@ -13,6 +13,7 @@ use crate::agent::hooks::{self, Record};
 use crate::agent::nested;
 use crate::agent::turn::{ms, traced, Res, Turn};
 use crate::agent::Agent;
+use crate::config::context::shares_step;
 use crate::events::AgentEvent;
 use crate::llm::find::{self, FIND_TOOLS};
 use crate::tools::{Progress, ToolCtx, ToolOutput, ToolSession};
@@ -30,6 +31,8 @@ struct Run<'a> {
     /// `(call id, decision)` of every approval request the step decided
     /// (PLAN.md D64); the agent thread writes them as `tool/approval`.
     decisions: &'a Mutex<Vec<(String, String)>>,
+    /// Calls of the step that share `context.stepOutputBytes`.
+    sharing: usize,
 }
 
 /// One call's output, duration, hook runs and hook context texts.
@@ -63,6 +66,7 @@ impl Turn<'_> {
             session: shared,
             session_id: &self.conv.id,
             decisions: &decisions,
+            sharing: calls.iter().filter(|call| shares_step(&call.name)).count(),
         };
         let done = execute(&run, &calls, &mut *self.sink);
         // Every decided request goes in the log before its results: a replay
@@ -309,9 +313,10 @@ fn not_loaded(agent: &Agent, name: &str, loaded: Option<&[String]>) -> Option<To
 }
 
 /// A panicking tool becomes an error result instead of ending the turn.
-/// The budget of each call comes from `Config::tool_budget` (PLAN.md D37);
-/// PreToolUse and PostToolUse hooks wrap it (D44), and the approval gate
-/// sees the arguments the PreToolUse hooks leave (D64).
+/// The budget of each call comes from `Config::tool_budget` (PLAN.md D37),
+/// cut to its share of `context.stepOutputBytes` (D84); PreToolUse and
+/// PostToolUse hooks wrap it (D44), and the approval gate sees the
+/// arguments the PreToolUse hooks leave (D64).
 fn run_one(
     run: &Run<'_>,
     call: &Call,
@@ -319,9 +324,17 @@ fn run_one(
     emit: &dyn Fn(AgentEvent),
 ) -> (ToolOutput, Vec<Record>, Vec<String>) {
     let agent = run.agent;
+    let (own, context) = (
+        agent.parts.config.tool_budget(&call.name),
+        &agent.parts.config.context,
+    );
+    let budget = match shares_step(&call.name) {
+        true => context.step_share(own, run.sharing),
+        false => own,
+    };
     let ctx = ToolCtx::new(&agent.parts.cwd, run.cancel)
-        .with_budget(agent.parts.config.tool_budget(&call.name))
-        .with_context(&agent.parts.config.context)
+        .with_budget(budget)
+        .with_context(context)
         .with_call_id(&call.id)
         .with_session(run.session)
         .with_progress(progress);

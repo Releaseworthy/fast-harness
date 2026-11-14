@@ -198,6 +198,7 @@ fn a_read_heavy_turn_sends_less_and_every_request_extends_the_last() {
     let before = ContextConfig {
         read_head_bytes: 0,
         dedupe_reads: false,
+        step_output_bytes: 0,
     };
     let (old, _env1) = read_heavy_turn("ctx-before", before);
     let (new, _env2) = read_heavy_turn("ctx-after", ContextConfig::default());

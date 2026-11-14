@@ -70,6 +70,21 @@ pub(crate) fn display_rel(cwd: &Path, path: &Path) -> String {
     }
 }
 
+/// Start of the first line of a glob or grep result whose paths are
+/// relative to the searched folder, not the working directory.
+pub const BASE_MARK: &str = "[paths relative to ";
+
+/// The folder glob and grep show found paths relative to, and the line that
+/// names it: the searched folder `root` when it is not the working
+/// directory (the long shared start is sent once), else `cwd` and no line.
+pub(crate) fn search_base<'p>(cwd: &'p Path, root: &'p Path) -> (&'p Path, Option<String>) {
+    if root == cwd || !root.is_dir() {
+        return (cwd, None);
+    }
+    let line = format!("{BASE_MARK}{}/]", display_rel(cwd, root));
+    (root, Some(line))
+}
+
 /// True when the first 8 KB hold a NUL byte.
 pub(crate) fn looks_binary(bytes: &[u8]) -> bool {
     bytes.iter().take(8 * 1024).any(|byte| *byte == 0)

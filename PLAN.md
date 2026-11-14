@@ -113,6 +113,7 @@ One file per decision in [docs/decisions/](docs/decisions/), moved there unchang
 - D81: ask_user_question tool (deferred, Run, never gated) and one session popup over the composer for approvals and questions; docs/decisions/D81.md.
 - D82 [Subagent models and model guide](docs/decisions/D82.md): `subagent.models` turns models off for children (all on by default; the tool's `model` enum lists the rest, a disabled one is a tool error), `subagent.guide` ends the tool description; both in Settings > Subagent models.
 - D83 [Context diet without breaking the cache](docs/decisions/D83.md): no pruning of sent results or thinking; `context.readHeadBytes` 4 KB head for a read without a range, contained re-reads answer unchanged, grep-then-read prompt line
+- D84 [Tighter cuts and a step budget](docs/decisions/D84.md): read cuts a line at 800 characters; shell keeps 40 head and 60 tail lines; glob and grep show paths relative to a folder `path`; `context.stepOutputBytes` (16 KB) is shared by the calls of one step.
 
 ## Architecture
 

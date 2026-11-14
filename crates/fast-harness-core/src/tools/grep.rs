@@ -8,7 +8,7 @@ use serde_json::{json, Value};
 
 use super::args::{
     cut_chars, display_rel, looks_binary, object_schema, opt_bool, opt_positive, opt_str, req_str,
-    resolve,
+    resolve, search_base,
 };
 use super::walk::files;
 use super::{Effect, Tool, ToolCtx, ToolOutput};
@@ -29,7 +29,8 @@ impl Tool for GrepTool {
             name: "grep".into(),
             description: "Search file contents with a regular expression (Rust regex syntax), \
                 line by line. Respects .gitignore and skips hidden and binary files. Output: \
-                matches grouped by file, a path line (relative to the working directory) then \
+                matches grouped by file, a path line (relative to the working directory, or \
+                to a folder `path`, named once by a first line) then \
                 \"  line: text\" lines; at most max_results matches, then a count of the rest."
                 .into(),
             schema: object_schema(
@@ -84,17 +85,22 @@ fn grep(args: &Value, ctx: &ToolCtx<'_>) -> Result<String, String> {
         more: 0,
         more_files: 0,
     };
+    let (base, header) = search_base(ctx.cwd, &root);
     for entry in files(&root, glob)? {
         if ctx.cancel.load(Ordering::Relaxed) {
             return Err("grep cancelled".to_string());
         }
-        search_file(&mut search, ctx.cwd, entry.path());
+        search_file(&mut search, base, entry.path());
     }
-    Ok(render(&search))
+    match (header, render(&search)) {
+        (Some(line), out) if !search.groups.is_empty() => Ok(format!("{line}\n{out}")),
+        (_, out) => Ok(out),
+    }
 }
 
-/// Adds the matches of one file: shown up to `max`, counted after it.
-fn search_file(search: &mut Search, cwd: &Path, path: &Path) {
+/// Adds the matches of one file: shown up to `max`, counted after it; its
+/// path is shown relative to `base`.
+fn search_file(search: &mut Search, base: &Path, path: &Path) {
     let Ok(bytes) = std::fs::read(path) else {
         return;
     };
@@ -121,7 +127,7 @@ fn search_file(search: &mut Search, cwd: &Path, path: &Path) {
         search.more_files += 1;
     }
     if !shown.is_empty() {
-        search.groups.push((display_rel(cwd, path), shown));
+        search.groups.push((display_rel(base, path), shown));
     }
 }
 
