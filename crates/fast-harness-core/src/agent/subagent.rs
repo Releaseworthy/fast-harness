@@ -10,6 +10,7 @@ use serde_json::{json, Value};
 
 use super::child_run;
 use super::children::{self, Children};
+use super::spawn_models;
 use crate::agent::{AgentParts, Router};
 use crate::config::index::{read_md, MdFile};
 use crate::llm::ToolSpec;
@@ -67,24 +68,33 @@ impl Tool for SubagentTool {
         true
     }
 
+    /// The `model` enum lists the enabled models and the description ends
+    /// with `subagent.guide` (D82); both freeze with the tool list (D36).
     fn spec(&self) -> ToolSpec {
+        let settings = &self.parts.config.subagent;
+        let enabled = spawn_models::enabled(&self.parts.catalog, settings);
+        let mut description = "Run a self-contained task in a fresh agent with its own context; \
+            it returns its final answer. Give it everything it needs in `prompt`. \
+            Optional: `model` (one of the enabled ids, `<provider id>/<id>` for providers/*.json models) and \
+            `effort`; `tools` (tool names it may call at once, without find_tools); \
+            `background: true` returns `{id}` at once and the answer arrives later as a \
+            `[subagent <id> finished]` message (agent_send steers it, agent_stop stops \
+            it, agent_output reads its answer)."
+            .to_string();
+        let guide = spawn_models::guide(&settings.guide, &enabled);
+        if !guide.is_empty() {
+            description = format!("{description}\n\n{guide}");
+        }
         ToolSpec {
             name: NAME.into(),
-            description: "Run a self-contained task in a fresh agent with its own context; \
-                it returns its final answer. Give it everything it needs in `prompt`. \
-                Optional: `model` (a model id, `<provider id>/<id>` for providers/*.json models) and \
-                `effort`; `tools` (tool names it may call at once, without find_tools); \
-                `background: true` returns `{id}` at once and the answer arrives later as a \
-                `[subagent <id> finished]` message (agent_send steers it, agent_stop stops \
-                it, agent_output reads its answer)."
-                .into(),
+            description,
             schema: json!({
                 "type": "object",
                 "properties": {
                     "prompt": {"type": "string", "description": "The complete task."},
                     "description": {"type": "string", "description": "A short label, 3 to 5 words."},
                     "agent": {"type": "string", "description": "An agent type (agents/*.md; find_tools names them): its prompt, model, effort and tools apply."},
-                    "model": {"type": "string", "description": "Model id; default: the parent's."},
+                    "model": spawn_models::model_schema(&enabled),
                     "effort": {"type": "string", "description": "low, medium, high, max or off."},
                     "tools": {"type": "array", "items": {"type": "string"}, "description": "Tools loaded from the start."},
                     "background": {"type": "boolean", "description": "Return {id} at once."}

@@ -69,7 +69,39 @@ fn settings(window: &MinimalSoftwareWindow, ui: &MainWindow, save: &dyn Fn(&str)
     g.set_max_parallel(4);
     g.set_max_depth(1);
     save("settings-limits");
+    subagent_models(window, ui, position);
+    save("settings-subagent-models");
     crate::dialogs::close(ui);
+}
+
+/// Settings > Subagent models (D82): three models, Opus off, the default
+/// guide with an unsaved edit, scrolled into view.
+fn subagent_models(
+    window: &MinimalSoftwareWindow,
+    ui: &MainWindow,
+    position: slint::LogicalPosition,
+) {
+    let row = |id: &str, name: &str, on: bool| crate::SpawnModel {
+        id: id.into(),
+        label: format!("{name} ({id})").into(),
+        on,
+    };
+    let g = ui.global::<crate::SpawnUi>();
+    let rows = vec![
+        row("claude-opus-5-5", "Claude Opus 5.5", false),
+        row("claude-sonnet-5-5", "Claude Sonnet 5.5", true),
+        row("claude-haiku-5-5", "Claude Haiku 5.5", true),
+    ];
+    g.set_models(slint::ModelRc::new(VecModel::from(rows)));
+    let guide = fast_harness_core::config::DEFAULT_SUBAGENT_GUIDE;
+    g.set_saved(guide.into());
+    g.set_guide(format!("{guide}\n- Fable: long creative writing.").into());
+    window.dispatch_event(WindowEvent::PointerScrolled {
+        position,
+        delta_x: 0.0,
+        delta_y: -420.0,
+    });
+    frames(window, 300);
 }
 
 #[test]

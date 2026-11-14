@@ -18,6 +18,7 @@ mod host;
 mod jobs_view;
 mod keys;
 mod limits;
+mod spawn_settings;
 mod turn_rows;
 mod listings;
 mod mirror;

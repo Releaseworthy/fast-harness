@@ -5,6 +5,7 @@ import { PromptSettings } from "prompt_settings.slint";
 import { Appearance } from "appearance.slint";
 import { ConfigSettings } from "config_settings.slint";
 import { SubagentLimits } from "limits.slint";
+import { SubagentModels } from "spawn_settings.slint";
 
 // A labelled settings row: the name, a dropdown and a caption under it.
 component SettingRow {
@@ -100,6 +101,7 @@ export component SettingsBody inherits VerticalLayout {
         if root.note != "": Text { text: root.note; color: Theme.text; font-size: Theme.font-s; wrap: word-wrap; }
     } }
     Section { SubagentLimits { } }
+    Section { SubagentModels { } }
     Section { PromptSettings { } }
     Section { ConfigSettings { } }
     if root.ui-files: Section { VerticalLayout {

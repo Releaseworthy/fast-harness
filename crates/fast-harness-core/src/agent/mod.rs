@@ -25,6 +25,7 @@ mod preload;
 pub mod prompt;
 pub mod prompt_store;
 pub mod session_tools;
+mod spawn_models;
 mod subagent;
 mod tool_run;
 mod turn;

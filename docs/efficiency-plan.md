@@ -138,7 +138,7 @@ Order: 10, 11, 12, 13, 14, 15, 17A, 19, 17B, 21A, 18, 16, 20, 21B, 21C. Phases 1
 ### Phase 15: subagents v2
 
 - Arguments: `prompt`, `description`, `agent` (a type from `agents/*.md`, phase 17A), `model`, `effort`, `tools` (names loaded from the start, so the child needs no find step), `background`.
-- Defaults from `"subagent": {"model": null, "effort": null, "maxDepth": 1, "maxParallel": 4, "outputBytes": 8192}`; `null` inherits.
+- Defaults from `"subagent": {"model": null, "effort": null, "maxDepth": 1, "maxParallel": 4, "outputBytes": 8192, "models": {}, "guide": "<D82 default>"}`; `null` inherits. `models` maps a model id to `false` to keep children off it (a missing id is on); `guide` ends the tool description (PLAN.md D82).
 - Nesting: the session header gains `depth`; a child gets the `subagent` tool while `depth < maxDepth`. With the same model, system and tool list as its parent, a child's first request reads the parent's cached prefix.
 - Background: `background: true` returns `{id}` at once; the child's answer arrives in the parent's inbox as a steer text when it ends. Tools, all deferred: `agent_send(id, text)`, `agent_stop(id)`, `agent_output(id, wait)`.
 - The parent's front end receives `AgentEvent::Subagent {session, running}` and one progress line per child (step and current tool), at most every 500 ms.
