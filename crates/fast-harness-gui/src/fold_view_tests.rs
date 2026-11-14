@@ -119,6 +119,23 @@ impl Chat {
             .map(|y| (left..left + 600).any(|x| at(x, y) != at(left - 4, y)))
             .collect()
     }
+    /// Saves the window as `name`.png under `FH_FOLD_SHOTS` when it is set
+    /// (the before and after shots of the fold fix).
+    fn shot(&self, name: &str) {
+        let Some(dir) = std::env::var_os("FH_FOLD_SHOTS") else {
+            return;
+        };
+        let size = self.window.size();
+        let mut pixels = vec![Rgb8Pixel { r: 0, g: 0, b: 0 }; (size.width * size.height) as usize];
+        self.window.request_redraw();
+        self.window.draw_if_needed(|r| {
+            r.render(&mut pixels, size.width as usize);
+        });
+        let rgb: Vec<u8> = pixels.iter().flat_map(|p| [p.r, p.g, p.b]).collect();
+        let png = crate::shots_png::encode(size.width, size.height, &rgb);
+        let path = std::path::Path::new(&dir).join(format!("{name}.png"));
+        std::fs::write(path, png).expect("shot");
+    }
     /// The longest blank stretch between two drawn lines of the list.
     fn longest_gap(&self) -> usize {
         let lines = self.lines();
@@ -173,6 +190,36 @@ fn step_fold(place: Place) {
         chat.fold_step(head);
         chat.assert_drawn(&format!("{place:?} step {head} folded again"));
     }
+}
+
+/// The first, a middle and the last turn folded in turn, each opened again
+/// before the next: the list draws over its height every time (2026-11-14:
+/// the owner saw the whole chat frame empty after a fold).
+fn each_turn_fold(place: Place) {
+    let mut chat = chat(place);
+    let rows: Vec<usize> = turns(&chat.view.items).iter().map(|t| t.row).collect();
+    for user in [rows[0], rows[rows.len() / 2], rows[rows.len() - 1]] {
+        chat.fold_turn(user);
+        chat.shot(&format!("{place:?}-fold-{user}"));
+        chat.assert_drawn(&format!("{place:?} turn {user} folded"));
+        chat.fold_turn(user);
+        chat.assert_drawn(&format!("{place:?} turn {user} open again"));
+    }
+}
+
+#[test]
+fn the_first_middle_and_last_turn_fold_at_the_top() {
+    each_turn_fold(Place::Top);
+}
+
+#[test]
+fn the_first_middle_and_last_turn_fold_in_the_middle() {
+    each_turn_fold(Place::Middle);
+}
+
+#[test]
+fn the_first_middle_and_last_turn_fold_at_the_bottom() {
+    each_turn_fold(Place::Bottom);
 }
 
 #[test]

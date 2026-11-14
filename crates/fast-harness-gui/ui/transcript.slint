@@ -257,11 +257,11 @@ export component TranscriptView {
     // the height of the "spacer" row Rust appends then, so the list keeps
     // its full height and its last real row ends at the popup's top.
     in property <length> pad;
-    changed pad => { if root.follow { list.content-y = root.bottom; } }
+    changed pad => { if root.follow { list.content-y = root.follow-y; } }
     property <bool> spaced: root.rows.length > 0 && root.rows[root.rows.length - 1].kind == "spacer";
     // The list's height and the bottom of its last real row (for the tests).
     out property <length> list-height: list.height;
-    out property <length> end-y: list.content-y + list.content-height - (root.spaced ? root.pad : 0px);
+    out property <length> end-y: list.content-y + (root.exact ? root.end : list.content-height) - (root.spaced ? root.pad : 0px);
     property <length> bottom: min(0px, list.visible-height - list.content-height);
     // How far the view is above the bottom: exact while the last row is
     // laid out, whatever the ListView's height estimate.
@@ -286,7 +286,7 @@ export component TranscriptView {
     public function to-bottom() {
         root.follow = true;
         root.target = -1;
-        list.content-y = root.bottom;
+        list.content-y = root.follow-y;
     }
 
     // A navigator tick asked for row `row` at the top (D77). The list lays
@@ -295,6 +295,34 @@ export component TranscriptView {
     // then pins the view to its top each time the list moves it (`pin`,
     // `changed y`) until a user scroll.
     property <int> target: -1;
+
+    // The bottom of the last row while it is laid out, and that row (-1:
+    // not known). Following the bottom holds the last row's real end at the
+    // view's end: the list's `content-height` is an estimate from the rows
+    // in view, and after a fold of the last turn its zero-height rows made
+    // each pass estimate anew, so following that estimate swung the view
+    // between two places forever and left the frame blank below the fold
+    // (2026-11-14).
+    property <length> end;
+    property <int> end-row: -1;
+    function at-end(i: int, bottom: length) {
+        if i != root.rows.length - 1 {
+            return;
+        }
+        root.end = bottom;
+        root.end-row = i;
+        if root.follow && root.target < 0 {
+            list.content-y = min(0px, list.visible-height - bottom);
+        }
+    }
+    changed rows => { root.end-row = -1; }
+    // The last row is laid out near the view, so `end` holds (a row
+    // scrolled far away is gone and its end stale).
+    property <bool> exact: root.end-row == root.rows.length - 1 && root.end + list.content-y > -list.visible-height && root.end + list.content-y < 2 * list.visible-height;
+    // Where following the bottom puts `content-y`: the last row's real end
+    // when known, else the list's estimate.
+    property <length> follow-y: root.exact ? min(0px, list.visible-height - root.end) : root.bottom;
+
     public function go-row(row: int) {
         root.follow = false;
         root.target = row;
@@ -334,12 +362,15 @@ export component TranscriptView {
             msg: item;
             property <bool> pinned: i == root.target;
             init => {
+                root.at-end(i, self.y + self.height);
                 if self.pinned { root.pin(i, self.y); }
             }
             changed pinned => {
                 if self.pinned { root.pin(i, self.y); }
             }
+            changed height => { root.at-end(i, self.y + self.height); }
             changed y => {
+                root.at-end(i, self.y + self.height);
                 if self.pinned { root.pin(i, self.y); }
                 if self.at-top && root.target < 0 { TurnsUi.top-row = i; }
                 if self.at-top { root.seek(i); }
@@ -368,7 +399,7 @@ export component TranscriptView {
         }
         changed content-height => {
             if (root.follow) {
-                self.content-y = root.bottom;
+                self.content-y = root.follow-y;
             }
         }
     }
