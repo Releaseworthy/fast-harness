@@ -39,6 +39,9 @@ pub struct Deco {
     pub turn_line: String,
     /// The row's turn is folded: only its first row draws, as the line.
     pub turn_hidden: bool,
+    /// A finished tool call inside an open run: one line until clicked
+    /// (the owner, 2026-11-15); a running or waiting call keeps its card.
+    pub lined: bool,
 }
 
 /// Writes `deco` into `row`.
@@ -57,6 +60,7 @@ pub fn apply(row: &mut MsgRow, deco: &Deco) {
     row.turn_no = i32::try_from(deco.turn_no).unwrap_or(i32::MAX);
     row.turn_line = deco.turn_line.as_str().into();
     row.turn_hidden = deco.turn_hidden;
+    row.detail_line = deco.lined;
 }
 
 /// How the chat shows the steps.
@@ -127,12 +131,17 @@ impl Steps<'_> {
         if line.is_empty() {
             return out;
         }
-        let open = self.open.contains(&(start + head));
+        // A call waiting for the user's answer keeps its run open.
+        let waiting = words.contains(&Some(WAITING));
+        let open = self.open.contains(&(start + head)) || waiting;
         // The text row that ends the run keeps its text and draws no rail.
         let tail = matches!(items.last(), Some(Item::Assistant { text, .. }) if !text.trim().is_empty());
         let railed = if tail && items.len() - 1 > head { items.len() - 1 } else { items.len() };
         for deco in out[head..railed].iter_mut() {
             (deco.rail, deco.head) = (open, start + head);
+        }
+        for (deco, (item, word)) in out.iter_mut().zip(items.iter().zip(words)) {
+            deco.lined = open && matches!(item, Item::Tool { output: Some(_), .. }) && *word != Some(WAITING);
         }
         if !open {
             for ((deco, item), word) in out.iter_mut().zip(items).zip(words) {

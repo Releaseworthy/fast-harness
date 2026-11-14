@@ -117,3 +117,47 @@ fn full_detail_has_no_lines_and_switches_in_place() {
     mirror.set_full(false, &model);
     assert!(model.row_data(2).is_some_and(|r| r.folded));
 }
+
+/// User, text, a finished grep, then `b` without its result.
+fn unfinished() -> Transcript {
+    let mut view = Transcript::new();
+    view.push_user("q");
+    view.apply(&AgentEvent::TextDelta("Looking.".into()));
+    for id in ["a", "b"] {
+        view.apply(&AgentEvent::ToolCall {
+            id: id.into(),
+            name: "shell".into(),
+            arguments: "{}".into(),
+        });
+    }
+    view.apply(&AgentEvent::ToolResult {
+        id: "a".into(),
+        content: "ok".into(),
+        is_error: false,
+        duration_ms: 1,
+    });
+    view
+}
+
+#[test]
+fn a_call_waiting_for_an_answer_opens_its_run_and_keeps_its_card() {
+    let view = unfinished();
+    let mut words = vec![None; view.items.len()];
+    words[3] = Some(WAITING);
+    let none = HashSet::new();
+    let steps = Steps { items: &view.items, words: &words, full: false, open: &none, closed: &none };
+    let decos = steps.from(0);
+    assert!(decos[2].open && decos[2].rail, "the run opens: {:?}", decos[2]);
+    assert!(decos[2].lined, "the finished call is a line");
+    assert!(!decos[3].lined && !decos[3].folded, "the waiting call keeps its card");
+}
+
+#[test]
+fn a_running_call_in_an_open_run_keeps_its_card() {
+    let view = unfinished();
+    let words = vec![None; view.items.len()];
+    let (open, none) = (HashSet::from([2]), HashSet::new());
+    let steps = Steps { items: &view.items, words: &words, full: false, open: &open, closed: &none };
+    let decos = steps.from(0);
+    assert!(decos[2].lined && !decos[3].lined, "{:?}", &decos[2..]);
+}

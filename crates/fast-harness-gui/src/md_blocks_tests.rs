@@ -50,3 +50,11 @@ fn a_reply_row_carries_its_blocks() {
     let head = table.rows.row_data(0).expect("header");
     assert!(head.head && head.cells.row_count() == 2);
 }
+
+#[test]
+fn inline_marks_at_the_edges_of_a_cell_or_paragraph_stay() {
+    let blocks = blocks("**Bold** start and [a link](https://x.y)\n\n| A |\n|---|\n| **trace v4** |\n| *it* `c` |\n");
+    assert_eq!(blocks[0].text, "**Bold** start and [a link](https://x.y)");
+    assert_eq!(blocks[1].rows[1], vec!["**trace v4**"]);
+    assert_eq!(blocks[1].rows[2], vec!["*it* `c`"]);
+}

@@ -163,6 +163,9 @@ export struct MsgRow {
     blocks: [MdBlock],
     // A tool row inside an open run is one line; the user opened its card.
     card-open: bool,
+    // A finished call inside an open run draws as that line (a running
+    // or waiting call keeps its card).
+    detail-line: bool,
     // The tool call's duration ("620 ms"); empty while it runs.
     took: string,
     // The thinking's first line: its folded line.

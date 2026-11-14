@@ -62,6 +62,8 @@ component AssistantBlock {
     // The step is folded (D73): the text stays, the thinking goes.
     property <bool> thinking: msg.thinking != "" && !msg.folded;
     property <bool> selecting: msg.item >= 0 && ReplySelect.item == msg.item;
+    // The drawn reply's height, kept for select mode.
+    property <length> kept;
     callback copy(string);
     callback toggle();
     callback link(string);
@@ -82,11 +84,17 @@ component AssistantBlock {
         // and one over it would take the links' clicks: select mode starts
         // from the Select link.
         if msg.text != "" && !root.selecting: MdReply {
+            changed height => { root.kept = self.height; }
             blocks: msg.blocks;
             link(url) => { root.link(url); }
         }
         // Select mode (src/reply_select.rs): the plain text, selectable.
-        if msg.text != "" && root.selecting: ReplyText { text: ReplySelect.text; }
+        // Select mode keeps the reply's height: a shorter plain text at the
+        // list's end would pull the rows above it down.
+        if msg.text != "" && root.selecting: ReplyText {
+            min-height: root.kept;
+            text: ReplySelect.text;
+        }
         if msg.text != "": HorizontalLayout {
             spacing: Theme.space-m;
             alignment: start;
@@ -157,7 +165,7 @@ component MessageView {
     property <length> line-height: root.line ? 26px + Theme.space-xs : 0px;
     // A tool call inside an open run is one line (the owner, 2026-11-15);
     // its click opens the card under it, one level in, with a rail.
-    property <bool> tool-line: root.shown && msg.kind == "tool" && msg.rail && !msg.folded;
+    property <bool> tool-line: root.shown && msg.kind == "tool" && msg.detail-line && !msg.folded;
     VerticalLayout {
         padding-left: root.side;
         padding-right: root.side;

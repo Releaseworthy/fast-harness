@@ -81,6 +81,11 @@ pub fn blocks(text: &str) -> Vec<Block> {
 
 impl Split<'_> {
     fn event(&mut self, event: Event, range: Range<usize>) {
+        // An inline tag's span holds its marks (`**`, `[`): a cell or a
+        // paragraph that starts or ends with one keeps them.
+        if let Event::Start(Tag::Emphasis | Tag::Strong | Tag::Strikethrough | Tag::Link { .. } | Tag::Image { .. }) = &event {
+            self.inline(range.clone());
+        }
         match event {
             Event::Start(tag) => self.start(tag),
             Event::End(tag) => self.end(tag),
