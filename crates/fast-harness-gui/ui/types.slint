@@ -113,6 +113,9 @@ export struct MsgRow {
     // The row of the step's line; an opened step's rows draw the rail
     // (a faint line on the left) whose click folds the step.
     step-head: int,
+    // The row's index in the transcript (the mirror's rows, one per item):
+    // the list leaves out rows that draw nothing (`rows::shows`).
+    item: int,
     rail: bool,
     step-running: bool,
     step-failed: bool,

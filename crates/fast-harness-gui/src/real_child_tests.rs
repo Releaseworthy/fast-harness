@@ -164,52 +164,165 @@ fn temp(tag: &str) -> PathBuf {
 /// The owner's own logs (read-only, copied): every child of the parent
 /// session opened from its row draws its rows.
 /// The child's log: a trimmed copy of a real finished subagent's log (the
-/// owner's, 2026-11-13, strings cut to 300 characters, accounts and
-/// signatures replaced): six steps of tool calls, then the answer step.
-/// Its last row, the answer step's usage footer, is folded to no height.
+/// owner's, 2026-11-13, strings cut to 120 characters, accounts and
+/// signatures replaced, the answer replaced by a long filler): 32 steps of
+/// tool calls folded to their lines, then the answer step, whose usage
+/// footer (folded, no height) is the last row.
 const CHILD_LOG: &str = include_str!("fixtures/finished-child.jsonl");
 
-/// Opens the child row and asserts it draws; saves `name`.png.
-fn assert_child_drawn(window: &MinimalSoftwareWindow, ui: &MainWindow, child: &str, name: &str) {
-    click_child(window, child);
+/// Writes `log` (the fixture or a part of it) as child `child` of `parent`.
+fn write_child(home: &Path, cwd: &Path, parent: &str, child: &str, log: &str) {
+    let json_cwd = cwd.to_string_lossy().replace('\\', "\\\\");
+    let log = log
+        .replacen("CHILD_ID", child, 1)
+        .replacen("PARENT_ID", parent, 1);
+    let path = session::dir(home, cwd).join(format!("{child}.jsonl"));
+    std::fs::write(path, log.replacen("CHILD_CWD", &json_cwd, 1)).expect("child log");
+}
+
+/// A home with a parent session and the fixture child; returns both ids.
+fn fixture_home(dir: &Path, cwd: &Path, log: &str) -> (PathBuf, String, String) {
+    let home = dir.join("home");
+    std::fs::create_dir_all(cwd).expect("cwd");
+    let conv = fast_harness_core::agent::Conversation::create(&home, cwd, None);
+    let parent = conv.expect("parent").id;
+    let child = format!("{parent}-child");
+    write_child(&home, cwd, &parent, &child, log);
+    (home, parent, child)
+}
+
+/// Opens session `id` as `App::open_session` does when its log must be
+/// read, with the worker's part run on this thread (the plain test platform
+/// has no event loop proxy, so a spawned worker's result never comes).
+/// Returns the open's generation.
+fn open_here(home: &Path, cwd: &Path, id: &str) -> u64 {
+    let generation = with_app(|app, ui| {
+        ui.set_loading(true);
+        app.opens.ask(Some(id)).map(|a| a.generation)
+    });
+    let generation = generation.flatten().expect("an open starts");
+    arrive(home, cwd, id, generation);
+    generation
+}
+
+/// The open worker of `generation` for session `id` ended.
+fn arrive(home: &Path, cwd: &Path, id: &str, generation: u64) {
+    let result = fast_harness_core::view::opened::load(home, cwd, id);
+    with_app(|app, ui| crate::open_load::arrived(app, ui, generation, cwd, result));
+}
+
+/// A click on child `child`'s row (`subagents_view::open_child`) whose
+/// open runs here: the view stack gets the child, then its log opens.
+fn click_here(home: &Path, cwd: &Path, parent: &str, child: &str) -> u64 {
+    with_app(|app, _| {
+        let (child, parent) = (child.to_string(), parent.to_string());
+        let (back, label) = ("parent session".to_string(), "subagent".to_string());
+        let view = crate::subagents_view::Viewing {
+            child,
+            parent,
+            back,
+            label,
+        };
+        app.subagents.viewing.push(view);
+    });
+    open_here(home, cwd, child)
+}
+/// The app on a plain test window, the parent shown and its children read.
+fn show_parent(home: &Path, cwd: &Path, parent: &str) -> (Rc<MinimalSoftwareWindow>, MainWindow) {
+    let (window, ui) = crate::turn_nav_view_tests::window(WIDTH, HEIGHT);
+    let rt = Runtime::load_at(home.to_path_buf()).expect("runtime");
+    install(App::new(&ui, rt, Some(cwd.to_path_buf())));
+    open_here(home, cwd, parent);
+    let found = session::children(home, cwd, parent).expect("children");
+    with_app(|app, _| app.subagents.children = found);
+    crate::turn_nav_view_tests::frames(&window, 200);
+    (window, ui)
+}
+
+/// The chat draws its rows down to its end, at the bottom; saves `name`.png.
+fn assert_end_drawn(window: &MinimalSoftwareWindow, ui: &MainWindow, what: &str, name: &str) {
     crate::fold_view_tests::shot(window, name);
     assert!(
         ui.get_messages().row_count() > 0,
-        "{child}: no rows: {}",
+        "{what}: no rows: {}",
         state(ui)
     );
-    crate::child_view_tests::assert_drawn(window, ui, &format!("{child}: {}", state(ui)));
+    crate::child_view_tests::assert_drawn(window, ui, &format!("{what}: {}", state(ui)));
+    assert_at_bottom(ui, what);
 }
 
-/// A finished child opened from its row in the subagents popover draws its
-/// rows, also when its last row has no height (2026-11-14: the owner saw
-/// the view empty).
+/// A finished child opened from its row draws its rows down to its end
+/// (2026-11-14: the owner saw it empty; its folded rows of no height left
+/// Slint's ListView estimate at 0).
 #[test]
-fn a_finished_child_opened_from_its_row_draws() {
+fn a_finished_child_opened_from_its_row_draws_at_the_bottom() {
     let dir = temp("fixture");
-    let (home, cwd) = (dir.join("home"), dir.join("work"));
-    std::fs::create_dir_all(&cwd).expect("cwd");
-    let parent = fast_harness_core::agent::Conversation::create(&home, &cwd, None)
-        .expect("parent")
-        .id;
-    let child = format!("{parent}-child");
-    let json_cwd = cwd.to_string_lossy().replace('\\', "\\\\");
-    let log = CHILD_LOG
-        .replacen("CHILD_ID", &child, 1)
-        .replacen("PARENT_ID", &parent, 1);
-    let path = session::dir(&home, &cwd).join(format!("{child}.jsonl"));
-    std::fs::write(path, log.replacen("CHILD_CWD", &json_cwd, 1)).expect("child log");
+    let cwd = dir.join("work");
+    let (home, parent, child) = fixture_home(&dir, &cwd, CHILD_LOG);
+    let (window, ui) = show_parent(&home, &cwd, &parent);
+    click_here(&home, &cwd, &parent, &child);
+    crate::turn_nav_view_tests::frames(&window, 600);
+    assert!(with_app(|app, ui| crate::subagents_view::render(app, ui)).is_some());
+    assert_eq!(with_app(|app, _| app.runs.id.clone()), Some(Some(child)));
+    assert_end_drawn(&window, &ui, "the finished child", "fixture-child");
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// A child shown while it runs gets its live events (`turn::deliver`, as
+/// `child_pump` hands them); when it ends (`child_pump::ended`) its whole
+/// log opens again (`open_load::reload`) and draws down to its end.
+#[test]
+fn a_running_child_that_ends_draws_its_whole_log() {
+    let dir = temp("running");
+    let cwd = dir.join("work");
+    let last_step = CHILD_LOG.rfind("{\"type\":\"step/start\"").expect("a step");
+    let (home, parent, child) = fixture_home(&dir, &cwd, &CHILD_LOG[..last_step]);
+    let (window, ui) = show_parent(&home, &cwd, &parent);
+    let opened = click_here(&home, &cwd, &parent, &child);
+    with_app(|app, _| {
+        let run = app.runs.get_mut(&child).expect("the child's run");
+        run.busy = true;
+        app.subagents.pumped = Some(child.clone());
+    });
+    use fast_harness_core::events::AgentEvent;
+    crate::turn::deliver(&child, AgentEvent::StepStart { turn: 1, step: 32 });
+    crate::turn::deliver(&child, AgentEvent::TextDelta("Writing the report.".into()));
+    crate::turn_nav_view_tests::frames(&window, 300);
+    assert_end_drawn(&window, &ui, "the running child", "running-child");
+    write_child(&home, &cwd, &parent, &child, CHILD_LOG);
+    // `ended` asks the reload (the next generation); its worker's part:
+    with_app(|app, ui| crate::child_pump::ended(app, ui, &child));
+    arrive(&home, &cwd, &child, opened + 1);
+    crate::turn_nav_view_tests::frames(&window, 600);
+    assert!(
+        with_app(|app, _| !app.runs.shown.busy).unwrap_or(false),
+        "the run is idle"
+    );
+    assert_end_drawn(&window, &ui, "the ended child", "running-child-ended");
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// The same through the real workers (`App::open_session`, the subagents
+/// scan): ignored, since the event loop proxy it installs is one per
+/// process and would run other tests' worker results on this thread.
+#[test]
+#[ignore = "installs a process-wide event loop proxy"]
+fn a_finished_child_opened_through_the_workers_draws() {
+    let dir = temp("workers");
+    let cwd = dir.join("work");
+    let (home, parent, child) = fixture_home(&dir, &cwd, CHILD_LOG);
     let (window, ui) = window();
     open_parent(&window, &ui, &home, &cwd, &parent, 1);
-    assert_child_drawn(&window, &ui, &child, "fixture-child");
+    click_child(&window, &child);
+    assert_end_drawn(&window, &ui, "the finished child", "workers-child");
     let _ = std::fs::remove_dir_all(&dir);
 }
 
 const OWNER: &str = r"C:\Users\Yamasaki\.fast-harness";
 const PARENT: &str = "20261113-195004-6140";
 
-/// The owner's own logs (read-only, copied): every child of the parent
-/// session opened from its row draws its rows.
+/// The owner's own logs (read-only, copied), through the real workers:
+/// the parent and every child opened from its row draw down to their end.
 #[test]
 #[ignore = "reads the owner's sessions under C:\\Users\\Yamasaki"]
 fn the_owners_finished_children_draw() {
@@ -226,13 +339,23 @@ fn the_owners_finished_children_draw() {
     let home = home(&dir, &cwd, &from, &names, Some(&config));
     let (window, ui) = window();
     open_parent(&window, &ui, &home, &cwd, PARENT, children.len());
-    crate::fold_view_tests::shot(&window, "owner-parent");
+    assert_end_drawn(&window, &ui, "the parent", "owner-parent");
     for child in &children {
-        assert_child_drawn(&window, &ui, child, &format!("owner-{child}"));
+        click_child(&window, child);
+        assert_end_drawn(&window, &ui, child, &format!("owner-{child}"));
         with_app(crate::subagents_view::back);
         until(&window, "back to the parent", |app, ui| {
             app.runs.id.as_deref() == Some(PARENT) && !ui.get_loading()
         });
     }
     let _ = std::fs::remove_dir_all(&dir);
+}
+/// The chat shows its end: the last row ends at the list's bottom.
+pub fn assert_at_bottom(ui: &MainWindow, what: &str) {
+    let bottom = ui.global::<crate::TurnsUi>().get_list_top() + ui.get_chat_list_height();
+    let end = ui.get_chat_end();
+    assert!(
+        (end - bottom).abs() <= 2.0,
+        "{what}: not at the bottom: ends at {end}, list bottom {bottom}"
+    );
 }

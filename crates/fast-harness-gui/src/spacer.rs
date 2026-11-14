@@ -27,6 +27,7 @@ pub fn set(rows: &VecModel<MsgRow>, on: bool) {
     if on && !has {
         let row = MsgRow {
             kind: KIND.into(),
+            item: i32::try_from(n).unwrap_or(i32::MAX),
             ..Default::default()
         };
         rows.push(row);
