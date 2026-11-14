@@ -63,7 +63,7 @@ component EntryHead {
             color: TraceStyle.tone(entry);
             font-size: Theme.font-s;
         }
-        Text {
+        SelectableText {
             text: entry.title;
             color: entry.error ? Theme.error : TraceStyle.caption(entry) ? Theme.dim : Theme.text;
             font-size: TraceStyle.caption(entry) ? Theme.font-xs : Theme.font-s;

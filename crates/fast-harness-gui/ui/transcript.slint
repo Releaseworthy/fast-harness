@@ -9,7 +9,7 @@ import { ToolFrame } from "toolcard.slint";
 import { RowThumbs } from "attach.slint";
 import { StepLine, StepRail, Rails } from "stepline.slint";
 import { TurnNav, TurnsUi } from "turnnav.slint";
-import { SelectableText } from "selectable.slint";
+import { SelectableText, ReplySelect, ReplyText } from "selectable.slint";
 
 // The user's message: a bubble on the right, at most 80% of the column.
 component UserBubble {
@@ -59,6 +59,7 @@ component AssistantBlock {
     in property <MsgRow> msg;
     // The step is folded (D73): the text stays, the thinking goes.
     property <bool> thinking: msg.thinking != "" && !msg.folded;
+    property <bool> selecting: msg.item >= 0 && ReplySelect.item == msg.item;
     callback copy(string);
     callback toggle();
     callback link(string);
@@ -79,16 +80,32 @@ component AssistantBlock {
         }
         // Wrapped text under an `if` sits in a component (ui/blocks.slint).
         if root.thinking && msg.expanded: ThinkingQuote { text: msg.thinking; }
-        if msg.text != "": StyledText {
+        // Slint 1.18.1's StyledText takes every press and release (i-slint-core
+        // items/text.rs), so a double click never reaches an area under it,
+        // and one over it would take the links' clicks: select mode starts
+        // from the Select link.
+        if msg.text != "" && !root.selecting: StyledText {
             text: msg.body;
             default-color: Theme.text;
             default-font-size: Theme.font-m;
             link-color: Theme.accent;
             link-clicked(url) => { root.link(url); }
         }
-        if msg.text != "": LinkText {
-            text: "Copy";
-            clicked => { root.copy(msg.text); }
+        // Select mode (src/reply_select.rs): the plain text, selectable.
+        if msg.text != "" && root.selecting: ReplyText { text: ReplySelect.text; }
+        if msg.text != "": HorizontalLayout {
+            spacing: Theme.space-m;
+            alignment: start;
+            LinkText {
+                text: "Copy";
+                clicked => { root.copy(msg.text); }
+            }
+            LinkText {
+                text: root.selecting ? "Done" : "Select";
+                clicked => {
+                    if root.selecting { ReplySelect.item = -1; } else { ReplySelect.enter(msg.item); }
+                }
+            }
         }
     }
 }
@@ -344,16 +361,19 @@ export component TranscriptView {
             changed natural => { root.measured(slot, self.msg.item, self.natural); }
             copy(t) => { root.copy(t); }
             toggle => {
+                ReplySelect.item = -1;
                 root.anchor(slot, -1, false);
                 root.toggle(self.msg.item);
                 root.sync();
             }
             step-toggle(h) => {
+                ReplySelect.item = -1;
                 root.anchor(slot, h, false);
                 root.step-toggle(h);
                 root.sync();
             }
             turn-toggle(h) => {
+                ReplySelect.item = -1;
                 root.anchor(slot, h, true);
                 root.turn-toggle(h);
                 root.sync();

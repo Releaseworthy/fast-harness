@@ -14,7 +14,6 @@ include!("root_items.rs");
 mod appearance_tests;
 #[cfg(test)]
 mod approval_focus_tests;
-mod chat_list;
 #[cfg(test)]
 mod child_session_tests;
 #[cfg(test)]
@@ -31,7 +30,6 @@ mod fold_view_tests;
 mod jobs_layout_tests;
 #[cfg(test)]
 mod layout_tests;
-mod list_host;
 #[cfg(test)]
 mod loading_tests;
 #[cfg(test)]
@@ -80,13 +78,10 @@ mod shots_trace;
 mod shots_turns;
 #[cfg(test)]
 mod side_tests;
-mod step_rows;
 #[cfg(test)]
 mod tabbar_tests;
-mod trace_list;
 #[cfg(test)]
 mod turn_nav_view_tests;
-mod virtual_list;
 #[cfg(test)]
 mod workspace_switch_tests;
 

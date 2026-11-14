@@ -58,11 +58,12 @@ impl Trace {
     fn ratio(&self) -> f32 {
         self.view() / self.content()
     }
-    /// Pumps until the content height holds for 10 frames (at most 10 s).
+    /// Pumps until the content height holds for 30 frames (at most 20 s):
+    /// longer than the lane waits for a late batch (irtual_list PATIENCE).
     fn settle(&self) {
         let start = Instant::now();
         let (mut last, mut same) = (f32::NAN, 0);
-        while same < 10 && start.elapsed() < Duration::from_secs(10) {
+        while same < 30 && start.elapsed() < Duration::from_secs(20) {
             pump(&self.window, 16);
             let now = self.content();
             same = if (now - last).abs() < 0.5 {

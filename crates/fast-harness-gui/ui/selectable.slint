@@ -16,3 +16,43 @@ export component SelectableText inherits TextInput {
     selection-background-color: Theme.selection;
     selection-foreground-color: Theme.text;
 }
+
+// Select mode for an assistant reply (src/reply_select.rs): the reply in it
+// (transcript row `item`, -1 for none) and its plain text. `drawn` is what
+// the drawn copy holds (for the tests).
+export global ReplySelect {
+    in-out property <int> item: -1;
+    in property <string> text;
+    in-out property <string> drawn;
+    callback enter(int);
+}
+
+// A reply in select mode: its plain text, every line selected; Esc or the
+// focus moving elsewhere ends it. A read-only TextInput passes Esc on to
+// this FocusScope (i-slint-core 1.18.1 items/text.rs ignores keys it does
+// not handle when read-only).
+export component ReplyText inherits FocusScope {
+    in property <string> text;
+    property <bool> focused: input.has-focus;
+    VerticalLayout {
+        input := SelectableText {
+            text: root.text;
+            font-size: Theme.font-m;
+        }
+    }
+    key-pressed(event) => {
+        if event.text == Key.Escape {
+            ReplySelect.item = -1;
+            return accept;
+        }
+        return reject;
+    }
+    changed focused => {
+        if !self.focused { ReplySelect.item = -1; }
+    }
+    init => {
+        input.focus();
+        input.select-all();
+        ReplySelect.drawn = input.text;
+    }
+}

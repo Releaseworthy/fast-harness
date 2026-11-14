@@ -27,11 +27,11 @@ fn trace_entries() -> Vec<TraceRow> {
 
 const WIDTH: u32 = 1100;
 const HEIGHT: u32 = 760;
-/// The composer's effort dropdown (sidebar 260 + card edge 1 + side 16 + padding 12
-/// + model 200 + gap 8).
-const EFFORT_X: f32 = 551.0;
-/// The composer's model dropdown (200 wide, left of the effort one).
-const MODEL_X: f32 = 443.0;
+/// The composer's effort dropdown (x 568 to 678 since the attach button came
+/// before the model one; at 551 the clicks opened the model list instead).
+const EFFORT_X: f32 = 623.0;
+/// The composer's model dropdown (x 360 to 558, left of the effort one).
+const MODEL_X: f32 = 459.0;
 /// The page content starts under the title bar (40), the card edge (1) and the tabs (38).
 const PAGE_Y: f32 = 79.0;
 const EFFORT_Y: f32 = 690.0;
@@ -326,7 +326,7 @@ const OUTSIDE: (f32, f32) = (800.0, 300.0);
 /// The effort dropdown's chevron, inside the control (clear of the focus
 /// ring and of the popup's shadow), as RGB bytes.
 fn chevron(rgb: &[u8]) -> Vec<u8> {
-    let (x0, x1, y0, y1) = (578, 602, 682, 699);
+    let (x0, x1, y0, y1) = (648, 672, 682, 699);
     (y0..y1)
         .flat_map(|y| {
             let row = (y * WIDTH as usize + x0) * 3;

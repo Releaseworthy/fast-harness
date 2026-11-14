@@ -36,6 +36,7 @@ const OVERSCAN: f32 = 0.5;
 /// The lane's rows per batch, and the frames a batch may take to report.
 const BATCH: usize = 12;
 const PATIENCE: u32 = 10;
+const TRIES: u8 = 4; // batches a late row is asked before it keeps its estimate
 const TICK: Duration = Duration::from_millis(16);
 /// A folded row whose top was above the view comes to this far below its top.
 pub const MARGIN: f32 = 8.0;
@@ -61,6 +62,8 @@ struct Anchor<R> {
 enum Hold<R> {
     End,
     Row { key: i64, screen: f32 },
+    // No rows placed yet (a view just built): its scroll position as it is.
+    Offset(f32),
     Toggle(Anchor<R>),
 }
 
@@ -74,6 +77,7 @@ pub struct VirtualList<H: Host> {
     window: Rc<VecModel<i32>>,
     probes: Rc<VecModel<i32>>,
     waited: u32,
+    tries: HashMap<i64, u8>,
     span: (usize, usize),
     style: (f32, f32),
     anchor: Option<Anchor<H::Row>>,
@@ -108,6 +112,7 @@ pub fn attach<H: Host>(ui: &MainWindow) -> Handle<H> {
         window: Rc::default(),
         probes: Rc::default(),
         waited: 0,
+        tries: HashMap::new(),
         span: (0, 0),
         style: (0.0, 0.0),
         anchor: None,
@@ -183,6 +188,7 @@ impl<H: Host> VirtualList<H> {
         let style = H::style(ui);
         if style != self.style {
             self.known.clear();
+            self.tries.clear();
             self.style = style;
         }
         self.read(ui);
@@ -253,7 +259,9 @@ impl<H: Host> VirtualList<H> {
                 key: self.keys[i],
                 screen: self.tops[i] - offset,
             },
-            None => Hold::End,
+            // Before this fix the Trace tab opened at its end, then kept a
+            // middle row at the top as heights came in (2026-11-14).
+            None => Hold::Offset(offset),
         }
     }
 
@@ -337,6 +345,7 @@ impl<H: Host> VirtualList<H> {
         let max = self.max(view);
         let want = match hold {
             Hold::End => max,
+            Hold::Offset(offset) => *offset,
             Hold::Row { key, screen } => {
                 let i = self.keys.partition_point(|k| k < key);
                 self.tops.get(i).map_or(max, |top| top - screen)
@@ -460,9 +469,16 @@ impl<H: Host> VirtualList<H> {
             self.waited += 1;
             return;
         }
+        // A late row is asked again: a frozen estimate moved the thumb when
+        // the row was drawn (log 6143, 2026-11-14).
         for i in late {
-            if let Some(known) = self.known.get_mut(&self.keys[i]) {
-                known.exact = true;
+            let key = self.keys[i];
+            let tries = self.tries.entry(key).or_insert(0);
+            *tries += 1;
+            if *tries >= TRIES {
+                if let Some(known) = self.known.get_mut(&key) {
+                    known.exact = true;
+                }
             }
         }
         self.waited = 0;

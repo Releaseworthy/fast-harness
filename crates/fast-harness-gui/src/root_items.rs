@@ -48,6 +48,13 @@ mod window_events;
 mod window_state;
 mod wire;
 mod workspaces;
+mod chat_list;
+mod list_host;
+mod plain_text;
+mod reply_select;
+mod step_rows;
+mod trace_list;
+mod virtual_list;
 // Read at run time by fast-harness-gui-live only; the default binary tests it.
 #[allow(dead_code)]
 mod ui_contract;

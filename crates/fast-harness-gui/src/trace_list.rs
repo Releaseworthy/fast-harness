@@ -83,3 +83,7 @@ fn estimate(row: &TraceRow, width: f32) -> f32 {
     let boxed = matches!(row.kind.as_str(), "call" | "result" | "header" | "user");
     32.0 + 18.0 * lines + if boxed { 20.0 } else { 0.0 }
 }
+
+#[cfg(test)]
+#[path = "trace_list_tests.rs"]
+mod tests;

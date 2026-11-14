@@ -17,6 +17,7 @@ pub fn new_window() -> Result<MainWindow, slint::PlatformError> {
     let ui = MainWindow::new()?;
     attach(&ui);
     crate::trace_list::attach(&ui);
+    crate::reply_select::attach(&ui);
     Ok(ui)
 }
 

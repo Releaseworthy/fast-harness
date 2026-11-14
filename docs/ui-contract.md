@@ -196,6 +196,10 @@ With `"approvals": "ask"` a call can wait for an answer (PLAN.md D64). Both fron
 - `PromptUi.status`: property <string>
 - `PromptUi.text`: property <string>
 - `PromptUi.workspace`: property <string>
+- `ReplySelect.drawn`: property <string>
+- `ReplySelect.enter`: callback
+- `ReplySelect.item`: property <int>
+- `ReplySelect.text`: property <string>
 - `SpawnUi.dirty`: property <bool>
 - `SpawnUi.guide`: property <string>
 - `SpawnUi.models`: property <[SpawnModel]>
