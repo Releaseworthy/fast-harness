@@ -89,7 +89,7 @@ Order: 10, 11, 12, 13, 14, 15, 17A, 19, 17B, 21A, 18, 16, 20, 21B, 21C. Phases 1
 ### Phase 12: output diet
 
 - One budget per result, set before the first send: default 8 KB (`toolOutputBytes`), per tool override. Over budget, the full text goes to `<session>.out/<callId>.txt` and the result ends with `[full output: <path>, <bytes> bytes, <lines> lines; read it with offset and limit or grep it]`.
-- `read`: whole lines from `offset` up to the budget, then `[lines a to b of n; continue with offset b+1]`; no head-and-tail cut. An unchanged range that an earlier call of the session already returned (same path, range, size and modified time) answers `[unchanged since call <id>]`.
+- `read`: whole lines from `offset` up to the budget, then `[lines a to b of n; continue with offset b+1]`; no head-and-tail cut. Lines inside a range an earlier call of the session already returned (same path, size and modified time) answer `[unchanged since call <id>]`; a read without `offset` and `limit` is a 4 KB head (D83).
 - `grep`: default 50 matches, grouped by file, then `[n more matches in m files]`. `glob`: default 100 paths.
 - `shell`: 2 KB head and 6 KB tail (errors are at the end), spill file for the rest.
 - `subagent`: the answer up to the budget plus the stats line.

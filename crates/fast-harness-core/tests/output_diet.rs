@@ -60,7 +60,13 @@ fn session_ctx<'a>(
 fn read_returns_whole_lines_within_the_budget_then_the_range() {
     let env = env("diet-read");
     std::fs::write(env.cwd.join("f.txt"), lines(1000)).unwrap();
-    let out = run_tool(&env.cwd, "read", json!({"path": "f.txt"}), 8192);
+    // A range: a read without one is a head (context_diet.rs).
+    let out = run_tool(
+        &env.cwd,
+        "read",
+        json!({"path": "f.txt", "offset": 1}),
+        8192,
+    );
     assert!(out.text().len() <= 8192, "{}", out.text().len());
     assert!(out.spilled().is_none());
     let text = out.text();
@@ -212,7 +218,7 @@ fn budgets_come_from_config_with_a_per_tool_override() {
     let out = run_tool(
         &env.cwd,
         "read",
-        json!({"path": "f.txt"}),
+        json!({"path": "f.txt", "offset": 1}),
         config.tool_budget("read"),
     );
     assert!(

@@ -3,7 +3,6 @@
 //! sends the whole text to `<session>.out/<callId>.txt`, named by a note at
 //! the end of the result.
 
-use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::SystemTime;
@@ -29,7 +28,7 @@ const SHELL_HEAD_SHARE: usize = 4;
 pub struct ToolSession {
     /// `<session>.out`; `None` keeps nothing on disk.
     pub out_dir: Option<PathBuf>,
-    reads: Mutex<HashMap<ReadKey, String>>,
+    reads: Mutex<Vec<ReadSpan>>,
     /// Background shell jobs (PLAN.md D68), shared with the service session.
     jobs: Arc<Jobs>,
     /// Prior states of the files `write` and `edit` change (PLAN.md D69).
@@ -59,7 +58,7 @@ impl ToolSession {
             out_dir,
             media_dir,
             attached: Mutex::default(),
-            reads: Mutex::new(HashMap::new()),
+            reads: Mutex::new(Vec::new()),
             jobs: Arc::default(),
             undo: Arc::new(UndoLog::new(undo_dir)),
         }
@@ -107,10 +106,19 @@ impl ToolSession {
         self.jobs = jobs;
     }
 
-    /// The call that already returned `key`, if any.
+    /// The call that already returned `key`, if any: the same request, or
+    /// lines inside a range an earlier read returned (PLAN.md D82), the
+    /// file's size and modified time unchanged.
     pub fn read_by(&self, key: &ReadKey) -> Option<String> {
         let reads = self.reads.lock().unwrap_or_else(|e| e.into_inner());
-        reads.get(key).cloned()
+        let wanted_end = key.offset.saturating_add(key.limit.saturating_sub(1));
+        let covers = |span: &&ReadSpan| {
+            let same_file = (&span.key.path, span.key.size, span.key.modified)
+                == (&key.path, key.size, key.modified);
+            let inside = span.key.offset <= key.offset && wanted_end <= span.end;
+            same_file && (span.key == *key || inside)
+        };
+        reads.iter().find(covers).map(|span| span.call.clone())
     }
 
     /// Forgets every returned range: after a compaction the model no longer
@@ -120,13 +128,32 @@ impl ToolSession {
         reads.clear();
     }
 
-    /// Records that `call_id` returned `key` (the first call keeps it).
+    /// Records that `call_id` returned all of `key`'s lines.
     pub fn remember_read(&self, key: ReadKey, call_id: &str) {
+        let end = key.offset.saturating_add(key.limit.saturating_sub(1));
+        self.remember_span(key, end, call_id);
+    }
+
+    /// Records that `call_id`, asked for `key`, returned lines `key.offset`
+    /// to `end` (a cut result ends early). The first call keeps a request.
+    pub fn remember_span(&self, key: ReadKey, end: u64, call_id: &str) {
         let mut reads = self.reads.lock().unwrap_or_else(|e| e.into_inner());
-        reads.entry(key).or_insert_with(|| call_id.to_string());
+        if reads.iter().any(|span| span.key == key) {
+            return;
+        }
+        let call = call_id.to_string();
+        reads.push(ReadSpan { key, end, call });
     }
 }
 
+/// A read this session returned: the request, the last line it held and
+/// the call id.
+#[derive(Debug)]
+struct ReadSpan {
+    key: ReadKey,
+    end: u64,
+    call: String,
+}
 /// Fits `output` of tool `name` into `ctx.budget`: sets `bytes` to the full
 /// size and, when cut, writes the spill file and sets `spilled`.
 pub fn fit(name: &str, mut output: ToolOutput, ctx: &ToolCtx<'_>) -> ToolOutput {

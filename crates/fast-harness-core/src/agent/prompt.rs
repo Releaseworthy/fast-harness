@@ -16,7 +16,8 @@ pub const MAX_AGENTS_BYTES: usize = 32 * 1024;
 pub const DEFAULT_TEMPLATE: &str =
     "You are a coding agent in Fast Harness, working in {cwd} on {os}. \
 Today is {date} (UTC).\nCall find_tools first to load the tools you need; \
-independent calls in one step run in parallel. Be brief.\n";
+independent calls in one step run in parallel. Find code with grep or glob, then read \
+only the line ranges you need. Be brief.\n";
 
 /// The placeholders a template may use; any other text stays as written.
 pub const PLACEHOLDERS: [&str; 4] = ["{cwd}", "{os}", "{date}", "{model}"];

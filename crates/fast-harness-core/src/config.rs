@@ -5,6 +5,7 @@
 
 pub mod approvals;
 pub mod compaction;
+pub mod context;
 pub mod ext_file;
 pub mod index;
 pub mod layers;
@@ -75,6 +76,8 @@ pub struct Config {
     pub subagent: SubagentConfig,
     /// `tools` (PLAN.md D42): `preload`, tools loaded from the start.
     pub tools: ToolsConfig,
+    /// `context` (PLAN.md D82): bounded reads and the unchanged-read answer.
+    pub context: context::ContextConfig,
     /// `agentsBytes` (PLAN.md D43): the cap of the AGENTS.md section of a
     /// new session's system prompt (root to working directory).
     pub agents_bytes: usize,
@@ -193,6 +196,7 @@ impl Default for Config {
             models: BTreeMap::new(),
             subagent: SubagentConfig::default(),
             tools: ToolsConfig::default(),
+            context: context::ContextConfig::default(),
             agents_bytes: DEFAULT_AGENTS_BYTES,
             memory: true,
             self_improve: "ask".into(),
