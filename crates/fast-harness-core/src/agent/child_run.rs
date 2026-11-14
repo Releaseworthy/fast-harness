@@ -10,6 +10,7 @@ use serde_json::json;
 use super::child_tools;
 use super::children::{self, Children, Slot};
 use super::live;
+use super::spawn_models;
 use super::subagent::{Spec, SubagentTool, NAME};
 use crate::agent::{Agent, AgentParts, Conversation, Inbox, Input};
 use crate::events::{AgentEvent, TurnOutcome};
@@ -74,7 +75,10 @@ fn build(tool: &SubagentTool, spec: &Spec) -> Result<(Agent, Conversation), Stri
     // 5 minute cache (PLAN.md D36).
     parts.config.interactive = false;
     let settings = parts.config.subagent.clone();
-    if let Some(model) = spec.model.as_deref().or(settings.model.as_deref()) {
+    let asked = spec.model.as_deref().or(settings.model.as_deref());
+    let asked = asked.map(str::trim).filter(|m| !m.is_empty());
+    spawn_models::check(&settings, &parts.catalog, asked, &parts.config.model)?;
+    if let Some(model) = asked {
         route(tool, &mut parts, model.trim())?;
     }
     if let Some(effort) = spec.effort.as_deref().or(settings.effort.as_deref()) {

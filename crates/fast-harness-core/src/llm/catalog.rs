@@ -97,6 +97,27 @@ impl Catalog {
         self.custom(model).map_or(ANTHROPIC, |p| p.id.as_str())
     }
 
+    /// Every model a subagent may name (PLAN.md D82): the built-in table,
+    /// then models only the live list knows, then `<provider>/<id>` of the
+    /// custom providers. Dated snapshots (`-20251101`) are left out.
+    pub fn model_ids(&self) -> Vec<String> {
+        let dated = |id: &str| {
+            let tail = id.rsplit('-').next().unwrap_or_default();
+            tail.len() == 8 && tail.bytes().all(|b| b.is_ascii_digit())
+        };
+        let table = anthropic::builtin_models().into_iter().map(|m| m.id);
+        let mut out: Vec<String> = table.collect();
+        for id in self.live.ids() {
+            if !out.contains(&id) {
+                out.push(id);
+            }
+        }
+        out.retain(|id| !dated(id) && !is_retired(id));
+        let custom = self.files.iter().filter(|p| p.is_custom());
+        out.extend(custom.flat_map(|p| p.models.iter().map(move |m| format!("{}/{}", p.id, m.id))));
+        out
+    }
+
     /// Every provider in picker order: the built-in ones, then the custom ones.
     pub fn providers(&self) -> Vec<&str> {
         let mut out = PROVIDERS.to_vec();

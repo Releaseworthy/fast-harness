@@ -136,7 +136,19 @@ pub struct SubagentConfig {
     pub max_parallel: usize,
     /// Byte budget of a child's answer (tool result and inbox notice).
     pub output_bytes: usize,
+    /// Models a child may run on (PLAN.md D82): `false` turns one off, a
+    /// model missing here is on, so new models start enabled.
+    pub models: BTreeMap<String, bool>,
+    /// The model guide appended to the `subagent` tool's description; lines
+    /// naming only disabled model families are left out, "" sends none.
+    pub guide: String,
 }
+
+/// Default `subagent.guide` (PLAN.md D82).
+pub const DEFAULT_SUBAGENT_GUIDE: &str = "Pick the subagent's `model` by what the task needs:\n\
+- Haiku: search and read news, docs and data.\n\
+- Sonnet: small, well-scoped fixes.\n\
+- Opus: harder, complex or open-ended work.";
 
 impl Default for SubagentConfig {
     fn default() -> SubagentConfig {
@@ -146,7 +158,16 @@ impl Default for SubagentConfig {
             max_depth: 1,
             max_parallel: 4,
             output_bytes: DEFAULT_TOOL_OUTPUT_BYTES,
+            models: BTreeMap::new(),
+            guide: DEFAULT_SUBAGENT_GUIDE.into(),
         }
+    }
+}
+
+impl SubagentConfig {
+    /// Whether a child may run on `model` (`subagent.models`, D82).
+    pub fn allows(&self, model: &str) -> bool {
+        self.models.get(model).copied().unwrap_or(true)
     }
 }
 

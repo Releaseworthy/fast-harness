@@ -1,0 +1,117 @@
+// Settings > Subagent models (PLAN.md D82): a check box per catalog model
+// (`subagent.models`, all on by default) and the model guide the `subagent`
+// tool's description ends with (`subagent.guide`), edited like the system
+// prompt. State lives in the SpawnUi global; src/spawn_settings.rs saves it.
+import { Theme, Eyebrow, Mark } from "parts.slint";
+import { Icons } from "icons.slint";
+import { ActionButton } from "widgets.slint";
+import { TextArea } from "textarea.slint";
+
+export struct SpawnModel { id: string, label: string, on: bool }
+
+export global SpawnUi {
+    in property <[SpawnModel]> models;
+    in-out property <string> guide;
+    // The saved guide, to mark unsaved edits.
+    in property <string> saved;
+    // The last action's outcome or an error.
+    in property <string> status;
+    out property <bool> dirty: self.guide != self.saved;
+    callback toggled(int, bool);
+    callback save();
+    callback reset();
+}
+
+// One model: a square check box with its mark, the name and the id.
+component ModelCheck inherits Rectangle {
+    in property <SpawnModel> item;
+    callback toggle();
+    accessible-role: checkbox;
+    accessible-checked: root.item.on;
+    accessible-label: root.item.label;
+    accessible-action-default => { root.toggle(); }
+    TouchArea { clicked => { root.toggle(); } }
+    HorizontalLayout {
+        padding: Theme.space-xs;
+        spacing: Theme.space-s;
+        alignment: start;
+        Rectangle {
+            width: 16px;
+            height: 16px;
+            y: 1px;
+            border-radius: 3px;
+            border-width: 2px;
+            border-color: root.item.on ? Theme.accent : Theme.dim;
+            if root.item.on: Mark { text: Icons.check; color: Theme.accent; font-size: 11px; }
+        }
+        Text { text: root.item.label; color: Theme.text; font-size: Theme.font-s; vertical-alignment: center; }
+        Text { text: root.item.on ? "on" : "off"; color: Theme.dim; font-size: Theme.font-xs; vertical-alignment: center; }
+    }
+}
+
+export component SubagentModels inherits VerticalLayout {
+    spacing: Theme.space-s + 2px;
+    Eyebrow { text: "SUBAGENT MODELS"; }
+    Text {
+        text: "Models a subagent may run on. The subagent tool lists only these; a call for another is refused. Saved as subagent.models; the list reaches new sessions, the check applies from the next call.";
+        color: Theme.dim;
+        font-size: Theme.font-s;
+        wrap: word-wrap;
+    }
+    for m[i] in SpawnUi.models: ModelCheck {
+        item: m;
+        toggle => { SpawnUi.toggled(i, !m.on); }
+    }
+    Text { text: "Model guide"; color: Theme.text; font-size: Theme.font-m; font-weight: 600; }
+    Text {
+        text: "Ends the subagent tool's description; lines naming only disabled models are left out. Saved as subagent.guide; applies to new sessions.";
+        color: Theme.dim;
+        font-size: Theme.font-s;
+        wrap: word-wrap;
+    }
+    Rectangle {
+        border-width: 1px;
+        border-color: Theme.border;
+        border-radius: Theme.radius-s;
+        background: Theme.surface;
+        TextArea {
+            x: Theme.space-s;
+            y: Theme.space-s;
+            width: parent.width - 2 * Theme.space-s;
+            height: parent.height - 2 * Theme.space-s;
+            text <=> SpawnUi.guide;
+            placeholder: "An empty guide: the tool description has none.";
+            min-lines-height: 80px;
+            grow-limit: 200px;
+            font-size: Theme.font-s;
+        }
+        preferred-height: 96px;
+    }
+    HorizontalLayout {
+        spacing: Theme.space-s;
+        alignment: start;
+        ActionButton {
+            text: "Save";
+            variant: "primary";
+            enabled: SpawnUi.dirty;
+            clicked => { SpawnUi.save(); }
+        }
+        ActionButton {
+            text: "Reset to default";
+            clicked => { SpawnUi.reset(); }
+        }
+        if SpawnUi.dirty: Text {
+            text: "Unsaved changes";
+            color: Theme.text;
+            font-size: Theme.font-s;
+            font-weight: 600;
+            vertical-alignment: center;
+        }
+    }
+    if SpawnUi.status != "": Text {
+        text: SpawnUi.status;
+        color: Theme.text;
+        font-size: Theme.font-s;
+        wrap: word-wrap;
+    }
+}

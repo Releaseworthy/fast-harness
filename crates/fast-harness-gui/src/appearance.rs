@@ -107,6 +107,7 @@ pub fn show(app: &App, ui: &MainWindow) {
     ui.global::<AppearanceUi>().set_folder(folder.into());
     (ui.global::<AppearanceUi>()).set_chat_full(app.rt.config.chat_full());
     crate::limits::show(app, ui);
+    crate::spawn_settings::show(app, ui);
 }
 
 /// Applies `chatDetail` (D73) to the shown chat at once and saves it.
@@ -132,6 +133,7 @@ fn open_folder(app: &App, ui: &MainWindow) {
 
 pub fn connect(ui: &MainWindow) {
     crate::limits::connect(ui);
+    crate::spawn_settings::connect(ui);
     let g = ui.global::<AppearanceUi>();
     g.on_pick(|index| {
         with_app(|app, ui| {

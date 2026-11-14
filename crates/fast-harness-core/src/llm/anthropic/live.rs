@@ -93,6 +93,14 @@ impl LiveModels {
         let map = self.map.read().unwrap_or_else(PoisonError::into_inner);
         map.get(model).cloned()
     }
+
+    /// Every model id a list or the cache reported, sorted.
+    pub fn ids(&self) -> Vec<String> {
+        let map = self.map.read().unwrap_or_else(PoisonError::into_inner);
+        let mut ids: Vec<String> = map.keys().cloned().collect();
+        ids.sort();
+        ids
+    }
 }
 /// `levels` as the fixed level names (unknown names dropped).
 pub(crate) fn static_levels(levels: &[String]) -> Vec<&'static str> {
