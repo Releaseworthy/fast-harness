@@ -4,6 +4,8 @@
 
 use std::time::{Duration, Instant};
 
+use super::ansi::strip_ansi;
+
 /// The least time between two progress texts of one call.
 pub(super) const LIVE_EVERY: Duration = Duration::from_millis(100);
 /// Output bytes one progress text holds at most; when more arrived since
@@ -71,7 +73,7 @@ impl<'r> Live<'r> {
         if end == 0 {
             return;
         }
-        let text = String::from_utf8_lossy(&self.pending[..end]);
+        let text = strip_ansi(&String::from_utf8_lossy(&self.pending[..end])).into_owned();
         match self.skipped {
             0 => report(&text),
             skipped => report(&format!("[{skipped} bytes of output skipped]\n{text}")),

@@ -16,6 +16,7 @@ pub use ext::Extensions;
 pub use jobs::{JobInfo, JobState, Jobs};
 pub use output::{Part, ToolOutput};
 
+mod ansi;
 mod args;
 pub mod ask;
 mod atomic;

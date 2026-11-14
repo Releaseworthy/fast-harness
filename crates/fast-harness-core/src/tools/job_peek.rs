@@ -5,6 +5,7 @@
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use super::{Jobs, Reading};
+use crate::tools::ansi::strip_ansi;
 
 /// Where a job's output stands: bytes received in all, and whether the job
 /// ended with every byte in. A view waits for it to change.
@@ -18,7 +19,7 @@ impl Jobs {
         let job = self.job(id)?;
         let run = job.lock();
         let (skipped, bytes) = run.buffer.since(0);
-        let text = String::from_utf8_lossy(&bytes).into_owned();
+        let text = strip_ansi(&String::from_utf8_lossy(&bytes)).into_owned();
         let info = job.info_of(&run);
         Ok(Reading {
             info,

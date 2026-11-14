@@ -14,6 +14,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Condvar, Mutex, MutexGuard};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
+use super::ansi::strip_ansi;
 use super::job_buffer::Buffer;
 pub use super::job_buffer::{LOG_CAP, RING};
 use super::shell::shell_command;
@@ -206,7 +207,7 @@ impl Jobs {
             false => complete_end(&bytes),
         };
         run.cursor += skipped + end as u64;
-        let text = String::from_utf8_lossy(&bytes[..end]).into_owned();
+        let text = strip_ansi(&String::from_utf8_lossy(&bytes[..end])).into_owned();
         let info = job.info_of(&run);
         Ok(Reading {
             info,

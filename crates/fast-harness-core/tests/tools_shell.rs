@@ -157,3 +157,22 @@ fn shell_timeout_kills_the_process_tree() {
     assert!(!alive(parent), "parent {parent} still alive");
     assert!(!alive(child), "child {child} still alive");
 }
+
+#[test]
+fn shell_output_has_no_colour_codes() {
+    let tmp = TempDir::new("sh-ansi");
+    let command = if cfg!(windows) {
+        // `$PSStyle` exists from PowerShell 7.2; Windows PowerShell 5 has
+        // no colour rendering to turn off.
+        "if ($PSStyle) { \"rendering $($PSStyle.OutputRendering)\" } else { 'rendering PlainText' }\n\
+         Write-Warning 'careful'\n\"$([char]27)[31mred$([char]27)[0m $([char]27)]0;title$([char]7)done\""
+    } else {
+        "echo rendering PlainText; echo WARNING: careful; printf '\\033[31mred\\033[0m \\033]0;title\\007done\\n'"
+    };
+    let out = run(&tmp.0, json!({"command": command}));
+    let text = out.text();
+    assert!(!text.contains('\u{1b}'), "{text:?}");
+    assert!(text.contains("rendering PlainText"), "{text:?}");
+    assert!(text.contains("WARNING: careful"), "{text:?}");
+    assert!(text.contains("red done"), "{text:?}");
+}

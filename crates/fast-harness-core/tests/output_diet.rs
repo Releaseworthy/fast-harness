@@ -108,10 +108,11 @@ fn an_unchanged_range_answers_with_the_earlier_call() {
         read("c2", json!({"path": "f.txt"})),
         "[unchanged since call c1]"
     );
-    // Another range is a new read; so is the same range after a change.
+    // c1 read to the end of the file: a later range is unchanged too; the
+    // same range after a change is a new read.
     assert_eq!(
         read("c3", json!({"path": "f.txt", "offset": 2})),
-        "2: two\n"
+        "[unchanged since call c1]"
     );
     std::fs::write(&file, "one\ntwo\nthree\n").unwrap();
     assert!(read("c4", json!({"path": "f.txt"})).contains("3: three"));

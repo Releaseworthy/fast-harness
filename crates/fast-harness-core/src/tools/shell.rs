@@ -10,6 +10,7 @@ use std::time::{Duration, Instant};
 
 use serde_json::{json, Value};
 
+use super::ansi::strip_ansi;
 use super::args::{object_schema, opt_positive, req_str};
 use super::shell_live::Live;
 use super::{Tool, ToolCtx, ToolOutput};
@@ -25,9 +26,11 @@ const DRAIN_GRACE: Duration = Duration::from_millis(1500);
 /// Output kept in memory; the registry clips far below this anyway.
 const MAX_CAPTURE: usize = 8 * 1024 * 1024;
 
-/// Makes PowerShell write UTF-8 and stay quiet about progress.
+/// Makes PowerShell write UTF-8 without colour codes (`$PSStyle` exists
+/// from 7.2 on; Windows PowerShell 5 has none) and stay quiet about progress.
 const PWSH_PRELUDE: &str = "[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)\n\
 $OutputEncoding = [Console]::OutputEncoding\n\
+if ($PSStyle) { $PSStyle.OutputRendering = 'PlainText' }\n\
 $ProgressPreference = 'SilentlyContinue'\n";
 
 pub(crate) struct ShellTool;
@@ -257,7 +260,7 @@ pub(super) fn drain(rx: &Receiver<Vec<u8>>, capture: &mut Capture) {
 }
 
 fn render(capture: Capture, ending: Ending, timeout_ms: u64) -> ToolOutput {
-    let mut text = String::from_utf8_lossy(&capture.bytes).into_owned();
+    let mut text = strip_ansi(&String::from_utf8_lossy(&capture.bytes)).into_owned();
     if text.is_empty() {
         text.push_str("(no output)");
     }
@@ -290,4 +293,26 @@ fn render(capture: Capture, ending: Ending, timeout_ms: u64) -> ToolOutput {
         None => text.push_str("[exit code: none]"),
     }
     ToolOutput::new(text, killed.is_some() || code != Some(0))
+}
+
+#[cfg(all(test, windows))]
+mod tests {
+    /// The prelude turns colour off even where nothing else does (no
+    /// `NO_COLOR`): PowerShell 7.2+ would print `Host` and colour WARNING.
+    #[test]
+    fn the_pwsh_prelude_renders_plain_text() {
+        let script =
+            "\"rendering $(if ($PSStyle) { $PSStyle.OutputRendering } else { 'none' })\"\n\
+                      Write-Warning 'careful'";
+        let mut cmd = super::shell_command(script);
+        cmd.env_remove("NO_COLOR").env_remove("TERM");
+        let out = cmd.output().expect("run PowerShell");
+        let text = String::from_utf8_lossy(&out.stdout);
+        assert!(!text.contains('\u{1b}'), "{text:?}");
+        let rendering = text.lines().next().unwrap_or_default();
+        assert!(
+            matches!(rendering, "rendering PlainText" | "rendering none"),
+            "{text:?}"
+        );
+    }
 }

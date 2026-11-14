@@ -85,9 +85,13 @@ fn lines_inside_an_earlier_unchanged_read_answer_with_that_call() {
     assert_eq!(read("c2", json!({"path": "f.rs"})), unchanged("c1"));
     let inside = json!({"path": "f.rs", "offset": 5, "limit": shown - 4});
     assert_eq!(read("c3", inside), unchanged("c1"));
-    // Past the lines c1 returned (its result was cut) is a new read.
+    // Past the lines c1 returned (its result was cut): only the new lines.
     let past = read("c4", json!({"path": "f.rs", "offset": 5, "limit": shown}));
-    assert!(past.starts_with("5: "), "{}", &past[..20]);
+    let note = format!(
+        "[already shown, unchanged: lines 5-{shown} (call c1)]\n{}: ",
+        shown + 1
+    );
+    assert!(past.starts_with(&note), "{}", &past[..80]);
     let later = read("c5", json!({"path": "f.rs", "offset": 400, "limit": 10}));
     assert!(later.starts_with("400: "));
     assert_eq!(
@@ -228,4 +232,56 @@ fn a_read_heavy_turn_sends_less_and_every_request_extends_the_last() {
             );
         }
     }
+}
+
+#[test]
+fn a_read_overlapping_earlier_reads_returns_only_the_new_lines() {
+    let env = env("ctx-overlap");
+    let file = env.cwd.join("f.rs");
+    std::fs::write(&file, code(300)).unwrap();
+    let cancel = AtomicBool::new(false);
+    let session = ToolSession::new(None);
+    let tools = builtin();
+    let read = |id: &str, offset: u64, limit: u64| {
+        let ctx = ToolCtx::new(&env.cwd, &cancel)
+            .with_call_id(id)
+            .with_session(&session);
+        let args = json!({"path": "f.rs", "offset": offset, "limit": limit});
+        tools.run("read", &args.to_string(), &ctx).into_text()
+    };
+    let numbers = |text: &str| -> Vec<u64> {
+        let number = |l: &str| l.split_once(": ").and_then(|(n, _)| n.parse().ok());
+        text.lines().filter_map(number).collect()
+    };
+    assert_eq!(numbers(&read("c1", 1, 60)), (1..=60).collect::<Vec<_>>());
+    let overlap = read("c2", 50, 31);
+    assert!(overlap.starts_with("[already shown, unchanged: lines 50-60 (call c1)]\n61: "));
+    assert_eq!(numbers(&overlap), (61..=80).collect::<Vec<_>>());
+    read("c3", 120, 20);
+    let tail = read("c4", 100, 26);
+    assert_eq!(numbers(&tail), (100..=119).collect::<Vec<_>>());
+    assert!(
+        tail.ends_with("[already shown, unchanged: lines 120-125 (call c3)]\n"),
+        "{tail}"
+    );
+    // Earlier reads at both ends: only the gap between them comes back.
+    let gap = read("c5", 1, 139);
+    assert_eq!(numbers(&gap), (81..=99).collect::<Vec<_>>());
+    assert!(gap.starts_with("[already shown, unchanged: lines 1-80 (call c1, c2)]\n"));
+    assert!(gap.ends_with("[already shown, unchanged: lines 100-139 (call c3, c4)]\n"));
+    assert_eq!(
+        read("c6", 1, 139),
+        "[unchanged since call c1, c2, c5, c4, c3]"
+    );
+    // An edited file is read whole again, and so is one after a compaction.
+    std::fs::write(&file, code(301)).unwrap();
+    assert_eq!(numbers(&read("c7", 50, 31)), (50..=80).collect::<Vec<_>>());
+    session.clear_reads();
+    assert_eq!(numbers(&read("c8", 50, 31)), (50..=80).collect::<Vec<_>>());
+    // A request past the file's end after reading to it is unchanged.
+    read("c9", 290, 12);
+    assert_eq!(read("c10", 295, 50), "[unchanged since call c9]");
+    let past_end = read("c11", 280, 50);
+    assert_eq!(numbers(&past_end), (280..=289).collect::<Vec<_>>());
+    assert!(past_end.ends_with("[already shown, unchanged: lines 290-end (call c9)]\n"));
 }

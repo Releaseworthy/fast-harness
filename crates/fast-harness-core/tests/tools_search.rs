@@ -160,3 +160,42 @@ fn glob_lists_newest_first_and_respects_gitignore() {
     );
     assert!(bad.is_error());
 }
+
+#[test]
+fn grep_shows_a_window_around_a_match_deep_in_a_long_line() {
+    let tmp = TempDir::new("grep-window");
+    // Multibyte padding: the window must cut on character boundaries.
+    let line = format!(
+        "{}needle{}needle{}\n",
+        "é".repeat(4994),
+        "y".repeat(1000),
+        "z".repeat(50)
+    );
+    tmp.file("min.js", line.as_bytes());
+    let out = run(
+        &tmp.0,
+        "grep",
+        json!({"pattern": "needle", "path": "min.js"}),
+    );
+    let text = out.text();
+    let shown = text.lines().nth(1).unwrap();
+    assert!(
+        shown.starts_with("  1: ...é") && shown.contains("needle"),
+        "{shown}"
+    );
+    let note = "y... [line cut: columns 4920-5219 of 6056; 1 more matches outside]";
+    assert!(shown.ends_with(note), "{shown}");
+    assert_eq!(
+        shown.chars().filter(|c| matches!(c, 'é' | 'y')).count() + 6,
+        300
+    );
+    // A match at the end of the line: the window ends there, no trailing cut.
+    tmp.file("end.js", format!("{}tail\n", "x".repeat(2000)).as_bytes());
+    let out = run(&tmp.0, "grep", json!({"pattern": "tail", "path": "end.js"}));
+    let text = out.text();
+    let shown = text.lines().nth(1).unwrap();
+    assert!(
+        shown.ends_with("xtail [line cut: columns 1705-2004 of 2004]"),
+        "{shown}"
+    );
+}
