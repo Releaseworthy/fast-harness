@@ -149,6 +149,68 @@ impl ToolSession {
         let call = call_id.to_string();
         reads.push(ReadSpan { key, end, call });
     }
+
+    /// The part of `key`'s lines no earlier read of the unchanged file
+    /// returned: earlier ranges that hold its first or its last lines are
+    /// cut off (one in the middle is not). See [`Seen`].
+    pub fn read_seen(&self, key: &ReadKey) -> Seen {
+        let reads = lock(&self.reads);
+        let spans: Vec<&ReadSpan> = reads.iter().filter(|s| same_file(&s.key, key)).collect();
+        let end = key.offset.saturating_add(key.limit.saturating_sub(1));
+        let mut seen = Seen {
+            offset: key.offset,
+            end,
+            ..Seen::default()
+        };
+        while let Some(span) = spans
+            .iter()
+            .find(|s| s.key.offset <= seen.offset && seen.offset <= s.end)
+        {
+            push_new(&mut seen.before, &span.call);
+            if span.end >= seen.end {
+                seen.covered = true;
+                return seen;
+            }
+            seen.offset = span.end + 1;
+        }
+        // A span holding `end` starts after `offset`, else the loop above
+        // would have gone on from it: `end` stays at or past `offset`.
+        while let Some(span) = spans
+            .iter()
+            .find(|s| s.key.offset <= seen.end && seen.end <= s.end)
+        {
+            push_new(&mut seen.after, &span.call);
+            seen.to_end |= span.end == u64::MAX;
+            seen.end = span.key.offset - 1;
+        }
+        seen
+    }
+}
+
+/// Lines of a read request earlier reads returned (the file unchanged):
+/// those before `offset` (by the calls `before`) and after `end` (by the
+/// calls `after`, `to_end` when they reached the end of the file);
+/// `covered` when every line was.
+#[derive(Debug, Default, PartialEq, Eq)]
+#[non_exhaustive]
+pub struct Seen {
+    pub offset: u64,
+    pub end: u64,
+    pub before: Vec<String>,
+    pub after: Vec<String>,
+    pub covered: bool,
+    pub to_end: bool,
+}
+
+/// Same path, size and modified time: the file did not change between.
+fn same_file(a: &ReadKey, b: &ReadKey) -> bool {
+    (&a.path, a.size, a.modified) == (&b.path, b.size, b.modified)
+}
+
+fn push_new(calls: &mut Vec<String>, call: &str) {
+    if !calls.iter().any(|c| c == call) {
+        calls.push(call.to_string());
+    }
 }
 
 /// A read this session returned: the request, the last line it held and

@@ -7,7 +7,7 @@ use std::path::Path;
 use serde_json::{json, Value};
 
 use super::args::{cut_chars, looks_binary, object_schema, opt_positive, req_str, resolve};
-use super::budget::ReadKey;
+use super::budget::{ReadKey, Seen, ToolSession};
 use super::read_stream;
 use super::{Effect, Tool, ToolCtx, ToolOutput};
 use crate::llm::ToolSpec;
@@ -31,7 +31,7 @@ impl Tool for ReadTool {
                 Without offset and limit only the file's head comes back (grep first, then \
                 read line ranges); whole lines fit one result budget; the last line names the \
                 range and where to continue; a line over 800 characters is cut. Lines already returned and unchanged answer \
-                \"[unchanged since call ID]\". A png, jpeg, gif or webp file comes back as \
+                \"[unchanged since call ID]\"; a range overlapping them returns only the new lines. A png, jpeg, gif or webp file comes back as \
                 an image with a line giving its size and token cost. Directories and other \
                 binary files are refused."
                 .into(),
@@ -81,27 +81,103 @@ fn read(args: &Value, ctx: &ToolCtx<'_>) -> Result<ToolOutput, String> {
     let session = ctx
         .session
         .filter(|_| !ctx.call_id.is_empty() && ctx.dedupe_reads);
-    if let Some(earlier) = session.and_then(|s| s.read_by(&key)) {
-        return Ok(ToolOutput::ok(format!("[unchanged since call {earlier}]")));
+    let size = meta.len();
+    let run = |offset, limit| {
+        read_file(
+            path_arg,
+            &path,
+            shape(offset, limit, ranged, ctx),
+            size,
+            ctx,
+        )
+    };
+    let Some(session) = session else {
+        return run(offset, limit);
+    };
+    read_new(session, key, run, ctx.call_id)
+}
+
+/// Only the lines of `key` no earlier read of the unchanged file returned,`n/// read by `run` and remembered as returned by `call_id`.
+fn read_new(
+    session: &ToolSession,
+    key: ReadKey,
+    run: impl Fn(u64, u64) -> Result<ToolOutput, String>,
+    call_id: &str,
+) -> Result<ToolOutput, String> {
+    if let Some(earlier) = session.read_by(&key) {
+        return Ok(unchanged(&earlier));
     }
-    // A read without a range is a head (PLAN.md D82): at most `read_head`.
+    // Only the lines no earlier read of the unchanged file returned.
+    let seen = session.read_seen(&key);
+    if seen.covered {
+        return Ok(unchanged(&seen.before.join(", ")));
+    }
+    let (offset, limit) = (seen.offset, seen.end - seen.offset + 1);
+    let output = match run(offset, limit) {
+        // The lines left start past the end: all of the file's were shown.
+        Err(err) if !seen.before.is_empty() && err.contains("past the end") => {
+            return Ok(unchanged(&seen.before.join(", ")))
+        }
+        output => output?,
+    };
+    let end = returned_end(&output.text());
+    session.remember_span(
+        ReadKey {
+            offset,
+            limit,
+            ..key.clone()
+        },
+        end,
+        call_id,
+    );
+    Ok(with_seen_notes(output, &key, &seen))
+}
+
+fn unchanged(calls: &str) -> ToolOutput {
+    ToolOutput::ok(format!("[unchanged since call {calls}]"))
+}
+
+/// A read without a range is a head (PLAN.md D82): at most `read_head`.
+fn shape(offset: u64, limit: u64, ranged: bool, ctx: &ToolCtx<'_>) -> Shape {
     let head = !ranged && ctx.read_head > 0;
     let cap = match head {
         true => ctx.budget.min(ctx.read_head),
         false => ctx.budget,
     };
-    let shape = Shape {
+    Shape {
         offset,
         limit,
         cap,
         head,
-    };
-    let output = read_file(path_arg, &path, shape, meta.len(), ctx)?;
-    if let Some(session) = session {
-        let end = returned_end(&output.text(), offset, limit);
-        session.remember_span(key, end, ctx.call_id);
     }
-    Ok(output)
+}
+
+/// `output` with a line before it naming the lines of `key` earlier calls
+/// already returned at its start, and one after it for those at its end.
+fn with_seen_notes(output: ToolOutput, key: &ReadKey, seen: &Seen) -> ToolOutput {
+    let trimmed = !seen.before.is_empty() || !seen.after.is_empty();
+    if !trimmed || output.images().next().is_some() {
+        return output;
+    }
+    let note = |from: u64, to: String, calls: &[String]| match calls.is_empty() {
+        true => String::new(),
+        false => format!(
+            "[already shown, unchanged: lines {from}-{to} (call {})]\n",
+            calls.join(", ")
+        ),
+    };
+    let before = note(key.offset, (seen.offset - 1).to_string(), &seen.before);
+    let wanted_end = key.offset.saturating_add(key.limit.saturating_sub(1));
+    let to = match seen.to_end {
+        true => "end".to_string(),
+        false => wanted_end.to_string(),
+    };
+    let after = note(seen.end + 1, to, &seen.after);
+    let mut text = before + &output.text();
+    if !text.ends_with('\n') && !after.is_empty() {
+        text.push('\n');
+    }
+    ToolOutput::ok(text + &after)
 }
 
 /// What a read asks for: first line, line count, byte cap and whether it
@@ -114,15 +190,15 @@ struct Shape {
     head: bool,
 }
 
-/// The last line `text` holds: the range note's end when the result was
-/// cut, else the end of the request.
-fn returned_end(text: &str, offset: u64, limit: u64) -> u64 {
+/// The last line `text` holds: the range note's end when lines remain, else
+/// `u64::MAX` (the read reached the end of the file: every later line too).
+fn returned_end(text: &str) -> u64 {
     let note = text.lines().rev().find_map(|l| l.strip_prefix("[lines "));
     let end = note
         .and_then(|rest| rest.split_once(" to "))
         .map(|(_, rest)| rest.split([' ', ';', ']']).next().unwrap_or_default())
         .and_then(|number| number.parse().ok());
-    end.unwrap_or_else(|| offset.saturating_add(limit.saturating_sub(1)))
+    end.unwrap_or(u64::MAX)
 }
 /// Bytes read first to tell an image, a binary and a text file apart.
 const HEAD_BYTES: u64 = 8 * 1024;
