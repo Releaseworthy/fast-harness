@@ -10,8 +10,6 @@ use slint::platform::software_renderer::{MinimalSoftwareWindow, RepaintBufferTyp
 use slint::platform::{Platform, WindowAdapter};
 use slint::{ComponentHandle, ModelRc, PhysicalSize, Rgb8Pixel, VecModel};
 
-use crate::MainWindow;
-
 const W: u32 = 1000;
 const H: u32 = 700;
 
@@ -69,7 +67,7 @@ fn many_jobs_keep_the_transcript_drawn() {
     let window = MinimalSoftwareWindow::new(RepaintBufferType::NewBuffer);
     slint::platform::set_platform(Box::new(TestPlatform(window.clone()))).expect("platform");
     window.set_size(PhysicalSize::new(W, H));
-    let ui = MainWindow::new().expect("window");
+    let ui = crate::chat_list::new_window().expect("window");
     ui.show().expect("show");
     ui.set_page("chat".into());
     ui.set_messages(ModelRc::new(VecModel::from(rows())));

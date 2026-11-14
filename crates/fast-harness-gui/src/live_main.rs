@@ -27,13 +27,13 @@ fn main() {
     select_backend();
     let home = fast_harness_core::platform::app_home();
     let note = live::prepare(home.as_deref());
-    match MainWindow::new() {
+    match crate::chat_list::new_window() {
         Ok(ui) => run(ui, note),
         Err(err) => {
             // The checked folder failed to build a window: the built-in UI.
             let root = live::stage_root("live");
             if live::stage(&root, None, true).is_ok() {
-                if let Ok(ui) = MainWindow::new() {
+                if let Ok(ui) = crate::chat_list::new_window() {
                     run(ui, Some(format!("The built-in UI is in use: {err}")));
                 }
             }

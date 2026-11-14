@@ -93,7 +93,7 @@ fn a_broken_folder_falls_back_to_the_built_in_ui_with_the_errors() {
     assert!(staged.contains("export component MainWindow"));
     // Reload reports the same folder and keeps the current UI.
     assert!(live::reload(Some(&home)).starts_with("Reload kept the current UI"));
-    let ui = crate::MainWindow::new().unwrap();
+    let ui = crate::chat_list::new_window().unwrap();
     ui.set_error_text(note.into());
     assert!(ui.get_error_text().contains("MainWindow"));
     std::fs::remove_dir_all(home).unwrap();

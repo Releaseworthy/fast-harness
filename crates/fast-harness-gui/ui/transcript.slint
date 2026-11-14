@@ -63,25 +63,11 @@ component AssistantBlock {
     callback link(string);
     VerticalLayout {
         spacing: Theme.space-s;
-        // The speaker: a gradient tile with the bolt and the name.
-        if msg.text != "" || root.thinking: HorizontalLayout {
+        // Show thinking. No speaker tile or name: no logo or "Fast Harness"
+        // inside the chat (the owner, 2026-11-14).
+        if root.thinking: HorizontalLayout {
             spacing: Theme.space-s;
             alignment: start;
-            Rectangle {
-                width: 22px;
-                height: 22px;
-                AccentFill { radius: Theme.radius-s; }
-                Mark {
-                    width: parent.width;
-                    height: parent.height;
-                    horizontal-alignment: center;
-                    text: Icons.lightning-bolt;
-                    color: Theme.on-accent;
-                    font-size: Theme.font-s;
-                }
-            }
-            Text { text: "Fast Harness"; color: Theme.text; font-size: Theme.font-s; font-weight: 700; vertical-alignment: center; }
-            if root.thinking: Rectangle { width: Theme.space-s; }
             if root.thinking: Mark { text: msg.expanded ? Icons.chevron-down : Icons.chevron-right; color: Theme.dim; font-size: Theme.font-s; }
             if root.thinking: LinkText {
                 text: msg.expanded ? "Hide thinking" : "Show thinking";
@@ -138,7 +124,7 @@ component MessageView {
     callback link(string);
     callback step-toggle(int);
     callback turn-toggle(int);
-    // The row's index in the list.
+    // The row's index in the transcript (`item`).
     in property <int> row-index;
     // The empty space at the end while the session popup shows (D81).
     in property <length> pad;
@@ -239,14 +225,17 @@ component MessageView {
         clicked => { root.step-toggle(msg.step-head); }
     }
 }
-// The transcript list. It follows the bottom while `follow` is true. Any
-// user scroll clears it at once: the wheel calls `scrolled` before its
-// animation moves `content-y` (so `content-y` cannot tell the direction
-// there). The ListView's own bar is off: the themed bar (scrollbar.slint)
-// clears `follow` before it moves `content-y`, so a drag, a track click or
-// the wheel over it during a ListView re-estimate never snaps back down;
-// the `changed content-y` check still catches other moves. Coming back to
-// the bottom sets it again; "Jump to latest" does it in one click.
+// The transcript list (2026-11-14): its own virtual list (src/chat_list.rs),
+// not Slint's ListView, whose content height was the average height of the
+// rows it had laid out times the row count: the thumb changed size, a drag
+// jumped and a fold moved the view. Rust measures every row once through
+// `probe` (a hidden copy of a row at the list's width) and gives `tops`
+// (each row's top, the last one the content height), `slots` (the rows in
+// and around the view) and `offset` (the scroll position); this view draws
+// those rows at their tops and asks Rust to `sync` when the rows, the size
+// or the scroll change. It follows the end while `follow` is true: a user
+// scroll (the wheel, the themed bar) clears it, arriving at the end sets
+// it again, "Jump to latest" does it in one click.
 export component TranscriptView {
     in property <[MsgRow]> rows;
     // A session's log is opening on a worker (D60): the list says so in a
@@ -257,188 +246,146 @@ export component TranscriptView {
     // the height of the "spacer" row Rust appends then, so the list keeps
     // its full height and its last real row ends at the popup's top.
     in property <length> pad;
-    changed pad => { if root.follow { list.content-y = root.follow-y; } }
-    property <bool> spaced: root.rows.length > 0 && root.rows[root.rows.length - 1].kind == "spacer";
-    // The list's height and the bottom of its last real row (for the tests).
-    out property <length> list-height: list.height;
-    out property <length> end-y: list.content-y + (root.exact ? root.end : list.content-height) - (root.spaced ? root.pad : 0px);
-    property <length> bottom: min(0px, list.visible-height - list.content-height);
-    // How far the view is above the bottom: exact while the last row is
-    // laid out, whatever the ListView's height estimate.
-    property <length> gap: list.content-y - root.bottom;
-    // `gap` at the last `content-y` change: reaching the bottom follows
-    // again. Leaving it is a user action only (`scrolled`, the bar's
-    // `scroll-to`): a growing gap is not, since the list moves `content-y`
-    // itself while it measures the rows of a session just shown, and that
-    // read as a scroll up (2026-11-13: Jump to latest after a switch).
-    property <length> last-gap;
+    // From src/chat_list.rs: the list rows to draw, every row's top and the
+    // end, the scroll position, and the rows to measure off screen.
+    in property <[int]> slots;
+    in property <[length]> tops;
+    in-out property <length> offset;
+    in property <[int]> probes;
+    // The row the tests watch (its `item`) and its top in the view.
+    in property <int> watch-item: -1;
+    in-out property <length> watch-y;
+    callback sync();
+    // A laid out row's height: list row, its `item`, its height.
+    callback measured(int, int, length);
+    // A row's toggle is about to run: the row (list index), the step's or
+    // turn's head, a turn's or not; Rust keeps the row in place.
+    callback anchor(int, int, bool);
+    callback go-row(int);
     callback toggle(int);
     callback turn-toggle(int);
     callback step-toggle(int);
     callback copy(string);
     callback link(string);
+    property <length> total: root.tops.length > 0 ? root.tops[root.tops.length - 1] : 0px;
+    property <length> max-offset: max(0px, root.total - root.height);
+    property <bool> spaced: root.rows.length > 0 && root.rows[root.rows.length - 1].kind == "spacer";
+    // The list's height, the bottom of its last real row, the rows' height
+    // and the scroll position (for the tests).
+    out property <length> list-height: root.height;
+    out property <length> end-y: root.total - root.offset - (root.spaced ? root.pad : 0px);
+    out property <length> content-height: root.total;
+    out property <length> view-y: -root.offset;
     // The themed bar's thumb centre in window coordinates (for the tests).
     out property <length> thumb-x: bar.thumb-x;
     out property <length> thumb-y: bar.thumb-y;
-    // The rows' height as the list measured it (for the layout tests).
-    out property <length> content-height: list.content-height;
+    property <int> count: root.rows.length;
+    property <length> font: Theme.font-m;
+    // A drawn row changed: one sync for all of them.
+    property <bool> stale;
+    changed rows => { root.sync(); }
+    changed count => { root.sync(); }
+    changed pad => { root.sync(); }
+    changed width => { root.sync(); }
+    changed height => { root.sync(); }
+    changed font => { root.sync(); }
+    changed stale => {
+        if root.stale {
+            root.stale = false;
+            root.sync();
+        }
+    }
 
     public function to-bottom() {
         root.follow = true;
-        root.target = -1;
-        list.content-y = root.follow-y;
+        root.offset = root.max-offset;
+        root.sync();
     }
 
-    // A navigator tick asked for row `row` at the top (D77). The list lays
-    // out only the rows in view and places the others by its average row
-    // height, so the share of the height brings the row into view; the row
-    // then pins the view to its top each time the list moves it (`pin`,
-    // `changed y`) until a user scroll.
-    property <int> target: -1;
-
-    // The bottom of the last row while it is laid out, and that row (-1:
-    // not known). Following the bottom holds the last row's real end at the
-    // view's end: the list's `content-height` is an estimate from the rows
-    // in view, and after a fold of the last turn its zero-height rows made
-    // each pass estimate anew, so following that estimate swung the view
-    // between two places forever and left the frame blank below the fold
-    // (2026-11-14).
-    property <length> end;
-    property <int> end-row: -1;
-    function at-end(i: int, bottom: length) {
-        if i != root.rows.length - 1 {
-            return;
-        }
-        root.end = bottom;
-        root.end-row = i;
-        if root.follow && root.target < 0 {
-            list.content-y = min(0px, list.visible-height - bottom);
-        }
-    }
-    changed rows => { root.end-row = -1; }
-    // Following, with the last row laid out near the view, so `end` holds
-    // (a row scrolled away is gone and its end stale; a user scroll ends
-    // following, so `end-y` then reads the estimate again).
-    property <bool> exact: root.follow && root.end-row == root.rows.length - 1 && root.end + list.content-y > -list.visible-height && root.end + list.content-y < 2 * list.visible-height;
-    // Where following the bottom puts `content-y`: the last row's real end
-    // when known, else the list's estimate.
-    property <length> follow-y: root.exact ? min(0px, list.visible-height - root.end) : root.bottom;
-
-    public function go-row(row: int) {
-        root.follow = false;
-        root.target = row;
-        list.content-y = max(root.bottom, -list.content-height * row / max(1, root.rows.length, root.rows.length > 0 ? root.rows[root.rows.length - 1].item + 1 : 0));
+    // A user scroll to `y`: it stops following, unless it arrives at the end.
+    function scroll(y: length) {
+        root.follow = root.offset < root.max-offset - 1px && y >= root.max-offset - 1px;
+        root.offset = max(0px, min(root.max-offset, y));
+        root.sync();
     }
 
-    function pin(i: int, y: length) {
-        list.content-y = max(root.bottom, min(0px, -y));
-        // `at-top` can flip and back in one pass while the list settles,
-        // and then its handler does not run: the pinned row is the top.
-        if list.content-y == -y {
-            TurnsUi.top-row = i;
+    // The wheel over the rows (their own areas pass it on).
+    TouchArea {
+        scroll-event(e) => {
+            root.scroll(root.offset - e.delta-y);
+            return accept;
         }
     }
-    // The row at the top is not the target and the target is not laid out
-    // (a laid out target pins the view to itself): the list's estimate put
-    // the view past it, as after a fold the estimate lags the rows' real
-    // heights (go(0) landed at the end of turn 1, 2026-11-14). Half a view
-    // toward it at a time; once laid out, its own pin takes over.
-    function seek(i: int) {
-        if root.target < 0 || i == root.target {
-            return;
-        }
-        if i > root.target {
-            list.content-y = min(0px, list.content-y + list.visible-height / 2);
-        } else if list.content-y > root.bottom + 1px {
-            list.content-y = max(root.bottom, list.content-y - list.visible-height / 2);
-        }
-    }
-    list := ListView {
-        width: 100%;
-        height: root.height;
-        vertical-scrollbar-policy: ScrollBarPolicy.always-off;
-        for item[i] in root.rows: MessageView {
-            // The row under the view's top edge: the navigator's current turn.
-            property <bool> at-top: self.y + list.content-y <= 1px && self.y + self.height + list.content-y > 1px;
-            msg: item;
-            // `i` counts the rows the list gets (rows that draw nothing are
-            // left out, `rows::shows`); turns, targets and toggles speak of
-            // `item.item`, the row's index in the transcript.
-            property <bool> pinned: item.item == root.target;
-            init => {
-                root.at-end(i, self.y + self.height);
-                if self.pinned { root.pin(item.item, self.y); }
-            }
-            changed pinned => {
-                if self.pinned { root.pin(item.item, self.y); }
-            }
-            changed height => { root.at-end(i, self.y + self.height); }
-            changed y => {
-                root.at-end(i, self.y + self.height);
-                if self.pinned { root.pin(item.item, self.y); }
-                if self.at-top && root.target < 0 { TurnsUi.top-row = item.item; }
-                if self.at-top { root.seek(item.item); }
-            }
-            changed at-top => {
-                if self.at-top && root.target < 0 { TurnsUi.top-row = item.item; }
-                if self.at-top { root.seek(item.item); }
-            }
-            copy(t) => { root.copy(t); }
-            toggle => { root.toggle(item.item); }
-            step-toggle(h) => { root.step-toggle(h); }
-            turn-toggle(h) => { root.turn-toggle(h); }
-            row-index: i;
+    Rectangle {
+        clip: true;
+        for slot in root.slots: MessageView {
+            property <bool> watched: self.msg.item == root.watch-item;
+            property <length> natural: self.preferred-height;
+            // Set at creation: its handler runs after the first frame, once
+            // the row's `if` parts are built, so even a row whose height
+            // never changes reports it.
+            property <bool> born;
+            x: 0;
+            y: root.tops[slot] - root.offset;
+            width: parent.width;
+            height: self.natural;
+            msg: root.rows[slot];
+            row-index: self.msg.item;
             pad: root.pad;
+            init => {
+                self.born = true;
+                if self.watched { root.watch-y = self.y; }
+            }
+            changed born => { root.measured(slot, self.msg.item, self.natural); }
+            changed watched => { if self.watched { root.watch-y = self.y; } }
+            changed y => { if self.watched { root.watch-y = self.y; } }
+            changed msg => { root.stale = true; }
+            changed natural => { root.measured(slot, self.msg.item, self.natural); }
+            copy(t) => { root.copy(t); }
+            toggle => {
+                root.anchor(slot, -1, false);
+                root.toggle(self.msg.item);
+                root.sync();
+            }
+            step-toggle(h) => {
+                root.anchor(slot, h, false);
+                root.step-toggle(h);
+                root.sync();
+            }
+            turn-toggle(h) => {
+                root.anchor(slot, h, true);
+                root.turn-toggle(h);
+                root.sync();
+            }
             link(u) => { root.link(u); }
         }
-        scrolled => {
-            root.follow = false;
-            root.target = -1;
-        }
-        changed content-y => {
-            if (root.gap <= 1px && root.last-gap > 1px) {
-                root.follow = true;
-            }
-            root.last-gap = root.gap;
-            // The list's own pass moves `content-y` off the last row's end
-            // without moving the row (12px under the popup, 2026-11-14):
-            // following puts it back.
-            if root.follow && root.target < 0 && root.exact && abs(self.content-y - root.follow-y) > 0.5px {
-                self.content-y = root.follow-y;
-            }
-        }
-        changed content-height => {
-            if (root.follow && root.exact) {
-                self.content-y = root.follow-y;
-            }
-        }
     }
-
-    // Following while the last row's real end is not known: one view per
-    // frame toward the list's estimate of the bottom, until the last row is
-    // laid out (`at-end`, `exact`). It runs only then, so an idle window
-    // gets no frames from it.
-    Timer {
-        interval: 16ms;
-        running: root.follow && !root.exact && root.target < 0 && root.rows.length > 0 && list.content-y > root.bottom + 0.5px;
-        triggered => {
-            list.content-y = max(root.bottom, list.content-y - list.visible-height);
-        }
+    // The lane: rows laid out off screen, a batch at a time, so their
+    // heights are known before they show (src/chat_list.rs). Visible and
+    // unclipped: Slint builds a row's `if` parts only when its renderer
+    // visits the row, and never under `visible: false` or an empty clip.
+    for slot in root.probes: MessageView {
+        property <length> natural: self.preferred-height;
+        property <bool> born;
+        x: -100000px;
+        y: 0;
+        width: root.width;
+        height: self.natural;
+        msg: root.rows[slot];
+        row-index: -2;
+        pad: root.pad;
+        init => { self.born = true; }
+        changed born => { root.measured(slot, self.msg.item, self.natural); }
+        changed natural => { root.measured(slot, self.msg.item, self.natural); }
     }
-
     bar := ScrollBar {
         x: parent.width - self.width;
         height: parent.height;
-        content-y: list.content-y;
-        content-height: list.content-height;
-        visible-height: list.visible-height;
-        scroll-to(y) => {
-            root.follow = false;
-            root.target = -1;
-            list.content-y = y;
-        }
+        content-y: -root.offset;
+        content-height: root.total;
+        visible-height: root.height;
+        scroll-to(y) => { root.scroll(-y); }
     }
-
     // The turn navigator in the right gutter, between the column and the
     // bar; shown from two turns on, when the gutter has room for it.
     property <length> side: Columns.chat(root.width);
@@ -451,7 +398,7 @@ export component TranscriptView {
         room: root.height;
         card-width: min(340px, root.width / 2);
         top-row: TurnsUi.top-row;
-        go(row) => { root.go-row(row); }
+        go(row) => { root.follow = false; root.go-row(row); }
     }
     function probe() {
         TurnsUi.nav-shown = root.nav-shown;

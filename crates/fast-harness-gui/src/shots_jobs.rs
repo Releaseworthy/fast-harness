@@ -13,7 +13,7 @@ use slint::platform::software_renderer::{MinimalSoftwareWindow, RepaintBufferTyp
 use slint::platform::{Platform, WindowAdapter};
 use slint::{ComponentHandle, ModelRc, PhysicalSize, Rgb8Pixel, VecModel};
 
-use crate::{jobs_view, shots_png, theme, JobsUi, MainWindow};
+use crate::{jobs_view, shots_png, theme, JobsUi};
 
 const W: u32 = 1100;
 const H: u32 = 760;
@@ -74,7 +74,7 @@ fn jobs_shots() {
     let window = MinimalSoftwareWindow::new(RepaintBufferType::NewBuffer);
     slint::platform::set_platform(Box::new(ShotPlatform(window.clone()))).expect("platform");
     window.set_size(PhysicalSize::new(W, H));
-    let ui = MainWindow::new().expect("window");
+    let ui = crate::chat_list::new_window().expect("window");
     ui.show().expect("show");
     theme::apply(&ui, &builtins()[0], 0);
     ui.set_page("chat".into());

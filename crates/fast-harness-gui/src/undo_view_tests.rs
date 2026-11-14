@@ -75,7 +75,7 @@ fn tracked_write(session: &Session, cwd: &Path) {
 fn setup(dir: &Path) -> (MainWindow, PathBuf) {
     let window = MinimalSoftwareWindow::new(RepaintBufferType::NewBuffer);
     let _ = slint::platform::set_platform(Box::new(TestPlatform(window)));
-    let ui = MainWindow::new().expect("window");
+    let ui = crate::chat_list::new_window().expect("window");
     let (home, cwd) = (dir.join("home"), dir.join("work"));
     std::fs::create_dir_all(&cwd).unwrap();
     std::fs::write(cwd.join("u.txt"), "before").unwrap();

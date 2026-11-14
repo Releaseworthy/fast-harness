@@ -77,7 +77,7 @@ pub fn window(width: u32, height: u32) -> (Rc<MinimalSoftwareWindow>, MainWindow
     let window = MinimalSoftwareWindow::new(RepaintBufferType::NewBuffer);
     slint::platform::set_platform(Box::new(TestPlatform(window.clone()))).expect("platform");
     window.set_size(PhysicalSize::new(width, height));
-    let ui = MainWindow::new().expect("window");
+    let ui = crate::chat_list::new_window().expect("window");
     ui.show().expect("show");
     ui.set_page("chat".into());
     (window, ui)

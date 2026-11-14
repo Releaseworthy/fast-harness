@@ -45,7 +45,7 @@ fn list_off_ui(home: &Path, cwd: &Path) -> crate::listings::Listed {
 fn setup(root: &Path) -> (MainWindow, PathBuf, PathBuf, String) {
     let window = MinimalSoftwareWindow::new(RepaintBufferType::NewBuffer);
     let _ = slint::platform::set_platform(Box::new(TestPlatform(window)));
-    let ui = MainWindow::new().expect("window");
+    let ui = crate::chat_list::new_window().expect("window");
     let (home, cwd) = (root.join("home"), root.join("work"));
     std::fs::create_dir_all(&cwd).unwrap();
     let first = Conversation::create(&home, &cwd, None).unwrap().id;

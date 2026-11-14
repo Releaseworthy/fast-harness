@@ -13,7 +13,7 @@ use slint::platform::{Platform, WindowAdapter};
 use slint::ComponentHandle;
 
 use crate::app::{install, with_app, App};
-use crate::{workspaces, MainWindow};
+use crate::workspaces;
 
 struct TestPlatform(Rc<MinimalSoftwareWindow>);
 
@@ -46,7 +46,7 @@ fn the_model_picker_follows_the_workspace_project_providers() {
     trust::trust(&home, &ws1).unwrap();
     let window = MinimalSoftwareWindow::new(RepaintBufferType::NewBuffer);
     let _ = slint::platform::set_platform(Box::new(TestPlatform(window)));
-    let ui = MainWindow::new().expect("window");
+    let ui = crate::chat_list::new_window().expect("window");
     let mut rt = Runtime::load_at(home.clone()).unwrap();
     rt.use_project(&ws1).unwrap();
     install(App::new(&ui, rt, Some(ws1.clone())));

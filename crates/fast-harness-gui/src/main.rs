@@ -14,6 +14,7 @@ include!("root_items.rs");
 mod appearance_tests;
 #[cfg(test)]
 mod approval_focus_tests;
+mod chat_list;
 #[cfg(test)]
 mod child_session_tests;
 #[cfg(test)]
@@ -42,6 +43,10 @@ mod popup_view_tests;
 mod prompt_settings_tests;
 #[cfg(test)]
 mod rails_view_tests;
+#[cfg(test)]
+mod real_child_scroll_bar_tests;
+#[cfg(test)]
+mod real_child_scroll_tests;
 #[cfg(test)]
 mod real_child_tests;
 #[cfg(test)]
@@ -97,7 +102,7 @@ fn main() {
         std::process::exit(code);
     }
     select_backend();
-    let Ok(ui) = MainWindow::new() else {
+    let Ok(ui) = crate::chat_list::new_window() else {
         return;
     };
     run(ui, None);
