@@ -66,7 +66,7 @@ fn child_turn(steps: u32) -> Transcript {
 }
 
 /// For each line of the chat list: does the column draw anything there.
-fn lines(window: &MinimalSoftwareWindow, ui: &MainWindow) -> Vec<bool> {
+pub fn lines(window: &MinimalSoftwareWindow, ui: &MainWindow) -> Vec<bool> {
     let size = window.size();
     let width = size.width as usize;
     let mut pixels = vec![Rgb8Pixel { r: 0, g: 0, b: 0 }; width * size.height as usize];
@@ -84,7 +84,7 @@ fn lines(window: &MinimalSoftwareWindow, ui: &MainWindow) -> Vec<bool> {
 }
 
 /// The list draws down to its end: no blank stretch of 60 px and more.
-fn assert_drawn(window: &MinimalSoftwareWindow, ui: &MainWindow, what: &str) {
+pub fn assert_drawn(window: &MinimalSoftwareWindow, ui: &MainWindow, what: &str) {
     let lines = lines(window, ui);
     let last = lines.iter().rposition(|&d| d).unwrap_or(0);
     assert!(

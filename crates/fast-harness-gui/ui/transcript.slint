@@ -404,8 +404,17 @@ export component TranscriptView {
                 self.content-y = root.follow-y;
             }
         }
+        // Only the last row's real end moves the view here, never the
+        // list's estimate: a session of folded steps (rows of no height
+        // next to a 2,900px answer) swings that estimate by 100x as the
+        // rows in view change, and jumping to it put the view past the
+        // real end, where Slint 1.18.1 lays out only the last row (its
+        // `update_visible_instances` scroll-up never prepends) and the
+        // chat drew empty: a finished subagent opened from its row
+        // (2026-11-14, `real_child_tests.rs`). `to-bottom` still jumps
+        // to the estimate, then the last row's `at-end` takes over.
         changed content-height => {
-            if (root.follow) {
+            if (root.follow && root.exact) {
                 self.content-y = root.follow-y;
             }
         }

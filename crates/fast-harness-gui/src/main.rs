@@ -43,6 +43,8 @@ mod prompt_settings_tests;
 #[cfg(test)]
 mod rails_view_tests;
 #[cfg(test)]
+mod real_child_tests;
+#[cfg(test)]
 mod scroll_tests;
 #[cfg(test)]
 mod shots_appearance;
