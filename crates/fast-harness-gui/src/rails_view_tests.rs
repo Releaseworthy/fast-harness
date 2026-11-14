@@ -119,6 +119,21 @@ impl Chat {
         self.window.dispatch_event(WindowEvent::PointerExited);
         frames(&self.window, 100);
     }
+    /// A click that leaves the pointer where it is (no `PointerExited`): a
+    /// rail that folds under the pointer never hears it leave.
+    fn press(&self, x: usize, y: usize) {
+        let position = LogicalPosition::new(x as f32, y as f32);
+        let button = PointerEventButton::Left;
+        self.window
+            .dispatch_event(WindowEvent::PointerMoved { position });
+        // The hover is drawn (its `changed` handlers run) before the press.
+        frames(&self.window, 100);
+        self.window
+            .dispatch_event(WindowEvent::PointerPressed { position, button });
+        self.window
+            .dispatch_event(WindowEvent::PointerReleased { position, button });
+        frames(&self.window, 100);
+    }
     /// The lowest transcript row that draws anything in the column.
     fn bottom(&self) -> usize {
         let (shot, left) = (Shot::take(&self.window), self.left());
@@ -266,4 +281,58 @@ fn the_rows_after_a_turn_folded_while_scrolled_draw_at_once() {
         blank < 120,
         "{blank} of 240 rows blank below the folded turn"
     );
+}
+
+/// The middle row of a run.
+fn mid(run: (usize, usize, bool)) -> usize {
+    (run.0 + run.1) / 2
+}
+
+/// A rail folded by a click under the pointer (2026-11-15: the owner saw
+/// the reopened turn's rail drawn as if hovered): it rests, 2 px wide and
+/// faint like the untouched turn's.
+#[test]
+fn a_turn_rail_folded_under_the_pointer_rests_when_the_turn_opens() {
+    let chat = chat();
+    let (x, left, top) = (chat.left() - 25, chat.left(), chat.top());
+    let runs = Shot::take(&chat.window).runs(x, left, top);
+    chat.press(x + 1, mid(runs[0]));
+    assert!(chat.hidden(1..5), "the rail folds the turn");
+    let shot = Shot::take(&chat.window);
+    let y = (top..shot.runs(x, left, top)[0].0)
+        .find(|&y| (left..left + 12).any(|x| shot.at(x, y) != shot.at(left - 4, y)))
+        .expect("the turn line");
+    chat.click(left + 60, y + 4);
+    assert!(!chat.hidden(1..2), "the turn line opens the turn again");
+    let shot = Shot::take(&chat.window);
+    let runs = shot.runs(x, left, top);
+    assert_eq!(runs.len(), 2, "{runs:?}");
+    let (a, b) = (mid(runs[0]), mid(runs[1]));
+    assert_eq!(shot.at(x, a), shot.at(x, b), "the reopened rail is lit");
+    assert_eq!(shot.at(x - 1, a), shot.at(left - 4, a), "3 px wide");
+}
+
+#[test]
+fn a_step_rail_folded_under_the_pointer_rests_when_the_step_opens() {
+    let chat = chat();
+    chat.mirror.borrow_mut().toggle_step(1, &*chat.model);
+    frames(&chat.window, 100);
+    let (x, left, top) = (chat.left() - 11, chat.left(), chat.top());
+    let shot = Shot::take(&chat.window);
+    let turn = shot.runs(left - 25, left, top)[0];
+    let open = |shot: &Shot| -> Vec<_> {
+        (shot.runs(x, left, top).into_iter())
+            .filter(|r| r.0 < turn.1)
+            .collect()
+    };
+    let y = mid(open(&shot)[0]);
+    let rest = shot.at(x, y);
+    chat.press(x, y);
+    assert!(open(&Shot::take(&chat.window)).is_empty(), "the rail folds");
+    chat.mirror.borrow_mut().toggle_step(1, &*chat.model);
+    frames(&chat.window, 100);
+    let shot = Shot::take(&chat.window);
+    assert_eq!(open(&shot).len(), 1, "the step opens again");
+    assert_eq!(shot.at(x, y), rest, "the reopened rail is lit");
+    assert_eq!(shot.at(x - 1, y), shot.at(left - 4, y), "3 px wide");
 }
