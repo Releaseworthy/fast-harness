@@ -85,6 +85,8 @@ mod shots_turns;
 #[cfg(test)]
 mod side_tests;
 #[cfg(test)]
+mod side_view_tests;
+#[cfg(test)]
 mod tabbar_tests;
 #[cfg(test)]
 mod text_select_tests;

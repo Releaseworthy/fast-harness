@@ -5,14 +5,15 @@ import { Theme, Mark, AccentFill, Eyebrow } from "parts.slint";
 import { Icons } from "icons.slint";
 import { ActionButton, IconButton } from "widgets.slint";
 
-// Row geometry: the chevron and folder columns, so a session's title lines
-// up with its workspace's name.
+// Row geometry: the chevron and folder columns. A session's text starts a
+// short step in, just past its workspace's chevron (the owner, 2026-11-15:
+// at the workspace's name it sat too far right).
 global SideGrid {
     out property <length> pad: Theme.space-s;
     out property <length> chevron: 12px;
     out property <length> folder: 18px;
     out property <length> gap: Theme.space-s;
-    out property <length> name-x: self.pad + self.chevron + self.gap + self.folder + self.gap;
+    out property <length> session-x: self.pad + self.chevron + Theme.space-xs;
 }
 
 // A selected row: the accent surface, a gradient bar on the left and a
@@ -183,7 +184,7 @@ component RunMark inherits HorizontalLayout {
     Text { text: root.word; color: root.tint; font-size: Theme.font-xs; }
 }
 
-// A session under its workspace, indented past the folder icon.
+// A session under its workspace, a short step in, with no tree guide.
 component SessionEntry inherits Rectangle {
     in property <SideRow> entry;
     callback clicked();
@@ -192,20 +193,14 @@ component SessionEntry inherits Rectangle {
     accessible-label: root.entry.title + (root.entry.run != "" ? " (" + root.entry.run + ")" : "");
     accessible-item-selected: root.entry.current;
     accessible-action-default => { root.clicked(); }
-    // A tree guide under the folder icon.
-    Rectangle {
-        x: SideGrid.pad + SideGrid.chevron + SideGrid.gap + SideGrid.folder / 2;
-        width: 1px;
-        background: Theme.line;
-    }
     RowMark {
-        x: SideGrid.name-x - Theme.space-s - 2px;
+        x: SideGrid.session-x - Theme.space-s - 2px;
         width: parent.width - self.x;
         selected: root.entry.current;
         hovered: sta.has-hover;
     }
     VerticalLayout {
-        padding-left: SideGrid.name-x;
+        padding-left: SideGrid.session-x;
         padding-right: Theme.space-s;
         alignment: center;
         spacing: 2px;
@@ -292,7 +287,7 @@ export component Sidebar inherits Rectangle {
                     // A workspace whose first list is still being read (D60).
                     if r.kind == "loading": HorizontalLayout {
                         height: 28px;
-                        padding-left: SideGrid.name-x;
+                        padding-left: SideGrid.session-x;
                         Text {
                             text: r.title;
                             font-size: Theme.font-xs;
