@@ -87,6 +87,8 @@ mod side_tests;
 #[cfg(test)]
 mod tabbar_tests;
 #[cfg(test)]
+mod text_select_tests;
+#[cfg(test)]
 mod turn_nav_view_tests;
 #[cfg(test)]
 mod workspace_switch_tests;

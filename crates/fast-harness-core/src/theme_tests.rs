@@ -235,7 +235,7 @@ fn contrast_check_lists_the_failing_pairs() {
     let failures = check(&p);
     assert_eq!(
         failures.len(),
-        11,
+        15,
         "text fails on every background, tinted too"
     );
     assert_eq!(
@@ -267,7 +267,7 @@ fn blend_mixes_each_channel_and_rounds() {
         Rgb(150, 100, 10)
     );
     assert_eq!(blend(white, black, 0.0), white);
-    assert_eq!(TINTS.len(), 10);
+    assert_eq!(TINTS.len(), 14);
 }
 
 /// The tinted pairs: cargo test -p fast-harness-core tint_report -- --ignored --nocapture.

@@ -8,6 +8,7 @@ import { Icons } from "icons.slint";
 import { BusySpinner } from "widgets.slint";
 import { CodeBox } from "blocks.slint";
 import { CodeView } from "codeview.slint";
+import { GhostText } from "selectable.slint";
 
 // The colour and mark of each tool kind, and the colour of each chip tone,
 // all from the theme roles.
@@ -173,12 +174,10 @@ component FieldRow {
             overflow: elide;
             vertical-alignment: top;
         }
-        Text {
+        GhostText {
             text: root.expanded ? root.field.value : root.field.preview;
-            color: Theme.text;
             font-family: Theme.mono;
             font-size: Theme.font-s;
-            wrap: word-wrap;
             horizontal-stretch: 1;
         }
     }

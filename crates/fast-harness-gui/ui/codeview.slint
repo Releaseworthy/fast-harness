@@ -6,6 +6,7 @@
 import { CodeLine } from "types.slint";
 import { Theme, Mark } from "parts.slint";
 import { Icons } from "icons.slint";
+import { GhostText } from "selectable.slint";
 
 // One line: number columns, the mark column and the wrapped text. A header
 // row (a grep file) shows the file mark and its path on the raised colour;
@@ -79,13 +80,12 @@ export component CodeRow inherits Rectangle {
                 font-size: Theme.font-s;
                 vertical-alignment: top;
             }
-            Text {
+            // Selectable by a drag through a ghost (ui/selectable.slint).
+            GhostText {
                 text: line.text;
-                color: Theme.text;
                 font-family: Theme.mono;
                 font-size: Theme.font-s;
                 font-weight: root.header ? 600 : 400;
-                wrap: word-wrap;
                 horizontal-stretch: 1;
             }
         }

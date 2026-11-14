@@ -10,6 +10,7 @@
 use slint::{ModelRc, StyledText, VecModel};
 
 use crate::md_blocks::{blocks, shares, Block, Kind};
+use crate::plain_text::{has_link, plain};
 use crate::{MdBlock, MdCell, MdRow};
 
 /// A reply as the blocks `ui/markdown.slint` draws (src/md_blocks.rs).
@@ -27,6 +28,7 @@ fn md_block(block: Block) -> MdBlock {
         Kind::Rule => "rule",
         Kind::Table => "table",
     };
+    let plain = selectable(&block);
     let (text, code) = match block.kind {
         Kind::Heading => (markdown(&bold(&block.text)), String::new()),
         Kind::Code => (StyledText::default(), block.text),
@@ -37,6 +39,7 @@ fn md_block(block: Block) -> MdBlock {
     MdBlock {
         kind: kind.into(),
         text,
+        plain: plain.into(),
         code: code.into(),
         level: int(block.level),
         indent: int(block.indent),
@@ -44,6 +47,17 @@ fn md_block(block: Block) -> MdBlock {
         quote: int(block.quote),
         rows: table_rows(&block.rows),
     }
+}
+
+/// The plain text a drag selects in `block` (`MdText`): paragraphs,
+/// headings and list items without a link (a ghost over a link would take
+/// its click); empty for the rest. Soft line breaks draw as spaces.
+fn selectable(block: &Block) -> String {
+    let text = matches!(block.kind, Kind::Para | Kind::Heading | Kind::Item);
+    if !text || has_link(&block.text) {
+        return String::new();
+    }
+    plain(&block.text).replace('\n', " ")
 }
 
 /// A table's rows, every row padded to the widest one's columns.

@@ -135,6 +135,8 @@ pub const REQUIREMENTS: &[Requirement] = &[
 pub const DIFF_ALPHA: f64 = 0.12;
 /// Alpha of a tone's tint under its tool icon tile.
 pub const TILE_ALPHA: f64 = 0.16;
+/// Alpha of the accent under selected text (the GUI's `Highlight.fill`).
+pub const SELECT_ALPHA: f64 = 0.30;
 
 /// A promise on a tinted background: `fg` on `bg` blended with `tint` at
 /// `alpha` reaches `min_ratio` (WCAG 2.2) and `min_lc` (APCA |Lc|).
@@ -164,8 +166,19 @@ const fn tint(fg: &'static str, bg: &'static str, tint: &'static str, a: f64) ->
     }
 }
 
+/// Selected text on `bg`: body text under the accent at [`SELECT_ALPHA`],
+/// held to WCAG AA (4.5:1, APCA Lc 60) as the selection only lasts a drag.
+const fn selected(bg: &'static str) -> TintRequirement {
+    TintRequirement {
+        min_ratio: 4.5,
+        min_lc: 60.0,
+        ..tint("text", bg, "accent", SELECT_ALPHA)
+    }
+}
+
 /// Diff rows: body and dim text on `code` tinted with success or error.
 /// Tool icon tiles: each tone's glyph on `surface` tinted with that tone.
+/// Selected text: body text on every chat background under the accent.
 pub const TINTS: &[TintRequirement] = &[
     tint("text", "code", "success", DIFF_ALPHA),
     tint("text", "code", "error", DIFF_ALPHA),
@@ -177,6 +190,10 @@ pub const TINTS: &[TintRequirement] = &[
     tint("warning", "surface", "warning", TILE_ALPHA),
     tint("accent", "surface", "accent", TILE_ALPHA),
     tint("accent2", "surface", "accent2", TILE_ALPHA),
+    selected("bubble"),
+    selected("bg"),
+    selected("surface"),
+    selected("code"),
 ];
 
 /// `bg` with `tint` laid over it at `alpha`, per sRGB channel, rounded.

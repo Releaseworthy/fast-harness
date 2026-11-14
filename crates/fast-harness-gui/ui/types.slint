@@ -88,10 +88,13 @@ export struct MdRow {
 // One markdown block of a reply (src/md_blocks.rs). `kind`: p, h, li,
 // code, rule or table. `text` is the inline markdown, `code` a code
 // block's text, `level` a heading's level, `indent` the list depth,
-// `marker` an item's bullet or number, `quote` the block quote depth.
+// `marker` an item's bullet or number, `quote` the block quote depth,
+// `plain` the text a drag selects (empty for a block with a link, which
+// keeps its click, and for code, rules and tables).
 export struct MdBlock {
     kind: string,
     text: styled-text,
+    plain: string,
     code: string,
     level: int,
     indent: int,

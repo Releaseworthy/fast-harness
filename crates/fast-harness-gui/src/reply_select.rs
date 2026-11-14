@@ -1,7 +1,9 @@
 //! Select mode for an assistant reply (2026-11-14): the reply draws as
-//! StyledText (markdown), which Slint 1.18.1 cannot select, so its Select
-//! link swaps it for a SelectableText of its
-//! plain text (`plain_text`), every line selected. Esc, the focus moving
+//! StyledText (markdown), which Slint 1.18.1 cannot select. A drag selects
+//! within one block without a link (a ghost of its plain text, `MdText` in
+//! `ui/markdown.slint`); the Select link swaps the whole reply for a
+//! SelectableText of its plain text (`plain_text`), every line selected,
+//! for a selection across blocks or in a block with a link. Esc, the focus moving
 //! elsewhere (a click in another text, the composer), Done or a fold of
 //! any row bring the reply back (`ui/transcript.slint`). One reply at a
 //! time: the `ReplySelect` global holds its item. The chat stops following,

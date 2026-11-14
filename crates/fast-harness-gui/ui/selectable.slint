@@ -8,18 +8,79 @@
 // nothing, while Copy and Select All work.
 import { Theme } from "parts.slint";
 
+// The selection fill: the accent at `theme::SELECT_ALPHA` (0.30), so a
+// selection shows on the bubble, the code box and the page alike (the
+// `selection` role, the list cursor's fill, was invisible on the bubble,
+// the owner 2026-11-15). The theme tests check text on it.
+export global Highlight {
+    out property <color> fill: Theme.accent.with-alpha(0.30);
+}
+
 export component SelectableText inherits TextInput {
     read-only: true;
     single-line: false;
     wrap: word-wrap;
     color: Theme.text;
-    selection-background-color: Theme.selection;
+    selection-background-color: Highlight.fill;
     selection-foreground-color: Theme.text;
+}
+
+// A selectable copy laid exactly over a drawn text (GhostText, MdText in
+// ui/markdown.slint). Its glyphs are transparent unless `ink`, so the drawn
+// text shows through the translucent selection fill. `selecting` is true
+// while it holds focus and a non-empty selection.
+export component Ghost inherits TextInput {
+    in property <bool> ink;
+    out property <bool> selecting: self.has-focus && self.anchor-position-byte-offset != self.cursor-position-byte-offset;
+    read-only: true;
+    single-line: false;
+    wrap: word-wrap;
+    color: root.ink ? Theme.text : transparent;
+    selection-background-color: Highlight.fill;
+    selection-foreground-color: root.ink ? Theme.text : transparent;
+}
+
+// A wrapped Text that a drag selects without a TextInput per row (the
+// owner's log 6143 kept the chat's measuring lane from finishing with one
+// per code line): the ghost exists only while the pointer is over the text
+// or the ghost holds focus. The TouchArea is the text's parent, so its
+// hover stays true while the ghost takes the events (i-slint-core 1.18.1
+// TouchArea filters before its children); the ghost has its own x, y and
+// size, so it never changes the measured height.
+export component GhostText inherits TouchArea {
+    in property <string> text;
+    in property <color> color: Theme.text;
+    in property <string> font-family;
+    in property <length> font-size: Theme.font-m;
+    in property <int> font-weight: 400;
+    property <bool> focused;
+    VerticalLayout {
+        label := Text {
+            text: root.text;
+            color: root.color;
+            font-family: root.font-family;
+            font-size: root.font-size;
+            font-weight: root.font-weight;
+            wrap: word-wrap;
+        }
+    }
+    if root.has-hover || root.focused: Ghost {
+        x: label.x;
+        y: label.y;
+        width: label.width;
+        height: label.height;
+        text: root.text;
+        font-family: root.font-family;
+        font-size: root.font-size;
+        font-weight: root.font-weight;
+        changed has-focus => { root.focused = self.has-focus; }
+    }
 }
 
 // Select mode for an assistant reply (src/reply_select.rs): the reply in it
 // (transcript row `item`, -1 for none) and its plain text. `drawn` is what
-// the drawn copy holds (for the tests).
+// the drawn copy holds (for the tests). Replies whose blocks hold no link
+// are also selectable by a drag (MdText); select mode stays for the rest.
 export global ReplySelect {
     in-out property <int> item: -1;
     in property <string> text;

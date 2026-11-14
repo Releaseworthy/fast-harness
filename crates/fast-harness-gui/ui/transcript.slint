@@ -80,9 +80,9 @@ component AssistantBlock {
         }
         // The reply's markdown blocks (ui/markdown.slint). Slint 1.18.1's
         // StyledText takes every press and release (i-slint-core
-        // items/text.rs), so a double click never reaches an area under it,
-        // and one over it would take the links' clicks: select mode starts
-        // from the Select link.
+        // items/text.rs): a block without a link is selected by a drag on
+        // a ghost of its plain text (MdText); select mode (the Select link)
+        // copies across blocks and serves blocks with a link.
         if msg.text != "" && !root.selecting: MdReply {
             changed height => { root.kept = self.height; }
             blocks: msg.blocks;

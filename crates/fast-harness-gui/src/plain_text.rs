@@ -59,6 +59,21 @@ fn inline(line: &str) -> String {
     out
 }
 
+/// Whether `markdown` holds a `[text](url)` link outside code spans.
+pub fn has_link(markdown: &str) -> bool {
+    let mut rest = markdown;
+    while let Some(c) = rest.chars().next() {
+        if link(rest).is_some() {
+            return true;
+        }
+        rest = match enclosed(rest, '`', "`") {
+            Some((_, after)) => after,
+            None => &rest[c.len_utf8()..],
+        };
+    }
+    false
+}
+
 /// `s` opening with `open` and closed by `close`: the inside and the rest.
 fn enclosed<'a>(s: &'a str, open: char, close: &str) -> Option<(&'a str, &'a str)> {
     let inner = s.strip_prefix(open)?;
@@ -82,6 +97,13 @@ mod tests {
         let md = "## Plan\n\nRun **cargo test** on `__init__`, see [the docs](https://x.y/a_b).\n- one\n  * two\n```rust\nlet a = **b**;\n```\n> quoted";
         let want = "Plan\n\nRun cargo test on __init__, see the docs.\n• one\n  • two\nlet a = **b**;\nquoted";
         assert_eq!(plain(md), want);
+    }
+
+    #[test]
+    fn links_count_outside_code_spans_only() {
+        assert!(super::has_link("see [the log](https://x.y) now"));
+        assert!(!super::has_link("call `[a](b)` and **bold**"));
+        assert!(!super::has_link("a [b c ` d"));
     }
 
     #[test]
