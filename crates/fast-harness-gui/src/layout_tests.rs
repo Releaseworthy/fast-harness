@@ -386,3 +386,25 @@ fn components_with_children_have_no_wrapped_text() {
         "build the extra parts in instead of @children: {found:?}"
     );
 }
+
+/// Bug (the owner 2026-11-15, read card of longline.txt): a code line with
+/// no space ran past the card's right edge, as word-wrap never breaks a
+/// word; it has to wrap inside the card and grow the row.
+#[test]
+fn a_long_unbroken_code_line_wraps_inside_the_card() {
+    let (window, ui) = window();
+    ui.set_page("chat".into());
+    let read = |line: String| {
+        tool(
+            "read",
+            r#"{"path":"longline.txt"}"#,
+            Some(&format!("1: {line}")),
+        )
+    };
+    let short = chat_height(&ui, &window, read("x".repeat(10)));
+    let long = chat_height(&ui, &window, read("x".repeat(600)));
+    assert!(
+        long - short > 20.0,
+        "an unbroken line wraps: {short} px short, {long} px with 600 x"
+    );
+}

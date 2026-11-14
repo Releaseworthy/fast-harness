@@ -262,3 +262,26 @@ fn a_drag_copies_from_a_tool_line_and_a_field() {
 /// The first code line and the field value below their card's top.
 const CODE_DY: f32 = 97.0;
 const FIELD_DY: f32 = 64.0;
+
+/// Bug (the owner 2026-11-15, real window): a drag in a tool card's field
+/// or code line selected (Ctrl+C copied) but showed no highlight. The Skia
+/// renderer (the default, D78) draws nothing of a TextInput whose text brush
+/// is fully transparent, its selection fill included (i-slint-core 1.18.1
+/// textlayout/sharedparley.rs `draw_text_input` returns when
+/// `platform_text_fill_brush` is None), while the software renderer of these
+/// tests draws the fill: the ghost's glyph colour must never be transparent.
+#[test]
+fn the_ghost_text_is_never_fully_transparent() {
+    let source = include_str!("../ui/selectable.slint");
+    let start = source.find("export component Ghost ").expect("Ghost");
+    let block = &source[start..];
+    let block = &block[..block.find("\n}").expect("end of Ghost")];
+    let colour = block
+        .lines()
+        .find(|l| l.trim_start().starts_with("color:"))
+        .expect("the ghost sets its colour");
+    assert!(
+        !colour.contains("transparent"),
+        "the Skia renderer skips a transparent TextInput: {colour}"
+    );
+}

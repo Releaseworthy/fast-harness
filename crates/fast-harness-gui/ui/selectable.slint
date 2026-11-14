@@ -26,16 +26,19 @@ export component SelectableText inherits TextInput {
 }
 
 // A selectable copy laid exactly over a drawn text (GhostText, MdText in
-// ui/markdown.slint). Its glyphs are transparent unless `ink`, so the drawn
-// text shows through the translucent selection fill. `selecting` is true
-// while it holds focus and a non-empty selection.
+// ui/markdown.slint). Its glyphs are all but transparent unless `ink`, so the
+// drawn text shows through the translucent selection fill: alpha 0.01, not
+// 0, as the Skia renderer (the default, D78) draws nothing of a TextInput
+// with a transparent text brush, its selection fill included (i-slint-core
+// 1.18.1 sharedparley.rs `draw_text_input`; the owner 2026-11-15).
+// `selecting` is true while it holds focus and a non-empty selection.
 export component Ghost inherits TextInput {
     in property <bool> ink;
     out property <bool> selecting: self.has-focus && self.anchor-position-byte-offset != self.cursor-position-byte-offset;
     read-only: true;
     single-line: false;
     wrap: word-wrap;
-    color: root.ink ? Theme.text : transparent;
+    color: root.ink ? Theme.text : Theme.text.with-alpha(0.01);
     selection-background-color: Highlight.fill;
     selection-foreground-color: root.ink ? Theme.text : transparent;
 }
@@ -53,6 +56,9 @@ export component GhostText inherits TouchArea {
     in property <string> font-family;
     in property <length> font-size: Theme.font-m;
     in property <int> font-weight: 400;
+    // `char-wrap` for code: a word longer than the line never breaks under
+    // `word-wrap` and ran past the card (the owner's longline.txt).
+    in property <TextWrap> wrap: word-wrap;
     property <bool> focused;
     VerticalLayout {
         label := Text {
@@ -61,7 +67,7 @@ export component GhostText inherits TouchArea {
             font-family: root.font-family;
             font-size: root.font-size;
             font-weight: root.font-weight;
-            wrap: word-wrap;
+            wrap: root.wrap;
         }
     }
     if root.has-hover || root.focused: Ghost {
@@ -73,6 +79,7 @@ export component GhostText inherits TouchArea {
         font-family: root.font-family;
         font-size: root.font-size;
         font-weight: root.font-weight;
+        wrap: root.wrap;
         changed has-focus => { root.focused = self.has-focus; }
     }
 }
