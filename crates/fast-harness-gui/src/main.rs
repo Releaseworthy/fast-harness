@@ -17,6 +17,8 @@ mod approval_focus_tests;
 #[cfg(test)]
 mod child_session_tests;
 #[cfg(test)]
+mod child_view_tests;
+#[cfg(test)]
 mod composer_tests;
 #[cfg(test)]
 mod drafts_tests;

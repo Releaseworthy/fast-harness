@@ -70,9 +70,10 @@ pub fn decorate(
     closed: &HashSet<usize>,
 ) {
     let mut turn = turn_before(items, start);
-    let mut folded = false;
+    let (mut folded, mut end) = (false, 0);
     if let Some((head, _)) = turn {
         folded = is_folded(items, words, head, closed);
+        end = end_of(items, head);
     }
     for (offset, deco) in decos.iter_mut().enumerate() {
         let index = start + offset;
@@ -80,13 +81,18 @@ pub fn decorate(
             let number = turn.map_or(1, |(_, n)| n + 1);
             turn = Some((index + 1, number));
             folded = is_folded(items, words, index + 1, closed);
+            end = end_of(items, index + 1);
             continue;
         }
         let Some((head, number)) = turn else { continue };
         (deco.turn_head, deco.turn_no) = (head, number);
         deco.turn_rail = !folded;
         deco.turn_hidden = folded;
-        if folded && index == head {
+        // A folded turn's line sits on its last row, so the rows drawn
+        // empty come before it: zero-height rows at the end of the list
+        // left the frame blank under the line (Slint's list stops laying
+        // out at the view's end and estimates the rest, 2026-11-14).
+        if folded && index + 1 == end {
             deco.turn_line = line(&items[head..end_of(items, head)]);
         }
     }
