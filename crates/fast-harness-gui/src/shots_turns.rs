@@ -18,7 +18,7 @@ use crate::turn_nav::Nav;
 use crate::turn_nav_view_tests::{frames, session, tick, window, HEIGHT, WIDTH};
 use crate::{shots_png, theme, MainWindow, MsgRow};
 
-fn render(window: &MinimalSoftwareWindow) -> Vec<u8> {
+pub fn render(window: &MinimalSoftwareWindow) -> Vec<u8> {
     let mut buffer = vec![Rgb8Pixel { r: 0, g: 0, b: 0 }; (WIDTH * HEIGHT) as usize];
     for _ in 0..3 {
         slint::platform::update_timers_and_animations();
@@ -30,7 +30,7 @@ fn render(window: &MinimalSoftwareWindow) -> Vec<u8> {
     buffer.iter().flat_map(|p| [p.r, p.g, p.b]).collect()
 }
 
-fn out_dir() -> PathBuf {
+pub fn out_dir() -> PathBuf {
     std::env::var_os("FAST_HARNESS_SHOTS_DIR")
         .map(PathBuf::from)
         .unwrap_or_else(|| std::env::temp_dir().join("fast-harness-gui-shots"))

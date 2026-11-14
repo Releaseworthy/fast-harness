@@ -26,40 +26,88 @@ fn turn() -> Transcript {
 }
 
 #[test]
-fn a_step_folds_into_its_first_row_and_opens_on_toggle() {
+fn a_run_folds_into_its_first_row_and_opens_on_toggle() {
     let (view, model) = (turn(), VecModel::<MsgRow>::default());
     let mut mirror = Mirror::new(false);
     mirror.reset_with(&view.items, &Approvals::default(), &model);
-    let head = model.row_data(1).unwrap_or_default();
-    assert_eq!(
-        head.step_summary,
-        "Thought, ran commands, read files, 1 failed"
-    );
-    assert_eq!(
-        head.step_label,
-        "Thought, ran 1 command, read 1 file, 1 failed"
-    );
+    // The text that thought first: its own "Thought" line, its text stays.
+    let text = model.row_data(1).unwrap_or_default();
+    assert_eq!((text.step_summary.as_str(), text.folded), ("Thought", true));
+    let head = model.row_data(2).unwrap_or_default();
+    assert_eq!(head.step_summary, "Ran commands, read files, 1 failed");
+    assert_eq!(head.step_label, "Ran 1 command, read 1 file, 1 failed");
+    assert_eq!(head.step_kind, "ran");
     assert!(head.step_failed && head.folded && !head.step_open);
     assert!(model
-        .row_data(2)
+        .row_data(3)
         .is_some_and(|r| r.folded && r.step_summary.is_empty()));
-    mirror.toggle_step(1, &model);
+    mirror.toggle_step(2, &model);
     let rows: Vec<MsgRow> = model.iter().collect();
     assert!(
-        rows[1].step_open
-            && rows[1..]
+        rows[2].step_open
+            && rows[2..]
                 .iter()
-                .all(|r| r.rail && !r.folded && r.step_head == 1)
+                .all(|r| r.rail && !r.folded && r.step_head == 2)
     );
     mirror.sync_with(&view.items, &Approvals::default(), &model, 0);
     assert!(
-        model.row_data(2).is_some_and(|r| r.rail),
+        model.row_data(3).is_some_and(|r| r.rail),
         "open survives a sync"
     );
-    mirror.toggle_step(1, &model);
+    mirror.toggle_step(2, &model);
     assert!(model.row_data(3).is_some_and(|r| r.folded && !r.rail));
 }
 
+fn call(view: &mut Transcript, id: &str, name: &str) {
+    view.apply(&AgentEvent::ToolCall {
+        id: id.into(),
+        name: name.into(),
+        arguments: "{}".into(),
+    });
+    view.apply(&AgentEvent::ToolResult {
+        id: id.into(),
+        content: "ok".into(),
+        is_error: false,
+        duration_ms: 1,
+    });
+}
+
+/// The owner's compact turn: text, line, text, line, text. Steps that only
+/// called tools (and thought) merge into one line between two texts.
+#[test]
+fn a_turn_shows_texts_and_one_folded_line_per_run_by_default() {
+    let mut view = Transcript::new();
+    view.push_user("q");
+    call(&mut view, "a", "grep");
+    view.apply(&AgentEvent::ThinkingDelta("plan".into()));
+    call(&mut view, "b", "read");
+    call(&mut view, "c", "shell");
+    call(&mut view, "d", "web_fetch");
+    view.apply(&AgentEvent::TextDelta("Now edit budget.rs.".into()));
+    call(&mut view, "e", "edit");
+    view.apply(&AgentEvent::ThinkingDelta("done".into()));
+    view.apply(&AgentEvent::TextDelta("All done.".into()));
+    let model = VecModel::<MsgRow>::default();
+    Mirror::new(false).reset_with(&view.items, &Approvals::default(), &model);
+    let shown: Vec<String> = (model.iter().skip(1).filter(crate::rows::shows))
+        .map(|r| match r.step_summary.as_str() {
+            "" => r.text.to_string(),
+            line => format!("[{line}]"),
+        })
+        .collect();
+    assert_eq!(
+        shown,
+        [
+            "[Searched the code, thought, read files, etc.]",
+            "Now edit budget.rs.",
+            "[Edited files, thought]",
+            "All done.",
+        ]
+    );
+    let rows: Vec<MsgRow> = model.iter().collect();
+    assert!(rows.iter().all(|r| !r.step_open && !r.rail));
+    assert!(rows.iter().filter(|r| r.kind == "tool").all(|r| r.folded));
+}
 #[test]
 fn full_detail_has_no_lines_and_switches_in_place() {
     let (view, model) = (turn(), VecModel::<MsgRow>::default());

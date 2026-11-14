@@ -1,11 +1,13 @@
 //! Step summaries in the chat (PLAN.md D73): under `chatDetail: "summary"`
-//! each step's tool activity folds into one line on its first row; a click
-//! opens the step to its full rows. Computed here once per step update.
+//! (the default) each run of tool calls and thinking between two texts
+//! folds into one line on its first row ("Searched the code, read files,
+//! ran commands, etc."); a click opens the run to its full rows with a rail
+//! in the left gutter. The texts show at full width in order.
 
 use std::collections::HashSet;
 
 use fast_harness_core::view::approvals::WAITING;
-use fast_harness_core::view::{step_range, summarize, Item};
+use fast_harness_core::view::{summarize, Item};
 
 use crate::MsgRow;
 
@@ -14,6 +16,8 @@ use crate::MsgRow;
 pub struct Deco {
     /// The step's line, on its first row only.
     pub summary: String,
+    /// The run's first verb (`StepSummary::kind`): the line's icon.
+    pub kind: &'static str,
     /// The line with counts, for the accessible label and the tooltip.
     pub label: String,
     pub open: bool,
@@ -41,6 +45,7 @@ pub struct Deco {
 pub fn apply(row: &mut MsgRow, deco: &Deco) {
     row.step_summary = deco.summary.as_str().into();
     row.step_label = deco.label.as_str().into();
+    row.step_kind = deco.kind.into();
     row.step_open = deco.open;
     row.rail = deco.rail;
     row.step_head = i32::try_from(deco.head).unwrap_or(i32::MAX);
@@ -66,43 +71,67 @@ pub struct Steps<'a> {
     pub closed: &'a HashSet<usize>,
 }
 
+/// The verbs a run's line names before "etc." (the owner's screenshot).
+const VERBS: usize = 3;
+
+/// The end (exclusive, past `start`) of the group starting at `start`: a
+/// run of tool calls, thinking-only assistant rows and footers, plus the
+/// next text's row when it thought first (its thinking joins the run, its
+/// text stays). A user message, a note or a text row is a group alone.
+pub fn run_end(items: &[Item], start: usize) -> usize {
+    let member = |i: &Item| match i {
+        Item::Tool { .. } | Item::StepFooter { .. } => true,
+        Item::Assistant { text, .. } => text.trim().is_empty(),
+        _ => false,
+    };
+    let mut end = start;
+    while end < items.len() && member(&items[end]) {
+        end += 1;
+    }
+    if let Some(Item::Assistant { thinking, .. }) = items.get(end) {
+        if !thinking.trim().is_empty() {
+            return end + 1;
+        }
+    }
+    end.max(start + 1)
+}
+
 impl Steps<'_> {
-    /// The decorations of rows `start..` (`start` begins a step).
+    /// The decorations of rows `start..` (`start` begins a group: row 0,
+    /// a user message or a turn's first row).
     pub fn from(&self, start: usize) -> Vec<Deco> {
         let mut out = Vec::with_capacity(self.items.len().saturating_sub(start));
         let mut index = start;
         while index < self.items.len() {
-            let range = step_range(self.items, index);
-            let end = range.end.max(index + 1);
-            out.extend(self.step_only(range.start, end));
+            let end = run_end(self.items, index);
+            out.extend(self.run(index, end));
             index = end;
         }
         crate::turn_rows::decorate(self.items, self.words, start, &mut out, self.closed);
         out
     }
 
-    /// The decorations of one step, rows `start..end`, with their turn part.
-    pub fn step(&self, start: usize, end: usize) -> Vec<Deco> {
-        let mut out = self.step_only(start, end);
-        crate::turn_rows::decorate(self.items, self.words, start, &mut out, self.closed);
-        out
-    }
-
-    fn step_only(&self, start: usize, end: usize) -> Vec<Deco> {
+    /// One group, rows `start..end`: folded into one line by default (the
+    /// owner, 2026-11-14), its rows with the rail while open.
+    fn run(&self, start: usize, end: usize) -> Vec<Deco> {
         let mut out = vec![Deco::default(); end - start];
         let (items, words) = (&self.items[start..end], &self.words[start..end]);
-        let head =
-            (items.iter()).position(|i| matches!(i, Item::Assistant { .. } | Item::Tool { .. }));
-        let Some(head) = head.filter(|_| !self.full) else {
+        if self.full {
             return out;
-        };
+        }
+        // The line sits on the run's first row (a footer of the step before
+        // keeps its usage under the line while the run is open).
+        let head = 0;
         let summary = summarize(items.iter().zip(words.iter().copied()));
-        let line = summary.line();
+        let line = summary.brief_line(VERBS);
         if line.is_empty() {
             return out;
         }
         let open = self.open.contains(&(start + head));
-        for deco in out.iter_mut().skip(head) {
+        // The text row that ends the run keeps its text and draws no rail.
+        let tail = matches!(items.last(), Some(Item::Assistant { text, .. }) if !text.trim().is_empty());
+        let railed = if tail && items.len() - 1 > head { items.len() - 1 } else { items.len() };
+        for deco in out[head..railed].iter_mut() {
             (deco.rail, deco.head) = (open, start + head);
         }
         if !open {
@@ -117,6 +146,7 @@ impl Steps<'_> {
         out[head] = Deco {
             summary: line,
             label: summary.counted_line(),
+            kind: summary.kind,
             open,
             running: summary.running,
             failed: summary.failed > 0,
@@ -125,7 +155,6 @@ impl Steps<'_> {
         out
     }
 }
-
 #[cfg(test)]
 #[path = "step_rows_tests.rs"]
 mod tests;

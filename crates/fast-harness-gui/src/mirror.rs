@@ -137,12 +137,10 @@ impl Mirror {
             self.rebuild(items, approvals, model);
             return items.len();
         }
+        // A run of steps and a folded turn's line span the whole turn:
+        // redo it from its head (a user row is a group of its own).
         let start = step_range(items, from.min(self.items.len())).start;
-        // A folded turn's line counts the whole turn: redo it from its head.
-        let start = match crate::turn_rows::head_of(items, start) {
-            Some(head) if self.closed.contains(&head) => head.min(start),
-            _ => start,
-        };
+        let start = crate::turn_rows::group_start(items, start);
         let words: Vec<_> = items[start..].iter().map(|i| word(i, approvals)).collect();
         let decos = Steps {
             items,
@@ -197,7 +195,7 @@ impl Mirror {
         true
     }
 
-    /// Opens or folds the step whose line is on row `index` (D73).
+    /// Opens or folds the run whose line is on row `index` (D73).
     pub fn toggle_step(&mut self, index: usize, model: &dyn Rows) {
         if index >= self.items.len() {
             return;
@@ -205,9 +203,9 @@ impl Mirror {
         if !self.open.remove(&index) {
             self.open.insert(index);
         }
-        let range = step_range(&self.items, index);
-        let decos = self.steps().step(range.start, range.end);
-        self.redraw(range.start, decos, model);
+        let start = crate::turn_rows::group_start(&self.items, index);
+        let decos = self.steps().from(start);
+        self.redraw(start, decos, model);
     }
 
     /// Folds or opens the turn whose first row is `head` (D80). The turn's

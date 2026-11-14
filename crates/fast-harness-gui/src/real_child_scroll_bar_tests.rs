@@ -135,12 +135,31 @@ fn folded(chat: &Chat) -> Vec<i32> {
 fn real_child_scroll_a_fold_brings_the_folded_row_into_view() {
     let chat = open("fold-into-view");
     chat.own_rows();
+    // The owner's long open turn: compact runs fold it to a few lines.
+    chat.open_runs();
     chat.go_to(Place::Middle);
     let pick = chat.pick((-20.0, -0.05), true, |r| r.turn_rail);
-    let (row, y) = pick.expect("an open turn's row whose top is above the view");
+    let Some((row, y)) = pick else {
+        let ys: Vec<_> = (chat.rows().iter())
+            .map(|r| {
+                (
+                    r.item,
+                    r.kind.to_string(),
+                    r.step_summary.to_string(),
+                    r.step_open,
+                    r.turn_rail,
+                    chat.row_y(r.item),
+                )
+            })
+            .collect();
+        panic!(
+            "no open turn's row above the view (view {}): {ys:?}",
+            chat.view()
+        );
+    };
     let before = folded(&chat);
     shot(&chat.window, "fold-into-view-before");
-    chat.click(chat.left() + 6.0, chat.top() + 4.0);
+    chat.click(chat.left() - 24.0, chat.top() + 4.0);
     let rows = chat.rows();
     let new = |r: &&crate::MsgRow| !r.turn_line.is_empty() && !before.contains(&r.turn_head);
     let Some(line) = rows.iter().find(new).cloned() else {

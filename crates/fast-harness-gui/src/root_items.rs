@@ -21,6 +21,7 @@ mod limits;
 mod spawn_settings;
 mod turn_rows;
 mod listings;
+mod markdown;
 mod mirror;
 mod model_refresh;
 mod open_load;

@@ -296,7 +296,8 @@ impl Chat {
         let what = format!("{place:?} (following {follow}) turn {}", row.turn_head);
         shot(&self.window, &format!("fold-{place:?}-turn-before"));
         let dy = if row.item == row.turn_head { 20.0 } else { 4.0 };
-        self.click(self.left() + 6.0, self.top() + y.max(0.0) + dy);
+        // The turn rail sits in the gutter, 24 px left of the column.
+        self.click(self.left() - 24.0, self.top() + y.max(0.0) + dy);
         let rows = self.rows();
         let line = rows
             .iter()
@@ -317,7 +318,7 @@ impl Chat {
         self.check(place, fails, rail, y, at);
         let follow = self.ui.get_transcript_follow();
         let what = format!("{place:?} (following {follow}) turn {}", row.turn_head);
-        let indent = if line.turn_rail { 20.0 } else { 0.0 };
+        let indent = 0.0;
         self.click(
             self.left() + indent + 60.0,
             self.top() + at + top_pad(&line) + 13.0,
@@ -355,7 +356,7 @@ impl Chat {
             fails.push(format!("{place:?}: no folded step's line in view"));
             return;
         };
-        let indent = if row.turn_rail { 20.0 } else { 0.0 };
+        let indent = 0.0;
         let (x, pad) = (self.left() + indent + 60.0, top_pad(&row) + 13.0);
         let is_open = |want: bool| {
             self.rows()
@@ -401,6 +402,18 @@ impl Chat {
         let (m, rows) = (mirror, model);
         self.ui
             .on_step_toggle(move |head| m.borrow_mut().toggle_step(head as usize, &*rows));
+        self.settle();
+    }
+    /// Opens every folded run (compact turns, 2026-11-14): the owner's long
+    /// open turn of these reports was its rows with every step shown.
+    pub(crate) fn open_runs(&self) {
+        let heads: Vec<i32> = (self.rows().iter())
+            .filter(|r| !r.step_summary.is_empty() && !r.step_open)
+            .map(|r| r.step_head)
+            .collect();
+        for head in heads {
+            self.ui.invoke_step_toggle(head);
+        }
         self.settle();
     }
 }

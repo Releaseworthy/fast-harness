@@ -24,6 +24,10 @@ pub struct StepSummary {
     pub running: bool,
     /// The running call: its tool name and argument summary.
     pub latest: String,
+    /// The first verb's word (`thought`, `ran`, `read`, `edited`,
+    /// `searched`, `web`, `fetched`, `loaded`, `created`, `checked`,
+    /// `called`): a view picks the line's icon by it. Empty without verbs.
+    pub kind: &'static str,
 }
 
 impl StepSummary {
@@ -36,6 +40,16 @@ impl StepSummary {
     /// [`StepSummary::line`] with the counts, for the accessible label.
     pub fn counted_line(&self) -> String {
         self.with(&self.counted)
+    }
+
+    /// [`StepSummary::line`] with at most `most` verbs, then `etc.`:
+    /// "Searched the code, read files, ran commands, etc.".
+    pub fn brief_line(&self, most: usize) -> String {
+        let verbs: Vec<&str> = self.text.split(", ").collect();
+        if verbs.len() <= most {
+            return self.line();
+        }
+        self.with(&format!("{}, etc.", verbs[..most].join(", ")))
     }
 
     fn with(&self, verbs: &str) -> String {
@@ -85,6 +99,23 @@ fn verb(name: &str) -> Verb {
         "subagent" => Verb::Created,
         n if n.starts_with("job_") => Verb::Checked,
         _ => Verb::Called,
+    }
+}
+
+/// The verb's word for `StepSummary::kind`.
+fn word(verb: Verb) -> &'static str {
+    match verb {
+        Verb::Thought => "thought",
+        Verb::Ran => "ran",
+        Verb::Read => "read",
+        Verb::Edited => "edited",
+        Verb::Searched => "searched",
+        Verb::Web => "web",
+        Verb::Fetched => "fetched",
+        Verb::Loaded => "loaded",
+        Verb::Created => "created",
+        Verb::Checked => "checked",
+        Verb::Called => "called",
     }
 }
 
@@ -186,6 +217,7 @@ pub fn summarize<'a>(items: impl IntoIterator<Item = (&'a Item, Option<&'a str>)
         }
     }
     let (shown, counted): (Vec<_>, Vec<_>) = counts.iter().map(|(v, n)| phrase(*v, *n)).unzip();
+    out.kind = counts.first().map_or("", |(v, _)| word(*v));
     out.text = capital(&shown.join(", "));
     out.counted = capital(&counted.join(", "));
     out

@@ -133,8 +133,8 @@ component Note {
     }
 }
 
-// One row. A step's first row carries its line (D73); the rows of an open
-// step sit indented right of the rail, and a folded row draws nothing.
+// One row. A run's first row carries its line (D73); an open run's rows
+// draw its rail in the left gutter, and a folded row draws nothing.
 component MessageView {
     in property <MsgRow> msg;
     callback copy(string);
@@ -148,9 +148,11 @@ component MessageView {
     in property <length> pad;
     property <bool> spacer: msg.kind == "spacer";
     property <length> side: Columns.chat(root.width);
-    // D80: the rows of a turn sit 20px in, right of the turn's rail; the
-    // rows of an open step 20px more, right of the step's rail.
-    property <length> indent: msg.turn-rail ? 20px : 0px;
+    // The rails sit in the left gutter, outside the text column (the owner,
+    // 2026-11-14): text starts at the same inset as the right margin, the
+    // turn's rail 30 px left of it and an open run's rail 16 px left of it.
+    property <length> turn-x: max(0px, root.side - 30px);
+    property <length> step-x: max(root.turn-x + 8px, root.side - 16px);
     property <bool> turn-line: msg.turn-line != "";
     // The row's own content draws: not inside a folded turn.
     property <bool> shown: !msg.turn-hidden;
@@ -159,7 +161,7 @@ component MessageView {
     property <length> top: root.blank || msg.kind == "footer" ? 0px : msg.kind == "user" ? Theme.space-l : Theme.space-s;
     property <length> line-height: root.line ? 26px + Theme.space-xs : 0px;
     VerticalLayout {
-        padding-left: root.side + root.indent;
+        padding-left: root.side;
         padding-right: root.side;
         padding-top: root.top;
         // A tool card keeps room for its elevation above the step line.
@@ -175,6 +177,7 @@ component MessageView {
             text: msg.step-summary;
             label: msg.step-label;
             open: msg.step-open;
+            kind: msg.step-kind;
             running: msg.step-running;
             failed: msg.step-failed;
             toggled => { root.step-toggle(msg.step-head); }
@@ -185,7 +188,6 @@ component MessageView {
         // (D80, 2026-11-14). The parts are components, so `if` is safe
         // from slint#13655.
         VerticalLayout {
-            padding-left: msg.rail ? 20px : 0px;
             if root.shown && msg.kind == "user": UserBubble {
                 msg: msg;
                 copy(t) => { root.copy(t); }
@@ -222,7 +224,7 @@ component MessageView {
     // rows of an open step join into one line.
     if msg.turn-rail: StepRail {
         label: "Collapse turn " + msg.turn-no;
-        x: root.side;
+        x: root.turn-x;
         // A small gap above the turn's first row.
         y: msg.turn-head == root.row-index ? root.top : 0px;
         height: root.height - self.y;
@@ -233,7 +235,7 @@ component MessageView {
         clicked => { root.turn-toggle(msg.turn-head); }
     }
     if msg.rail && !msg.turn-hidden: StepRail {
-        x: root.side + root.indent;
+        x: root.step-x;
         y: root.line ? root.top + root.line-height : 0px;
         height: root.height - self.y;
         lit: Rails.step == msg.step-head;

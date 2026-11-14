@@ -109,6 +109,8 @@ export struct MsgRow {
     step-summary: string,
     // The line with counts (accessible label, tooltip).
     step-label: string,
+    // The run's first verb (core `StepSummary::kind`): the line's icon.
+    step-kind: string,
     step-open: bool,
     // The row of the step's line; an opened step's rows draw the rail
     // (a faint line on the left) whose click folds the step.

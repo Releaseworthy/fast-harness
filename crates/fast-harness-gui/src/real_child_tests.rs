@@ -247,8 +247,44 @@ fn assert_end_drawn(window: &MinimalSoftwareWindow, ui: &MainWindow, what: &str,
         "{what}: no rows: {}",
         state(ui)
     );
+    // Folded runs (the compact turn, 2026-11-14) can leave a log shorter
+    // than the view: then every run opens, and the whole log must draw
+    // down to the list's end, as before the runs folded.
+    if open_runs(window, ui) {
+        crate::fold_view_tests::shot(window, &format!("{name}-open"));
+    }
     crate::child_view_tests::assert_drawn(window, ui, &format!("{what}: {}", state(ui)));
     assert_at_bottom(ui, what);
+}
+
+/// Opens every folded run when the chat ends above the list's bottom (its
+/// rows drawn down to that end first); true when it opened any.
+fn open_runs(window: &MinimalSoftwareWindow, ui: &MainWindow) -> bool {
+    let bottom = ui.global::<crate::TurnsUi>().get_list_top() + ui.get_chat_list_height();
+    let end = ui.get_chat_end();
+    if end >= bottom - 2.0 {
+        return false;
+    }
+    let top = ui.global::<crate::TurnsUi>().get_list_top();
+    let lines = crate::child_view_tests::lines(window, ui);
+    let last = lines.iter().rposition(|&d| d).unwrap_or(0) as f32;
+    assert!(
+        last + 60.0 > end - top,
+        "the compact log stops drawing at {last}, it ends at {}",
+        end - top
+    );
+    let heads: Vec<i32> = (ui.get_messages().iter())
+        .filter(|r| !r.step_summary.is_empty() && !r.step_open)
+        .map(|r| r.step_head)
+        .collect();
+    // As `appearance.rs` wires the step line's click.
+    with_app(|app, _| {
+        for head in &heads {
+            app.mirror.toggle_step(*head as usize, &*app.rows);
+        }
+    });
+    crate::turn_nav_view_tests::frames(window, 300);
+    !heads.is_empty()
 }
 
 /// A finished child opened from its row draws its rows down to its end

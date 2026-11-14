@@ -5,17 +5,14 @@ use fast_harness_core::accounts::pool::AccountStatus;
 use fast_harness_core::accounts::usage::{current_usage, Window};
 use fast_harness_core::session::SessionSummary;
 use fast_harness_core::view::{tool_detail, Approvals, Item, NoteKind};
-use slint::{SharedString, StyledText};
+use slint::SharedString;
 
 use crate::format::{ago, duration, fraction, tokens, window_caption};
 use crate::tool_rows::tool_view;
 use crate::trace_rows::expanded;
 use crate::{AccountRow, MsgRow, SessionRow};
 
-/// Assistant text as styled text; plain text when the markdown is refused.
-pub fn markdown(text: &str) -> StyledText {
-    StyledText::from_markdown(text).unwrap_or_else(|_| StyledText::from_plain_text(text))
-}
+pub use crate::markdown::markdown;
 
 /// Every drawn text goes through [xpanded]: the software renderer lays a
 /// Text out in `i16` pixels, so a longer one draws its lines over each other

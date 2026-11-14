@@ -37,6 +37,15 @@ pub fn head_of(items: &[Item], index: usize) -> Option<usize> {
         .filter(|&head| head <= index)
 }
 
+/// The row a recount of row `index`'s runs starts at: the user row
+/// itself, else its turn's first row (row 0 before any user message).
+pub fn group_start(items: &[Item], index: usize) -> usize {
+    if matches!(items.get(index), Some(Item::User { .. })) {
+        return index;
+    }
+    head_of(items, index).unwrap_or(0)
+}
+
 /// The end (exclusive) of the turn starting at row `head`.
 fn end_of(items: &[Item], head: usize) -> usize {
     (items[head..].iter())

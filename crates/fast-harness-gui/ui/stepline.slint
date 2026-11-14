@@ -24,18 +24,22 @@ export component StepLine inherits Rectangle {
     accessible-description: root.open ? "Step open: activate to fold it" : "Step folded: activate to show every call";
     accessible-action-default => { root.toggled(); }
     forward-focus: fs;
+    // The first verb of the run (core `StepSummary::kind`) picks the icon;
+    // empty on a folded turn's line, which keeps the chevron.
+    in property <string> kind;
     HorizontalLayout {
         padding-left: 0px;
         padding-right: Theme.space-xs;
         spacing: 8px;
-        // 12 + 8: the words start at the indent of the rows below (20px).
+        // The icon sits at the text column's left edge, as the owner's
+        // compact turn (DSH web chat) does.
         Mark {
-            width: 12px;
+            width: 16px;
             horizontal-alignment: center;
             vertical-alignment: center;
-            text: root.open ? Icons.chevron-up : Icons.chevron-down;
+            text: StepIcons.of(root.kind, root.open);
             color: Theme.dim;
-            font-size: Theme.font-s;
+            font-size: Theme.font-m;
         }
         if root.running: VerticalLayout {
             alignment: center;
@@ -48,13 +52,20 @@ export component StepLine inherits Rectangle {
             font-size: Theme.font-s;
         }
         Text {
-            horizontal-stretch: 1;
             text: root.text;
             color: ta.has-hover || fs.has-focus ? Theme.text : Theme.dim;
             font-size: Theme.font-m;
             vertical-alignment: center;
             overflow: elide;
         }
+        // Up while open; down on hover or focus says the line opens.
+        if root.kind != "" && (root.open || ta.has-hover || fs.has-focus): Mark {
+            vertical-alignment: center;
+            text: root.open ? Icons.chevron-up : Icons.chevron-down;
+            color: Theme.dim;
+            font-size: Theme.font-s;
+        }
+        Rectangle { horizontal-stretch: 1; }
     }
     ta := TouchArea {
         mouse-cursor: pointer;
@@ -73,8 +84,31 @@ export component StepLine inherits Rectangle {
     if fs.has-focus: FocusRing { radius: Theme.radius-s; x: -2px; y: -2px; width: parent.width + 4px; height: parent.height + 4px; }
 }
 
+// The icon of a run's line by its first verb; a turn's line (no kind)
+// draws the chevron.
+export global StepIcons {
+    pure public function of(kind: string, open: bool) -> string {
+        return kind == "" ? (open ? Icons.chevron-up : Icons.chevron-down)
+            : kind == "ran" ? Icons.terminal
+            : kind == "read" ? Icons.eye
+            : kind == "edited" ? Icons.edit
+            : kind == "searched" ? Icons.search
+            : kind == "web" || kind == "fetched" ? Icons.link-external
+            : kind == "created" ? Icons.robot
+            : kind == "checked" ? Icons.watch
+            : kind == "thought" ? Icons.comment-discussion
+            : Icons.tools;
+    }
+}
+
 // The hovered rails (D80): every row draws its own segment of a turn's or
 // a step's rail, so the hover is shared by the group's first row number.
+// The rail's resting alpha over the dim text colour: decoration only (the
+// hover and the focus ring carry the 3:1 contrast).
+export global RailLook {
+    out property <float> alpha: 0.18;
+}
+
 export global Rails {
     in-out property <int> turn: -1;
     in-out property <int> step: -1;
@@ -96,8 +130,10 @@ export component StepRail inherits Rectangle {
     Rectangle {
         x: root.lit ? 4px : 5px;
         width: root.lit ? 3px : 2px;
-        // Theme.line vanished on light themes: the dim text colour, faint.
-        background: root.lit ? Theme.dim : Theme.dim.with-alpha(0.32);
+        // Theme.line vanished on light themes: the dim text colour, faint
+        // (0.32 before the owner asked for a more transparent bar,
+        // 2026-11-14); the hover still draws it in full.
+        background: root.lit ? Theme.dim : Theme.dim.with-alpha(RailLook.alpha);
     }
     rail := TouchArea {
         mouse-cursor: pointer;

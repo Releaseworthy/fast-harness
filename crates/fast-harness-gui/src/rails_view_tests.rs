@@ -185,7 +185,8 @@ fn the_rows_after_a_folded_turn_fill_the_view() {
 #[test]
 fn a_click_on_the_turn_rail_folds_the_turn_and_its_line_opens_it() {
     let chat = chat();
-    let x = chat.left() + 5;
+    // The turn rail's line sits in the gutter, 25 px left of the text.
+    let x = chat.left() - 25;
     let runs = Shot::take(&chat.window).runs(x, chat.left(), chat.top());
     assert_eq!(runs.len(), 2, "one turn rail per turn: {runs:?}");
     chat.click(x + 1, (runs[0].0 + runs[0].1) / 2);
@@ -203,55 +204,34 @@ fn a_click_on_the_turn_rail_folds_the_turn_and_its_line_opens_it() {
 }
 
 #[test]
-fn rails_sit_at_their_indents_and_run_unbroken() {
+fn rails_sit_in_the_gutter_and_the_text_starts_at_the_column() {
     let chat = chat();
     chat.mirror.borrow_mut().toggle_step(1, &*chat.model);
     frames(&chat.window, 100);
     let (shot, left, top) = (Shot::take(&chat.window), chat.left(), chat.top());
-    // The turn rail at the column edge, the step rail one indent in.
-    for x in [left + 5, left + 6] {
+    // The turn rail 25 px left of the text column, unbroken over each turn.
+    for x in [left - 25, left - 24] {
         let runs = shot.runs(x, left, top);
         assert_eq!(runs.len(), 2, "turn rail at {x}: {runs:?}");
         assert!(runs.iter().all(|r| r.2), "a turn rail breaks: {runs:?}");
     }
-    assert!(shot.runs(left + 4, left, top).is_empty() && shot.runs(left + 7, left, top).is_empty());
-    // Turn 1's step is open; turn 2's rows (folded step) start at its
-    // indent and draw their speaker tile across that column.
-    let turn = shot.runs(left + 5, left, top)[0];
-    let in_turn = |x: usize| -> Vec<_> {
-        (shot.runs(x, left, top).into_iter())
-            .filter(|r| r.0 < turn.1)
-            .collect()
-    };
-    let step = in_turn(left + 25);
-    assert_eq!(step.len(), 1, "one open step: {step:?}");
-    assert!(step[0].2, "the step rail breaks: {step:?}");
-    assert_eq!(in_turn(left + 26).len(), 1);
-    let (start, end) = (step[0].0, step[0].1);
-    // The step line's chevron centred over the step rail.
-    let marks: Vec<usize> = (start - 20..start - 4)
-        .flat_map(|y| (left + 18..left + 34).map(move |x| (x, y)))
-        .filter(|&(x, y)| shot.at(x, y) != shot.at(left - 4, y))
-        .map(|(x, _)| x)
+    // The open run's rail 11 px left of the text column.
+    let turn = shot.runs(left - 25, left, top)[0];
+    let step: Vec<_> = (shot.runs(left - 11, left, top).into_iter())
+        .filter(|r| r.0 < turn.1)
         .collect();
-    assert!(!marks.is_empty(), "no chevron above the step rail");
-    let centre = marks.iter().sum::<usize>() as f32 / marks.len() as f32;
-    assert!(
-        (centre - 26.0 - left as f32).abs() <= 1.5,
-        "chevron at {centre}, rail at {}",
-        left + 26
-    );
-    // The open step's rows start two indents in, right of the step rail.
-    let first = (start..end)
-        .filter_map(|y| (left + 27..left + 200).find(|&x| shot.at(x, y) != shot.at(left - 4, y)))
+    assert_eq!(step.len(), 1, "one open run: {step:?}");
+    // No rail or row indents the text: the first mark right of the
+    // gutter in turn 1 sits at the column's left edge (the right inset).
+    let first = (turn.0..turn.1)
+        .filter_map(|y| (left - 6..left + 200).find(|&x| shot.at(x, y) != shot.at(left - 4, y)))
         .min()
-        .expect("a detail row");
+        .expect("a text row");
     assert!(
-        (left + 38..=left + 42).contains(&first),
-        "details at {first}, column {left}"
+        (left.saturating_sub(1)..=left + 3).contains(&first),
+        "text at {first}, column {left}"
     );
 }
-
 /// The rails shot's order (2026-11-14: rows after the fold stayed blank
 /// until a scroll): a navigator click to turn 2, the fold of turn 2, a
 /// click back to turn 1. The folded rows kept their height (max-height 0
