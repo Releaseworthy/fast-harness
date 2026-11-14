@@ -15,7 +15,7 @@ use slint::{ComponentHandle, LogicalPosition, Model, Rgb8Pixel, VecModel};
 use crate::mirror::Mirror;
 use crate::turn_nav::turns;
 use crate::turn_nav_view_tests::{frames, session, window, WIDTH};
-use crate::{MainWindow, MsgRow, TurnsUi};
+use crate::{MainWindow, MsgRow, Rails, TurnsUi};
 
 /// Tall enough for every row of two turns: the list measures them all.
 const TALL: u32 = 2400;
@@ -86,10 +86,18 @@ fn chat() -> Chat {
         .borrow_mut()
         .reset_with(&view.items, &Approvals::default(), &*model);
     ui.set_messages(model.clone().into());
-    let (m, rows) = (mirror.clone(), model.clone());
-    ui.on_turn_toggle(move |head| m.borrow_mut().toggle_turn(head as usize, &*rows));
-    let (m, rows) = (mirror.clone(), model.clone());
-    ui.on_step_toggle(move |head| m.borrow_mut().toggle_step(head as usize, &*rows));
+    for turn in [true, false] {
+        let (m, rows, w) = (mirror.clone(), model.clone(), ui.as_weak());
+        let fold = move |head| {
+            let ui = w.upgrade().expect("the window");
+            crate::appearance::fold(&ui, &mut m.borrow_mut(), &*rows, head, turn);
+        };
+        if turn {
+            ui.on_turn_toggle(fold);
+        } else {
+            ui.on_step_toggle(fold);
+        }
+    }
     frames(&window, 100);
     Chat {
         window,
@@ -310,6 +318,42 @@ fn a_turn_rail_folded_under_the_pointer_rests_when_the_turn_opens() {
     let (a, b) = (mid(runs[0]), mid(runs[1]));
     assert_eq!(shot.at(x, a), shot.at(x, b), "the reopened rail is lit");
     assert_eq!(shot.at(x - 1, a), shot.at(left - 4, a), "3 px wide");
+}
+
+/// The owner's order in the real window (2026-11-15): the pointer on the
+/// turn rail lights it, the turn folds, the pointer goes to the turn line
+/// and the turn opens again. The folded rail is gone before it hears the
+/// pointer leave (no hover-off runs: the fold comes through the callback
+/// with no pointer event), so a lit state left in `Rails` came back on the
+/// reopened rows, dark and wide.
+#[test]
+fn a_rail_lit_when_its_turn_folds_rests_when_the_turn_opens() {
+    let chat = chat();
+    let (x, left, top) = (chat.left() - 25, chat.left(), chat.top());
+    let shot = Shot::take(&chat.window);
+    let rest = shot.at(x, mid(shot.runs(x, left, top)[1]));
+    let move_to = |x: usize, y: usize| {
+        let position = LogicalPosition::new(x as f32, y as f32);
+        chat.window
+            .dispatch_event(WindowEvent::PointerMoved { position });
+        frames(&chat.window, 100);
+    };
+    move_to(x + 1, mid(shot.runs(x, left, top)[0]));
+    let head = chat.ui.global::<Rails>().get_turn();
+    assert!(head >= 0, "the hover lights the rail");
+    chat.ui.invoke_turn_toggle(head);
+    frames(&chat.window, 100);
+    assert!(chat.hidden(1..5), "the turn folds");
+    move_to(left + 60, top + 4);
+    chat.ui.invoke_turn_toggle(head);
+    frames(&chat.window, 100);
+    let shot = Shot::take(&chat.window);
+    let runs = shot.runs(x, left, top);
+    assert_eq!(runs.len(), 2, "{runs:?}");
+    for run in runs {
+        assert_eq!(shot.at(x, mid(run)), rest, "the reopened rail rests");
+    }
+    assert_eq!(chat.ui.global::<Rails>().get_turn(), -1, "no rail is lit");
 }
 
 #[test]

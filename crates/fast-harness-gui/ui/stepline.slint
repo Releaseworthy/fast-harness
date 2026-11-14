@@ -137,6 +137,7 @@ export component StepRail inherits Rectangle {
     }
     rail := TouchArea {
         mouse-cursor: pointer;
-        clicked => { root.clicked(); }
+        // The rail may fold away under the pointer (no hover-off then).
+        clicked => { Rails.turn = -1; Rails.step = -1; root.clicked(); }
     }
 }

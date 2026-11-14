@@ -196,6 +196,8 @@ With `"approvals": "ask"` a call can wait for an answer (PLAN.md D64). Both fron
 - `PromptUi.status`: property <string>
 - `PromptUi.text`: property <string>
 - `PromptUi.workspace`: property <string>
+- `Rails.step`: property <int>
+- `Rails.turn`: property <int>
 - `ReplySelect.drawn`: property <string>
 - `ReplySelect.enter`: callback
 - `ReplySelect.item`: property <int>

@@ -9,7 +9,8 @@ use fast_harness_core::theme::{check, Theme as CoreTheme};
 use slint::{ComponentHandle, Model, ModelRc, VecModel};
 
 use crate::app::{show_error, with_app, App};
-use crate::{theme, AppearanceUi, MainWindow, ThemeCard};
+use crate::mirror::{Mirror, Rows};
+use crate::{theme, AppearanceUi, MainWindow, Rails, ThemeCard};
 
 /// The note words of a contrast failure; the cards list those pairs.
 const CONTRAST_NOTE: &str = "fails the contrast check";
@@ -120,6 +121,21 @@ fn set_chat_detail(app: &mut App, ui: &MainWindow, full: bool) {
     }
 }
 
+/// Folds or opens the turn (`turn`) or the step at row `head`, every rail
+/// at rest first: a rail that folds away under the pointer never hears it
+/// leave, and its lit state came back on the reopened rows (2026-11-15).
+pub fn fold(ui: &MainWindow, mirror: &mut Mirror, rows: &dyn Rows, head: i32, turn: bool) {
+    let rails = ui.global::<Rails>();
+    rails.set_turn(-1);
+    rails.set_step(-1);
+    let head = usize::try_from(head).unwrap_or(usize::MAX);
+    if turn {
+        mirror.toggle_turn(head, rows);
+    } else {
+        mirror.toggle_step(head, rows);
+    }
+}
+
 /// Creates `<home>/themes` when missing and opens it in Explorer.
 fn open_folder(app: &App, ui: &MainWindow) {
     let dir = themes_dir(&app.rt.home);
@@ -150,16 +166,10 @@ pub fn connect(ui: &MainWindow) {
     // The chat's step lines (D73): opened and folded here, switched off
     // by `chatDetail`.
     ui.on_step_toggle(|index| {
-        with_app(|app, _| {
-            let index = usize::try_from(index).unwrap_or(usize::MAX);
-            app.mirror.toggle_step(index, &*app.rows);
-        });
+        with_app(|app, ui| fold(ui, &mut app.mirror, &*app.rows, index, false));
     });
     ui.on_turn_toggle(|head| {
-        with_app(|app, _| {
-            let head = usize::try_from(head).unwrap_or(usize::MAX);
-            app.mirror.toggle_turn(head, &*app.rows);
-        });
+        with_app(|app, ui| fold(ui, &mut app.mirror, &*app.rows, head, true));
     });
     g.on_chat_detail_changed(|full| {
         with_app(|app, ui| set_chat_detail(app, ui, full));
