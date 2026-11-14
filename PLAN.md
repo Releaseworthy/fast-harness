@@ -111,6 +111,7 @@ One file per decision in [docs/decisions/](docs/decisions/), moved there unchang
 - D79 [Subagent sessions are full sessions](docs/decisions/D79.md): prompt, steer, pause and stop a child at any depth; children leave the sidebar; Back tab before Chat
 - D80 [Subagent limits and UI scale in Settings, turn and step rails](docs/decisions/D80.md): `subagent.maxDepth` defaults to 1; scale 50 % to 400 % applied live
 - D81: ask_user_question tool (deferred, Run, never gated) and one session popup over the composer for approvals and questions; docs/decisions/D81.md.
+- D82 [Context diet without breaking the cache](docs/decisions/D82.md): no pruning of sent results or thinking; `context.readHeadBytes` 4 KB head for a read without a range, contained re-reads answer unchanged, grep-then-read prompt line
 
 ## Architecture
 

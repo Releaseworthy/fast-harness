@@ -321,6 +321,7 @@ fn run_one(
     let agent = run.agent;
     let ctx = ToolCtx::new(&agent.parts.cwd, run.cancel)
         .with_budget(agent.parts.config.tool_budget(&call.name))
+        .with_context(&agent.parts.config.context)
         .with_call_id(&call.id)
         .with_session(run.session)
         .with_progress(progress);

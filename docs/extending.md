@@ -255,6 +255,13 @@ Run `pdftotext -layout file.pdf -` and read the result; forms: see references/fo
 
 The AGENTS.md files from the repository root down to the working directory are in the system prompt, at most `agentsBytes` (default 32768) together. A folder below the working directory with its own `AGENTS.md` has it appended, at most 6 KB, to the first tool result whose `path` argument (read, write, edit, grep, glob, and any command tool with a `path`) lies inside it, once per session. The shell has no working-directory argument, so its calls load nothing. The text joins the result after the `toolOutputBytes` cut (outside the budget) and before the result is sent or logged, under a line `[nested AGENTS.md <path>]`; the loaded set is rebuilt from the log on resume, and a compaction summary lists those lines so the files are not appended again.
 
+## Context diet: `context`
+
+`config.json` key `context` (D82) keeps reads small before they enter the history; nothing already sent is changed, so the prompt cache holds.
+
+- `readHeadBytes` (default 4096): a `read` without `offset` and `limit` returns whole lines up to this size, then a note with the file's line count and how to read a range. 0 uses the plain result budget (`toolOutput.read` or `toolOutputBytes`).
+- `dedupeReads` (default true): lines inside a range an earlier read of the session returned, the file unchanged (size and modified time), answer `[unchanged since call <id>]`. Forgotten at a compaction and on reopen.
+
 ## Hooks: `hooks.json`
 
 `~/.fast-harness/hooks.json` and a trusted project's `.fast-harness/hooks.json` run your own programs at eight points of the agent loop. Both files load and both run, user entries first; an untrusted project's file is not read. Without a file nothing is spawned and nothing else is read. The file is read with the other settings (at start, `/trust`, a settings reload); a change applies to the next agent built from them.

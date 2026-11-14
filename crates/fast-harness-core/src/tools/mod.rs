@@ -63,6 +63,12 @@ pub struct ToolCtx<'a> {
     pub call_id: &'a str,
     /// State shared by the tools of one session; `None` outside a session.
     pub session: Option<&'a ToolSession>,
+    /// Byte cap of a `read` without `offset` and `limit` (`context.readHeadBytes`,
+    /// PLAN.md D82); 0 leaves it at `budget`.
+    pub read_head: usize,
+    /// `context.dedupeReads`: lines already returned and unchanged answer
+    /// `[unchanged since call <id>]`.
+    pub dedupe_reads: bool,
     /// Where [`ToolCtx::progress`] goes; `None` outside a session.
     progress: Option<&'a Progress<'a>>,
 }
@@ -80,6 +86,8 @@ impl<'a> ToolCtx<'a> {
             budget: crate::config::DEFAULT_TOOL_OUTPUT_BYTES,
             call_id: "",
             session: None,
+            read_head: crate::config::context::DEFAULT_READ_HEAD_BYTES,
+            dedupe_reads: true,
             progress: None,
         }
     }
@@ -108,6 +116,13 @@ impl<'a> ToolCtx<'a> {
 
     pub fn with_budget(mut self, budget: usize) -> ToolCtx<'a> {
         self.budget = budget;
+        self
+    }
+
+    /// Applies the `context` settings (PLAN.md D82).
+    pub fn with_context(mut self, context: &crate::config::context::ContextConfig) -> ToolCtx<'a> {
+        self.read_head = context.read_head_bytes;
+        self.dedupe_reads = context.dedupe_reads;
         self
     }
 

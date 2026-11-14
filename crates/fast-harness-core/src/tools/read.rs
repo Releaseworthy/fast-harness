@@ -27,8 +27,9 @@ impl Tool for ReadTool {
         ToolSpec {
             name: "read".into(),
             description: "Read a UTF-8 text file. Lines come numbered as \"N: text\" (1-based). \
-                Whole lines from offset fit one result budget; the last line names \
-                the range and where to continue. A range already returned and unchanged answers \
+                Without offset and limit only the file's head comes back (grep first, then \
+                read line ranges); whole lines fit one result budget; the last line names the \
+                range and where to continue. Lines already returned and unchanged answer \
                 \"[unchanged since call ID]\". A png, jpeg, gif or webp file comes back as \
                 an image with a line giving its size and token cost. Directories and other \
                 binary files are refused."
@@ -53,10 +54,13 @@ impl Tool for ReadTool {
 }
 
 /// Room kept for the range line at the end.
-const RANGE_ROOM: usize = 96;
+const RANGE_ROOM: usize = 128;
+/// The end of a head's range note (PLAN.md D82).
+const HEAD_HINT: &str = "; first grep it, then read the lines you need with offset and limit";
 
 fn read(args: &Value, ctx: &ToolCtx<'_>) -> Result<ToolOutput, String> {
     let path_arg = req_str(args, "path")?;
+    let ranged = !args["offset"].is_null() || !args["limit"].is_null();
     let offset = opt_positive(args, "offset", 1)?;
     let limit = opt_positive(args, "limit", DEFAULT_LIMIT)?;
     let path = resolve(ctx, path_arg);
@@ -73,17 +77,52 @@ fn read(args: &Value, ctx: &ToolCtx<'_>) -> Result<ToolOutput, String> {
         size: meta.len(),
         modified: meta.modified().ok(),
     };
-    let session = ctx.session.filter(|_| !ctx.call_id.is_empty());
+    let session = ctx
+        .session
+        .filter(|_| !ctx.call_id.is_empty() && ctx.dedupe_reads);
     if let Some(earlier) = session.and_then(|s| s.read_by(&key)) {
         return Ok(ToolOutput::ok(format!("[unchanged since call {earlier}]")));
     }
-    let output = read_file(path_arg, &path, (offset, limit), meta.len(), ctx)?;
+    // A read without a range is a head (PLAN.md D82): at most `read_head`.
+    let head = !ranged && ctx.read_head > 0;
+    let cap = match head {
+        true => ctx.budget.min(ctx.read_head),
+        false => ctx.budget,
+    };
+    let shape = Shape {
+        offset,
+        limit,
+        cap,
+        head,
+    };
+    let output = read_file(path_arg, &path, shape, meta.len(), ctx)?;
     if let Some(session) = session {
-        session.remember_read(key, ctx.call_id);
+        let end = returned_end(&output.text(), offset, limit);
+        session.remember_span(key, end, ctx.call_id);
     }
     Ok(output)
 }
 
+/// What a read asks for: first line, line count, byte cap and whether it
+/// is a head (no range given: the range note says how to read more).
+#[derive(Clone, Copy)]
+struct Shape {
+    offset: u64,
+    limit: u64,
+    cap: usize,
+    head: bool,
+}
+
+/// The last line `text` holds: the range note's end when the result was
+/// cut, else the end of the request.
+fn returned_end(text: &str, offset: u64, limit: u64) -> u64 {
+    let note = text.lines().rev().find_map(|l| l.strip_prefix("[lines "));
+    let end = note
+        .and_then(|rest| rest.split_once(" to "))
+        .map(|(_, rest)| rest.split([' ', ';', ']']).next().unwrap_or_default())
+        .and_then(|number| number.parse().ok());
+    end.unwrap_or_else(|| offset.saturating_add(limit.saturating_sub(1)))
+}
 /// Bytes read first to tell an image, a binary and a text file apart.
 const HEAD_BYTES: u64 = 8 * 1024;
 /// A text file up to this size is read whole (its line count is exact); a
@@ -95,7 +134,7 @@ const WHOLE_TEXT_MAX: u64 = 4 * 1024 * 1024;
 fn read_file(
     path_arg: &str,
     path: &Path,
-    (offset, limit): (u64, u64),
+    shape: Shape,
     size: u64,
     ctx: &ToolCtx<'_>,
 ) -> Result<ToolOutput, String> {
@@ -120,17 +159,18 @@ fn read_file(
             "{path_arg} looks like a binary file (NUL byte in the first 8 KB); not shown"
         ));
     }
-    let room = ctx.budget.saturating_sub(RANGE_ROOM);
+    let room = shape.cap.saturating_sub(RANGE_ROOM);
+    let (offset, limit) = (shape.offset, shape.limit);
     if size > WHOLE_TEXT_MAX {
         let reader = BufReader::new(Cursor::new(bytes).chain(file));
-        let shape = (offset, limit, room, MAX_LINE_CHARS);
-        return read_stream::prefix_lines(reader, shape, size).map(ToolOutput::ok);
+        let stream = (offset, limit, room, MAX_LINE_CHARS);
+        return read_stream::prefix_lines(reader, stream, size).map(ToolOutput::ok);
     }
     file.take(WHOLE_TEXT_MAX)
         .read_to_end(&mut bytes)
         .map_err(fail)?;
     let text = String::from_utf8_lossy(&bytes);
-    number_lines(&text, offset, limit, room).map(ToolOutput::ok)
+    number_lines(&text, (offset, limit, room), shape.head).map(ToolOutput::ok)
 }
 
 /// An image file: kept in the session's media folder and returned as an
@@ -147,8 +187,12 @@ fn image(path_arg: &str, bytes: &[u8], ctx: &ToolCtx<'_>) -> Result<ToolOutput, 
 
 /// Whole lines from `offset`, at most `limit` of them and `room` bytes (at
 /// least one line), then `[lines a to b of n; continue with offset b+1]`
-/// when lines remain.
-fn number_lines(text: &str, offset: u64, limit: u64, room: usize) -> Result<String, String> {
+/// when lines remain; a head (no range asked) adds how to read less.
+fn number_lines(
+    text: &str,
+    (offset, limit, room): (u64, u64, usize),
+    head: bool,
+) -> Result<String, String> {
     let lines: Vec<&str> = text.lines().collect();
     let total = lines.len() as u64;
     if total == 0 {
@@ -173,8 +217,9 @@ fn number_lines(text: &str, offset: u64, limit: u64, room: usize) -> Result<Stri
     }
     if end < total {
         out.push_str(&format!(
-            "[lines {offset} to {end} of {total}; continue with offset {}]\n",
-            end + 1
+            "[lines {offset} to {end} of {total}; continue with offset {}{}]\n",
+            end + 1,
+            if head { HEAD_HINT } else { "" }
         ));
     }
     Ok(out)
