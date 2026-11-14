@@ -104,7 +104,7 @@ fn tabbar_shots() {
     let window = MinimalSoftwareWindow::new(RepaintBufferType::NewBuffer);
     slint::platform::set_platform(Box::new(ShotPlatform(window.clone()))).expect("platform");
     window.set_size(PhysicalSize::new(W, H));
-    let ui = MainWindow::new().expect("window");
+    let ui = crate::chat_list::new_window().expect("window");
     ui.show().expect("show");
     theme::apply(&ui, &builtins()[0], 0);
     fill(&ui);

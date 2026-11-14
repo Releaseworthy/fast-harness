@@ -65,7 +65,7 @@ fn wheel_up_stops_following_and_output_does_not_pull_down() {
     let window = MinimalSoftwareWindow::new(RepaintBufferType::NewBuffer);
     slint::platform::set_platform(Box::new(TestPlatform(window.clone()))).expect("platform");
     window.set_size(PhysicalSize::new(WIDTH, HEIGHT));
-    let ui = MainWindow::new().expect("window");
+    let ui = crate::chat_list::new_window().expect("window");
     ui.show().expect("show");
     let rows = Rc::new(VecModel::from(chat()));
     ui.set_messages(rows.clone().into());
@@ -107,7 +107,7 @@ fn following() -> (Rc<MinimalSoftwareWindow>, MainWindow, Rc<VecModel<MsgRow>>) 
     let window = MinimalSoftwareWindow::new(RepaintBufferType::NewBuffer);
     slint::platform::set_platform(Box::new(TestPlatform(window.clone()))).expect("platform");
     window.set_size(PhysicalSize::new(WIDTH, HEIGHT));
-    let ui = MainWindow::new().expect("window");
+    let ui = crate::chat_list::new_window().expect("window");
     ui.show().expect("show");
     let rows = Rc::new(VecModel::from(chat()));
     ui.set_messages(rows.clone().into());

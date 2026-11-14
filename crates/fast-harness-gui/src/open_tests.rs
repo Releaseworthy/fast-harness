@@ -38,7 +38,7 @@ fn root(tag: &str) -> PathBuf {
 fn setup(dir: &Path) -> (MainWindow, PathBuf, PathBuf, String, String) {
     let window = MinimalSoftwareWindow::new(RepaintBufferType::NewBuffer);
     let _ = slint::platform::set_platform(Box::new(TestPlatform(window)));
-    let ui = MainWindow::new().expect("window");
+    let ui = crate::chat_list::new_window().expect("window");
     let (home, cwd) = (dir.join("home"), dir.join("work"));
     std::fs::create_dir_all(&cwd).unwrap();
     let first = Conversation::create(&home, &cwd, None).unwrap().id;

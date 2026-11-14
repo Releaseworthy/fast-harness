@@ -34,7 +34,7 @@ fn temp(tag: &str) -> PathBuf {
 fn setup(dir: &Path) -> (MainWindow, PathBuf) {
     let window = MinimalSoftwareWindow::new(RepaintBufferType::NewBuffer);
     let _ = slint::platform::set_platform(Box::new(TestPlatform(window)));
-    let ui = MainWindow::new().expect("window");
+    let ui = crate::chat_list::new_window().expect("window");
     let (home, cwd) = (dir.join("home"), dir.join("work"));
     std::fs::create_dir_all(&cwd).unwrap();
     std::fs::write(cwd.join("dot.png"), media::solid_png(3, 2, [200, 10, 10])).unwrap();

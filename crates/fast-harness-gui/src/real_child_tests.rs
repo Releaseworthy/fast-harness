@@ -65,7 +65,7 @@ pub fn window() -> (Rc<MinimalSoftwareWindow>, MainWindow) {
         slint::platform::set_platform(Box::new(plain)).expect("platform");
     }
     window.set_size(PhysicalSize::new(WIDTH, HEIGHT));
-    let ui = MainWindow::new().expect("window");
+    let ui = crate::chat_list::new_window().expect("window");
     ui.show().expect("show");
     (window, ui)
 }

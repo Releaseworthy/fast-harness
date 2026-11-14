@@ -250,7 +250,7 @@ fn shots() {
     let window = MinimalSoftwareWindow::new(RepaintBufferType::NewBuffer);
     slint::platform::set_platform(Box::new(ShotPlatform(window.clone()))).expect("platform");
     window.set_size(PhysicalSize::new(WIDTH, HEIGHT));
-    let ui = MainWindow::new().expect("window");
+    let ui = crate::chat_list::new_window().expect("window");
     ui.show().expect("show");
     fill(&ui);
     let dir = out_dir();
