@@ -10,6 +10,8 @@
 //! `window_events` keeps the physical size then too: the Windows scale stays
 //! ignored. A drag previews; the value is saved when it is final.
 
+use std::cell::Cell;
+
 use fast_harness_core::config::{save_section_setting, save_setting};
 use slint::platform::WindowEvent;
 use slint::ComponentHandle;
@@ -39,8 +41,25 @@ pub fn percent(factor: f32) -> i32 {
     clamp(p as i32, SCALE_PERCENT)
 }
 
+thread_local! {
+    /// The scale last applied from Settings on this (the UI) thread.
+    static APPLIED: Cell<Option<f32>> = const { Cell::new(None) };
+}
+
+/// The scale the window renders at: the last one applied from Settings,
+/// else the startup one. Not the window's own factor: Settings is filled
+/// before winit creates the window, and Slint 1.18.1 applies
+/// `SLINT_SCALE_FACTOR` only then, so it read 1.0 and the slider said 100 %
+/// over a window drawn at the saved 175 % (2026-11-15).
+fn current(app: &App) -> f32 {
+    APPLIED
+        .with(Cell::get)
+        .unwrap_or_else(|| crate::display::startup_scale(&app.rt.home, &|k| std::env::var(k).ok()))
+}
+
 /// Renders `window` at `factor` at once, keeping its physical size.
 pub fn apply_scale(window: &slint::Window, factor: f32) {
+    APPLIED.with(|a| a.set(Some(factor)));
     if (window.scale_factor() - factor).abs() < f32::EPSILON {
         return;
     }
@@ -57,7 +76,7 @@ pub fn apply_scale(window: &slint::Window, factor: f32) {
 /// Fills the controls from the window and the configuration.
 pub fn show(app: &App, ui: &MainWindow) {
     let g = ui.global::<LimitsUi>();
-    g.set_scale(percent(ui.window().scale_factor()));
+    g.set_scale(percent(current(app)));
     let sub = &app.rt.config.subagent;
     let parallel = i32::try_from(sub.max_parallel).unwrap_or(i32::MAX);
     g.set_max_parallel(clamp(parallel, MAX_PARALLEL));

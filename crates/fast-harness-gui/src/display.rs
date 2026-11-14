@@ -63,6 +63,17 @@ fn user_settings(home: Option<&Path>) -> serde_json::Value {
         .unwrap_or(serde_json::Value::Null)
 }
 
+/// The scale factor the window starts at for the home `home`: a preset
+/// `SLINT_SCALE_FACTOR` (the one `select` set too), else the plan's.
+pub fn startup_scale(home: &Path, env: &dyn Fn(&str) -> Option<String>) -> f32 {
+    let preset = env("SLINT_SCALE_FACTOR")
+        .and_then(|v| v.trim().parse::<f32>().ok())
+        .filter(|f| *f > 0.0);
+    preset
+        .or_else(|| plan(&user_settings(Some(home)), env).scale)
+        .unwrap_or(DEFAULT_SCALE)
+}
+
 /// Applies the plan. Call first in `main`, before any other thread starts
 /// (it sets an environment variable) and before the window is created.
 pub fn select() {

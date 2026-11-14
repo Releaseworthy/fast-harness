@@ -10,6 +10,47 @@ fn percent_and_factor_clamp_to_50_and_400() {
     assert_eq!(percent(f32::NAN), 100);
 }
 
+struct TestPlatform(std::rc::Rc<slint::platform::software_renderer::MinimalSoftwareWindow>);
+
+impl slint::platform::Platform for TestPlatform {
+    fn create_window_adapter(
+        &self,
+    ) -> Result<std::rc::Rc<dyn slint::platform::WindowAdapter>, slint::PlatformError> {
+        Ok(self.0.clone())
+    }
+}
+
+/// Settings shows the scale the window starts at (2026-11-15: the owner's
+/// `uiScale` 1.75 drew the window at 175 % and the slider said 100 %):
+/// Settings is filled before the window applies its scale (here: never).
+#[test]
+fn the_slider_shows_the_saved_scale_before_the_window_applies_it() {
+    use slint::platform::software_renderer::{MinimalSoftwareWindow, RepaintBufferType};
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.subsec_nanos());
+    let dir = std::env::temp_dir().join(format!("fh-scale-{}-{nanos}", std::process::id()));
+    let (home, cwd) = (dir.join("home"), dir.join("work"));
+    std::fs::create_dir_all(home.join("providers")).unwrap();
+    std::fs::create_dir_all(&cwd).unwrap();
+    let config = r#"{"model": "local/m", "retries": 0, "uiScale": 1.75}"#;
+    std::fs::write(home.join("config.json"), config).unwrap();
+    let provider = r#"{"id": "local", "api": "anthropic-messages", "baseUrl": "http://127.0.0.1:9", "models": [{"id": "m"}]}"#;
+    std::fs::write(home.join("providers").join("local.json"), provider).unwrap();
+    let window = MinimalSoftwareWindow::new(RepaintBufferType::NewBuffer);
+    let _ = slint::platform::set_platform(Box::new(TestPlatform(window)));
+    let ui = crate::chat_list::new_window().expect("window");
+    let rt = fast_harness_core::app::Runtime::load_at(home.clone()).unwrap();
+    let app = App::new(&ui, rt, Some(cwd));
+    assert_eq!(ui.window().scale_factor(), 1.0, "the window has not applied it");
+    show(&app, &ui);
+    assert_eq!(ui.global::<LimitsUi>().get_scale(), 175);
+    let saved = std::fs::read_to_string(home.join("config.json")).unwrap();
+    assert!(saved.contains("1.75"), "showing saves nothing: {saved}");
+    drop((app, ui));
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
 /// The slider's preview scales the open window at once and keeps its
 /// physical size: the logical width follows the factor (D80).
 #[test]
