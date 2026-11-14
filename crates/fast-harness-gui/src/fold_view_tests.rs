@@ -119,22 +119,8 @@ impl Chat {
             .map(|y| (left..left + 600).any(|x| at(x, y) != at(left - 4, y)))
             .collect()
     }
-    /// Saves the window as `name`.png under `FH_FOLD_SHOTS` when it is set
-    /// (the before and after shots of the fold fix).
     fn shot(&self, name: &str) {
-        let Some(dir) = std::env::var_os("FH_FOLD_SHOTS") else {
-            return;
-        };
-        let size = self.window.size();
-        let mut pixels = vec![Rgb8Pixel { r: 0, g: 0, b: 0 }; (size.width * size.height) as usize];
-        self.window.request_redraw();
-        self.window.draw_if_needed(|r| {
-            r.render(&mut pixels, size.width as usize);
-        });
-        let rgb: Vec<u8> = pixels.iter().flat_map(|p| [p.r, p.g, p.b]).collect();
-        let png = crate::shots_png::encode(size.width, size.height, &rgb);
-        let path = std::path::Path::new(&dir).join(format!("{name}.png"));
-        std::fs::write(path, png).expect("shot");
+        shot(&self.window, name);
     }
     /// The longest blank stretch between two drawn lines of the list.
     fn longest_gap(&self) -> usize {
@@ -162,6 +148,24 @@ impl Chat {
             lines.len()
         );
     }
+}
+
+/// Saves `window` as `name`.png under `FH_FOLD_SHOTS` when it is set (the
+/// before and after shots of the fold and finished-child fixes).
+pub fn shot(window: &MinimalSoftwareWindow, name: &str) {
+    let Some(dir) = std::env::var_os("FH_FOLD_SHOTS") else {
+        return;
+    };
+    let size = window.size();
+    let mut pixels = vec![Rgb8Pixel { r: 0, g: 0, b: 0 }; (size.width * size.height) as usize];
+    window.request_redraw();
+    window.draw_if_needed(|r| {
+        r.render(&mut pixels, size.width as usize);
+    });
+    let rgb: Vec<u8> = pixels.iter().flat_map(|p| [p.r, p.g, p.b]).collect();
+    let png = crate::shots_png::encode(size.width, size.height, &rgb);
+    let path = std::path::Path::new(&dir).join(format!("{name}.png"));
+    std::fs::write(path, png).expect("shot");
 }
 
 /// One window per test: the platform is set once per thread.

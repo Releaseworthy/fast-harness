@@ -316,9 +316,10 @@ export component TranscriptView {
         }
     }
     changed rows => { root.end-row = -1; }
-    // The last row is laid out near the view, so `end` holds (a row
-    // scrolled far away is gone and its end stale).
-    property <bool> exact: root.end-row == root.rows.length - 1 && root.end + list.content-y > -list.visible-height && root.end + list.content-y < 2 * list.visible-height;
+    // Following, with the last row laid out near the view, so `end` holds
+    // (a row scrolled away is gone and its end stale; a user scroll ends
+    // following, so `end-y` then reads the estimate again).
+    property <bool> exact: root.follow && root.end-row == root.rows.length - 1 && root.end + list.content-y > -list.visible-height && root.end + list.content-y < 2 * list.visible-height;
     // Where following the bottom puts `content-y`: the last row's real end
     // when known, else the list's estimate.
     property <length> follow-y: root.exact ? min(0px, list.visible-height - root.end) : root.bottom;
@@ -396,6 +397,12 @@ export component TranscriptView {
                 root.follow = true;
             }
             root.last-gap = root.gap;
+            // The list's own pass moves `content-y` off the last row's end
+            // without moving the row (12px under the popup, 2026-11-14):
+            // following puts it back.
+            if root.follow && root.target < 0 && root.exact && abs(self.content-y - root.follow-y) > 0.5px {
+                self.content-y = root.follow-y;
+            }
         }
         changed content-height => {
             if (root.follow) {

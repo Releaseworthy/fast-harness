@@ -143,7 +143,12 @@ fn a_turn_folds_by_its_user_row_and_its_rows_hide() {
     chat.mirror.borrow_mut().toggle_turn(user, &*chat.model);
     frames(&chat.window, 100);
     assert!(chat.hidden(user + 1..chat.model.row_count()));
-    let line = chat.model.row_data(user + 1).expect("row").turn_line;
+    // The last turn: its line sits on the last row.
+    let line = chat
+        .model
+        .row_data(chat.model.row_count() - 1)
+        .expect("row")
+        .turn_line;
     assert!(line.starts_with("1 step · Answer 2"), "{line}");
     let after = chat.bottom();
     assert!(

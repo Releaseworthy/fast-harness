@@ -22,7 +22,8 @@ fn open_turns_draw_rails_and_a_folded_turn_shows_one_line() {
     let mut decos = vec![Deco::default(); items.len()];
     decorate(&items, &words, 0, &mut decos, &closed);
     assert!(decos[1].turn_hidden && decos[2].turn_hidden && !decos[1].turn_rail);
-    assert_eq!(decos[1].turn_line, "1 step · Final answer");
-    assert!(decos[2].turn_line.is_empty() && decos[4].turn_rail);
+    // The line sits on the turn's last row (no blank rows end the list).
+    assert_eq!(decos[2].turn_line, "1 step · Final answer");
+    assert!(decos[1].turn_line.is_empty() && decos[4].turn_rail);
     assert_eq!(head_of(&items, 2), Some(1));
 }
