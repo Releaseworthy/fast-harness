@@ -8,7 +8,7 @@
 // (src/layout_tests.rs checks the .slint files).
 import { Theme, Mark } from "parts.slint";
 import { ActionButton } from "widgets.slint";
-import { SelectableText } from "selectable.slint";
+import { SelectableText, GhostText } from "selectable.slint";
 
 // Thinking: a gradient bar and the dim italic text.
 export component ThinkingQuote inherits Rectangle {
@@ -33,10 +33,15 @@ export component ThinkingQuote inherits Rectangle {
 }
 
 // Monospace text on the code colour: tool arguments and output, the system
-// prompt. An error draws the edge in the error colour.
+// prompt. An error draws the edge in the error colour. Selectable by a
+// drag through a ghost (ui/selectable.slint); with a `sel-row` (>= 0) it
+// takes part in the chat's one selection as block `idx` (a reply's code
+// block was skipped by a drag and Ctrl+C, the owner 2026-11-15).
 export component CodeBox inherits Rectangle {
     in property <string> text;
     in property <bool> error;
+    in property <int> sel-row: -1;
+    in property <int> idx;
     border-radius: Theme.radius-m;
     border-width: 1px;
     border-color: root.error ? Theme.error : Theme.line;
@@ -44,12 +49,14 @@ export component CodeBox inherits Rectangle {
     HorizontalLayout {
         padding: Theme.space-s + 2px;
         padding-left: Theme.space-m;
-        SelectableText {
+        GhostText {
             text: root.text;
             color: Theme.text;
             font-family: Theme.mono;
             font-size: Theme.font-s;
             wrap: word-wrap;
+            sel-row: root.sel-row;
+            idx: root.idx;
         }
     }
 }

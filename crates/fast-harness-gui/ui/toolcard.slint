@@ -245,6 +245,8 @@ export component ToolBody {
         // and the failed pill say it.
         if root.tool.lines.length == 0 && root.tool.text != "": CodeBox {
             text: root.expanded ? root.tool.text : root.tool.text-preview;
+            sel-row: root.sel-row;
+            idx: 1000;
         }
         if root.expanded && root.tool.lines-note != "": Text {
             text: root.tool.lines-note;
