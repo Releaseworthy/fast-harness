@@ -29,9 +29,35 @@ fn read_cuts_a_long_line_at_800_characters() {
     std::fs::write(env.cwd.join("min.js"), "x".repeat(5000) + "\nshort\n").unwrap();
     let out = run_tool(&env.cwd, "read", json!({"path": "min.js", "offset": 1}));
     let first = out.lines().next().unwrap();
-    assert!(first.ends_with("[line cut]"), "{first}");
+    let note = "[line cut at 800 of 5000 chars; read on with offset 1, limit 1, column 801]";
+    assert!(first.ends_with(note), "{first}");
     assert_eq!(first.matches('x').count(), 800);
     assert!(out.contains("2: short"));
+    // The rest of the line, a window at a time.
+    let rest = run_tool(
+        &env.cwd,
+        "read",
+        json!({"path": "min.js", "offset": 1, "limit": 1, "column": 801}),
+    );
+    assert!(
+        rest.starts_with(&format!(
+            "1: {} [columns 801-2800 of 5000; read on with column 2801]",
+            "x".repeat(2000)
+        )),
+        "{rest}"
+    );
+    let end = run_tool(
+        &env.cwd,
+        "read",
+        json!({"path": "min.js", "offset": 1, "limit": 1, "column": 4801}),
+    );
+    assert!(
+        end.starts_with(&format!(
+            "1: {} [columns 4801-5000 of 5000]\n",
+            "x".repeat(200)
+        )),
+        "{end}"
+    );
 }
 
 fn numbered(count: usize) -> String {

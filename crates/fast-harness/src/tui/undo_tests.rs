@@ -51,7 +51,7 @@ impl Host for ScriptHost {
             system: "test system".into(),
         };
         let mut agent = Agent::new(parts, Arc::new(fast_harness_core::tools::builtin()));
-        agent.preload = vec!["write".into()];
+        agent.preload = vec!["read".into(), "write".into()];
         Ok((agent, Vec::new()))
     }
 }
@@ -79,7 +79,12 @@ fn write_turn(content: &str) -> Vec<ScriptedResponse> {
     let args = json!({"path": "u.txt", "content": content}).to_string();
     let call = json!({"type": "tool_use", "id": "c1", "name": "write", "input": {}});
     let text = json!({"type": "text", "text": ""});
+    // u.txt exists: write needs a read of it first.
+    let read = json!({"type": "tool_use", "id": "c0", "name": "read", "input": {}});
+    let read_args = json!({"path": "u.txt"}).to_string();
+    let read_delta = json!({"type": "input_json_delta", "partial_json": read_args});
     vec![
+        reply(read, read_delta, "tool_use"),
         reply(
             call,
             json!({"type": "input_json_delta", "partial_json": args}),

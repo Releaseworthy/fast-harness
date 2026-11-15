@@ -25,7 +25,7 @@ fn agent(env: &Env, script: Vec<ScriptedResponse>) -> (Agent, Arc<ScriptedTransp
     let transport = Arc::new(ScriptedTransport::new(script));
     let parts = parts(&transport, key_auth(), &env.cwd);
     let mut agent = Agent::new(parts, Arc::new(tools::builtin()));
-    agent.preload = vec!["write".into(), "edit".into()];
+    agent.preload = vec!["read".into(), "write".into(), "edit".into()];
     (agent, transport)
 }
 
@@ -36,12 +36,19 @@ fn turn(agent: &Agent, conv: &mut Conversation, text: &str) {
 
 fn write_call(id: &str, path: &str, content: &str) -> ScriptedResponse {
     let args = json!({"path": path, "content": content}).to_string();
-    tool_reply(&[(id, "write", &args)])
+    with_read(id, path, "write", &args)
 }
 
 fn edit_call(id: &str, path: &str, old: &str, new: &str) -> ScriptedResponse {
     let args = json!({"path": path, "old_string": old, "new_string": new}).to_string();
-    tool_reply(&[(id, "edit", &args)])
+    with_read(id, path, "edit", &args)
+}
+
+/// A `read` of `path` (write and edit need one first), then the call.
+fn with_read(id: &str, path: &str, tool: &str, args: &str) -> ScriptedResponse {
+    let read = json!({"path": path}).to_string();
+    let read_id = format!("{id}r");
+    tool_reply(&[(read_id.as_str(), "read", &read), (id, tool, args)])
 }
 
 fn read(path: &Path) -> String {
@@ -61,7 +68,8 @@ fn write_then_edit_then_undo_restores_the_bytes() {
     let (agent, _) = agent(&env, script);
     let mut conv = Conversation::create(&env.home, &env.cwd, None).unwrap();
     turn(&agent, &mut conv, "change it");
-    assert_eq!(read(&file), "three\n");
+    // write keeps the CRLF line ends of the file it replaced.
+    assert_eq!(read(&file), "three\r\n");
     let info = conv.tool_session.undo().last().unwrap();
     assert_eq!((info.turn, info.files, info.not_undoable), (1, 1, None));
     let outcome = undo_conv(&mut conv, false).unwrap();

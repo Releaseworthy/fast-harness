@@ -66,6 +66,8 @@ fn tracked_write(session: &Session, cwd: &Path) {
             let cancel = AtomicBool::new(false);
             let mut ctx = ToolCtx::new(cwd, &cancel);
             ctx.session = Some(&conv.tool_session);
+            // u.txt exists: write needs a read of it first.
+            tools::builtin().run("read", r#"{"path": "u.txt"}"#, &ctx);
             let args = r#"{"path": "u.txt", "content": "after"}"#;
             tools::builtin().run("write", args, &ctx);
         })

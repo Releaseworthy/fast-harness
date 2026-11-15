@@ -58,7 +58,7 @@ fn write_reports_new_and_replaced_files() {
     let registry = builtin();
     let spec = registry.specs().iter().find(|s| s.name == "write");
     let description = spec.map(|s| s.description.clone()).unwrap_or_default();
-    assert!(description.starts_with("Create or fully replace a UTF-8 text file"));
+    assert!(description.starts_with("Create or fully replace a text file"));
     assert!(description.contains("Missing parent folders are created."));
     assert!(description.ends_with("whether the file was new."));
 }

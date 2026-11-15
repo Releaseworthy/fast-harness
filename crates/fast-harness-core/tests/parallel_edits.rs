@@ -37,7 +37,9 @@ fn edit_all_markers_in_one_step(round: usize) -> String {
         .map(|n| (ids[n].as_str(), "edit", args[n].as_str()))
         .collect();
     let transport = Arc::new(ScriptedTransport::new(vec![
-        tool_reply(&[("toolu_f", "find_tools", r#"{"names":["edit"]}"#)]),
+        tool_reply(&[("toolu_f", "find_tools", r#"{"names":["read","edit"]}"#)]),
+        // edit needs a read of the file first.
+        tool_reply(&[("toolu_r", "read", r#"{"path":"a.txt"}"#)]),
         tool_reply(&calls),
         text_reply("done"),
     ]));

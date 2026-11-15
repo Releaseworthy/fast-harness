@@ -98,9 +98,24 @@ fn lines_inside_an_earlier_unchanged_read_answer_with_that_call() {
         read("c6", json!({"path": "f.rs", "offset": 402, "limit": 3})),
         unchanged("c5")
     );
-    // A changed file is read again.
+    // A change elsewhere in the file (its last line went): these lines
+    // are still unchanged; a range holding the change gets only the change.
     std::fs::write(&file, code(999)).unwrap();
-    assert!(read("c7", json!({"path": "f.rs", "offset": 402, "limit": 3})).starts_with("402: "));
+    assert_eq!(
+        read("c7", json!({"path": "f.rs", "offset": 402, "limit": 3})),
+        unchanged("c5")
+    );
+    let mut edited = code(1000);
+    edited = edited.replace("value_0403 = compute", "value_0403 = changed");
+    std::fs::write(&file, edited).unwrap();
+    let diff = read("c8", json!({"path": "f.rs", "offset": 400, "limit": 10}));
+    assert!(diff.starts_with("[changed since call c5"), "{diff}");
+    assert_eq!(diff.lines().count(), 2, "{diff}");
+    assert!(diff
+        .lines()
+        .nth(1)
+        .unwrap()
+        .starts_with("403:     let value_0403 = changed"));
     // `dedupeReads: false` always reads.
     let off = ContextConfig {
         dedupe_reads: false,
