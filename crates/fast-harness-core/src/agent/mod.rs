@@ -30,6 +30,7 @@ mod subagent;
 mod tool_run;
 mod turn;
 mod waiting;
+mod warm_gate;
 pub mod worker;
 
 use std::path::{Path, PathBuf};

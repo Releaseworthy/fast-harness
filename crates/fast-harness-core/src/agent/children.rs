@@ -55,6 +55,8 @@ struct State {
 pub struct Children {
     state: Mutex<State>,
     changed: Condvar,
+    /// The children's shared cached prefix, per model.
+    pub(super) warm: super::warm_gate::WarmGate,
 }
 
 type Table = Mutex<HashMap<String, Arc<Children>>>;

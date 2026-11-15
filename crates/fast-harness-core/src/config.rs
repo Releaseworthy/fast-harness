@@ -23,6 +23,10 @@ use crate::theme;
 pub const FILE_NAME: &str = "config.json";
 /// Default byte budget of one tool result (`toolOutputBytes`).
 pub const DEFAULT_TOOL_OUTPUT_BYTES: usize = 8 * 1024;
+/// Default `subagent.outputBytes`: a child's final answer is the work it
+/// was started for, so it arrives whole up to 64 KB (2026-11-15: an 8 KB
+/// cut cost the parent two more calls to read the rest).
+pub const DEFAULT_SUBAGENT_OUTPUT_BYTES: usize = 64 * 1024;
 /// The smallest budget: room for the spill note and some text.
 pub const MIN_TOOL_OUTPUT_BYTES: usize = 1024;
 
@@ -160,7 +164,7 @@ impl Default for SubagentConfig {
             effort: None,
             max_depth: 1,
             max_parallel: 4,
-            output_bytes: DEFAULT_TOOL_OUTPUT_BYTES,
+            output_bytes: DEFAULT_SUBAGENT_OUTPUT_BYTES,
             models: BTreeMap::new(),
             guide: DEFAULT_SUBAGENT_GUIDE.into(),
         }

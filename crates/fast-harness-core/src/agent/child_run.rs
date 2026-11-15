@@ -12,6 +12,7 @@ use super::children::{self, Children, Slot};
 use super::live;
 use super::spawn_models;
 use super::subagent::{Spec, SubagentTool, NAME};
+use super::warm_gate::WARM_CAP;
 use crate::agent::{Agent, AgentParts, Conversation, Inbox, Input};
 use crate::events::{AgentEvent, TurnOutcome};
 use crate::llm::catalog;
@@ -89,7 +90,7 @@ fn build(tool: &SubagentTool, spec: &Spec) -> Result<(Agent, Conversation), Stri
         .max_depth
         .map_or(settings.max_depth, |m| m.min(settings.max_depth));
     let nested = depth < max_depth;
-    check_tools(&spec.tools, nested, &parts.extensions)?;
+    let preload = check_tools(&spec.tools, nested, &parts.extensions)?;
     let conv = Conversation::create_at(&tool.app_home, &parts.cwd, Some(&tool.session), depth)
         .map_err(|err| format!("cannot start a subagent session: {err}"))?;
     let home = &tool.app_home;
@@ -100,7 +101,7 @@ fn build(tool: &SubagentTool, spec: &Spec) -> Result<(Agent, Conversation), Stri
             Agent::new(parts, Arc::new(registry))
         }
     };
-    agent.preload = spec.tools.clone();
+    agent.preload = preload;
     // The child asks through the session's gate, named (PLAN.md D64).
     if let Some(parent) = tool.children.approver() {
         agent.set_approver(parent.child(&spec.label, &conv.id));
@@ -131,8 +132,14 @@ fn route(tool: &SubagentTool, parts: &mut AgentParts, model: &str) -> Result<(),
     Ok(())
 }
 
-/// Every name in `names` must be a tool of the child (not `find_tools`).
-fn check_tools(names: &[String], nested: bool, ext: &tools::Extensions) -> Result<(), String> {
+/// Every name in `names` must be a tool of the child (not `find_tools`),
+/// in any letter case (a model may write `Read` for `read`): returns the
+/// names as the tool specs spell them.
+fn check_tools(
+    names: &[String],
+    nested: bool,
+    ext: &tools::Extensions,
+) -> Result<Vec<String>, String> {
     let builtin = ext.registry();
     let mut known: Vec<&str> = builtin.specs()[1..]
         .iter()
@@ -142,13 +149,19 @@ fn check_tools(names: &[String], nested: bool, ext: &tools::Extensions) -> Resul
         known.push(NAME);
         known.extend(child_tools::NAMES);
     }
+    let spelled = |name: &str| {
+        let name = name.trim();
+        let exact = known.iter().find(|k| **k == name);
+        exact.or_else(|| known.iter().find(|k| k.eq_ignore_ascii_case(name)))
+    };
     let unknown: Vec<&str> = names
         .iter()
         .map(String::as_str)
-        .filter(|name| !known.contains(name))
+        .filter(|name| spelled(name).is_none())
         .collect();
     if unknown.is_empty() {
-        return Ok(());
+        let found = names.iter().filter_map(|name| spelled(name));
+        return Ok(found.map(|name| name.to_string()).collect());
     }
     Err(format!(
         "`tools`: unknown {} (the subagent has {})",
@@ -207,7 +220,12 @@ fn run(
         running,
     };
     fwd.parent.push_event(running(true));
+    // Children starting together read the first one's cached prefix.
+    let model = agent.parts.config.model.clone();
+    let lead = fwd.parent.warm.enter(&model, WARM_CAP, cancel);
+    fwd.warming = lead.then_some(model);
     let outcome = agent.run_turn_with(conv, prompt, cancel, inbox, &mut |e| fwd.event(e));
+    fwd.warmed();
     let text = conv
         .messages
         .iter()
@@ -253,6 +271,8 @@ struct Forward {
     tool: Option<String>,
     sent: Option<Instant>,
     dirty: bool,
+    /// The model whose prefix this child writes first, until a reply comes.
+    warming: Option<String>,
 }
 
 impl Forward {
@@ -267,6 +287,14 @@ impl Forward {
             tool: None,
             sent: None,
             dirty: false,
+            warming: None,
+        }
+    }
+
+    /// Lets the children waiting for this one's first reply go.
+    fn warmed(&mut self) {
+        if let Some(model) = self.warming.take() {
+            self.parent.warm.warmed(&model);
         }
     }
 
@@ -274,6 +302,17 @@ impl Forward {
     /// steps and tool calls become a progress line, at most every 500 ms.
     fn event(&mut self, event: AgentEvent) {
         live::publish(&self.session, &event);
+        if !matches!(
+            event,
+            AgentEvent::UserInput { .. }
+                | AgentEvent::TurnStart { .. }
+                | AgentEvent::StepStart { .. }
+                | AgentEvent::Request { .. }
+                | AgentEvent::ToolCall { .. }
+                | AgentEvent::ToolResult { .. }
+        ) {
+            self.warmed();
+        }
         match &event {
             AgentEvent::Subagent { .. }
             | AgentEvent::SubagentProgress { .. }
