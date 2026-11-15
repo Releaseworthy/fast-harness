@@ -212,3 +212,49 @@ fn a_session_switch_ends_at_the_bottom_following() {
     switch_to(&window, &ui, &rows, chat());
     assert!(ui.get_transcript_follow(), "short to a chat follows");
 }
+
+/// A new row at the end while following: the view only ever moves down to
+/// it. The row's estimate (a line per blank line) is far taller than the
+/// row, and the list scrolled by the estimate, then back up by the
+/// difference a frame later (the owner 2026-11-15: the chat jumped).
+#[test]
+fn a_new_row_while_following_never_scrolls_back() {
+    let (window, ui, rows) = following();
+    let start = ui.get_chat_offset();
+    rows.push(row("assistant", &format!("First{}Last", "\n".repeat(80))));
+    // The offset each frame draws with: a jump shows in one frame only.
+    let mut seen = vec![start];
+    let mut buffer = vec![Rgb8Pixel { r: 0, g: 0, b: 0 }; (WIDTH * HEIGHT) as usize];
+    let mut gaps = Vec::new();
+    for k in 0..20 {
+        if k % 2 == 1 {
+            grow(&rows, k);
+        }
+        slint::platform::update_timers_and_animations();
+        window.request_redraw();
+        window.draw_if_needed(|renderer| {
+            renderer.render(&mut buffer, WIDTH as usize);
+            seen.push(ui.get_chat_offset());
+            gaps.push(ui.get_chat_end());
+        });
+    }
+    let moved = gaps.iter().any(|y| (y - gaps[0]).abs() > 0.5);
+    assert!(!moved, "the last row's end moved on screen: {gaps:?}");
+    let back = seen.windows(2).find(|w| w[1] < w[0] - 0.5);
+    assert!(back.is_none(), "the offset went back: {seen:?}");
+    assert!(
+        seen[seen.len() - 1] > start,
+        "it shows the new row: {seen:?}"
+    );
+    assert!(ui.get_transcript_follow(), "still following");
+}
+
+/// The last row's reply gets another paragraph, as a stream does.
+fn grow(rows: &VecModel<MsgRow>, k: usize) {
+    let n = rows.row_count() - 1;
+    let mut r = rows.row_data(n).expect("a last row");
+    r.text = format!("{}\n\nMore words {k}", r.text).into();
+    r.shown = r.text.clone();
+    r.blocks = crate::rows::reply_blocks(&r.text);
+    rows.set_row_data(n, r);
+}

@@ -8,6 +8,8 @@ use crate::MainWindow;
 /// One list's rows and the window's properties that drive its view.
 pub trait Host: 'static {
     type Row: Clone + PartialEq + 'static;
+    /// Its syncs go to the follow log (`follow_log`) when that is on.
+    const LOG: bool = false;
     /// The rows, and row `i`'s own index (rising in the list's order when
     /// the rows keep their place across changes; the list index if none).
     fn rows(ui: &MainWindow) -> ModelRc<Self::Row>;

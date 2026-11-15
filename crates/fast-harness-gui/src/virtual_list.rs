@@ -28,11 +28,10 @@ use std::time::Duration;
 
 use slint::{ComponentHandle, Model, ModelRc, Timer, TimerMode, VecModel};
 
+use crate::list_end::{self, Tail};
 pub use crate::list_host::Host;
 use crate::MainWindow;
 
-/// Rows laid out above and below the view, in view heights.
-const OVERSCAN: f32 = 0.5;
 /// The lane's rows per batch, and the frames a batch may take to report.
 const BATCH: usize = 12;
 const PATIENCE: u32 = 10;
@@ -46,6 +45,7 @@ struct Known<R> {
     row: R,
     height: f32,
     exact: bool,
+    guessed: bool, // the height is an estimate (never laid out)
 }
 
 /// The clicked row before a toggle: its key, the toggled step's or turn's
@@ -165,18 +165,6 @@ fn with<H: Host>(
     f(&mut list, &ui);
 }
 
-/// The tops of rows of `heights`, and the end.
-fn prefix(heights: &[f32]) -> Vec<f32> {
-    let mut tops = Vec::with_capacity(heights.len() + 1);
-    let mut y = 0.0;
-    tops.push(y);
-    for height in heights {
-        y += height;
-        tops.push(y);
-    }
-    tops
-}
-
 impl<H: Host> VirtualList<H> {
     /// Brings the heights, tops, window and scroll position up to date.
     pub fn sync(&mut self, ui: &MainWindow) {
@@ -193,6 +181,12 @@ impl<H: Host> VirtualList<H> {
         }
         self.read(ui);
         self.place(ui, &hold);
+        if H::LOG && crate::follow_log::on() {
+            let guessed = (0..self.rows.len()).filter(|i| self.tail(*i) == Tail::Guessed);
+            let guessed: Vec<usize> = guessed.collect();
+            let state = crate::follow_log::state(ui);
+            crate::follow_log::line(|| format!("sync guessed={guessed:?} {state}"));
+        }
     }
 
     /// A row's toggle is about to run: list row `row` (or what takes its
@@ -235,10 +229,15 @@ impl<H: Host> VirtualList<H> {
         if same || H::spacer(&data) {
             return;
         }
+        if H::LOG && crate::follow_log::on() {
+            let was = known.map(|k| (k.height, k.exact, k.guessed));
+            crate::follow_log::line(|| format!("measured row={i} h={height:.1} was={was:?}"));
+        }
         let known = Known {
             row: data,
             height,
             exact: true,
+            guessed: false,
         };
         self.known.insert(key, known);
         self.sync(ui);
@@ -305,15 +304,16 @@ impl<H: Host> VirtualList<H> {
         if !H::shows(row) {
             return 0.0;
         }
-        let height = match self.known.get(&key) {
+        let (height, guessed) = match self.known.get(&key) {
             Some(known) if known.row == *row => return known.height,
-            Some(known) => known.height,
-            None => H::estimate(row, self.style.0),
+            Some(known) => (known.height, known.guessed),
+            None => (H::estimate(row, self.style.0), true),
         };
         let known = Known {
             row: row.clone(),
             height,
             exact: false,
+            guessed,
         };
         self.known.insert(key, known);
         height
@@ -331,7 +331,7 @@ impl<H: Host> VirtualList<H> {
     fn place(&mut self, ui: &MainWindow, hold: &Hold<H::Row>) {
         let (view, pad) = (H::view(ui), H::pad(ui));
         let heights: Vec<f32> = (0..self.rows.len()).map(|i| self.height(i, pad)).collect();
-        self.tops = prefix(&heights);
+        self.tops = list_end::prefix(&heights);
         let offset = self.offset_for(hold, view);
         self.show(ui, offset, view, hold);
     }
@@ -344,7 +344,10 @@ impl<H: Host> VirtualList<H> {
     fn offset_for(&self, hold: &Hold<H::Row>, view: f32) -> f32 {
         let max = self.max(view);
         let want = match hold {
-            Hold::End => max,
+            Hold::End => {
+                let tails: Vec<Tail> = (0..self.rows.len()).map(|i| self.tail(i)).collect();
+                list_end::settled_end(&self.tops, &tails) - view
+            }
             Hold::Offset(offset) => *offset,
             Hold::Row { key, screen } => {
                 let i = self.keys.partition_point(|k| k < key);
@@ -385,16 +388,16 @@ impl<H: Host> VirtualList<H> {
         })
     }
 
-    /// The rows to lay out for the view at `offset`: in it and around it.
-    fn span_at(&self, offset: f32, view: f32) -> (usize, usize) {
-        let n = self.rows.len();
-        if n == 0 || self.tops.len() != n + 1 {
-            return (0, 0);
+    /// Row `i` as the end of a following view sees it.
+    fn tail(&self, i: usize) -> Tail {
+        let row = &self.rows[i];
+        if H::spacer(row) || !H::shows(row) {
+            return Tail::Skip;
         }
-        let (low, high) = (offset - OVERSCAN * view, offset + view + OVERSCAN * view);
-        let a = self.tops[1..].partition_point(|t| *t <= low);
-        let b = self.tops[..n].partition_point(|t| *t < high);
-        (a.min(b), b)
+        match self.known.get(&self.keys[i]) {
+            Some(known) if !known.guessed => Tail::Measured,
+            _ => Tail::Guessed,
+        }
     }
 
     /// Hands the tops, the window and the scroll position to the view.
@@ -402,7 +405,7 @@ impl<H: Host> VirtualList<H> {
         if self.shown.iter().ne(self.tops.iter().copied()) {
             self.shown.set_vec(self.tops.clone());
         }
-        let span = self.span_at(offset, view);
+        let span = list_end::span(&self.tops, self.rows.len(), offset, view);
         self.set_window(span);
         if (H::offset(ui) - offset).abs() > 0.01 {
             H::set_offset(ui, offset);

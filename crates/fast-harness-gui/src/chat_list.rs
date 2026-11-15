@@ -19,6 +19,7 @@ pub fn new_window() -> Result<MainWindow, slint::PlatformError> {
     crate::trace_list::attach(&ui);
     crate::reply_select::attach(&ui);
     crate::cross_select::attach(&ui);
+    crate::follow_log::attach(&ui);
     Ok(ui)
 }
 
@@ -41,6 +42,7 @@ pub struct Chat;
 
 impl Host for Chat {
     type Row = MsgRow;
+    const LOG: bool = true;
     fn rows(ui: &MainWindow) -> ModelRc<MsgRow> {
         ui.get_messages()
     }
