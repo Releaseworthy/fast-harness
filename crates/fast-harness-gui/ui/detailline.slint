@@ -65,12 +65,19 @@ export component DetailLine inherits Rectangle {
             color: root.failed ? Theme.error : Theme.dim;
             font-size: Theme.font-m;
         }
-        Text {
+        // The name is selectable too (the owner 2026-11-15: a drag from
+        // "shell" copied only the target), one place before the text.
+        nm := GhostText {
             text: root.name;
             color: Theme.text;
             font-size: Theme.font-s;
             font-family: Theme.mono;
-            vertical-alignment: center;
+            valign: center;
+            wrap: no-wrap;
+            sel-row: root.sel-row;
+            idx: root.idx - 1;
+            by-x: true;
+            changed selecting => { if !self.selecting && !line.selecting { root.lifted = false; } }
         }
         line := GhostText {
             text: root.text;
@@ -82,7 +89,9 @@ export component DetailLine inherits Rectangle {
             horizontal-stretch: 1;
             sel-row: root.sel-row;
             idx: root.idx;
-            changed selecting => { if !self.selecting { root.lifted = false; } }
+            sep: " ";
+            by-x: true;
+            changed selecting => { if !self.selecting && !nm.selecting { root.lifted = false; } }
             changed has-hover => { if !self.has-hover && !self.selecting { root.lifted = false; } }
         }
         if root.running: VerticalLayout {
@@ -118,13 +127,15 @@ export component DetailLine inherits Rectangle {
     // the text's ghost (ui/cross_select.slint `lift`) and this area steps
     // aside until the selection is gone.
     ta := TouchArea {
-        enabled: !root.lifted && !CrossSelect.taking(root.sel-row, root.idx);
+        enabled: !root.lifted && !CrossSelect.taking(root.sel-row, root.idx) && !CrossSelect.taking(root.sel-row, root.idx - 1);
+        // A press left of the text lifts into the name.
+        property <bool> on-name: self.absolute-position.x + self.pressed-x < line.absolute-position.x;
         mouse-cursor: pointer;
         clicked => { root.toggled(); }
         moved => {
             if self.pressed && root.sel-row >= 0 && !root.lifted && abs(self.mouse-x - self.pressed-x) + abs(self.mouse-y - self.pressed-y) > 4px {
                 root.lifted = true;
-                CrossSelect.lift(root.sel-row, root.idx, clamp(self.absolute-position.x + self.pressed-x, line.absolute-position.x + 1px, line.absolute-position.x + max(1px, line.width - 2px)), line.absolute-position.y + line.height / 2, self.absolute-position.x + self.mouse-x, self.absolute-position.y + self.mouse-y);
+                CrossSelect.lift(root.sel-row, self.on-name ? root.idx - 1 : root.idx, self.on-name ? clamp(self.absolute-position.x + self.pressed-x, nm.absolute-position.x + 1px, nm.absolute-position.x + max(1px, nm.width - 2px)) : clamp(self.absolute-position.x + self.pressed-x, line.absolute-position.x + 1px, line.absolute-position.x + max(1px, line.width - 2px)), line.absolute-position.y + line.height / 2, self.absolute-position.x + self.mouse-x, self.absolute-position.y + self.mouse-y);
             }
         }
     }

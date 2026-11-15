@@ -168,6 +168,9 @@ fn on_event(ui: &MainWindow, window: &slint::Window, event: &WindowEvent) -> Eve
     if let WindowEvent::MouseInput { state: ElementState::Released, button: MouseButton::Left, .. } = event {
         crate::cross_select::released(ui);
     }
+    if let WindowEvent::MouseInput { state: ElementState::Pressed, button: MouseButton::Left, .. } = event {
+        crate::cross_select::pressed(ui);
+    }
     match kind(event) {
         Kind::Drop(path) => {
             crate::images_view::dropped(path);

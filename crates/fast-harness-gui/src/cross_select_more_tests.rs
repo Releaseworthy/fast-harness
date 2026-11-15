@@ -88,3 +88,41 @@ fn a_drag_copies_a_tool_cards_header() {
 /// The header's middle below the card's top and a point on the name's first letter.
 const HEADER_DY: f32 = 35.0;
 const NAME_X: f32 = 375.0;
+
+#[test]
+fn a_drag_from_inside_a_shell_name_copies_name_and_target() {
+    let args = r#"{"command":"echo alpha-line; echo beta-line"}"#;
+    // A step's tool line (DetailLine), as in a run: its name was plain text.
+    let line = crate::MsgRow { detail_line: true, expanded: false, ..tool(0, "shell", args, Some("alpha-line")) };
+    let chat = chat(vec![line]);
+    let y = chat.top(0) + LINE_DY;
+    super::tests::drag(&chat, (LINE_NAME_X, y), (900.0, y));
+    shot(&chat.window, "select-shell-header");
+    let got = chat.copy();
+    assert!(got.ends_with("ell $ echo alpha-line; echo beta-line"), "copied {got:?}");
+}
+
+/// A step tool line's middle below the row's top and a point inside its name.
+const LINE_DY: f32 = 13.0;
+const LINE_NAME_X: f32 = 337.0;
+
+fn click(chat: &crate::text_select_tests::Chat, x: f32, y: f32) {
+    // The winit hook sees the press first.
+    super::pressed(&chat.ui);
+    super::tests::drag(chat, (x, y), (x, y));
+}
+
+#[test]
+fn a_plain_click_on_empty_space_clears_the_selection() {
+    let chat = chat(vec![row(0, "user", "Why?"), row(1, "assistant", TABLE)]);
+    let top = chat.top(1);
+    super::tests::drag(&chat, (317.0, top + HEAD_DY), (CELL2_X, top + HEAD_DY + ROW_STEP));
+    assert!(!chat.copy().is_empty(), "no selection to clear");
+    for (x, y) in [(700.0, 600.0), (304.0, top + HEAD_DY)] {
+        click(&chat, x, y);
+        let global = slint::ComponentHandle::global::<crate::CrossSelect>(&chat.ui);
+        assert!(!global.get_active(), "a click at {x},{y} kept the selection");
+        assert_eq!(chat.copy(), "", "a click at {x},{y} kept the copy");
+        super::tests::drag(&chat, (317.0, top + HEAD_DY), (CELL2_X, top + HEAD_DY + ROW_STEP));
+    }
+}

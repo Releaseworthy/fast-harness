@@ -35,6 +35,9 @@ export global CrossSelect {
     // `left`, and src/cross_select.rs ends the selection when no block took
     // the focus (a click on empty space) and the window is still active.
     in-out property <bool> held;
+    // A block took the window's current press (src/cross_select.rs
+    // `pressed`): a press no block takes ends the selection.
+    in-out property <bool> hit;
     callback left();
     // A block in the range shows its text and the separator before it
     // (a newline, a tab after a table cell, a space in a tool card's

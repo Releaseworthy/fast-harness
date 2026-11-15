@@ -76,6 +76,7 @@ With `"approvals": "ask"` a call can wait for an answer (PLAN.md D64). Both fron
 - `CrossSelect.hand-off`: callback
 - `CrossSelect.handing`: property <bool>
 - `CrossSelect.held`: property <bool>
+- `CrossSelect.hit`: property <bool>
 - `CrossSelect.left`: callback
 - `CrossSelect.link-at`: callback
 - `CrossSelect.out`: property <bool>
