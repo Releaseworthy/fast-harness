@@ -176,13 +176,13 @@ component MessageView {
         if root.turn-line: StepLine {
             text: msg.turn-line;
             label: "Turn " + msg.turn-no + " folded: " + msg.turn-line;
-            open: false; sel-row: msg.item; idx: -2;
+            open: false; sel-row: msg.item; idx: -3;
             toggled => { root.turn-toggle(msg.turn-head); }
         }
         if root.line: StepLine {
             text: msg.step-summary;
             label: msg.step-label;
-            open: msg.step-open; sel-row: msg.item; idx: -1;
+            open: msg.step-open; sel-row: msg.item; idx: -2;
             kind: msg.step-kind;
             running: msg.step-running;
             failed: msg.step-failed;

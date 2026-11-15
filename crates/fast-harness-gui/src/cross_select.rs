@@ -151,6 +151,26 @@ fn slice(text: &str, start: usize, end: usize) -> &str {
     text.get(start.min(end)..end).unwrap_or("")
 }
 
+/// The window's left button went down (`window_events`, before Slint sees
+/// it): unless a block of the chat takes this press (`CrossSelect.hit`),
+/// the selection ends (the owner 2026-11-15: a click on empty space or
+/// padding kept an old table selection, as no focus moved).
+pub fn pressed(ui: &MainWindow) {
+    ui.global::<CrossSelect>().set_hit(false);
+    let weak = ui.as_weak();
+    // Deferred: Slint delivers the press after this hook.
+    slint::Timer::single_shot(Duration::ZERO, move || {
+        let Some(ui) = weak.upgrade() else { return };
+        let global = ui.global::<CrossSelect>();
+        if global.get_hit() || global.get_handing() || !global.get_active() {
+            return;
+        }
+        global.set_active(false);
+        global.set_out(false);
+        global.invoke_cleared();
+    });
+}
+
 /// The window's left button went up (`window_events`, before Slint sees
 /// it): a press on a reply's link that did not turn into a selection
 /// opens the link (the ghost over the StyledText took its click).

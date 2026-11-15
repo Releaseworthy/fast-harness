@@ -96,6 +96,7 @@ export component Ghost inherits TextInput {
             CrossSelect.out = false;
         }
         CrossSelect.held = true;
+        CrossSelect.hit = true;
         CrossSelect.f-off = self.cursor-position-byte-offset;
         CrossSelect.put(root.sel-row, root.idx, root.text, root.sep);
         root.arm();
@@ -112,6 +113,13 @@ export component Ghost inherits TextInput {
         }
         root.show();
     }
+    // The selection ended (a press on no block): the focus block drops its own.
+    property <bool> live: CrossSelect.active;
+    changed live => {
+        if !self.live && self.has-focus {
+            self.set-selection-offsets(self.cursor-position-byte-offset, self.cursor-position-byte-offset);
+        }
+    }
     init => { root.show(); }
     changed has-focus => {
         if self.has-focus { root.gained(); } else { root.lost(); }
@@ -121,6 +129,7 @@ export component Ghost inherits TextInput {
     changed part => { root.show(); }
     changed text => { root.show(); }
     changed cursor-position-byte-offset => {
+        if self.has-focus { CrossSelect.hit = true; }
         root.arm();
         if self.has-focus && root.focus-block {
             CrossSelect.f-off = self.cursor-position-byte-offset;
