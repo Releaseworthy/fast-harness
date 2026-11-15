@@ -82,7 +82,7 @@ export component StepLine inherits Rectangle {
     // the text's ghost (ui/cross_select.slint `lift`) and this area steps
     // aside until the selection is gone.
     ta := TouchArea {
-        enabled: !root.lifted;
+        enabled: !root.lifted && !CrossSelect.taking(root.sel-row, root.idx);
         mouse-cursor: pointer;
         clicked => { root.toggled(); }
         moved => {
