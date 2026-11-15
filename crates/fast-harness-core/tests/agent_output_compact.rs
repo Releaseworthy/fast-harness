@@ -16,13 +16,13 @@ use routed_support::*;
 /// The text of the tool result of call `id`.
 fn result_of(conv: &Conversation, id: &str) -> String {
     let blocks = conv.messages.iter().flat_map(|m| m.content.iter());
-    let found = blocks.filter_map(|block| match block {
+    let mut found = blocks.filter_map(|block| match block {
         Block::ToolResult {
             call_id, content, ..
         } if call_id == id => Some(content.clone()),
         _ => None,
     });
-    found.last().unwrap_or_default()
+    found.next_back().unwrap_or_default()
 }
 
 #[test]
