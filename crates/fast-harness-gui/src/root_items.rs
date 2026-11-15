@@ -52,6 +52,7 @@ mod wire;
 mod workspaces;
 mod chat_list;
 mod follow_log;
+mod glide;
 mod list_end;
 mod list_host;
 mod plain_text;

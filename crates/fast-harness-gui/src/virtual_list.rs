@@ -24,19 +24,16 @@
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::rc::{Rc, Weak};
-use std::time::Duration;
+use slint::{ComponentHandle, Model, ModelRc, Timer, VecModel};
 
-use slint::{ComponentHandle, Model, ModelRc, Timer, TimerMode, VecModel};
-
+use crate::glide::Glide;
 use crate::list_end::{self, Tail};
 pub use crate::list_host::Host;
 use crate::MainWindow;
 
-/// The lane's rows per batch, and the frames a batch may take to report.
-const BATCH: usize = 12;
-const PATIENCE: u32 = 10;
-const TRIES: u8 = 4; // batches a late row is asked before it keeps its estimate
-const TICK: Duration = Duration::from_millis(16);
+#[path = "list_lane.rs"]
+mod lane;
+
 /// A folded row whose top was above the view comes to this far below its top.
 pub const MARGIN: f32 = 8.0;
 
@@ -82,6 +79,8 @@ pub struct VirtualList<H: Host> {
     style: (f32, f32),
     anchor: Option<Anchor<H::Row>>,
     timer: Timer,
+    glide: Glide,
+    end_key: Option<i64>, // the last measured row a following view showed
     me: Weak<RefCell<VirtualList<H>>>,
 }
 
@@ -117,6 +116,8 @@ pub fn attach<H: Host>(ui: &MainWindow) -> Handle<H> {
         style: (0.0, 0.0),
         anchor: None,
         timer: Timer::default(),
+        glide: Glide::default(),
+        end_key: None,
         me: Weak::new(),
     }));
     if let Ok(mut inner) = list.try_borrow_mut() {
@@ -332,8 +333,29 @@ impl<H: Host> VirtualList<H> {
         let (view, pad) = (H::view(ui), H::pad(ui));
         let heights: Vec<f32> = (0..self.rows.len()).map(|i| self.height(i, pad)).collect();
         self.tops = list_end::prefix(&heights);
-        let offset = self.offset_for(hold, view);
+        let mut offset = self.offset_for(hold, view);
+        if matches!(hold, Hold::End) {
+            offset = self.glide(ui, offset);
+        } else {
+            self.glide.stop();
+            self.end_key = None;
+        }
         self.show(ui, offset, view, hold);
+    }
+
+    /// Following, the view at the end `target`: a new last row glides into
+    /// view (`glide`), a growing one keeps the view at the end.
+    fn glide(&mut self, ui: &MainWindow, target: f32) -> f32 {
+        let tails: Vec<Tail> = (0..self.rows.len()).map(|i| self.tail(i)).collect();
+        let last = list_end::last_measured(&tails).map(|i| self.keys[i]);
+        let fresh = self.end_key.is_some() && last != self.end_key;
+        self.end_key = last;
+        let (me, weak) = (self.me.clone(), ui.as_weak());
+        self.glide.toward(H::offset(ui), target, fresh, move || {
+            if let Some(list) = me.upgrade() {
+                with(&list, &weak, VirtualList::sync);
+            }
+        })
     }
 
     fn max(&self, view: f32) -> f32 {
@@ -418,66 +440,5 @@ impl<H: Host> VirtualList<H> {
             H::top_row(ui, H::item(&self.rows[i], i));
         }
         self.background(ui);
-    }
-
-    /// Starts or stops the lane that measures the rows not measured yet.
-    fn background(&mut self, ui: &MainWindow) {
-        if (0..self.rows.len()).all(|i| self.exact(i)) {
-            self.timer.stop();
-            if self.probes.row_count() > 0 {
-                self.probes.set_vec(Vec::new());
-            }
-            return;
-        }
-        if self.timer.running() {
-            return;
-        }
-        let (me, weak) = (self.me.clone(), ui.as_weak());
-        self.timer.start(TimerMode::Repeated, TICK, move || {
-            if let Some(list) = me.upgrade() {
-                with(&list, &weak, VirtualList::tick);
-            }
-        });
-    }
-
-    /// One frame of the lane: while its batch has not reported, wait (a
-    /// row that never reports keeps its estimate after `PATIENCE` frames);
-    /// then the next batch, the window's rows and the nearest first.
-    fn tick(&mut self, ui: &MainWindow) {
-        let n = self.rows.len();
-        let late: Vec<usize> = (self.probes.iter())
-            .filter_map(|s| usize::try_from(s).ok())
-            .filter(|i| *i < n && !self.exact(*i))
-            .collect();
-        if !late.is_empty() && self.waited < PATIENCE {
-            self.waited += 1;
-            return;
-        }
-        // A late row is asked again: a frozen estimate moved the thumb when
-        // the row was drawn (log 6143, 2026-11-14).
-        for i in late {
-            let key = self.keys[i];
-            let tries = self.tries.entry(key).or_insert(0);
-            *tries += 1;
-            if *tries >= TRIES {
-                if let Some(known) = self.known.get_mut(&key) {
-                    known.exact = true;
-                }
-            }
-        }
-        self.waited = 0;
-        let (a, b) = self.span;
-        let around = (0..n).flat_map(move |d| [b + d, a.wrapping_sub(d + 1)]);
-        let order = (a..b).chain(around).filter(move |i| *i < n);
-        let batch: Vec<i32> = order
-            .filter(|i| !self.exact(*i))
-            .take(BATCH)
-            .map(|i| i as i32)
-            .collect();
-        if batch.is_empty() {
-            self.background(ui);
-            return;
-        }
-        self.probes.set_vec(batch);
     }
 }
