@@ -3,7 +3,7 @@ use std::sync::atomic::AtomicBool;
 
 use serde_json::json;
 
-use super::{annotate, reads_file, segments, walks};
+use super::{annotate, plain_read, segments, walks};
 use crate::tools::{Tool, ToolCtx, ToolOutput};
 
 /// A fresh folder under the temp dir, removed on drop.
@@ -38,13 +38,35 @@ fn shell(command: &str, cwd: &std::path::Path) -> String {
 #[test]
 fn commands_that_walk_or_read_are_told_apart() {
     let walk = |c: &str| segments(c).iter().any(|w| walks(w));
-    let read = |c: &str| segments(c).iter().any(|w| reads_file(w));
+    let cwd = std::env::temp_dir();
+    let read = |c: &str| plain_read(c, &cwd).is_some();
     assert!(walk("gci -Recurse src") && walk("Get-ChildItem . -r -Filter *.rs"));
     assert!(walk("cmd /c dir /s /b") && walk("$x = (gci -Depth 2).FullName"));
     assert!(!walk("gci src") && !walk("Get-ChildItem -ReadOnly"));
     assert!(read("Get-Content -Raw a.txt") && read("cmd /c type a.png"));
-    assert!(read("gc a.txt | Select-String x") && !read("Get-Content -Wait log.txt"));
-    assert!(!read("cargo test") && !read("type"));
+    assert!(read("cd x; gc a.txt | select -First 5") && read("cat a | Select-Object -Skip 2,3"));
+    assert!(!read("gc a.txt | Select-String x") && !read("Get-Content -Wait log.txt"));
+    assert!(!read("gc a.json | ConvertFrom-Json") && !read("gc a | Measure-Object"));
+    assert!(!read("cargo test") && !read("type") && !read("$t = gc a.txt"));
+}
+
+/// D91: the read hint names `find_tools` only when read is not loaded.
+#[test]
+fn a_hint_names_find_tools_only_for_a_tool_not_loaded() {
+    let cwd = std::env::temp_dir();
+    let hint = |loaded: &[&str]| {
+        let loaded: Vec<String> = loaded.iter().map(|s| s.to_string()).collect();
+        let out = annotate(
+            "gc a.txt",
+            &cwd,
+            &loaded,
+            ToolOutput::ok("a\n[exit code: 0]"),
+        );
+        out.into_text()
+    };
+    assert!(hint(&["shell"]).contains("images; find_tools loads it)"));
+    assert!(hint(&["shell", "read"]).contains("(line numbers, ranges, images) instead"));
+    assert!(hint(&[]).contains("(line numbers, ranges, images) instead"));
 }
 
 #[test]
@@ -57,6 +79,7 @@ fn absolute_paths_lose_the_working_folder_once_noted() {
     let out = annotate(
         "(gci src).FullName",
         &cwd,
+        &[],
         ToolOutput::ok(lines + "[exit code: 0]"),
     );
     let text = out.into_text();
@@ -69,6 +92,7 @@ fn absolute_paths_lose_the_working_folder_once_noted() {
     let once = annotate(
         "echo",
         &cwd,
+        &[],
         ToolOutput::ok(format!("{}\n[exit code: 0]", cwd.display())),
     );
     assert_eq!(

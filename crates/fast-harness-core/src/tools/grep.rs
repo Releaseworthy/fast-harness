@@ -275,16 +275,18 @@ fn render(search: &Search, skipped: &Skipped, room: usize) -> String {
             1 => "1 file".to_string(),
             n => format!("{n} files"),
         };
-        let rest = total - body.shown;
-        let hint = match (search.asked > search.max, body.full) {
+        let (rest, shown, budget) = (total - body.shown, body.shown, search.budget);
+        // D91: the number named is the number shown, whichever limit hit.
+        let hint = match (body.full, search.asked > search.max) {
             (true, _) => format!(
-                "max_results {} capped to {} to fit the {}-byte output budget; narrow the pattern, path or glob",
-                search.asked, search.max, search.budget
+                "the {budget}-byte output budget holds {shown}; narrow the pattern, path or glob"
             ),
-            (false, true) => "the output budget is full; narrow the pattern, path or glob".into(),
+            (false, true) => format!(
+                "max_results {} capped to {} to fit the {budget}-byte output budget; narrow the pattern, path or glob",
+                search.asked, search.max
+            ),
             (false, false) => "narrow the pattern, path or glob, or raise max_results".into(),
         };
-        let shown = body.shown;
         out.push_str(&format!(
             "[{rest} more matches in {files}; showing {shown} of {total} matches; {hint}]\n"
         ));
