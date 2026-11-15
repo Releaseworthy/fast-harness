@@ -5,6 +5,7 @@
 //! grows at the end (a streaming reply) keeps the view pinned to the end:
 //! a glide toward it lagged a line behind the text.
 
+use std::cell::Cell;
 use std::time::{Duration, Instant};
 
 use slint::{Timer, TimerMode};
@@ -12,6 +13,23 @@ use slint::{Timer, TimerMode};
 /// How long a glide takes, and the time between its frames.
 pub const GLIDE: Duration = Duration::from_millis(150);
 const FRAME: Duration = Duration::from_millis(8);
+
+thread_local! {
+    /// A test's clock (None: the real one), so a glide test counts frames
+    /// at set times instead of racing a loaded machine.
+    static CLOCK: Cell<Option<Instant>> = const { Cell::new(None) };
+}
+
+/// The time a glide reads.
+fn now() -> Instant {
+    CLOCK.with(Cell::get).unwrap_or_else(Instant::now)
+}
+
+/// Sets this thread's glide clock (None: the real one).
+#[cfg(test)]
+pub fn set_clock(at: Option<Instant>) {
+    CLOCK.with(|clock| clock.set(at));
+}
 
 /// Ease-out cubic: 0 at 0, 1 at 1, rising, never above 1.
 pub fn ease(t: f32) -> f32 {
@@ -60,7 +78,7 @@ impl Glide {
         fresh: bool,
         tick: impl FnMut() + 'static,
     ) -> f32 {
-        let y = self.at(offset, target, fresh, Instant::now());
+        let y = self.at(offset, target, fresh, now());
         if self.start.is_none() {
             self.timer.stop();
         } else if !self.timer.running() {
