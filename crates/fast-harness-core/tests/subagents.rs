@@ -185,7 +185,9 @@ fn background_children_answer_in_order_of_completion() {
     let a = r#"{"prompt":"task A","background":true}"#;
     let b = r#"{"prompt":"task B","background":true}"#;
     let transport = Routed::new(vec![
-        ("task A", 1200, vec![text_reply("answer A")]),
+        // Past the 3 s warm-gate cap: when A leads, B waits at most 3 s for
+        // A's first reply (agent/warm_gate.rs) and still ends first.
+        ("task A", 4000, vec![text_reply("answer A")]),
         ("task B", 300, vec![text_reply("answer B")]),
         (
             "go",
