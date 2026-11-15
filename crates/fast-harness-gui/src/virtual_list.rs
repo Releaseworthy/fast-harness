@@ -176,7 +176,15 @@ impl<H: Host> VirtualList<H> {
         };
         let style = H::style(ui);
         if style != self.style {
-            self.known.clear();
+            if H::LOG && crate::follow_log::on() {
+                let was = self.style;
+                crate::follow_log::line(|| format!("style {was:?} -> {style:?}"));
+            }
+            // Keep the heights as stale, to be measured again (the lane): a
+            // clear made every row an estimate, so a 6 px width wobble at a
+            // step start threw a following chat ~1900 px off its end and
+            // re-measured every row (gui-flicker, 2026-11-15).
+            self.known.values_mut().for_each(|k| k.exact = false);
             self.tries.clear();
             self.style = style;
         }
@@ -285,6 +293,9 @@ impl<H: Host> VirtualList<H> {
             .map(|(i, r)| H::item(r, i))
             .collect();
         let by_item = items.windows(2).all(|w| w[0] < w[1]);
+        if H::LOG && by_item != self.by_item && crate::follow_log::on() {
+            crate::follow_log::line(|| format!("by_item {by_item} items {items:?}"));
+        }
         self.keys = (items.iter().enumerate())
             .map(|(i, item)| if by_item { i64::from(*item) } else { i as i64 })
             .collect();
