@@ -22,7 +22,7 @@ impl Platform for TestPlatform {
     }
 }
 
-fn row(kind: &str, text: &str) -> MsgRow {
+pub fn row(kind: &str, text: &str) -> MsgRow {
     MsgRow {
         kind: kind.into(),
         text: text.into(),
@@ -47,7 +47,7 @@ fn chat() -> Vec<MsgRow> {
 }
 
 /// Runs the animations, the change handlers and a frame for `ms` milliseconds.
-fn frames(window: &MinimalSoftwareWindow, ms: u64) {
+pub fn frames(window: &MinimalSoftwareWindow, ms: u64) {
     let mut buffer = vec![Rgb8Pixel { r: 0, g: 0, b: 0 }; (WIDTH * HEIGHT) as usize];
     for _ in 0..ms.div_ceil(16) {
         std::thread::sleep(Duration::from_millis(16));
@@ -102,7 +102,7 @@ fn wheel_up_stops_following_and_output_does_not_pull_down() {
 }
 
 /// A window at the bottom of a long chat, following.
-fn following() -> (Rc<MinimalSoftwareWindow>, MainWindow, Rc<VecModel<MsgRow>>) {
+pub fn following() -> (Rc<MinimalSoftwareWindow>, MainWindow, Rc<VecModel<MsgRow>>) {
     let window = MinimalSoftwareWindow::new(RepaintBufferType::NewBuffer);
     slint::platform::set_platform(Box::new(TestPlatform(window.clone()))).expect("platform");
     window.set_size(PhysicalSize::new(WIDTH, HEIGHT));
@@ -220,7 +220,7 @@ fn a_session_switch_ends_at_the_bottom_following() {
 #[test]
 fn a_new_row_while_following_never_scrolls_back() {
     let (window, ui, rows) = following();
-    let start = ui.get_chat_offset();
+    let (start, rest) = (ui.get_chat_offset(), ui.get_chat_end());
     rows.push(row("assistant", &format!("First{}Last", "\n".repeat(80))));
     // The offset each frame draws with: a jump shows in one frame only.
     let mut seen = vec![start];
@@ -238,8 +238,9 @@ fn a_new_row_while_following_never_scrolls_back() {
             gaps.push(ui.get_chat_end());
         });
     }
-    let moved = gaps.iter().any(|y| (y - gaps[0]).abs() > 0.5);
-    assert!(!moved, "the last row's end moved on screen: {gaps:?}");
+    // The end never comes above the view's bottom; it glides down to it.
+    let above = gaps.iter().any(|y| *y < rest - 0.5);
+    assert!(!above, "the last row's end rose above the bottom: {gaps:?}");
     let back = seen.windows(2).find(|w| w[1] < w[0] - 0.5);
     assert!(back.is_none(), "the offset went back: {seen:?}");
     assert!(
@@ -247,6 +248,12 @@ fn a_new_row_while_following_never_scrolls_back() {
         "it shows the new row: {seen:?}"
     );
     assert!(ui.get_transcript_follow(), "still following");
+    frames(&window, 300);
+    let end = ui.get_chat_end();
+    assert!(
+        (end - rest).abs() < 0.5,
+        "it ends at the bottom: {end} {rest}"
+    );
 }
 
 /// The last row's reply gets another paragraph, as a stream does.

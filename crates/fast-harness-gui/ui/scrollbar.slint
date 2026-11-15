@@ -21,7 +21,7 @@ export component ScrollBar {
         : max(28px, root.height * root.visible-height / max(1px, root.content-height));
     property <length> travel: max(0px, root.height - root.thumb-length);
     property <length> thumb-top: root.maximum <= 0 ? 0px : root.travel * root.offset / root.maximum;
-    property <bool> dragging;
+    out property <bool> dragging;
     // The thumb's place (0 top, 1 bottom) at the press: a drag moves it by
     // the pointer's share of the travel, so a ListView height re-estimate
     // during the drag never throws the view to an end.

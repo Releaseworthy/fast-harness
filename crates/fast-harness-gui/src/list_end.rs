@@ -83,6 +83,11 @@ pub fn settled_end(tops: &[f32], tails: &[Tail]) -> f32 {
     full
 }
 
+/// The last row whose measured height counts at the end, if any.
+pub fn last_measured(tails: &[Tail]) -> Option<usize> {
+    tails.iter().rposition(|t| *t == Tail::Measured)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

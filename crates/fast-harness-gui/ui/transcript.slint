@@ -349,9 +349,9 @@ export component TranscriptView {
         root.sync();
     }
 
-    // A user scroll to `y`: it stops following, unless it arrives at the end.
-    function scroll(y: length) {
-        root.follow = root.offset < root.max-offset - 1px && y >= root.max-offset - 1px;
+    // A user scroll to `y` stops following, unless it moves down to within 48px of the end (owner 2026-11-15), or a thumb drag reaches the end.
+    function scroll(y: length, drag: bool) {
+        root.follow = y >= root.max-offset - (drag ? 1px : 48px) && (y > root.offset || (drag && root.follow));
         root.offset = max(0px, min(root.max-offset, y));
         root.sync();
     }
@@ -359,7 +359,7 @@ export component TranscriptView {
     // The wheel over the rows (their own areas pass it on).
     TouchArea {
         scroll-event(e) => {
-            root.scroll(root.offset - e.delta-y);
+            root.scroll(root.offset - e.delta-y, false);
             return accept;
         }
     }
@@ -440,7 +440,7 @@ export component TranscriptView {
         content-y: -root.offset;
         content-height: root.total;
         visible-height: root.height;
-        scroll-to(y) => { root.scroll(-y); }
+        scroll-to(y) => { root.scroll(-y, self.dragging); }
     }
     // The turn navigator in the right gutter, between the column and the
     // bar; shown from two turns on, when the gutter has room for it.
