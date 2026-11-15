@@ -32,9 +32,22 @@ pub(crate) struct Snapshot {
 #[derive(Debug, Default)]
 pub struct FileStates {
     map: Mutex<HashMap<PathBuf, Snapshot>>,
+    /// `<session>.files.json`, where the snapshots outlive a restart
+    /// (PLAN.md D88); `None` without a session folder.
+    saved: Option<PathBuf>,
 }
 
 impl FileStates {
+    /// The snapshots kept in `saved` (none when it is absent or unreadable),
+    /// written back there on every change.
+    pub(crate) fn open(saved: Option<PathBuf>) -> FileStates {
+        let map = saved.as_deref().map(saved_file::load).unwrap_or_default();
+        FileStates {
+            map: Mutex::new(map),
+            saved,
+        }
+    }
+
     pub(crate) fn get(&self, path: &Path) -> Option<Snapshot> {
         let map = self.map.lock().unwrap_or_else(|e| e.into_inner());
         map.get(path).cloned()
@@ -43,6 +56,75 @@ impl FileStates {
     pub(crate) fn record(&self, path: PathBuf, snapshot: Snapshot) {
         let mut map = self.map.lock().unwrap_or_else(|e| e.into_inner());
         map.insert(path, snapshot);
+        // Under the lock, so the file never goes back to an older map.
+        if let Some(saved) = &self.saved {
+            saved_file::save(saved, &map);
+        }
+    }
+}
+
+/// `<session>.files.json` (version 1): `{"version":1,"files":[{path, hash,
+/// call}]}`. Line hashes are not kept: after a reopen the first `read` of a
+/// file returns it whole.
+mod saved_file {
+    use super::*;
+    use serde::{Deserialize, Serialize};
+
+    const VERSION: u32 = 1;
+
+    #[derive(Serialize, Deserialize)]
+    struct Saved {
+        version: u32,
+        files: Vec<SavedFile>,
+    }
+
+    #[derive(Serialize, Deserialize)]
+    struct SavedFile {
+        path: PathBuf,
+        hash: u64,
+        call: String,
+    }
+
+    pub(super) fn load(path: &Path) -> HashMap<PathBuf, Snapshot> {
+        let bytes = crate::store::read(path).unwrap_or_default();
+        let Ok(saved) = serde_json::from_slice::<Saved>(&bytes) else {
+            return HashMap::new();
+        };
+        if saved.version != VERSION {
+            return HashMap::new();
+        }
+        let snapshot = |f: SavedFile| {
+            let (hash, call) = (f.hash, f.call);
+            (
+                f.path,
+                Snapshot {
+                    hash,
+                    lines: None,
+                    call,
+                },
+            )
+        };
+        saved.files.into_iter().map(snapshot).collect()
+    }
+
+    /// Best effort: a snapshot that is not saved only makes `edit` ask for
+    /// a read after a restart.
+    pub(super) fn save(path: &Path, map: &HashMap<PathBuf, Snapshot>) {
+        let mut files: Vec<SavedFile> = (map.iter())
+            .map(|(path, s)| SavedFile {
+                path: path.clone(),
+                hash: s.hash,
+                call: s.call.clone(),
+            })
+            .collect();
+        files.sort_by(|a, b| a.path.cmp(&b.path));
+        let saved = Saved {
+            version: VERSION,
+            files,
+        };
+        if let Ok(bytes) = serde_json::to_vec(&saved) {
+            let _ = crate::store::write_atomic(path, &bytes);
+        }
     }
 }
 

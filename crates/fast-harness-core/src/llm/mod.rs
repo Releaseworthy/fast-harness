@@ -129,6 +129,11 @@ impl<'a> ChatRequest<'a> {
 pub struct Cache {
     pub system_1h: bool,
     pub messages_1h: bool,
+    /// With `messages_1h` (`cacheTtl: auto` in the TUI and GUI, PLAN.md
+    /// D88): a step inside the tool loop caches its messages for 5 minutes
+    /// behind a 1 hour breakpoint on the turn's user message; a turn's
+    /// first step keeps 1 hour.
+    pub loop_5m: bool,
 }
 
 impl Cache {
@@ -136,7 +141,14 @@ impl Cache {
         Cache {
             system_1h,
             messages_1h,
+            loop_5m: false,
         }
+    }
+
+    /// `messages_1h` only at turn starts (see `loop_5m`).
+    pub fn with_loop_5m(mut self, loop_5m: bool) -> Cache {
+        self.loop_5m = loop_5m;
+        self
     }
 }
 

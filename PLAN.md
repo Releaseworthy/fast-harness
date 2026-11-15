@@ -148,3 +148,4 @@ Now in [docs/formats.md](docs/formats.md#tools).
 ## Rules for the code
 
 See `AGENTS.md`.
+- D88 [Session file state and main-session cache TTL](docs/decisions/D88.md): the read/write state of a session survives -c and reopen; the tool loop caches messages for 5 minutes, turn starts for 1 hour.

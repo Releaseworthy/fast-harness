@@ -17,6 +17,7 @@ use std::collections::HashSet;
 
 use serde_json::{json, Map, Value};
 
+use super::cache;
 use super::live::LiveModels;
 use super::models::ModelSpec;
 use super::thinking;
@@ -82,14 +83,6 @@ pub(crate) fn normalize_tool_id(id: &str) -> String {
         .collect()
 }
 
-pub(crate) fn cache_control(long: bool) -> Value {
-    if long {
-        json!({"type": "ephemeral", "ttl": "1h"})
-    } else {
-        json!({"type": "ephemeral"})
-    }
-}
-
 /// The JSON body and the `anthropic-beta` list of one streaming call.
 pub(crate) fn build(
     req: &ChatRequest<'_>,
@@ -97,13 +90,12 @@ pub(crate) fn build(
     live: &LiveModels,
     oauth: bool,
 ) -> (Value, Vec<&'static str>) {
-    // Tools and system share one lifetime and come first, so a 1 hour
-    // breakpoint never follows a 5 minute one (PLAN.md D36).
-    let cache = cache_control(req.cache.system_1h || req.cache.messages_1h);
-    let tail = cache_control(req.cache.messages_1h);
+    // Tools and system share one lifetime and come first (PLAN.md D36, D88).
+    let cache = cache::prefix(&req.cache);
     let plan = thinking::plan_model(live, req.model, spec, req.effort, req.max_tokens);
     let effort = |message: &Message| message_effort(message, &plan, spec);
-    let messages = convert_messages(req.messages, req.tools, oauth, &tail, &effort);
+    let mut messages = convert_messages(req.messages, req.tools, oauth, &effort);
+    cache::mark_messages(&mut messages, &req.cache);
     let mut body = Map::new();
     body.insert("model".into(), json!(req.model));
     body.insert("messages".into(), Value::Array(messages));
@@ -135,6 +127,7 @@ pub(crate) fn build(
         let list: Vec<Value> = spec.fallbacks.iter().map(|m| json!({"model": m})).collect();
         body.insert("fallbacks".into(), Value::Array(list));
     }
+    cache::at_most_four(&mut body);
     (Value::Object(body), betas)
 }
 
@@ -277,7 +270,6 @@ fn convert_messages(
     messages: &[Message],
     tools: &[ToolSpec],
     oauth: bool,
-    cache: &Value,
     effort: &dyn Fn(&Message) -> Option<String>,
 ) -> Vec<Value> {
     // Every Claude model takes images (platform.claude.com vision, 2026-11-13).
@@ -312,7 +304,6 @@ fn convert_messages(
             out.extend(effort(message).as_deref().map(effort_message));
         }
     }
-    mark_last_message(&mut out, cache);
     out
 }
 
@@ -321,25 +312,6 @@ fn convert_messages(
 /// new input, the reply to that turn uses `effort`.
 fn effort_message(effort: &str) -> Value {
     json!({"role": "system", "content": [], "output_config": {"effort": effort}})
-}
-
-/// Puts the cache breakpoint on the last block of a trailing user message
-/// (an effort `system` message after it carries no content to cache).
-fn mark_last_message(messages: &mut [Value], cache: &Value) {
-    let Some(last) = messages.iter_mut().rev().find(|m| m["role"] != "system") else {
-        return;
-    };
-    if last["role"] != "user" {
-        return;
-    }
-    if let Some(block) = last["content"].as_array_mut().and_then(|c| c.last_mut()) {
-        if matches!(
-            block["type"].as_str(),
-            Some("text" | "tool_result" | "image")
-        ) {
-            block["cache_control"] = cache.clone();
-        }
-    }
 }
 
 /// Opens the text block that carries the rest of a find result.

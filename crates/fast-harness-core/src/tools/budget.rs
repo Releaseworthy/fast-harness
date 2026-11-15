@@ -63,11 +63,13 @@ impl ToolSession {
         // `<id>.out` -> `<id>.undo`, beside it.
         let undo_dir = out_dir.as_ref().map(|dir| dir.with_extension("undo"));
         let media_dir = out_dir.as_ref().map(|dir| dir.with_extension("media"));
+        // `<id>.files.json`: what was read and written survives a reopen (D88).
+        let saved = out_dir.as_ref().map(|dir| dir.with_extension("files.json"));
         ToolSession {
             out_dir,
             media_dir,
             attached: Mutex::default(),
-            files: FileStates::default(),
+            files: FileStates::open(saved),
             searches: Default::default(),
             reads: Mutex::new(Vec::new()),
             jobs: Arc::default(),
