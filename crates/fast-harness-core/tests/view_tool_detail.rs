@@ -343,7 +343,7 @@ fn shell_reads_its_bracket_lines() {
 #[test]
 fn subagent_shows_the_answer_and_the_session_line() {
     let args = json!({"prompt": "Find the bug\nin x", "description": "Bug hunt"});
-    let out = "The answer.\n\n[subagent session s1 · model m · 3 steps · tools read, grep · in 120 out 45]";
+    let out = "The answer.\n\n[subagent session s1 · model m · 3 steps · tools read, grep · in 120 out 45 cache read 3000 write 200]";
     let done = card("subagent", args, Some(out), false);
     assert_eq!(done.target, "Bug hunt");
     assert_eq!(fields(&done), [("prompt", "Find the bug\nin x")]);
@@ -352,7 +352,7 @@ fn subagent_shows_the_answer_and_the_session_line() {
         ("model m", Tone::Info),
         ("3 steps", Tone::Plain),
         ("tools read, grep", Tone::Plain),
-        ("in 120 out 45", Tone::Plain),
+        ("in 120 out 45 cache read 3000 write 200", Tone::Plain),
     ];
     assert_eq!(
         (done.text.as_str(), chips(&done)),

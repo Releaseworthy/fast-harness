@@ -342,7 +342,7 @@ impl ChildStats {
         }
     }
 
-    /// `[subagent session ID · model M · N steps · tools a, b · in I out O]`
+    /// `[subagent session ID · model M · N steps · tools a, b · in I out O cache read R write W]`
     /// without the empty parts.
     pub fn line(&self, session: &str) -> String {
         let mut parts = vec![format!("session {session}")];
@@ -358,7 +358,9 @@ impl ChildStats {
             parts.push(format!("tools {}", self.tools.join(", ")));
         }
         if self.usage.input > 0 || self.usage.output > 0 {
-            parts.push(format!("in {} out {}", self.usage.input, self.usage.output));
+            let u = &self.usage;
+            let (i, o, r, w) = (u.input, u.output, u.cache_read, u.cache_write);
+            parts.push(format!("in {i} out {o} cache read {r} write {w}"));
         }
         format!("[subagent {}]", parts.join(" · "))
     }

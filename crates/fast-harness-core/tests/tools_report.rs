@@ -121,10 +121,10 @@ fn subagent_line_names_model_steps_tools_and_usage() {
         stats.record(event);
     }
     stats.steps = 3;
-    stats.usage = Usage::new(120, 45, 0, 0);
+    stats.usage = Usage::new(120, 45, 3000, 200);
     assert_eq!(
         stats.line("s1"),
-        "[subagent session s1 · model m2 · 3 steps · tools read, grep · in 120 out 45]"
+        "[subagent session s1 · model m2 · 3 steps · tools read, grep · in 120 out 45 cache read 3000 write 200]"
     );
     let empty = ChildStats::default();
     assert_eq!(empty.line("s2"), "[subagent session s2]");
