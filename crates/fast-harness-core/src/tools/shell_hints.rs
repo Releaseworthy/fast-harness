@@ -1,45 +1,49 @@
 //! Hints on a shell result (D89), one short line each and only when they
 //! apply; the command is never blocked: a recursive listing that went into
-//! folders `.gitignore` leaves out points at `glob`, reading a file with
-//! `Get-Content`, `cat` or `type` points at `read`, and the working folder
-//! repeated in front of many paths is left out once, with a note.
+//! folders `.gitignore` leaves out points at `glob`, a command that only
+//! prints a file points at `read` (D91: not one that processes the text),
+//! and a folder repeated in front of many paths (the working folder, else
+//! the one all listed paths share) is left out once, with a note.
 
-use std::path::{Path, MAIN_SEPARATOR};
+use std::path::{Component, Path, PathBuf, MAIN_SEPARATOR};
 
-use super::shell_ignored::ignored_dirs;
+use super::shell_ignored::{ignored_dirs, listed_path};
+use super::shell_read::{plain_read, PlainRead};
 use super::ToolOutput;
 
-/// Lines that must hold the working folder before it is left out.
+/// Lines that must hold the folder before it is left out.
 const MIN_REPEATS: usize = 3;
+/// Output lines looked at for a folder all listed paths share.
+const MAX_LINES: usize = 20_000;
 const END_MARK: &str = "\n[exit code: ";
-const READ_HINT: &str = "[hint: to read a file use the read tool (line numbers, ranges, \
-                         images; find_tools loads it) instead of the shell]";
 
 /// `output` of `command` run in `cwd` with the hints that apply, placed
-/// before the closing `[exit code: N]` line.
-pub(super) fn annotate(command: &str, cwd: &Path, mut output: ToolOutput) -> ToolOutput {
+/// before the closing `[exit code: N]` line. A hint names `find_tools`
+/// only for a tool not in `loaded` (empty: every tool is loaded).
+pub(super) fn annotate(
+    command: &str,
+    cwd: &Path,
+    loaded: &[String],
+    mut output: ToolOutput,
+) -> ToolOutput {
     let text = output.text().into_owned();
     let (body, end) = match text.rfind(END_MARK) {
         Some(at) => text.split_at(at + 1),
         None => (text.as_str(), ""),
     };
-    let segments = segments(command);
-    let mut hints = Vec::new();
-    if segments.iter().any(|words| walks(words)) {
-        let dirs = ignored_dirs(body, cwd);
-        if !dirs.is_empty() {
-            hints.push(format!(
-                "[hint: this listing went into folders .gitignore leaves out ({}); \
-                 the glob tool lists files without them (find_tools loads it)]",
-                dirs.join(", ")
-            ));
-        }
-    }
-    if segments.iter().any(|words| reads_file(words)) {
-        hints.push(READ_HINT.to_string());
+    let read = plain_read(command, cwd);
+    let sized = read.as_ref().and_then(|read| file_sized(body, read));
+    let body = sized.as_deref().unwrap_or(body);
+    let mut hints: Vec<String> = glob_hint(command, body, cwd, loaded).into_iter().collect();
+    if read.is_some() {
+        hints.push(format!(
+            "[hint: to read a file use the read tool (line numbers, ranges, images{}) \
+             instead of the shell]",
+            loads("; find_tools loads it", "read", loaded)
+        ));
     }
     let short = shorten_paths(body, cwd);
-    if hints.is_empty() && short.is_none() {
+    if hints.is_empty() && short.is_none() && sized.is_none() {
         return output;
     }
     let mut out = match short {
@@ -56,6 +60,40 @@ pub(super) fn annotate(command: &str, cwd: &Path, mut output: ToolOutput) -> Too
     out.push_str(end);
     output.set_text(out);
     output
+}
+
+/// The hint for a recursive listing that went into ignored folders.
+fn glob_hint(command: &str, body: &str, cwd: &Path, loaded: &[String]) -> Option<String> {
+    if !segments(command).iter().any(|words| walks(words)) {
+        return None;
+    }
+    let dirs = ignored_dirs(body, cwd);
+    (!dirs.is_empty()).then(|| {
+        format!(
+            "[hint: this listing went into folders .gitignore leaves out ({}); \
+             the glob tool lists files without them{}]",
+            dirs.join(", "),
+            loads(" (find_tools loads it)", "glob", loaded)
+        )
+    })
+}
+
+/// `words` when `tool` still has to be loaded by a find.
+fn loads<'w>(words: &'w str, tool: &str, loaded: &[String]) -> &'w str {
+    match loaded.is_empty() || loaded.iter().any(|name| name == tool) {
+        true => "",
+        false => words,
+    }
+}
+
+/// The binary-output line of a read of one file, with that file's size:
+/// pwsh decoded the bytes and wrote them again, so the stream size is not
+/// the file's (D91).
+fn file_sized(body: &str, read: &PlainRead) -> Option<String> {
+    let (name, path) = read.file.as_ref()?;
+    let binary = body.starts_with("[binary output, ") && body.lines().count() == 1;
+    let size = std::fs::metadata(path).ok().filter(|_| binary)?.len();
+    Some(format!("[binary output of {name}, {size} bytes]\n"))
 }
 
 /// The simple commands of `command`, each as its lower-case words without
@@ -95,20 +133,43 @@ fn walks(words: &[String]) -> bool {
     })
 }
 
-/// Reading a file: `Get-Content`, `gc`, `cat` or `type` with a path, not
-/// following a growing file (`-Wait`).
-fn reads_file(words: &[String]) -> bool {
-    let Some((first, rest)) = words.split_first() else {
-        return false;
-    };
-    let reader = matches!(first.as_str(), "get-content" | "gc" | "cat" | "type");
-    reader && !rest.is_empty() && !rest.iter().any(|word| word == "-wait")
+/// `body` without the working folder in front of its paths, else without
+/// the folder all its listed absolute paths share, and the note saying
+/// so, when at least [`MIN_REPEATS`] lines hold it.
+fn shorten_paths(body: &str, cwd: &Path) -> Option<(String, String)> {
+    strip_folder(body, cwd).or_else(|| strip_folder(body, &shared_folder(body)?))
 }
 
-/// `body` without the working folder in front of its paths, and the note
-/// saying so, when at least [`MIN_REPEATS`] lines hold it.
-fn shorten_paths(body: &str, cwd: &Path) -> Option<(String, String)> {
-    let mut prefix = cwd.display().to_string();
+/// The folder (two names deep at least) every absolute path listed in
+/// `body` lies in.
+fn shared_folder(body: &str) -> Option<PathBuf> {
+    let mut shared: Option<PathBuf> = None;
+    for line in body.lines().take(MAX_LINES) {
+        let Some(path) = listed_path(line).map(|(path, _)| Path::new(path)) else {
+            continue;
+        };
+        if !path.is_absolute() {
+            continue;
+        }
+        shared = Some(match shared {
+            None => path.to_path_buf(),
+            Some(shared) => (shared.components().zip(path.components()))
+                .take_while(|(a, b)| a == b)
+                .map(|(a, _)| a)
+                .collect(),
+        });
+    }
+    let shared = shared?;
+    let names = (shared.components())
+        .filter(|part| matches!(part, Component::Normal(_)))
+        .count();
+    (names >= 2).then_some(shared)
+}
+
+/// `body` without `folder` and a separator in front of its paths, and the
+/// note saying so, when at least [`MIN_REPEATS`] lines hold it.
+fn strip_folder(body: &str, folder: &Path) -> Option<(String, String)> {
+    let mut prefix = folder.display().to_string();
     if !prefix.ends_with(MAIN_SEPARATOR) {
         prefix.push(MAIN_SEPARATOR);
     }

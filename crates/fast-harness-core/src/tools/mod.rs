@@ -49,6 +49,7 @@ mod shell;
 mod shell_hints;
 mod shell_ignored;
 mod shell_live;
+mod shell_read;
 pub mod skills;
 mod text_codec;
 pub mod undo;

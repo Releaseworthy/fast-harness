@@ -26,7 +26,10 @@ pub(crate) fn clean_output(bytes: &[u8]) -> String {
         None => is_binary(&String::from_utf8_lossy(bytes), MIN_BAD_WHOLE),
     };
     if whole {
-        return format!("[binary output, {} bytes]\n", source_bytes(bytes));
+        return match source_bytes(bytes) {
+            (size, false) => format!("[binary output, {size} bytes]\n"),
+            (size, true) => format!("[binary output, about {size} bytes]\n"),
+        };
     }
     let text = match decoded {
         Some(text) => text,
@@ -35,12 +38,14 @@ pub(crate) fn clean_output(bytes: &[u8]) -> String {
     last_frames(&strip_ansi(&text))
 }
 
-/// The size of what the command printed before a lossy decode: pwsh
-/// writes each byte it could not decode as U+FFFD, three bytes in UTF-8,
-/// so each of those counts as one byte.
-fn source_bytes(bytes: &[u8]) -> usize {
+/// The size of what the command printed before a lossy decode, and
+/// whether it is an estimate: pwsh writes each byte run it could not
+/// decode as U+FFFD, three bytes in UTF-8, so each of those counts as one
+/// byte; a run of two or three bytes and changed line ends make the true
+/// size unknowable from the stream (D91), only the pipe bytes are exact.
+fn source_bytes(bytes: &[u8]) -> (usize, bool) {
     let replaced = bytes.windows(3).filter(|w| *w == REPLACEMENT_UTF8).count();
-    bytes.len() - 2 * replaced
+    (bytes.len() - 2 * replaced, replaced > 0)
 }
 
 /// The text of `bytes` when they look like UTF-16LE (a NUL after most
@@ -155,12 +160,15 @@ mod tests {
     }
 
     /// Owner, 2026-11-15: short garbage lines leaked between the notes and
-    /// the count was of the re-encoded bytes (100 KB read as ~190 KB).
+    /// the count was of the re-encoded bytes (100 KB read as ~190 KB);
+    /// later 102400 bytes read as 100786: a decoded stream's size is an
+    /// estimate and says so (D91).
     #[test]
     fn a_binary_output_is_one_line_with_the_original_size() {
         let printed = pwsh_printed_binary();
         assert!(printed.len() > 180_000, "{}", printed.len());
-        assert_eq!(clean_output(&printed), "[binary output, 100000 bytes]\n");
+        let about = "[binary output, about 100000 bytes]\n";
+        assert_eq!(clean_output(&printed), about);
         let mut raw = b"MZ\x90\0\x03\0\0\0".repeat(500);
         raw.extend(b"\nThis program cannot be run in DOS mode.\r\n");
         let out = clean_output(&raw);

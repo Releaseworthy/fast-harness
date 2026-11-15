@@ -235,7 +235,10 @@ fn a_huge_max_results_is_capped_and_says_what_it_shows() {
         text.contains(&format!("showing {shown} of 3000 matches")),
         "{text}"
     );
-    assert!(text.contains("max_results 100000 capped to "), "{text}");
+    // D91: the limit named is the number shown.
+    let capped = format!("max_results 100000 capped to {shown} ");
+    let held = format!("output budget holds {shown};");
+    assert!(text.contains(&capped) || text.contains(&held), "{text}");
     // Long lines fill the budget before max_results: the note still counts.
     let long = format!("hit {}\n", "z".repeat(280));
     tmp.file("many.txt", long.repeat(200).as_bytes());

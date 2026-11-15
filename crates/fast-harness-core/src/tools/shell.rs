@@ -100,7 +100,8 @@ impl Tool for ShellTool {
         });
         let run = |(command, timeout)| {
             let output = run_shell(command, timeout, ctx)?;
-            Ok(super::shell_hints::annotate(command, ctx.cwd, output))
+            let hinted = super::shell_hints::annotate(command, ctx.cwd, ctx.loaded, output);
+            Ok(hinted)
         };
         match parsed.and_then(run) {
             Ok(output) => output,

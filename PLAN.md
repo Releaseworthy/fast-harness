@@ -119,6 +119,7 @@ One file per decision in [docs/decisions/](docs/decisions/), moved there unchang
 - D87 [Reads and edits answer with what the model needs next](docs/decisions/D87.md): an offset past the end fails after a read too, a re-read after an own edit shows the changed lines, a 6 KB head, an overlapping read ends with the whole range, a missed edit names the nearest lines and a repeated one every match line.
 - D88 [Session file state and main-session cache TTL](docs/decisions/D88.md): the read/write state of a session survives -c and reopen; messages cache for 5 minutes, a turn start after 4 idle minutes for 1 hour, and the 1 hour anchor sits only where a 1 hour tail was written (a 1 hour miss discards 5 minute hits).
 - D89 [Shell output: binary, even cut, hints](docs/decisions/D89.md): an output that is binary as a whole is one line `[binary output, N bytes]` (N before pwsh's lossy decode); a cut keeps the same room and lines (25) for head and tail; a recursive listing into ignored folders hints at glob, a file read at read, and the working folder repeated before paths is left out once.
+- D91 [Shell hints and search notes say only what is true](docs/decisions/D91.md): listings judged per path repo, read hint only for a plain read and find_tools named only for unloaded tools, binary size of the file read or "about N", grep names the limit actually hit, skipped entries counted only within the glob's reach.
 
 ## Architecture
 

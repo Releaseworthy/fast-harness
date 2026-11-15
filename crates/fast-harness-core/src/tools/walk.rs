@@ -81,8 +81,58 @@ pub(crate) fn walk(
             files.push(entry);
         }
     }
-    let skipped = skipped(&dirs, &seen, filter.as_ref());
+    let scope = (glob.filter(|_| filter.is_some())).map(|glob| root.join(literal_base(glob)));
+    let skipped = skipped(&dirs, &seen, filter.as_ref(), scope.as_deref());
     Ok(Walk { files, skipped })
+}
+
+/// The folder under the root an anchored glob (one with a `/` before its
+/// end) can match in: its leading names without wildcards. Empty for a
+/// glob that matches at any depth.
+fn literal_base(glob: &str) -> PathBuf {
+    let glob = glob.trim_end_matches('/');
+    if glob.starts_with('!') || !glob.contains('/') {
+        return PathBuf::new();
+    }
+    let parts: Vec<&str> = glob.trim_start_matches('/').split('/').collect();
+    let literal = |part: &&&str| !part.is_empty() && !part.contains(['*', '?', '[', '{', '\\']);
+    parts[..parts.len() - 1]
+        .iter()
+        .take_while(literal)
+        .collect()
+}
+
+/// Can the glob match `path` or something in it? (D91: a left-out entry
+/// outside the glob's folder is not worth a note.)
+fn in_scope(scope: Option<&Path>, path: &Path) -> bool {
+    scope.is_none_or(|scope| path.starts_with(scope) || scope.starts_with(path))
+}
+
+/// Does the left-out folder `dir` hold a file the glob matches? Any folder
+/// does without a glob, and one too big to look through counts.
+fn holds_match(dir: &Path, filter: Option<&Override>, visits: &mut usize) -> bool {
+    let Some(filter) = filter else {
+        return true;
+    };
+    let mut stack = vec![dir.to_path_buf()];
+    while let Some(dir) = stack.pop() {
+        let Ok(children) = std::fs::read_dir(&dir) else {
+            continue;
+        };
+        for child in children.flatten() {
+            *visits += 1;
+            let Ok(kind) = child.file_type() else {
+                continue;
+            };
+            if *visits > INSIDE_VISITS || (kind.is_file() && matches(Some(filter), &child.path())) {
+                return true;
+            }
+            if kind.is_dir() {
+                stack.push(child.path());
+            }
+        }
+    }
+    false
 }
 
 fn matches(filter: Option<&Override>, path: &Path) -> bool {
@@ -90,8 +140,16 @@ fn matches(filter: Option<&Override>, path: &Path) -> bool {
 }
 
 /// The children of the walked folders the walk did not visit, `.git`
-/// aside; a left-out file counts only when it matches the glob.
-fn skipped(dirs: &[PathBuf], seen: &HashSet<PathBuf>, filter: Option<&Override>) -> Skipped {
+/// aside, that the glob could match: a left-out file when it matches, a
+/// folder when it lies on the way to the glob's folder or in it, and a
+/// hidden folder only when it holds a file the glob matches, so grep and
+/// glob count alike for one glob (D91).
+fn skipped(
+    dirs: &[PathBuf],
+    seen: &HashSet<PathBuf>,
+    filter: Option<&Override>,
+    scope: Option<&Path>,
+) -> Skipped {
     let (mut out, mut visits) = (Skipped::default(), 0);
     for dir in dirs {
         let Ok(children) = std::fs::read_dir(dir) else {
@@ -100,7 +158,7 @@ fn skipped(dirs: &[PathBuf], seen: &HashSet<PathBuf>, filter: Option<&Override>)
         for child in children.flatten() {
             let path = child.path();
             let name = child.file_name();
-            if seen.contains(&path) || name == ".git" {
+            if seen.contains(&path) || name == ".git" || !in_scope(scope, &path) {
                 continue;
             }
             let is_dir = child.file_type().is_ok_and(|kind| kind.is_dir());
@@ -108,6 +166,7 @@ fn skipped(dirs: &[PathBuf], seen: &HashSet<PathBuf>, filter: Option<&Override>)
                 continue;
             }
             match (name.to_string_lossy().starts_with('.'), is_dir) {
+                (true, true) if !holds_match(&path, filter, &mut visits) => {}
                 (true, _) => out.hidden += 1,
                 (false, true) => {
                     out.ignored_dirs += 1;
