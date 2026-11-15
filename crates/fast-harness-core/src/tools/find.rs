@@ -76,24 +76,7 @@ pub fn run_loaded(
     if names.is_empty() && query.trim().is_empty() {
         return ToolOutput::err("pass `query` (words) or `names` (exact tool names)");
     }
-    let mut picked: Vec<usize> = Vec::new();
-    let mut unknown: Vec<&str> = Vec::new();
-    let mut skilled: Vec<usize> = Vec::new();
-    for name in &names {
-        let tool = others
-            .iter()
-            .position(|t| t.name.eq_ignore_ascii_case(name));
-        let skill = skills
-            .iter()
-            .position(|s| s.name.eq_ignore_ascii_case(name));
-        match (tool, skill) {
-            (Some(index), _) if !picked.contains(&index) => picked.push(index),
-            (Some(_), _) => {}
-            (None, Some(index)) if !skilled.contains(&index) => skilled.push(index),
-            (None, Some(_)) => {}
-            (None, None) => unknown.push(name),
-        }
-    }
+    let (mut picked, mut skilled, unknown) = by_name(&names, others, skills);
     if let Some(best) = best_skill(query, skills) {
         if !skilled.contains(&best) {
             skilled.push(best);
@@ -203,6 +186,32 @@ fn best_skill(query: &str, skills: &[Skill]) -> Option<usize> {
         .collect();
     let best = search(query, &specs).into_iter().next()?;
     (score(&words, &specs[best]) >= 2).then_some(best)
+}
+
+/// The tools and skills `names` name, in order without repeats, and the
+/// names matching neither.
+fn by_name<'a>(
+    names: &[&'a str],
+    others: &[ToolSpec],
+    skills: &[Skill],
+) -> (Vec<usize>, Vec<usize>, Vec<&'a str>) {
+    let (mut picked, mut skilled, mut unknown) = (Vec::new(), Vec::new(), Vec::new());
+    for &name in names {
+        let tool = others
+            .iter()
+            .position(|t| t.name.eq_ignore_ascii_case(name));
+        let skill = skills
+            .iter()
+            .position(|s| s.name.eq_ignore_ascii_case(name));
+        match (tool, skill) {
+            (Some(index), _) if !picked.contains(&index) => picked.push(index),
+            (Some(_), _) => {}
+            (None, Some(index)) if !skilled.contains(&index) => skilled.push(index),
+            (None, Some(_)) => {}
+            (None, None) => unknown.push(name),
+        }
+    }
+    (picked, skilled, unknown)
 }
 
 /// The tools a find matched: new ones, loaded ones, unknown names.

@@ -74,7 +74,6 @@ const EXCEPTIONS: &[(&str, &str, usize)] = &[
         53,
     ),
     ("crates/fast-harness/src/args_sessions.rs", "parse", 52),
-    ("crates/fast-harness-core/src/tools/find.rs", "run_with", 51),
 ];
 
 const FILE_LIMIT: usize = 500;

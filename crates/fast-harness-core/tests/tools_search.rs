@@ -120,7 +120,9 @@ fn grep_reports_errors_and_no_matches() {
     assert!(missing.is_error() && missing.text().contains("not found"));
     assert_eq!(
         run(&tmp.0, "grep", json!({"pattern": "zzzq"})).text(),
-        "No matches."
+        // An empty result says what was not searched and how to include it.
+        "No matches.\n[1 file and 1 folder skipped by .gitignore (include_ignored: true); \
+         2 hidden entries skipped (include_hidden: true); 1 binary file not searched]\n"
     );
 }
 
@@ -145,14 +147,24 @@ fn glob_lists_newest_first_and_respects_gitignore() {
         .unwrap();
     let out = run(&tmp.0, "glob", json!({"pattern": "*.rs"}));
     let text = out.text();
-    let lines: Vec<&str> = text.lines().collect();
+    // The last line counts what the walk skipped.
+    let note = text.lines().last().unwrap_or_default();
+    assert!(
+        note.contains("skipped by .gitignore (include_ignored: true)"),
+        "{text}"
+    );
+    let lines: Vec<&str> = text.lines().filter(|line| !line.starts_with('[')).collect();
     assert_eq!(lines.first(), Some(&"src/new.rs"), "{}", out.text());
     assert_eq!(lines.last(), Some(&"src/old.rs"), "{}", out.text());
     assert_eq!(lines.len(), 4);
     let txt = run(&tmp.0, "glob", json!({"pattern": "**/*.txt", "path": "."}));
-    assert_eq!(txt.text(), "notes.txt\n");
+    assert!(txt.text().starts_with("notes.txt\n"), "{}", txt.text());
     let none = run(&tmp.0, "glob", json!({"pattern": "*.zig"}));
-    assert_eq!(none.text(), "No files found.");
+    assert!(
+        none.text().starts_with("No files found."),
+        "{}",
+        none.text()
+    );
     let bad = run(
         &tmp.0,
         "glob",
