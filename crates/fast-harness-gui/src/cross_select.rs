@@ -18,17 +18,19 @@ use slint::{ComponentHandle, LogicalPosition};
 
 use crate::{CrossSelect, MainWindow};
 
-/// The text of each block shown in the range, by (row, idx).
-type Parts = Rc<RefCell<BTreeMap<(i32, i32), String>>>;
+/// The separator before it and the text of each block shown in the range,
+/// by (row, idx).
+type Parts = Rc<RefCell<BTreeMap<(i32, i32), (String, String)>>>;
 
 /// Connects the chat's selection to `ui`.
 pub fn attach(ui: &MainWindow) {
     let parts: Parts = Rc::default();
     let global = ui.global::<CrossSelect>();
     let shared = parts.clone();
-    global.on_put(move |row, idx, text| {
-        shared.borrow_mut().insert((row, idx), text.to_string());
+    global.on_put(move |row, idx, text, sep| {
+        shared.borrow_mut().insert((row, idx), (sep.to_string(), text.to_string()));
     });
+    global.on_link_at(|links, offset| crate::plain_text::link_at(&links, offset).into());
     let shared = parts.clone();
     global.on_cleared(move || shared.borrow_mut().clear());
     let weak = ui.as_weak();
@@ -120,16 +122,20 @@ impl Range {
     }
 }
 
-/// The selected text of `parts` in `range`, one block per line.
-pub fn joined(parts: &BTreeMap<(i32, i32), String>, range: &Range) -> String {
+/// The selected text of `parts` in `range`, each block after its
+/// separator (a newline, a tab between table cells).
+pub fn joined(parts: &BTreeMap<(i32, i32), (String, String)>, range: &Range) -> String {
     let (first, last) = (range.first, range.last);
-    let mut out = Vec::new();
-    for (&(row, idx), text) in parts.range((first.0, first.1)..=(last.0, last.1)) {
+    let mut out = String::new();
+    for (&(row, idx), (sep, text)) in parts.range((first.0, first.1)..=(last.0, last.1)) {
         let start = if (row, idx) == (first.0, first.1) { first.2 } else { 0 };
         let end = if (row, idx) == (last.0, last.1) { last.2 } else { text.len() };
-        out.push(slice(text, start, end));
+        if (row, idx) != (first.0, first.1) {
+            out.push_str(sep);
+        }
+        out.push_str(slice(text, start, end));
     }
-    out.join("\n")
+    out
 }
 
 /// `text[start..end]`, clamped to its length and char boundaries.
@@ -145,6 +151,23 @@ fn slice(text: &str, start: usize, end: usize) -> &str {
     text.get(start.min(end)..end).unwrap_or("")
 }
 
+/// The window's left button went up (`window_events`, before Slint sees
+/// it): a press on a reply's link that did not turn into a selection
+/// opens the link (the ghost over the StyledText took its click).
+pub fn released(ui: &MainWindow) {
+    let global = ui.global::<CrossSelect>();
+    let url = global.get_armed();
+    if url.is_empty() {
+        return;
+    }
+    global.set_armed(Default::default());
+    ui.invoke_open_url(url);
+}
+
 #[cfg(test)]
 #[path = "cross_select_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "cross_select_more_tests.rs"]
+mod more_tests;

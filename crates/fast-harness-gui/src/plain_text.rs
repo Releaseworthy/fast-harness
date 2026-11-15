@@ -2,20 +2,70 @@
 //! (`reply_select`): StyledText cannot be selected in Slint 1.18.1, so a
 //! reply swaps to a SelectableText of this. Emphasis marks, backticks and
 //! heading marks go, list markers become "• ", links keep their text, and
-//! code blocks keep their lines as they are.
+//! code blocks keep their lines as they are. plain_links also says where
+//! each link's text is, so a drag selects a paragraph with links and a
+//! click on one still opens it (ui/selectable.slint `Ghost`).
+
+/// A link in plain text: its text's byte range and its url.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Link {
+    pub start: usize,
+    pub end: usize,
+    pub url: String,
+}
 
 /// `markdown` without its syntax.
 pub fn plain(markdown: &str) -> String {
-    let mut out = Vec::new();
+    plain_links(markdown).0
+}
+
+/// `markdown` without its syntax, and the links in that text.
+pub fn plain_links(markdown: &str) -> (String, Vec<Link>) {
+    let mut out = String::new();
+    let mut links = Vec::new();
     let mut code = false;
+    let mut first = true;
     for line in markdown.lines() {
         if line.trim_start().starts_with("```") {
             code = !code;
             continue;
         }
-        out.push(if code { line.to_string() } else { inline(&block(line)) });
+        if !first {
+            out.push('\n');
+        }
+        first = false;
+        if code {
+            out.push_str(line);
+        } else {
+            inline(&block(line), &mut out, &mut links);
+        }
     }
-    out.join("\n")
+    (out, links)
+}
+
+/// `links` for the UI: one `start\tend\turl` line per link.
+pub fn encode(links: &[Link]) -> String {
+    let lines: Vec<String> = links
+        .iter()
+        .map(|l| format!("{}\t{}\t{}", l.start, l.end, l.url))
+        .collect();
+    lines.join("\n")
+}
+
+/// The url of the link in `encode`d `links` whose text holds byte `offset`
+/// (either end included), or empty.
+pub fn link_at(links: &str, offset: i32) -> String {
+    let Ok(offset) = usize::try_from(offset) else {
+        return String::new();
+    };
+    let hit = |line: &str| {
+        let mut parts = line.splitn(3, '\t');
+        let start: usize = parts.next()?.parse().ok()?;
+        let end: usize = parts.next()?.parse().ok()?;
+        let url = parts.next()?;
+        (start <= offset && offset <= end).then(|| url.to_string())
+    };
+    links.lines().find_map(hit).unwrap_or_default()
 }
 
 /// A line without its heading, list or quote mark.
@@ -38,9 +88,8 @@ fn block(line: &str) -> String {
 }
 
 /// A line without bold marks and backticks (code spans kept verbatim),
-/// its links as their text.
-fn inline(line: &str) -> String {
-    let mut out = String::with_capacity(line.len());
+/// its links as their text, added to `out`; each link goes to `links`.
+fn inline(line: &str, out: &mut String, links: &mut Vec<Link>) {
     let mut rest = line;
     while let Some(c) = rest.chars().next() {
         if let Some(after) = rest.strip_prefix("**").or_else(|| rest.strip_prefix("__")) {
@@ -48,30 +97,16 @@ fn inline(line: &str) -> String {
         } else if let Some((span, after)) = enclosed(rest, '`', "`") {
             out.push_str(span);
             rest = after;
-        } else if let Some((text, after)) = link(rest) {
+        } else if let Some((text, url, after)) = link(rest) {
+            let start = out.len();
             out.push_str(text);
+            links.push(Link { start, end: out.len(), url: url.to_string() });
             rest = after;
         } else {
             out.push(c);
             rest = &rest[c.len_utf8()..];
         }
     }
-    out
-}
-
-/// Whether `markdown` holds a `[text](url)` link outside code spans.
-pub fn has_link(markdown: &str) -> bool {
-    let mut rest = markdown;
-    while let Some(c) = rest.chars().next() {
-        if link(rest).is_some() {
-            return true;
-        }
-        rest = match enclosed(rest, '`', "`") {
-            Some((_, after)) => after,
-            None => &rest[c.len_utf8()..],
-        };
-    }
-    false
 }
 
 /// `s` opening with `open` and closed by `close`: the inside and the rest.
@@ -81,11 +116,11 @@ fn enclosed<'a>(s: &'a str, open: char, close: &str) -> Option<(&'a str, &'a str
     Some((&inner[..end], &inner[end + close.len()..]))
 }
 
-/// `[text](url)` at the start of `s`: the text and the rest.
-fn link(s: &str) -> Option<(&str, &str)> {
+/// `[text](url)` at the start of `s`: the text, the url and the rest.
+fn link(s: &str) -> Option<(&str, &str, &str)> {
     let (text, after) = enclosed(s, '[', "]")?;
-    let (_, rest) = enclosed(after, '(', ")")?;
-    Some((text, rest))
+    let (url, rest) = enclosed(after, '(', ")")?;
+    Some((text, url, rest))
 }
 
 #[cfg(test)]
@@ -100,10 +135,15 @@ mod tests {
     }
 
     #[test]
-    fn links_count_outside_code_spans_only() {
-        assert!(super::has_link("see [the log](https://x.y) now"));
-        assert!(!super::has_link("call `[a](b)` and **bold**"));
-        assert!(!super::has_link("a [b c ` d"));
+    fn links_keep_their_text_and_place_outside_code_spans() {
+        let (text, links) = super::plain_links("see [the log](https://x.y) and `[a](b)` now");
+        assert_eq!(text, "see the log and [a](b) now");
+        let want = super::Link { start: 4, end: 11, url: "https://x.y".into() };
+        assert_eq!(links, [want]);
+        let coded = super::encode(&links);
+        assert_eq!(super::link_at(&coded, 6), "https://x.y");
+        assert_eq!(super::link_at(&coded, 13), "");
+        assert_eq!(super::link_at(&coded, -1), "");
     }
 
     #[test]

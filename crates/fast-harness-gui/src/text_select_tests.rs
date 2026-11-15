@@ -222,6 +222,10 @@ fn a_link_in_a_reply_still_opens() {
         position: at,
         button,
     });
+    pump(&chat.window, 16);
+    // The ghost over the paragraph took the press: the window's release
+    // (the winit hook, src/window_events.rs) opens the armed link.
+    crate::cross_select::released(&chat.ui);
     chat.window.dispatch_event(WindowEvent::PointerReleased {
         position: at,
         button,

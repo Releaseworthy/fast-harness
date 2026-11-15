@@ -10,7 +10,7 @@
 use slint::{ModelRc, StyledText, VecModel};
 
 use crate::md_blocks::{blocks, shares, Block, Kind};
-use crate::plain_text::{has_link, plain};
+use crate::plain_text::{encode, plain_links};
 use crate::{MdBlock, MdCell, MdRow};
 
 /// A reply as the blocks `ui/markdown.slint` draws (src/md_blocks.rs).
@@ -28,7 +28,7 @@ fn md_block(block: Block) -> MdBlock {
         Kind::Rule => "rule",
         Kind::Table => "table",
     };
-    let plain = selectable(&block);
+    let (plain, links) = selectable(&block);
     let (text, code) = match block.kind {
         Kind::Heading => (markdown(&bold(&block.text)), String::new()),
         Kind::Code => (StyledText::default(), block.text),
@@ -40,6 +40,7 @@ fn md_block(block: Block) -> MdBlock {
         kind: kind.into(),
         text,
         plain: plain.into(),
+        links: links.into(),
         code: code.into(),
         level: int(block.level),
         indent: int(block.indent),
@@ -49,15 +50,20 @@ fn md_block(block: Block) -> MdBlock {
     }
 }
 
-/// The plain text a drag selects in `block` (`MdText`): paragraphs,
-/// headings and list items without a link (a ghost over a link would take
-/// its click); empty for the rest. Soft line breaks draw as spaces.
-fn selectable(block: &Block) -> String {
-    let text = matches!(block.kind, Kind::Para | Kind::Heading | Kind::Item);
-    if !text || has_link(&block.text) {
-        return String::new();
+/// The plain text a drag selects in `block` (`MdText`) and its links
+/// (`plain_text::encode`, for a click on one): paragraphs, headings and
+/// list items; empty for the rest. Soft line breaks draw as spaces.
+fn selectable(block: &Block) -> (String, String) {
+    if !matches!(block.kind, Kind::Para | Kind::Heading | Kind::Item) {
+        return Default::default();
     }
-    plain(&block.text).replace('\n', " ")
+    inline_plain(&block.text)
+}
+
+/// Inline markdown's plain text on one line and its encoded links.
+fn inline_plain(text: &str) -> (String, String) {
+    let (plain, links) = plain_links(text);
+    (plain.replace('\n', " "), encode(&links))
 }
 
 /// A table's rows, every row padded to the widest one's columns.
@@ -71,9 +77,11 @@ fn table_rows(rows: &[Vec<String>]) -> ModelRc<MdRow> {
                 .iter()
                 .enumerate()
                 .map(|(column, share)| {
-                    let text = row.get(column).map(String::as_str).unwrap_or("");
-                    let text = if index == 0 { bold(text) } else { text.to_string() };
-                    MdCell { text: markdown(&text), share: *share }
+                    let raw = row.get(column).map(String::as_str).unwrap_or("");
+                    let text = if index == 0 { bold(raw) } else { raw.to_string() };
+                    let (plain, links) = inline_plain(raw);
+                    let (plain, links) = (plain.into(), links.into());
+                    MdCell { text: markdown(&text), plain, links, share: *share }
                 })
                 .collect();
             MdRow {
