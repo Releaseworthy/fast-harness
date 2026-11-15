@@ -193,6 +193,12 @@ impl<H: Host> VirtualList<H> {
         }
         self.read(ui);
         self.place(ui, &hold);
+        if H::LOG && crate::follow_log::on() {
+            let guessed = (0..self.keys.len()).filter(|i| !self.known.get(&self.keys[*i]).is_some_and(|k| k.exact));
+            let guessed: Vec<usize> = guessed.collect();
+            let state = crate::follow_log::state(ui);
+            crate::follow_log::line(|| format!("sync guessed={guessed:?} {state}"));
+        }
     }
 
     /// A row's toggle is about to run: list row `row` (or what takes its
@@ -234,6 +240,10 @@ impl<H: Host> VirtualList<H> {
             known.is_some_and(|k| k.exact && k.row == data && (k.height - height).abs() < 0.01);
         if same || H::spacer(&data) {
             return;
+        }
+        if H::LOG && crate::follow_log::on() {
+            let was = known.map(|k| (k.height, k.exact));
+            crate::follow_log::line(|| format!("measured row={i} h={height:.1} was={was:?}"));
         }
         let known = Known {
             row: data,
