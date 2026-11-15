@@ -115,6 +115,7 @@ One file per decision in [docs/decisions/](docs/decisions/), moved there unchang
 - D83 [Context diet without breaking the cache](docs/decisions/D83.md): no pruning of sent results or thinking; `context.readHeadBytes` 4 KB head for a read without a range, contained re-reads answer unchanged, grep-then-read prompt line
 - D84 [Tighter cuts and a step budget](docs/decisions/D84.md): read cuts a line at 800 characters; shell keeps 20 head and 30 tail lines; glob and grep show paths relative to a folder `path`; `context.stepOutputBytes` (16 KB) is shared by the calls of one step.
 - D85 [The effort message stays where it was sent](docs/decisions/D85.md): the Claude per-message effort entry follows each user turn and is never moved, so earlier thinking keeps its prefix and the next turn reads the cache.
+- D86 [Each user message keeps its effort](docs/decisions/D86.md): the Claude effort message after a user turn repeats the level that turn was first sent with, so an effort change no longer rewrites the history and its thinking.
 
 ## Architecture
 

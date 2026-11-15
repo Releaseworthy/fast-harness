@@ -228,6 +228,16 @@ pub fn replay_events(events: &[TraceEvent]) -> io::Result<Vec<Message>> {
                 messages = compacted::from_event(&compaction);
                 continue;
             }
+            // A main call (a compaction's summary call is step 0) stamps the
+            // user messages it was the first to carry (PLAN.md D86).
+            Record::RequestContext(request) if request.step > 0 => {
+                let effort = request.effort.flatten();
+                let unsent = messages.iter_mut().filter(|m| m.role == Role::User);
+                unsent
+                    .filter(|m| m.effort.is_none())
+                    .for_each(|m| m.effort = Some(effort.clone()));
+                continue;
+            }
             Record::Raw { .. } if carries_message(&event.kind) => return Err(no_message(event)),
             _ => continue,
         };
