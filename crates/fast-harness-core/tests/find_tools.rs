@@ -270,3 +270,21 @@ fn resume_rebuilds_the_found_set() {
     );
     drop(env);
 }
+
+/// A misspelled name gets the close names, not the whole tool list
+/// (owner, 2026-11-15).
+#[test]
+fn a_misspelled_name_gets_the_close_name_not_the_whole_list() {
+    let registry = tools::builtin();
+    let others = &registry.specs()[1..];
+    let out = finder::run(&json!({"names": ["job_ouput"]}), others);
+    assert_eq!(
+        out.text(),
+        "No tool matched.\nUnknown: job_ouput (did you mean job_output?)."
+    );
+    let out = finder::run(&json!({"names": ["read", "gerp"]}), others);
+    assert_eq!(
+        out.text(),
+        "Loaded: read\nYou can call them now.\nUnknown: gerp (did you mean grep?)."
+    );
+}

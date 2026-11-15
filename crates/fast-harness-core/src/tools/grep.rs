@@ -33,7 +33,8 @@ impl Tool for GrepTool {
                 (a last line counts them). Output: \
                 matches grouped by file, a path line (relative to the working directory, or \
                 to a folder `path`, named once by a first line) then \
-                \"  line: text\" lines; at most max_results matches, then a count of the rest."
+                \"  line: text\" lines; at most max_results matches (capped to what fits \
+                the output budget), then a `showing N of M matches` line."
                 .into(),
             schema: object_schema(
                 json!({
@@ -58,16 +59,37 @@ impl Tool for GrepTool {
     }
 }
 
+/// Bytes one shown match is allowed for when capping max_results: a usual
+/// line with its share of path lines. Longer lines meet the byte cut of
+/// [`render`] first.
+const BYTES_PER_MATCH: usize = 64;
+/// Bytes of the budget kept for the closing notes.
+const NOTE_ROOM: usize = 512;
+
+/// The matches of one file: shown ones, then a count of those past `max`.
+struct Group {
+    path: String,
+    lines: Vec<String>,
+    hidden: usize,
+}
+
 struct Search {
     regex: Regex,
     max: usize,
-    /// Shown matches grouped by file, in walk order.
-    groups: Vec<(String, Vec<String>)>,
+    /// The max_results asked for, above `max` when it was capped.
+    asked: usize,
+    /// The output byte budget the result fits in.
+    budget: usize,
+    /// Files with matches, in walk order.
+    groups: Vec<Group>,
     shown: usize,
-    more: usize,
-    more_files: usize,
     /// Binary files passed over.
     binary: usize,
+}
+
+/// The largest max_results that fits `budget` bytes, never below the default.
+fn max_cap(budget: usize) -> usize {
+    (budget / BYTES_PER_MATCH).max(DEFAULT_MAX_RESULTS as usize)
 }
 
 fn grep(args: &Value, ctx: &ToolCtx<'_>) -> Result<String, String> {
@@ -75,7 +97,7 @@ fn grep(args: &Value, ctx: &ToolCtx<'_>) -> Result<String, String> {
     let root = resolve(ctx, opt_str(args, "path")?.unwrap_or("."));
     let glob = opt_str(args, "glob")?;
     let ignore_case = opt_bool(args, "ignore_case", false)?;
-    let max = opt_positive(args, "max_results", DEFAULT_MAX_RESULTS)?;
+    let asked = opt_positive(args, "max_results", DEFAULT_MAX_RESULTS)?;
     let regex = RegexBuilder::new(pattern)
         .case_insensitive(ignore_case)
         .build()
@@ -83,13 +105,14 @@ fn grep(args: &Value, ctx: &ToolCtx<'_>) -> Result<String, String> {
     if !root.exists() {
         return Err(format!("path not found: {}", root.display()));
     }
+    let asked = usize::try_from(asked).unwrap_or(usize::MAX);
     let mut search = Search {
         regex,
-        max: usize::try_from(max).unwrap_or(usize::MAX),
+        max: asked.min(max_cap(ctx.budget)),
+        asked,
+        budget: ctx.budget,
         groups: Vec::new(),
         shown: 0,
-        more: 0,
-        more_files: 0,
         binary: 0,
     };
     let (base, header) = search_base(ctx.cwd, &root);
@@ -100,7 +123,10 @@ fn grep(args: &Value, ctx: &ToolCtx<'_>) -> Result<String, String> {
         }
         search_file(&mut search, base, entry.path());
     }
-    match (header, render(&search, &found.skipped)) {
+    let room = ctx
+        .budget
+        .saturating_sub(NOTE_ROOM + header.as_ref().map_or(0, String::len));
+    match (header, render(&search, &found.skipped, room)) {
         (Some(line), out) if !search.groups.is_empty() => Ok(format!("{line}\n{out}")),
         (_, out) => Ok(out),
     }
@@ -117,7 +143,7 @@ fn search_file(search: &mut Search, base: &Path, path: &Path) {
         return;
     }
     let text = String::from_utf8_lossy(&bytes);
-    let mut shown = Vec::new();
+    let mut lines = Vec::new();
     let mut hidden = 0;
     for (index, line) in text.lines().enumerate() {
         if !search.regex.is_match(line) {
@@ -129,17 +155,17 @@ fn search_file(search: &mut Search, base: &Path, path: &Path) {
         }
         search.shown += 1;
         let line = clip(&search.regex, line);
-        shown.push(format!("  {}: {line}", index + 1));
+        lines.push(format!("  {}: {line}", index + 1));
     }
-    if hidden > 0 {
-        search.more += hidden;
-        search.more_files += 1;
-    }
-    if !shown.is_empty() {
-        search.groups.push((display_rel(base, path), shown));
+    if !lines.is_empty() || hidden > 0 {
+        let path = display_rel(base, path);
+        search.groups.push(Group {
+            path,
+            lines,
+            hidden,
+        });
     }
 }
-
 /// Characters kept before a match that starts past the first
 /// [`MAX_LINE_CHARS`] of its line.
 const LEAD_CHARS: usize = MAX_LINE_CHARS / 4;
@@ -191,7 +217,47 @@ pub(super) fn include(args: &Value) -> Result<Include, String> {
     })
 }
 
-fn render(search: &Search, skipped: &Skipped) -> String {
+/// The groups within `room` bytes (the first match always): the text, the
+/// matches it shows, the files with matches it leaves out and whether the
+/// byte room ran out.
+struct Body {
+    text: String,
+    shown: usize,
+    files_left: usize,
+    full: bool,
+}
+
+fn body(groups: &[Group], room: usize) -> Body {
+    let mut out = Body {
+        text: String::new(),
+        shown: 0,
+        files_left: 0,
+        full: false,
+    };
+    for group in groups {
+        let mut kept = 0;
+        for line in group.lines.iter().take_while(|_| !out.full) {
+            let head = if kept == 0 { group.path.len() + 1 } else { 0 };
+            if out.shown > 0 && out.text.len() + head + line.len() + 1 > room {
+                out.full = true;
+                break;
+            }
+            if kept == 0 {
+                out.text.push_str(&group.path);
+                out.text.push('\n');
+            }
+            out.text.push_str(line);
+            out.text.push('\n');
+            (kept, out.shown) = (kept + 1, out.shown + 1);
+        }
+        if kept < group.lines.len() || group.hidden > 0 {
+            out.files_left += 1;
+        }
+    }
+    out
+}
+
+fn render(search: &Search, skipped: &Skipped, room: usize) -> String {
     let note = skipped.note(search.binary);
     if search.groups.is_empty() {
         return match note {
@@ -199,23 +265,28 @@ fn render(search: &Search, skipped: &Skipped) -> String {
             None => "No matches.".to_string(),
         };
     }
-    let mut out = String::new();
-    for (path, lines) in &search.groups {
-        out.push_str(path);
-        out.push('\n');
-        for line in lines {
-            out.push_str(line);
-            out.push('\n');
-        }
-    }
-    if search.more > 0 {
-        let files = match search.more_files {
+    let body = body(&search.groups, room);
+    let total: usize = (search.groups.iter())
+        .map(|group| group.lines.len() + group.hidden)
+        .sum();
+    let mut out = body.text;
+    if body.shown < total {
+        let files = match body.files_left {
             1 => "1 file".to_string(),
             n => format!("{n} files"),
         };
+        let rest = total - body.shown;
+        let hint = match (search.asked > search.max, body.full) {
+            (true, _) => format!(
+                "max_results {} capped to {} to fit the {}-byte output budget; narrow the pattern, path or glob",
+                search.asked, search.max, search.budget
+            ),
+            (false, true) => "the output budget is full; narrow the pattern, path or glob".into(),
+            (false, false) => "narrow the pattern, path or glob, or raise max_results".into(),
+        };
+        let shown = body.shown;
         out.push_str(&format!(
-            "[{} more matches in {files}; narrow the pattern, path or glob, or raise max_results]\n",
-            search.more
+            "[{rest} more matches in {files}; showing {shown} of {total} matches; {hint}]\n"
         ));
     }
     if let Some(note) = note {

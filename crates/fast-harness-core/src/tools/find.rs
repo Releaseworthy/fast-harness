@@ -229,6 +229,9 @@ fn answer(found: &Found<'_>, others: &[ToolSpec], skills: bool) -> String {
         lines.push("Skill instructions below (no tool loaded).".to_string());
     } else if picked.is_empty() && !found.already.is_empty() {
         // No `Loaded:` line: nothing new to send a schema for.
+    } else if picked.is_empty() && unknown.iter().any(|name| !close(name, &all).is_empty()) {
+        // The close names say more than the whole list.
+        lines.push("No tool matched.".to_string());
     } else if picked.is_empty() {
         lines.push(format!("No tool matched. Tools: {}.", all.join(", ")));
     } else {
@@ -240,9 +243,52 @@ fn answer(found: &Found<'_>, others: &[ToolSpec], skills: bool) -> String {
         lines.push(format!("{}: already loaded", others[index].name));
     }
     if !unknown.is_empty() {
-        lines.push(format!("Unknown: {}.", unknown.join(", ")));
+        let named: Vec<String> = unknown.iter().map(|name| hinted(name, &all)).collect();
+        lines.push(format!("Unknown: {}.", named.join(", ")));
     }
     lines.join("\n")
+}
+
+/// `name`, with `(did you mean a or b?)` when tools are named close to it.
+fn hinted(name: &str, all: &[&str]) -> String {
+    match close(name, all).as_slice() {
+        [] => name.to_string(),
+        near => format!("{name} (did you mean {}?)", near.join(" or ")),
+    }
+}
+
+/// At most three of `all` close to `name`, closest first: within a third of
+/// its length in edits (at least 2), or holding it whole (3 letters or more).
+fn close<'a>(name: &str, all: &[&'a str]) -> Vec<&'a str> {
+    let name = name.to_lowercase();
+    let length = name.chars().count();
+    let most = (length / 3).max(2);
+    let mut near: Vec<(usize, &str)> = (all.iter())
+        .map(|&tool| (edits(&name, &tool.to_lowercase()), tool))
+        .filter(|&(edits, tool)| {
+            edits <= most || (length >= 3 && tool.to_lowercase().contains(&name))
+        })
+        .collect();
+    near.sort_by_key(|&(edits, _)| edits);
+    near.into_iter().take(3).map(|(_, tool)| tool).collect()
+}
+
+/// The Levenshtein distance of `a` and `b`, in characters.
+fn edits(a: &str, b: &str) -> usize {
+    let b: Vec<char> = b.chars().collect();
+    let mut row: Vec<usize> = (0..=b.len()).collect();
+    for (i, x) in a.chars().enumerate() {
+        let mut diagonal = row[0];
+        row[0] = i + 1;
+        for (j, &y) in b.iter().enumerate() {
+            let above = row[j + 1];
+            row[j + 1] = (above + 1)
+                .min(row[j] + 1)
+                .min(diagonal + usize::from(x != y));
+            diagonal = above;
+        }
+    }
+    row[b.len()]
 }
 
 /// Indexes of the tools matching `query`, best first; ties keep the

@@ -121,7 +121,7 @@ fn grep_reports_errors_and_no_matches() {
     assert_eq!(
         run(&tmp.0, "grep", json!({"pattern": "zzzq"})).text(),
         // An empty result says what was not searched and how to include it.
-        "No matches.\n[1 file and 1 folder skipped by .gitignore (include_ignored: true); \
+        "No matches.\n[1 file and 1 folder (1 file inside) skipped by .gitignore (include_ignored: true); \
          2 hidden entries skipped (include_hidden: true); 1 binary file not searched]\n"
     );
 }
@@ -210,4 +210,68 @@ fn grep_shows_a_window_around_a_match_deep_in_a_long_line() {
         shown.ends_with("xtail [line cut: columns 1705-2004 of 2004]"),
         "{shown}"
     );
+}
+
+/// A max_results far above what the byte budget holds is capped, and the
+/// shown part says how many of all the matches it holds (owner, 2026-11-15).
+#[test]
+fn a_huge_max_results_is_capped_and_says_what_it_shows() {
+    let tmp = TempDir::new("grep-huge");
+    let line = format!("hit {}\n", "y".repeat(60));
+    tmp.file("many.txt", line.repeat(3000).as_bytes());
+    let out = run(
+        &tmp.0,
+        "grep",
+        json!({"pattern": "hit", "max_results": 100000}),
+    );
+    let text = out.text();
+    assert!(text.len() <= 8 * 1024, "{} bytes", text.len());
+    assert!(
+        !text.contains("[output cut") && !text.contains("[full output"),
+        "{text}"
+    );
+    let shown = text.lines().filter(|l| l.contains(": hit")).count();
+    assert!(
+        text.contains(&format!("showing {shown} of 3000 matches")),
+        "{text}"
+    );
+    assert!(text.contains("max_results 100000 capped to "), "{text}");
+    // Long lines fill the budget before max_results: the note still counts.
+    let long = format!("hit {}\n", "z".repeat(280));
+    tmp.file("many.txt", long.repeat(200).as_bytes());
+    let out = run(
+        &tmp.0,
+        "grep",
+        json!({"pattern": "hit", "max_results": 100}),
+    );
+    let text = out.text();
+    let shown = text.lines().filter(|l| l.contains(": hit")).count();
+    assert!(
+        shown < 100 && text.len() <= 8 * 1024,
+        "{shown} {}",
+        text.len()
+    );
+    assert!(
+        text.contains(&format!("showing {shown} of 200 matches")),
+        "{text}"
+    );
+}
+
+/// A folder .gitignore leaves out also counts the files in it (matching the
+/// glob), bounded so a huge target/ stays cheap (owner, 2026-11-15).
+#[test]
+fn glob_counts_the_files_inside_ignored_folders() {
+    let tmp = tree("glob-inside");
+    tmp.file("build/a.txt", b"");
+    tmp.file("build/deep/b.txt", b"");
+    tmp.file("build/c.rs", b"");
+    let out = run(&tmp.0, "glob", json!({"pattern": "*.txt"}));
+    let note = "[1 file and 1 folder (3 files inside) skipped by .gitignore";
+    assert!(out.text().contains(note), "{}", out.text());
+    for i in 0..1001 {
+        tmp.file(&format!("build/many/{i}.txt"), b"");
+    }
+    let out = run(&tmp.0, "glob", json!({"pattern": "*.txt"}));
+    let note = "[1 file and 1 folder (1000+ files inside) skipped by .gitignore";
+    assert!(out.text().contains(note), "{}", out.text());
 }

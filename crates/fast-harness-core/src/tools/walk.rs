@@ -27,8 +27,17 @@ pub(crate) struct Include {
 pub(crate) struct Skipped {
     pub ignored_files: usize,
     pub ignored_dirs: usize,
+    /// Files in the left-out folders (not hidden, matching the glob),
+    /// counted up to [`INSIDE_FILES`]; `inside_more` when a limit stopped it.
+    pub inside: usize,
+    pub inside_more: bool,
     pub hidden: usize,
 }
+
+/// The most files counted inside left-out folders, and the most entries
+/// visited there: a huge `target/` stays cheap and reads as `1000+`.
+const INSIDE_FILES: usize = 1000;
+const INSIDE_VISITS: usize = 20_000;
 
 pub(crate) struct Walk {
     /// The files kept, sorted by name per directory.
@@ -83,7 +92,7 @@ fn matches(filter: Option<&Override>, path: &Path) -> bool {
 /// The children of the walked folders the walk did not visit, `.git`
 /// aside; a left-out file counts only when it matches the glob.
 fn skipped(dirs: &[PathBuf], seen: &HashSet<PathBuf>, filter: Option<&Override>) -> Skipped {
-    let mut out = Skipped::default();
+    let (mut out, mut visits) = (Skipped::default(), 0);
     for dir in dirs {
         let Ok(children) = std::fs::read_dir(dir) else {
             continue;
@@ -100,12 +109,49 @@ fn skipped(dirs: &[PathBuf], seen: &HashSet<PathBuf>, filter: Option<&Override>)
             }
             match (name.to_string_lossy().starts_with('.'), is_dir) {
                 (true, _) => out.hidden += 1,
-                (false, true) => out.ignored_dirs += 1,
+                (false, true) => {
+                    out.ignored_dirs += 1;
+                    count_inside(&path, filter, &mut out, &mut visits);
+                }
                 (false, false) => out.ignored_files += 1,
             }
         }
     }
     out
+}
+
+/// Adds to `out.inside` the files under the left-out folder `dir` that are
+/// not hidden and match the glob, until a limit sets `out.inside_more`.
+fn count_inside(dir: &Path, filter: Option<&Override>, out: &mut Skipped, visits: &mut usize) {
+    let mut stack = vec![dir.to_path_buf()];
+    while let Some(dir) = stack.pop() {
+        let Ok(children) = std::fs::read_dir(&dir) else {
+            continue;
+        };
+        for child in children.flatten() {
+            *visits += 1;
+            if *visits > INSIDE_VISITS {
+                out.inside_more = true;
+                return;
+            }
+            let Ok(kind) = child.file_type() else {
+                continue;
+            };
+            if child.file_name().to_string_lossy().starts_with('.') {
+                continue;
+            }
+            let path = child.path();
+            if kind.is_dir() {
+                stack.push(path);
+            } else if kind.is_file() && matches(filter, &path) {
+                if out.inside == INSIDE_FILES {
+                    out.inside_more = true;
+                    return;
+                }
+                out.inside += 1;
+            }
+        }
+    }
 }
 
 impl Skipped {
@@ -118,7 +164,7 @@ impl Skipped {
             ignored.push(count(self.ignored_files, "file", "files"));
         }
         if self.ignored_dirs > 0 {
-            ignored.push(count(self.ignored_dirs, "folder", "folders"));
+            ignored.push(count(self.ignored_dirs, "folder", "folders") + &self.inside_note());
         }
         if !ignored.is_empty() {
             let what = ignored.join(" and ");
@@ -135,6 +181,19 @@ impl Skipped {
             parts.push(format!("{what} not searched"));
         }
         (!parts.is_empty()).then(|| format!("[{}]", parts.join("; ")))
+    }
+}
+
+impl Skipped {
+    /// ` (N files inside)` for the left-out folders, `N+` when a limit
+    /// stopped the count; empty when they hold none.
+    fn inside_note(&self) -> String {
+        match (self.inside, self.inside_more) {
+            (0, false) => String::new(),
+            (0, true) => format!(" (none matching in the first {INSIDE_VISITS} entries inside)"),
+            (n, true) => format!(" ({n}+ files inside)"),
+            (n, false) => format!(" ({})", count(n, "file inside", "files inside")),
+        }
     }
 }
 
