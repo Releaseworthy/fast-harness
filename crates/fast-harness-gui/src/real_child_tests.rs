@@ -395,3 +395,45 @@ pub fn assert_at_bottom(ui: &MainWindow, what: &str) {
         "{what}: not at the bottom: ends at {end}, list bottom {bottom}"
     );
 }
+
+/// A new session's first subagent (2026-11-15, the owner had to switch
+/// sessions to see its tab): the session got its id at its first message
+/// (`turn::shown_session`, no switch runs `subagents_view::follow`), and
+/// the child's start event lists that session's children at once.
+#[test]
+fn a_new_sessions_first_subagent_lists_its_children_at_once() {
+    use fast_harness_core::events::AgentEvent;
+    let dir = temp("new-session");
+    let cwd = dir.join("cwd");
+    let (home, parent, child) = fixture_home(&dir, &cwd, CHILD_LOG);
+    let (_window, ui) = crate::turn_nav_view_tests::window(WIDTH, HEIGHT);
+    let rt = Runtime::load_at(home.clone()).expect("runtime");
+    install(App::new(&ui, rt, Some(cwd.clone())));
+    let before = with_app(|app, _| {
+        app.runs.id = Some(parent.clone());
+        app.subagents.generation
+    });
+    let start = AgentEvent::Subagent {
+        session: child.clone(),
+        running: true,
+    };
+    with_app(|app, ui| crate::subagents_view::event(app, ui, &start));
+    let (listed, generation) =
+        with_app(|app, _| (app.subagents.parent.clone(), app.subagents.generation)).expect("app");
+    assert_eq!(
+        listed.as_deref(),
+        Some(parent.as_str()),
+        "the new session's children are listed"
+    );
+    assert!(Some(generation) > before, "a scan started");
+    // The scan worker's result, delivered here (the plain test platform).
+    let found = session::children(&home, &cwd, &parent).expect("children");
+    with_app(|app, ui| crate::subagents_view::scanned(app, ui, generation, found));
+    let rows = ui.global::<crate::SubagentsUi>().get_rows();
+    assert_eq!(
+        rows.row_count(),
+        1,
+        "the child's row, so the Subagents tab shows"
+    );
+    std::fs::remove_dir_all(&dir).ok();
+}

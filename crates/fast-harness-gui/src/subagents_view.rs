@@ -43,10 +43,10 @@ pub struct Subagents {
     /// Every subagent session the window's events named.
     pub live: HashMap<String, Live>,
     /// The session whose children are listed, and its children.
-    parent: Option<String>,
+    pub parent: Option<String>,
     pub children: Vec<Child>,
     /// Tells a list of the current scan from an earlier one's.
-    generation: u64,
+    pub generation: u64,
     /// The subagent sessions opened from a list, outermost first.
     pub viewing: Vec<Viewing>,
     /// The child session a `child_pump` follows now (D79).
@@ -210,7 +210,13 @@ pub fn event(app: &mut App, ui: &MainWindow, event: &AgentEvent) -> bool {
     };
     let open = ui.global::<SubagentsUi>().get_open();
     let stale = app.subagents.scanned_at.is_none_or(|at| at.elapsed() >= Duration::from_secs(2));
-    if matches!(event, AgentEvent::Subagent { .. }) || (open && stale) {
+    // A new session gets its id at its first message, with no switch to
+    // run `follow` (2026-11-15: its first child's tab needed a switch).
+    let moved = app.subagents.parent != app.runs.id;
+    if moved {
+        app.subagents.parent.clone_from(&app.runs.id);
+    }
+    if moved || matches!(event, AgentEvent::Subagent { .. }) || (open && stale) {
         scan(app);
     }
     let viewed = app.subagents.viewing.last().is_some_and(|v| v.child == id);
