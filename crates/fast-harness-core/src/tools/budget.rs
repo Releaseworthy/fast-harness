@@ -44,6 +44,8 @@ pub struct ToolSession {
     attached: Mutex<Vec<ImageRef>>,
     /// What the agent last saw of each file (`file_state`).
     files: FileStates,
+    /// Results of `grep` and `glob` already returned (`search_seen`).
+    searches: super::search_seen::Searches,
 }
 
 /// A returned read: path, offset, limit and the file's content hash
@@ -66,6 +68,7 @@ impl ToolSession {
             media_dir,
             attached: Mutex::default(),
             files: FileStates::default(),
+            searches: Default::default(),
             reads: Mutex::new(Vec::new()),
             jobs: Arc::default(),
             undo: Arc::new(UndoLog::new(undo_dir)),
@@ -133,6 +136,12 @@ impl ToolSession {
     pub fn clear_reads(&self) {
         let mut reads = self.reads.lock().unwrap_or_else(|e| e.into_inner());
         reads.clear();
+        self.searches.clear();
+    }
+
+    /// The `grep` and `glob` results already returned.
+    pub(crate) fn searches(&self) -> &super::search_seen::Searches {
+        &self.searches
     }
 
     /// Records that `call_id` returned all of `key`'s lines.

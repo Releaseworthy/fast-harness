@@ -14,7 +14,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Condvar, Mutex, MutexGuard};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
-use super::ansi::strip_ansi;
+use super::clean::clean_output;
 use super::job_buffer::Buffer;
 pub use super::job_buffer::{LOG_CAP, RING};
 use super::shell::shell_command;
@@ -207,7 +207,7 @@ impl Jobs {
             false => complete_end(&bytes),
         };
         run.cursor += skipped + end as u64;
-        let text = strip_ansi(&String::from_utf8_lossy(&bytes[..end])).into_owned();
+        let text = clean_output(&bytes[..end]);
         let info = job.info_of(&run);
         Ok(Reading {
             info,
@@ -330,7 +330,8 @@ impl Job {
             id: self.id.clone(),
             command: self.command.clone(),
             state,
-            exit_code: run.exit.flatten(),
+            // A killed tree's code is the kill's, not the command's.
+            exit_code: run.exit.flatten().filter(|_| !run.killed),
             started: self.started,
             ended: run.ended_at,
             bytes: run.buffer.total(),

@@ -202,7 +202,9 @@ fn the_running_cap_and_the_output_cap_hold() {
         .unwrap();
     let reading = jobs.read(&id, 30 * SECOND, true, None).unwrap();
     assert!(reading.skipped > 0, "{}", reading.skipped);
-    assert_eq!(reading.text.len(), tools::jobs::RING);
+    // The ring's last bytes end in `\r\n`, read as a plain line break.
+    let crlf = usize::from(cfg!(windows));
+    assert_eq!(reading.text.len(), tools::jobs::RING - crlf);
     let log = reading.info.log.clone().unwrap();
     assert!(log.starts_with(&env.home), "{}", log.display());
     let logged = std::fs::metadata(&log).unwrap().len();

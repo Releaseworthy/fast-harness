@@ -1,12 +1,13 @@
 //! `glob`: find files by path pattern, newest first.
 
-use std::sync::atomic::Ordering;
 use std::time::SystemTime;
 
 use serde_json::{json, Value};
 
 use super::args::{display_rel, object_schema, opt_str, req_str, resolve, search_base};
-use super::walk::files;
+use super::grep::include;
+use super::search_seen::dedupe;
+use super::walk::walk;
 use super::{Effect, Tool, ToolCtx, ToolOutput};
 use crate::llm::ToolSpec;
 
@@ -24,14 +25,16 @@ impl Tool for GlobTool {
             name: "glob".into(),
             description: "Find files whose path matches a glob pattern (gitignore syntax: \
                 \"*.rs\" matches at any depth, \"src/**/*.ts\" is anchored to `path`). \
-                Respects .gitignore and skips hidden files. Returns at most 100 paths, newest \
+                Skips files .gitignore leaves out and hidden files (a last line counts them). Returns at most 100 paths, newest \
                 modification first, relative to the working directory, or to `path` when \
                 given (a first line names it)."
                 .into(),
             schema: object_schema(
                 json!({
                     "pattern": {"type": "string", "description": "Glob pattern, e.g. \"**/*.rs\"."},
-                    "path": {"type": "string", "description": "Directory to search. Default: the working directory."}
+                    "path": {"type": "string", "description": "Directory to search. Default: the working directory."},
+                    "include_ignored": {"type": "boolean", "description": "Also list files .gitignore leaves out. Default false."},
+                    "include_hidden": {"type": "boolean", "description": "Also list hidden files and folders. Default false."}
                 }),
                 &["pattern"],
             ),
@@ -40,7 +43,7 @@ impl Tool for GlobTool {
 
     fn run(&self, args: &Value, ctx: &ToolCtx<'_>) -> ToolOutput {
         match glob(args, ctx) {
-            Ok(text) => ToolOutput::ok(text),
+            Ok(text) => ToolOutput::ok(dedupe("glob", args, text, ctx)),
             Err(message) => ToolOutput::err(message),
         }
     }
@@ -57,10 +60,9 @@ fn glob(args: &Value, ctx: &ToolCtx<'_>) -> Result<String, String> {
     }
     let (base, header) = search_base(ctx.cwd, &root);
     let mut found: Vec<(SystemTime, String)> = Vec::new();
-    for entry in files(&root, Some(pattern))? {
-        if ctx.cancel.load(Ordering::Relaxed) {
-            return Err("glob cancelled".to_string());
-        }
+    let walked = walk(&root, Some(pattern), include(args)?, ctx.cancel);
+    let walked = walked.map_err(|err| format!("glob {err}"))?;
+    for entry in &walked.files {
         let modified = entry
             .metadata()
             .ok()
@@ -68,8 +70,12 @@ fn glob(args: &Value, ctx: &ToolCtx<'_>) -> Result<String, String> {
             .unwrap_or(SystemTime::UNIX_EPOCH);
         found.push((modified, display_rel(base, entry.path())));
     }
+    let note = walked.skipped.note(0);
     if found.is_empty() {
-        return Ok("No files found.".to_string());
+        return Ok(match note {
+            Some(note) => format!("No files found.\n{note}\n"),
+            None => "No files found.".to_string(),
+        });
     }
     found.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| a.1.cmp(&b.1)));
     let total = found.len();
@@ -81,5 +87,6 @@ fn glob(args: &Value, ctx: &ToolCtx<'_>) -> Result<String, String> {
             total - MAX_FILES
         ));
     }
+    out.extend(note);
     Ok(out.join("\n") + "\n")
 }
