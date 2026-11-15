@@ -108,7 +108,7 @@ impl Block {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[non_exhaustive]
 pub struct Message {
     pub role: Role,
@@ -118,6 +118,22 @@ pub struct Message {
     /// written before trace version 3.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub model: Option<String>,
+    /// The effort a user message was first sent with (`Some(None)`: the
+    /// model default), set by the agent at the first call that carries it.
+    /// A Claude request puts this message's own effort after it on every
+    /// later request, whatever the effort is now, so the earlier messages
+    /// and the thinking bound to them never change (PLAN.md D86). In memory
+    /// only: not written to the trace.
+    #[serde(skip)]
+    pub effort: Option<Option<String>>,
+}
+
+/// Equal content: the in-memory effort stamp is not part of a message
+/// (a reopened session has none).
+impl PartialEq for Message {
+    fn eq(&self, other: &Message) -> bool {
+        (&self.role, &self.content, &self.model) == (&other.role, &other.content, &other.model)
+    }
 }
 
 impl Message {
@@ -127,7 +143,14 @@ impl Message {
             role,
             content,
             model: None,
+            effort: None,
         }
+    }
+
+    /// A message stamped with the effort it was first sent with.
+    pub fn with_effort(mut self, effort: Option<&str>) -> Message {
+        self.effort = Some(effort.map(str::to_string));
+        self
     }
 
     pub fn user(text: impl Into<String>) -> Message {
@@ -303,6 +326,7 @@ mod tests {
                 },
             ],
             model: None,
+            effort: None,
         };
         let json = serde_json::to_string(&message).unwrap();
         assert_eq!(
@@ -328,6 +352,7 @@ mod tests {
                 signature: Some("gemini-sig".into()),
             }],
             model: Some("antigravity/gemini-2.5-pro".into()),
+            effort: None,
         };
         let json = serde_json::to_string(&with_provenance).unwrap();
         assert!(json.contains(r#""model":"antigravity/gemini-2.5-pro""#));
@@ -344,6 +369,7 @@ mod tests {
                 signature: None,
             }],
             model: None,
+            effort: None,
         };
         let json_without = serde_json::to_string(&without_provenance).unwrap();
         assert!(!json_without.contains("model"));

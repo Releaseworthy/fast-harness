@@ -121,6 +121,7 @@ mod tests {
                 signature: None,
             }],
             model: None,
+            effort: None,
         }
     }
 
@@ -133,6 +134,7 @@ mod tests {
                 is_error,
             }],
             model: None,
+            effort: None,
         }
     }
 

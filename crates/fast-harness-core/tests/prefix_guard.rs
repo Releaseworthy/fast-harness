@@ -8,7 +8,7 @@ mod agent_support;
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 
-use agent_support::{echo_registry, env, key_auth, text_reply, tool_reply};
+use agent_support::{echo_registry, env, key_auth, text_reply, thinking_reply, tool_reply};
 use fast_harness_core::agent::{Agent, AgentParts, Context, Conversation};
 use fast_harness_core::auth::AuthSource;
 use fast_harness_core::config::Config;
@@ -28,6 +28,8 @@ enum Change {
     AgentsMd,
     /// The date passes midnight before every later turn.
     Date,
+    /// The chosen effort differs in every turn (low, medium, the default).
+    Effort,
 }
 
 struct Case {
@@ -59,6 +61,26 @@ fn claude() -> Case {
         messages: "/messages",
         responses,
     }
+}
+
+/// [`claude`] with a signed thinking block in every answer.
+fn claude_thinking() -> Case {
+    let mut responses = vec![tool_reply(&[("toolu_1", "echo", r#"{"text":"hi"}"#)])];
+    let answer = |turn| thinking_reply(&format!("plan {turn}"), &format!("answer {turn}"));
+    responses.extend((0..TURNS).map(answer));
+    Case {
+        name: "anthropic-thinking",
+        responses,
+        ..claude()
+    }
+}
+
+/// The effort chosen for `turn`: the config default unless it changes.
+fn effort(change: Change, turn: usize) -> Option<String> {
+    let levels = [Some("low"), Some("medium"), None];
+    (change == Change::Effort)
+        .then(|| levels[turn % levels.len()].map(str::to_string))
+        .flatten()
 }
 
 /// `value` without any `cache_control` key, at any depth.
@@ -103,6 +125,7 @@ fn session(case: Case, change: Change) -> (Vec<Value>, String) {
             auth: case.auth.clone(),
             config: Config {
                 model: case.model.into(),
+                effort: effort(change, turn),
                 ..Config::default()
             },
             cwd: env.cwd.clone(),
@@ -140,7 +163,7 @@ fn check(case: Case, change: Change) {
         .to_string();
     let updates = last.matches("[context update]").count();
     let want = match change {
-        Change::Nothing => 0,
+        Change::Nothing | Change::Effort => 0,
         _ => TURNS - 1,
     };
     assert_eq!(updates, want, "{name}: one context update per change");
@@ -180,4 +203,13 @@ fn prefix_guard_holds_when_agents_md_changes() {
 #[test]
 fn prefix_guard_holds_across_midnight() {
     check(claude(), Change::Date);
+}
+
+/// Owner, 2026-11-15: the cache broke at the start of a turn with thinking.
+/// A new effort put the new level after every earlier user message, so the
+/// whole history and the thinking bound to it changed; each user message
+/// now keeps the effort it was sent with (PLAN.md D86).
+#[test]
+fn prefix_guard_holds_when_the_effort_changes() {
+    check(claude_thinking(), Change::Effort);
 }

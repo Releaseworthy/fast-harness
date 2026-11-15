@@ -35,6 +35,7 @@ impl Turn<'_> {
                 signature: None,
             }],
             model: None,
+            effort: None,
         };
         let content = format!("{}\n{PRELOADED}", loaded_line(&names));
         let size = content.len();
@@ -46,6 +47,7 @@ impl Turn<'_> {
                 is_error: false,
             }],
             model: None,
+            effort: None,
         };
         let (turn, usage, timing) = (self.turn, Usage::default(), Timing::default());
         let trace = &mut self.conv.trace;

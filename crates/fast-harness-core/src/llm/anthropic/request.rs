@@ -102,8 +102,8 @@ pub(crate) fn build(
     let cache = cache_control(req.cache.system_1h || req.cache.messages_1h);
     let tail = cache_control(req.cache.messages_1h);
     let plan = thinking::plan_model(live, req.model, spec, req.effort, req.max_tokens);
-    let effort = plan.turn_effort.as_deref();
-    let messages = convert_messages(req.messages, req.tools, oauth, &tail, effort);
+    let effort = |message: &Message| message_effort(message, &plan, spec);
+    let messages = convert_messages(req.messages, req.tools, oauth, &tail, &effort);
     let mut body = Map::new();
     body.insert("model".into(), json!(req.model));
     body.insert("messages".into(), Value::Array(messages));
@@ -136,6 +136,22 @@ pub(crate) fn build(
         body.insert("fallbacks".into(), Value::Array(list));
     }
     (Value::Object(body), betas)
+}
+
+/// The level of the effort message after a user message: the one it was
+/// first sent with (PLAN.md D86), the current one until it is sent.
+fn message_effort(
+    message: &Message,
+    plan: &thinking::Plan,
+    spec: Option<&ModelSpec>,
+) -> Option<String> {
+    let per_message = plan
+        .betas
+        .contains(&wire::BETA_MID_CONVERSATION_OUTPUT_CONFIG);
+    match &message.effort {
+        Some(sent) if per_message => thinking::turn_effort(spec, sent.as_deref()),
+        _ => plan.turn_effort.clone(),
+    }
 }
 
 /// The system blocks: the OAuth identity, the stable prompt, then the memory
@@ -251,17 +267,18 @@ impl<'a> Finds<'a> {
     }
 }
 
-/// The `messages` array. With a per-turn `effort` (managed models), an
-/// effort-only `system` message follows every user message with new input,
-/// so it sits at the same place on every later request: a message that
-/// moves or disappears changes the prefix that each later thinking block is
-/// bound to, and the API drops those blocks (`prefix_binding_mismatch`).
+/// The `messages` array. When `effort` gives a user message a per-turn
+/// effort (managed models), an effort-only `system` message follows it, at
+/// the same place and with the same level on every later request: a message
+/// that moves, changes or disappears changes the prefix that each later
+/// thinking block is bound to, and the API drops those blocks
+/// (`prefix_binding_mismatch`).
 fn convert_messages(
     messages: &[Message],
     tools: &[ToolSpec],
     oauth: bool,
     cache: &Value,
-    effort: Option<&str>,
+    effort: &dyn Fn(&Message) -> Option<String>,
 ) -> Vec<Value> {
     // Every Claude model takes images (platform.claude.com vision, 2026-11-13).
     let prepared = images::prepare(messages, true);
@@ -292,7 +309,7 @@ fn convert_messages(
         previous_was_tool = is_tool;
         out.push(json!({"role": role, "content": blocks}));
         if message.role == Role::User {
-            out.extend(effort.map(effort_message));
+            out.extend(effort(message).as_deref().map(effort_message));
         }
     }
     mark_last_message(&mut out, cache);

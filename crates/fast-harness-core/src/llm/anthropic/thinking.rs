@@ -168,12 +168,18 @@ fn managed(plan: &mut Plan, spec: Option<&ModelSpec>, effort: Option<&str>) {
         "block_binding": {"prefix_mismatch_behavior": "drop_block"},
     }));
     plan.output_config = Some(json!({"effort": "high"}));
-    let level = effort.filter(|level| *level != "off").unwrap_or("high");
-    plan.turn_effort = Some(map_effort(spec, level)).filter(|level| level != "high");
+    plan.turn_effort = turn_effort(spec, effort);
     plan.betas = vec![
         wire::BETA_MID_CONVERSATION_OUTPUT_CONFIG,
         wire::BETA_THINKING_BINDING_CONTROLS,
     ];
+}
+
+/// Managed models: the level of the effort message after a user turn sent
+/// with `effort`, None when it is the top-level `high`.
+pub(crate) fn turn_effort(spec: Option<&ModelSpec>, effort: Option<&str>) -> Option<String> {
+    let level = effort.filter(|level| *level != "off").unwrap_or("high");
+    Some(map_effort(spec, level)).filter(|level| level != "high")
 }
 
 /// Budget thinking for older models: `max_tokens` grows by the budget up to

@@ -48,6 +48,7 @@ pub fn history(
                 signature: None,
             }],
             model: None,
+            effort: None,
         });
         out.push(Message {
             role: Role::Tool,
@@ -57,6 +58,7 @@ pub fn history(
                 is_error: false,
             }],
             model: None,
+            effort: None,
         });
     }
     if mid {

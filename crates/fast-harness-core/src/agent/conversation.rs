@@ -294,6 +294,7 @@ fn fill_missing(out: &mut Vec<Message>, index: usize) {
             role: Role::Tool,
             content: Vec::new(),
             model: None,
+            effort: None,
         };
         out.insert(index + 1, empty);
     }

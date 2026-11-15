@@ -120,6 +120,7 @@ impl Turn<'_> {
                 role: Role::Tool,
                 content,
                 model: None,
+                effort: None,
             };
             traced(self.conv.trace.tool_result_sized(
                 self.turn,
@@ -134,6 +135,7 @@ impl Turn<'_> {
             role: Role::Tool,
             content: blocks,
             model: None,
+            effort: None,
         });
         Ok(())
     }

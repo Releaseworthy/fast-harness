@@ -292,6 +292,7 @@ fn refusals(calls: &[String]) -> Message {
         role: Role::Tool,
         content,
         model: None,
+        effort: None,
     }
 }
 

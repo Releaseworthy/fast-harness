@@ -11,6 +11,7 @@ use crate::http::Transport;
 use crate::llm::{Cache, ChatRequest, Completion, Delta, ErrorKind, LlmError, Timing};
 use crate::trace::wire::WireCapture;
 use crate::trace::RequestContext;
+use crate::types::{Message, Role};
 
 /// First retry delay; doubled per retry up to [`MAX_BACKOFF_MS`].
 pub const FIRST_BACKOFF_MS: u64 = 1_000;
@@ -174,12 +175,12 @@ impl Turn<'_> {
             None => &*parts.transport,
         };
         let (system_1h, messages_1h) = parts.config.cache_hours();
-        // The session's frozen system and tools (PLAN.md D36).
-        let conv = &*self.conv;
         // A `PreModelRequest` hook may change only these two (PLAN.md D63).
         let change = self.change.as_ref().filter(|_| !self.quiet);
         let (model, effort, max_tokens) =
             super::model_hook::request_parts(&self.request, change, parts);
+        stamp_effort(&mut self.conv.messages, effort, self.quiet);
+        let conv = &*self.conv; // The frozen system and tools (PLAN.md D36).
         let req = ChatRequest {
             model,
             system: conv.system.as_deref().unwrap_or(&parts.system),
@@ -295,6 +296,18 @@ pub(super) fn request_model<'a>(
     match request {
         Some((model, effort)) => (model, effort.as_deref()),
         None => (&config.model, config.effort.as_deref()),
+    }
+}
+
+/// Gives each user message not sent yet the effort of this call, which it
+/// keeps: a Claude request repeats each message's own effort after it, so a
+/// later effort change leaves the sent prefix and its thinking as they were
+/// (PLAN.md D86). A compaction's summary call (`quiet`) stamps nothing.
+pub(super) fn stamp_effort(messages: &mut [Message], effort: Option<&str>, quiet: bool) {
+    for message in messages.iter_mut().filter(|_| !quiet) {
+        if message.role == Role::User && message.effort.is_none() {
+            message.effort = Some(effort.map(str::to_string));
+        }
     }
 }
 

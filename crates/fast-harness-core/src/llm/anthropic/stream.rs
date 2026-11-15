@@ -244,6 +244,7 @@ impl<'a> Assembler<'a> {
             role: Role::Assistant,
             content,
             model: None,
+            effort: None,
         }
     }
 }

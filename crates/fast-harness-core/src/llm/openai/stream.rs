@@ -169,6 +169,7 @@ impl Assembler {
             role: Role::Assistant,
             content,
             model: None,
+            effort: None,
         }
     }
 }
