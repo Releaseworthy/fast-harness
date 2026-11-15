@@ -85,7 +85,7 @@ component AssistantBlock {
         // copies across blocks and serves blocks with a link.
         if msg.text != "" && !root.selecting: MdReply {
             changed height => { root.kept = self.height; }
-            blocks: msg.blocks;
+            blocks: msg.blocks; sel-row: msg.item;
             link(url) => { root.link(url); }
         }
         // Select mode (src/reply_select.rs): the plain text, selectable.
@@ -176,13 +176,13 @@ component MessageView {
         if root.turn-line: StepLine {
             text: msg.turn-line;
             label: "Turn " + msg.turn-no + " folded: " + msg.turn-line;
-            open: false;
+            open: false; sel-row: msg.item; idx: -2;
             toggled => { root.turn-toggle(msg.turn-head); }
         }
         if root.line: StepLine {
             text: msg.step-summary;
             label: msg.step-label;
-            open: msg.step-open;
+            open: msg.step-open; sel-row: msg.item; idx: -1;
             kind: msg.step-kind;
             running: msg.step-running;
             failed: msg.step-failed;
@@ -198,7 +198,7 @@ component MessageView {
             name: msg.tool.name != "" ? msg.tool.name : msg.title;
             text: msg.tool.target != "" ? msg.tool.target : msg.summary;
             took: msg.took;
-            open: msg.card-open;
+            open: msg.card-open; sel-row: msg.item;
             running: msg.running;
             failed: msg.error;
             not-run: msg.not-run ? msg.approval : "";
@@ -218,7 +218,7 @@ component MessageView {
                 link(u) => { root.link(u); }
             }
             if root.shown && msg.kind == "tool" && !msg.folded && (!root.tool-line || msg.card-open): ToolFrame {
-                tool: msg.tool;
+                tool: msg.tool; sel-row: msg.item;
                 error: msg.error;
                 not-run: msg.not-run;
                 expanded: msg.expanded;

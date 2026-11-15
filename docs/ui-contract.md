@@ -63,6 +63,18 @@ With `"approvals": "ask"` a call can wait for an answer (PLAN.md D64). Both fron
 - `ConfigUi.folder`: property <string>
 - `ConfigUi.open-folder`: callback
 - `ConfigUi.rows`: property <[ConfigRow]>
+- `CrossSelect.a-idx`: property <int>
+- `CrossSelect.a-off`: property <int>
+- `CrossSelect.a-row`: property <int>
+- `CrossSelect.active`: property <bool>
+- `CrossSelect.cleared`: callback
+- `CrossSelect.copy`: callback
+- `CrossSelect.f-idx`: property <int>
+- `CrossSelect.f-off`: property <int>
+- `CrossSelect.f-row`: property <int>
+- `CrossSelect.hand-off`: callback
+- `CrossSelect.handing`: property <bool>
+- `CrossSelect.put`: callback
 - `DialogUi.open`: property <string>
 - `JobsUi.clear`: callback
 - `JobsUi.closed`: callback

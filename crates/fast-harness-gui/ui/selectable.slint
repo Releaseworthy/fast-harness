@@ -7,6 +7,8 @@
 // to the list; read-only, it opens no IME and Cut, Paste, Undo and typing do
 // nothing, while Copy and Select All work.
 import { Theme } from "parts.slint";
+import { CrossSelect } from "cross_select.slint";
+export { CrossSelect }
 
 // The selection fill: the accent at `theme::SELECT_ALPHA` (0.30), so a
 // selection shows on the bubble, the code box and the page alike (the
@@ -31,25 +33,103 @@ export component SelectableText inherits TextInput {
 // 0, as the Skia renderer (the default, D78) draws nothing of a TextInput
 // with a transparent text brush, its selection fill included (i-slint-core
 // 1.18.1 sharedparley.rs `draw_text_input`; the owner 2026-11-15).
-// `selecting` is true while it holds focus and a non-empty selection.
+// `selecting` is true while it holds a non-empty selection. A ghost with a
+// `row` (>= 0) takes part in the chat's one selection (ui/cross_select.slint):
+// in the range but not the focus, it shows its part; gaining the focus, it
+// starts the selection, extends it (a Shift+click keeps the anchor it had,
+// so its selection is not empty) or takes a hand-off (`pin`). A FocusOut
+// collapses a TextInput's selection (items/text.rs), so losing the focus it
+// shows its part again. Ctrl+C over several blocks copies the joined parts
+// through `clip`.
 export component Ghost inherits TextInput {
     in property <bool> ink;
-    out property <bool> selecting: self.has-focus && self.anchor-position-byte-offset != self.cursor-position-byte-offset;
+    in property <int> sel-row: -1;
+    in property <int> idx;
+    out property <bool> selecting: self.anchor-position-byte-offset != self.cursor-position-byte-offset;
+    property <bool> focus-block: CrossSelect.is-focus(root.sel-row, root.idx);
+    property <bool> part: CrossSelect.within(root.sel-row, root.idx) && !root.focus-block;
+    property <int> start: root.part ? CrossSelect.part-start(root.sel-row, root.idx) : 0;
+    property <int> end: root.part ? CrossSelect.part-end(root.sel-row, root.idx) : 0;
     read-only: true;
     single-line: false;
     wrap: word-wrap;
     color: root.ink ? Theme.text : Theme.text.with-alpha(0.01);
     selection-background-color: Highlight.fill;
     selection-foreground-color: root.ink ? Theme.text : transparent;
+    function show() {
+        if root.sel-row < 0 || root.has-focus {
+            return;
+        }
+        if root.part || root.selecting {
+            self.set-selection-offsets(root.start, root.end);
+        }
+        if root.part {
+            CrossSelect.put(root.sel-row, root.idx, root.text);
+        }
+    }
+    function gained() {
+        if root.sel-row < 0 {
+            return;
+        }
+        if CrossSelect.pin && root.focus-block {
+            CrossSelect.pin = false;
+            self.set-selection-offsets(CrossSelect.edge(root.sel-row, root.idx), self.cursor-position-byte-offset);
+        } else if root.selecting && CrossSelect.active && !root.focus-block {
+            CrossSelect.f-row = root.sel-row;
+            CrossSelect.f-idx = root.idx;
+            self.set-selection-offsets(CrossSelect.edge(root.sel-row, root.idx), self.cursor-position-byte-offset);
+        } else {
+            CrossSelect.cleared();
+            CrossSelect.active = true;
+            CrossSelect.a-row = root.sel-row;
+            CrossSelect.a-idx = root.idx;
+            CrossSelect.f-row = root.sel-row;
+            CrossSelect.f-idx = root.idx;
+            CrossSelect.a-off = self.anchor-position-byte-offset;
+            CrossSelect.out = false;
+        }
+        CrossSelect.f-off = self.cursor-position-byte-offset;
+        CrossSelect.put(root.sel-row, root.idx, root.text);
+    }
+    init => { root.show(); }
+    changed has-focus => {
+        if self.has-focus { root.gained(); } else { root.show(); }
+    }
+    changed start => { root.show(); }
+    changed end => { root.show(); }
+    changed part => { root.show(); }
+    changed text => { root.show(); }
+    changed cursor-position-byte-offset => {
+        if self.has-focus && root.focus-block {
+            CrossSelect.f-off = self.cursor-position-byte-offset;
+        }
+    }
+    key-pressed(event) => {
+        if event.modifiers.control && (event.text == "c" || event.text == "C") && root.focus-block && CrossSelect.spans() {
+            clip.text = CrossSelect.copy();
+            clip.select-all();
+            clip.copy();
+            return accept;
+        }
+        return reject;
+    }
+    clip := TextInput {
+        visible: false;
+        read-only: true;
+        width: 0px;
+        height: 0px;
+    }
 }
 
 // A wrapped Text that a drag selects without a TextInput per row (the
 // owner's log 6143 kept the chat's measuring lane from finishing with one
-// per code line): the ghost exists only while the pointer is over the text
-// or the ghost holds focus. The TouchArea is the text's parent, so its
-// hover stays true while the ghost takes the events (i-slint-core 1.18.1
-// TouchArea filters before its children); the ghost has its own x, y and
-// size, so it never changes the measured height.
+// per code line): the ghost exists only while the pointer is over the text,
+// the ghost holds focus or the text is in the chat's selection. The
+// TouchArea is the text's parent, so its hover stays true while the ghost
+// takes the events (i-slint-core 1.18.1 TouchArea filters before its
+// children) and it sees the pointer of a drag the ghost holds (`track`);
+// the ghost has its own x, y and size, so it never changes the measured
+// height. `row` and `idx` place it in the chat's selection.
 export component GhostText inherits TouchArea {
     in property <string> text;
     in property <color> color: Theme.text;
@@ -59,7 +139,23 @@ export component GhostText inherits TouchArea {
     // `char-wrap` for code: a word longer than the line never breaks under
     // `word-wrap` and ran past the card (the owner's longline.txt).
     in property <TextWrap> wrap: word-wrap;
+    in property <TextOverflow> overflow: clip;
+    in property <TextVerticalAlignment> valign: top;
+    in property <int> sel-row: -1;
+    in property <int> idx;
+    out property <bool> selecting;
     property <bool> focused;
+    property <bool> over: CrossSelect.over(root.sel-row, self.absolute-position.y, self.height);
+    function track() {
+        CrossSelect.track(root.sel-row, root.idx, self.absolute-position.x, self.absolute-position.y, self.width, self.height, self.mouse-x, self.mouse-y);
+    }
+    changed mouse-x => { root.track(); }
+    changed mouse-y => { root.track(); }
+    changed over => {
+        if self.over {
+            CrossSelect.reach(root.sel-row, root.idx, clamp(CrossSelect.px, self.absolute-position.x + 2px, self.absolute-position.x + max(2px, self.width - 2px)), clamp(CrossSelect.py, self.absolute-position.y + 1px, self.absolute-position.y + max(1px, self.height - 1px)));
+        }
+    }
     VerticalLayout {
         label := Text {
             text: root.text;
@@ -68,9 +164,11 @@ export component GhostText inherits TouchArea {
             font-size: root.font-size;
             font-weight: root.font-weight;
             wrap: root.wrap;
+            overflow: root.overflow;
+            vertical-alignment: root.valign;
         }
     }
-    if root.has-hover || root.focused: Ghost {
+    if root.has-hover || root.focused || CrossSelect.within(root.sel-row, root.idx): Ghost {
         x: label.x;
         y: label.y;
         width: label.width;
@@ -80,9 +178,14 @@ export component GhostText inherits TouchArea {
         font-size: root.font-size;
         font-weight: root.font-weight;
         wrap: root.wrap;
+        vertical-alignment: root.valign;
+        sel-row: root.sel-row;
+        idx: root.idx;
         changed has-focus => { root.focused = self.has-focus; }
+        changed selecting => { root.selecting = self.selecting; }
     }
 }
+
 
 // Select mode for an assistant reply (src/reply_select.rs): the reply in it
 // (transcript row `item`, -1 for none) and its plain text. `drawn` is what

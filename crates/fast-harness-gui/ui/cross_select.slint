@@ -1,0 +1,119 @@
+// One selection across the selectable blocks of the chat (the owner
+// 2026-11-15: a drag in a reply selected one paragraph only, tool cards not
+// at all). Every block is its own read-only TextInput (a Ghost,
+// ui/selectable.slint), and a press grabs the mouse for that one input
+// (i-slint-core 1.18.1 items/text.rs), so the blocks share this state:
+// the anchor block (a-row, a-idx) at byte a-off and the focus block, the
+// one holding the mouse and the focus, at byte f-off. A row is a transcript
+// item, `idx` a block's place in its row; (row, idx) orders the blocks.
+// Blocks strictly between hold all their text, the anchor block its part.
+//
+// A drag that leaves its block: the block's TouchArea still gets the
+// pointer (TouchArea filters before its children and intercepts the grab,
+// i-slint-core 1.18.1 items/input_items.rs) and publishes it (`track`);
+// the block under it (`over`) takes the focus and src/cross_select.rs
+// re-presses there (`hand-off`), so the new block selects at the exact
+// character with Slint's own hit test. Copy joins the parts in Rust.
+export global CrossSelect {
+    in-out property <bool> active;
+    in-out property <int> a-row: -1;
+    in-out property <int> a-idx;
+    in-out property <int> a-off;
+    in-out property <int> f-row: -1;
+    in-out property <int> f-idx;
+    in-out property <int> f-off;
+    // The pointer in the window while the focus block holds the mouse and
+    // the pointer is outside it.
+    in-out property <bool> out;
+    in-out property <length> px;
+    in-out property <length> py;
+    // A hand-off is pending; `pin` makes the focus block, when it gains the
+    // focus, move its anchor to its edge toward the anchor block.
+    in-out property <bool> handing;
+    in-out property <bool> pin;
+    // A block in the range shows its text (for copy); a fresh press clears
+    // them; `copy` returns the joined selection; `hand-off(press, move)`.
+    callback put(int, int, string);
+    callback cleared();
+    callback copy() -> string;
+    callback hand-off(length, length, length, length);
+
+    pure public function cmp(r1: int, i1: int, r2: int, i2: int) -> int {
+        return r1 < r2 ? -1 : r1 > r2 ? 1 : i1 < i2 ? -1 : i1 > i2 ? 1 : 0;
+    }
+
+    pure public function within(row: int, idx: int) -> bool {
+        return row >= 0 && root.active && root.cmp(row, idx, root.a-row, root.a-idx) * root.cmp(row, idx, root.f-row, root.f-idx) <= 0;
+    }
+
+    pure public function is-focus(row: int, idx: int) -> bool {
+        return row >= 0 && root.active && row == root.f-row && idx == root.f-idx;
+    }
+
+    pure public function spans() -> bool {
+        return root.active && root.cmp(root.a-row, root.a-idx, root.f-row, root.f-idx) != 0;
+    }
+
+    // Where the focus block's anchor goes: its start below the anchor
+    // block, its end above it, the anchor's own offset in it.
+    pure public function edge(row: int, idx: int) -> int {
+        return root.cmp(row, idx, root.a-row, root.a-idx) > 0 ? 0 : root.cmp(row, idx, root.a-row, root.a-idx) < 0 ? 1000000000 : root.a-off;
+    }
+
+    // The selected bytes of a block in the range that is not the focus.
+    pure public function part-start(row: int, idx: int) -> int {
+        return row == root.a-row && idx == root.a-idx && root.cmp(root.f-row, root.f-idx, row, idx) > 0 ? root.a-off : 0;
+    }
+
+    pure public function part-end(row: int, idx: int) -> int {
+        return row == root.a-row && idx == root.a-idx && root.cmp(root.f-row, root.f-idx, row, idx) < 0 ? root.a-off : 1000000000;
+    }
+
+    // A block's TouchArea saw the pointer at (mx, my) of its w x h box at
+    // (ax, ay) in the window.
+    public function track(row: int, idx: int, ax: length, ay: length, w: length, h: length, mx: length, my: length) {
+        if row < 0 {
+            return;
+        }
+        if mx >= 0 && my >= 0 && mx < w && my < h {
+            root.out = false;
+            return;
+        }
+        if root.is-focus(row, idx) {
+            root.px = ax + mx;
+            root.py = ay + my;
+            root.out = true;
+        }
+    }
+
+    // The pointer of a drag is over block (row, idx) of h at ay.
+    pure public function over(row: int, ay: length, h: length) -> bool {
+        return row >= 0 && root.active && root.out && !root.handing && root.py >= ay && root.py < ay + h;
+    }
+
+    // Hands the drag to block (row, idx) at (x, y) in the window.
+    public function reach(row: int, idx: int, x: length, y: length) {
+        if root.handing || root.is-focus(row, idx) {
+            return;
+        }
+        root.f-row = row;
+        root.f-idx = idx;
+        root.pin = true;
+        root.handing = true;
+        root.out = false;
+        root.hand-off(x, y, x, y);
+    }
+
+    // A drag on a step line starts a selection in its text at `press`.
+    public function lift(row: int, idx: int, press-x: length, press-y: length, x: length, y: length) {
+        root.active = true;
+        root.a-row = row;
+        root.a-idx = idx;
+        root.f-row = row;
+        root.f-idx = idx;
+        root.pin = false;
+        root.handing = true;
+        root.out = false;
+        root.hand-off(press-x, press-y, x, y);
+    }
+}

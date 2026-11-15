@@ -68,7 +68,7 @@ pub(crate) fn row(item: i32, kind: &str, text: &str) -> MsgRow {
 }
 
 /// A tool card through the real mapping, opened.
-fn tool(item: i32, name: &str, arguments: &str, output: Option<&str>) -> MsgRow {
+pub(crate) fn tool(item: i32, name: &str, arguments: &str, output: Option<&str>) -> MsgRow {
     let tool = fast_harness_core::view::Item::Tool {
         id: format!("t{item}"),
         name: name.into(),
