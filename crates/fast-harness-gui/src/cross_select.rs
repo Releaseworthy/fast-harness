@@ -32,9 +32,21 @@ pub fn attach(ui: &MainWindow) {
     let shared = parts.clone();
     global.on_cleared(move || shared.borrow_mut().clear());
     let weak = ui.as_weak();
+    let shared = parts.clone();
     global.on_copy(move || match weak.upgrade() {
-        Some(ui) => joined(&parts.borrow(), &Range::of(&ui)).into(),
+        Some(ui) => joined(&shared.borrow(), &Range::of(&ui)).into(),
         None => Default::default(),
+    });
+    let weak = ui.as_weak();
+    let shared = parts.clone();
+    global.on_left(move || {
+        let (weak, shared) = (weak.clone(), shared.clone());
+        // Deferred: a block the same event focuses sets `held` after this.
+        slint::Timer::single_shot(Duration::ZERO, move || {
+            if let Some(ui) = weak.upgrade() {
+                end_if_left(&ui, &shared);
+            }
+        });
     });
     let weak = ui.as_weak();
     global.on_hand_off(move |px, py, mx, my| {
@@ -59,6 +71,26 @@ fn hand_off(ui: &MainWindow, press: LogicalPosition, to: LogicalPosition) {
         window.dispatch_event(WindowEvent::PointerMoved { position: to });
     }
     ui.global::<CrossSelect>().set_handing(false);
+}
+
+/// Ends the selection when no block of the chat took the focus its focus
+/// block lost, unless the window itself lost it (an Alt+Tab keeps it, as a
+/// TextInput keeps its selection then, i-slint-core 1.18.1 items/text.rs).
+fn end_if_left(ui: &MainWindow, parts: &Parts) {
+    let global = ui.global::<CrossSelect>();
+    if global.get_held() || global.get_handing() || !window_active(ui) {
+        return;
+    }
+    global.set_active(false);
+    global.set_out(false);
+    parts.borrow_mut().clear();
+}
+
+/// Whether the native window has the keyboard focus (true without one, as
+/// in the headless tests).
+fn window_active(ui: &MainWindow) -> bool {
+    use slint::winit_030::WinitWindowAccessor;
+    ui.window().with_winit_window(|native| native.has_focus()).unwrap_or(true)
 }
 
 /// The selection's ends in block order: (row, idx, byte offset).

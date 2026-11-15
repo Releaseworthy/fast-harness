@@ -78,6 +78,8 @@ export component Ghost inherits TextInput {
             CrossSelect.f-row = root.sel-row;
             CrossSelect.f-idx = root.idx;
             self.set-selection-offsets(CrossSelect.edge(root.sel-row, root.idx), self.cursor-position-byte-offset);
+        } else if root.focus-block && CrossSelect.spans() {
+            // The window is active again: the selection is unchanged.
         } else {
             CrossSelect.cleared();
             CrossSelect.active = true;
@@ -88,12 +90,20 @@ export component Ghost inherits TextInput {
             CrossSelect.a-off = self.anchor-position-byte-offset;
             CrossSelect.out = false;
         }
+        CrossSelect.held = true;
         CrossSelect.f-off = self.cursor-position-byte-offset;
         CrossSelect.put(root.sel-row, root.idx, root.text);
     }
+    function lost() {
+        if root.sel-row >= 0 && root.focus-block {
+            CrossSelect.held = false;
+            CrossSelect.left();
+        }
+        root.show();
+    }
     init => { root.show(); }
     changed has-focus => {
-        if self.has-focus { root.gained(); } else { root.show(); }
+        if self.has-focus { root.gained(); } else { root.lost(); }
     }
     changed start => { root.show(); }
     changed end => { root.show(); }

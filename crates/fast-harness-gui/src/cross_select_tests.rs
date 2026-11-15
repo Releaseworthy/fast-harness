@@ -240,6 +240,47 @@ fn a_drag_selects_from_a_user_message_into_the_reply() {
 /// A point inside the user's bubble text.
 const ASK_X: f32 = 700.0;
 
+const LAST: &str = "Last I read the first lines of the file.";
+const NEXT: &str = "Here is the answer in short words.";
+
+/// A tool row folded under its step line `summary`.
+fn stepped(item: i32, summary: &str) -> crate::MsgRow {
+    crate::MsgRow {
+        step_summary: summary.into(),
+        step_kind: "read".into(),
+        step_head: item,
+        folded: true,
+        ..tool(item, "read", r#"{"path":"src/a.rs"}"#, Some("1: x"))
+    }
+}
+
+/// The owner's drag, 2026-11-15: from a reply down over a folded step line
+/// into the next reply copied "es\nHere is t" (the step line took the
+/// anchor).
+#[test]
+fn a_drag_over_a_step_line_keeps_the_replys_part() {
+    let rows = vec![row(0, "assistant", LAST), stepped(1, "Read files"), row(2, "assistant", &format!("{NEXT}\n\n{P2}"))];
+    let chat = chat(rows);
+    let (top, next) = (chat.top(0), chat.top(2));
+    drag(&chat, (440.0, top + 10.0), (380.0, next + 9.0));
+    shot(&chat.window, "cross-select-step-line");
+    assert_spans(&chat.copy(), LAST, &["Read files"], NEXT);
+}
+
+/// The real window, 2026-11-15: a click outside the blocks (the composer) took the
+/// focus, the focus block's part vanished and every other part stayed lit.
+#[test]
+fn a_click_outside_the_chat_blocks_clears_the_whole_selection() {
+    use slint::ComponentHandle;
+    let chat = chat(vec![row(0, "user", "Why?"), row(1, "assistant", &reply())]);
+    let top = chat.top(1);
+    drag(&chat, (360.0, top + 10.0), (390.0, top + LI1_DY));
+    assert!(!chat.copy().is_empty(), "the drag selected nothing");
+    click(&chat, 600.0, 615.0, false);
+    let global = chat.ui.global::<crate::CrossSelect>();
+    assert!(!global.get_active(), "the parts stayed selected");
+}
+
 /// Moves the pointer from `from` to `to` in 10 steps, no button.
 fn sweep(chat: &Chat, from: (f32, f32), to: (f32, f32)) {
     for i in 0..=10 {

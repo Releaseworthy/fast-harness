@@ -31,6 +31,11 @@ export global CrossSelect {
     // focus, move its anchor to its edge toward the anchor block.
     in-out property <bool> handing;
     in-out property <bool> pin;
+    // A block of the chat holds the focus; the focus block losing it calls
+    // `left`, and src/cross_select.rs ends the selection when no block took
+    // the focus (a click on empty space) and the window is still active.
+    in-out property <bool> held;
+    callback left();
     // A block in the range shows its text (for copy); a fresh press clears
     // them; `copy` returns the joined selection; `hand-off(press, move)`.
     callback put(int, int, string);
@@ -89,6 +94,14 @@ export global CrossSelect {
     // The pointer of a drag is over block (row, idx) of h at ay.
     pure public function over(row: int, ay: length, h: length) -> bool {
         return row >= 0 && root.active && root.out && !root.handing && root.py >= ay && root.py < ay + h;
+    }
+
+    // A hand-off to block (row, idx) is pending: a step or detail line's
+    // toggle area steps aside so the re-press reaches the line's ghost (it
+    // took the press and its `lift` moved the anchor into the line, the
+    // owner's drag over "Read files", 2026-11-15).
+    pure public function taking(row: int, idx: int) -> bool {
+        return root.handing && root.is-focus(row, idx);
     }
 
     // Hands the drag to block (row, idx) at (x, y) in the window.
