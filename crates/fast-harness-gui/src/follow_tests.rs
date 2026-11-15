@@ -65,6 +65,8 @@ fn a_new_row_glides_into_view() {
     let between = seen
         .iter()
         .filter(|y| **y > start + 0.5 && **y < last - 0.5);
-    assert!(between.count() >= 3, "it moves over frames: {seen:?}");
+    // A jump shows no frame between; a loaded test run draws few frames in
+    // the glide's 150 ms (two under `cargo test --workspace`), so one will do.
+    assert!(between.count() >= 1, "it moves over frames: {seen:?}");
     assert!(ui.get_transcript_follow(), "still following");
 }
