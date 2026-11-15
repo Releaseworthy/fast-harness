@@ -9,10 +9,10 @@ import { Ghost, CrossSelect } from "selectable.slint";
 import { MdBlock, MdRow, MdCell } from "types.slint";
 
 // Inline markdown, wrapped. StyledText takes every press (i-slint-core
-// 1.18.1 items/text.rs), so a block with `plain` text (no link: src/
-// markdown.rs leaves it empty when one would lose its click) is selected
-// through a Ghost of that text (ui/selectable.slint) while hovered or
-// focused. Plain text can wrap apart from the styled one (bold, code), so
+// 1.18.1 items/text.rs), so a block with `plain` text is selected through
+// a Ghost of that text (ui/selectable.slint) while hovered or focused; the
+// ghost takes a link's click too, so it opens the link itself (`links`,
+// ui/cross_select.slint `armed`). Plain text can wrap apart from the styled one (bold, code), so
 // while the ghost holds a selection it draws its own text and the
 // StyledText hides; otherwise the ghost is transparent.
 component MdText inherits TouchArea {
@@ -21,9 +21,14 @@ component MdText inherits TouchArea {
     in property <length> size: Theme.font-m;
     in property <int> weight: 400;
     // Its place in the chat's selection (ui/cross_select.slint); a block
-    // with a link has no ghost, so it stays out (row -1).
+    // with no plain text has no ghost, so it stays out (row -1).
     in property <int> sel-row: -1;
     in property <int> idx;
+    in property <string> links;
+    in property <string> sep: "\n";
+    // A table cell: its row's cells share their y range, so a drag enters
+    // it by x too.
+    in property <bool> by-x;
     callback link(string);
     property <bool> focused;
     property <bool> selecting;
@@ -33,7 +38,7 @@ component MdText inherits TouchArea {
     // `selecting` can be stale and the text hides only while it shows.
     property <bool> shown: root.plain != "" && (root.has-hover || root.focused || CrossSelect.within(root.group, root.idx));
     property <bool> inked: root.selecting && root.shown;
-    property <bool> over: CrossSelect.over(root.group, self.absolute-position.y, self.height);
+    property <bool> over: CrossSelect.over(root.group, self.absolute-position.y, self.height) && (!root.by-x || CrossSelect.beside(self.absolute-position.x, self.width));
     function track() {
         CrossSelect.track(root.group, root.idx, self.absolute-position.x, self.absolute-position.y, self.width, self.height, self.mouse-x, self.mouse-y);
     }
@@ -65,6 +70,8 @@ component MdText inherits TouchArea {
         ink: root.inked;
         sel-row: root.group;
         idx: root.idx;
+        links: root.links;
+        sep: root.sep;
         init => {
             root.focused = self.has-focus;
             root.selecting = self.selecting;
@@ -92,6 +99,7 @@ component MdItem inherits Rectangle {
         MdText {
             text: root.block.text;
             plain: root.block.plain;
+            links: root.block.links;
             sel-row: root.sel-row;
             idx: root.idx;
             link(url) => { root.link(url); }
@@ -112,6 +120,9 @@ component MdRule inherits Rectangle {
 // One table cell: its column's share of the width, a line on its right.
 component MdCellView inherits Rectangle {
     in property <MdCell> cell;
+    in property <int> sel-row: -1;
+    in property <int> idx;
+    in property <string> sep;
     callback link(string);
     HorizontalLayout {
         padding-left: Theme.space-s;
@@ -120,6 +131,12 @@ component MdCellView inherits Rectangle {
         padding-bottom: Theme.space-xs;
         MdText {
             text: root.cell.text;
+            plain: root.cell.plain;
+            links: root.cell.links;
+            sel-row: root.sel-row;
+            idx: root.idx;
+            sep: root.sep;
+            by-x: true;
             size: Theme.font-s;
             link(url) => { root.link(url); }
         }
@@ -132,12 +149,19 @@ component MdCellView inherits Rectangle {
 }
 
 // One table row: the header tinted, every other body row striped.
+// `base` is its first cell's place in the chat's selection; cells copy
+// tab-separated, a row per line.
 component MdRowView inherits Rectangle {
     in property <MdRow> data;
+    in property <int> sel-row: -1;
+    in property <int> base;
     callback link(string);
     background: root.data.head ? Theme.code : root.data.odd ? Theme.hover.with-alpha(0.5) : transparent;
     HorizontalLayout {
-        for cell in root.data.cells: MdCellView {
+        for cell[c] in root.data.cells: MdCellView {
+            sel-row: root.sel-row;
+            idx: root.base + c;
+            sep: c > 0 ? "\u{9}" : "\n";
             // Widths by column share: nothing preferred, stretched by share.
             min-width: 0px;
             preferred-width: 0px;
@@ -154,13 +178,19 @@ component MdRowView inherits Rectangle {
 }
 
 // A table: rows of cells sized by their column's share, a frame around.
+// A table's cells follow its block (`idx`) in the chat's selection: row r,
+// column c at idx + 1 + r * 256 + c (MdReply leaves 65536 per block).
 component MdTable inherits Rectangle {
     in property <[MdRow]> rows;
+    in property <int> sel-row: -1;
+    in property <int> idx;
     callback link(string);
     border-radius: Theme.radius-s;
     VerticalLayout {
-        for row in root.rows: MdRowView {
+        for row[r] in root.rows: MdRowView {
             data: row;
+            sel-row: root.sel-row;
+            base: root.idx + 1 + r * 256;
             link(url) => { root.link(url); }
         }
     }
@@ -192,6 +222,7 @@ export component MdBlockView inherits Rectangle {
             if root.block.kind == "p": MdText {
                 text: root.block.text;
                 plain: root.block.plain;
+                links: root.block.links;
                 sel-row: root.sel-row;
                 idx: root.idx;
                 link(url) => { root.link(url); }
@@ -199,6 +230,7 @@ export component MdBlockView inherits Rectangle {
             if root.block.kind == "h": MdText {
                 text: root.block.text;
                 plain: root.block.plain;
+                links: root.block.links;
                 sel-row: root.sel-row;
                 idx: root.idx;
                 weight: 700;
@@ -215,6 +247,8 @@ export component MdBlockView inherits Rectangle {
             if root.block.kind == "rule": MdRule { }
             if root.block.kind == "table": MdTable {
                 rows: root.block.rows;
+                sel-row: root.sel-row;
+                idx: root.idx;
                 link(url) => { root.link(url); }
             }
         }
@@ -224,7 +258,8 @@ export component MdBlockView inherits Rectangle {
 // A reply: its blocks in order.
 export component MdReply inherits Rectangle {
     in property <[MdBlock]> blocks;
-    // The transcript item, for the chat's selection.
+    // The transcript item, for the chat's selection; block i is at
+    // i * 65536, room for a table's cells after it (MdTable).
     in property <int> sel-row: -1;
     callback link(string);
     VerticalLayout {
@@ -232,7 +267,7 @@ export component MdReply inherits Rectangle {
         for block[i] in root.blocks: MdBlockView {
             block: block;
             sel-row: root.sel-row;
-            idx: i;
+            idx: i * 65536;
             link(url) => { root.link(url); }
         }
     }

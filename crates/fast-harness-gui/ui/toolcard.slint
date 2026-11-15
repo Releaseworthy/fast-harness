@@ -214,8 +214,8 @@ component MoreLink inherits HorizontalLayout {
 // the lines or the text; collapsed it shows the previews.
 export component ToolBody {
     in property <ToolView> tool;
-    // The transcript item, for the chat's selection: fields from 1, lines
-    // from 1000 (the detail line is 0).
+    // The transcript item, for the chat's selection: fields from 8, lines
+    // from 1000 (the detail line is 0, the header 1 to 3).
     in property <int> sel-row: -1;
     in property <bool> expanded;
     in property <bool> show-link: true;
@@ -232,7 +232,7 @@ export component ToolBody {
                 kind-color: root.tint;
             }
         }
-        for field[i] in root.tool.fields: FieldRow { field: field; expanded: root.expanded; sel-row: root.sel-row; idx: 1 + i; }
+        for field[i] in root.tool.fields: FieldRow { field: field; expanded: root.expanded; sel-row: root.sel-row; idx: 8 + i; }
         if root.tool.lines.length > 0: CodeView {
             lines: root.expanded ? root.tool.lines : root.tool.lines-preview;
             two-numbers: root.tool.two-numbers;
@@ -325,37 +325,55 @@ component ToolHead inherits HorizontalLayout {
     in property <string> caption;
     in property <bool> copy-link;
     in property <string> approval;
+    in property <int> sel-row: -1;
     callback copy();
     property <color> tint: ToolStyle.color(root.tool.kind);
     property <bool> path: ToolStyle.path-kind(root.tool.kind);
     spacing: Theme.space-s;
     ToolTile { kind: root.tool.kind; }
     Rectangle { width: Theme.space-xs; }
-    Text {
+    // The name and target are selectable (GhostText; the owner 2026-11-15):
+    // places 1 to 3 of the card's row in the chat's selection, copied
+    // space-separated; side by side, so a drag enters them by x.
+    GhostText {
         text: root.tool.name;
         color: root.tint;
         font-family: Theme.mono;
         font-size: Theme.font-s;
         font-weight: 600;
-        vertical-alignment: center;
+        valign: center;
+        wrap: no-wrap;
+        sel-row: root.sel-row;
+        idx: 1;
+        by-x: true;
     }
-    Text {
+    GhostText {
         text: root.tool.target;
         color: Theme.text;
         font-family: ToolStyle.mono-kind(root.tool.kind) ? Theme.mono : "";
         font-size: Theme.font-s + 1px;
         font-weight: 600;
         overflow: elide;
-        vertical-alignment: center;
+        valign: center;
+        wrap: no-wrap;
         horizontal-stretch: root.path ? 0 : 1;
+        sel-row: root.sel-row;
+        idx: 2;
+        sep: " ";
+        by-x: true;
     }
-    if root.path: Text {
+    if root.path: GhostText {
         text: root.tool.target-dir;
         color: Theme.dim;
         font-size: Theme.font-s;
         overflow: elide;
-        vertical-alignment: center;
+        valign: center;
+        wrap: no-wrap;
         horizontal-stretch: 1;
+        sel-row: root.sel-row;
+        idx: 3;
+        sep: " ";
+        by-x: true;
     }
     if root.caption != "": Text {
         text: root.caption;
@@ -443,6 +461,7 @@ export component ToolFrame inherits Rectangle {
             caption: root.caption;
             copy-link: root.copy-link;
             approval: root.approval;
+            sel-row: root.sel-row;
             copy => { root.copy(); }
         }
         // One line per output line, never wrapped: the row grows by whole

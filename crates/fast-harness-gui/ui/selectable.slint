@@ -45,6 +45,11 @@ export component Ghost inherits TextInput {
     in property <bool> ink;
     in property <int> sel-row: -1;
     in property <int> idx;
+    // The separator before its text in a copy over several blocks.
+    in property <string> sep: "\n";
+    // Its links (src/plain_text.rs `encode`): a press on one with no
+    // selection arms the link (`CrossSelect.armed`), a drag disarms it.
+    in property <string> links;
     out property <bool> selecting: self.anchor-position-byte-offset != self.cursor-position-byte-offset;
     property <bool> focus-block: CrossSelect.is-focus(root.sel-row, root.idx);
     property <bool> part: CrossSelect.within(root.sel-row, root.idx) && !root.focus-block;
@@ -64,7 +69,7 @@ export component Ghost inherits TextInput {
             self.set-selection-offsets(root.start, root.end);
         }
         if root.part {
-            CrossSelect.put(root.sel-row, root.idx, root.text);
+            CrossSelect.put(root.sel-row, root.idx, root.text, root.sep);
         }
     }
     function gained() {
@@ -92,7 +97,13 @@ export component Ghost inherits TextInput {
         }
         CrossSelect.held = true;
         CrossSelect.f-off = self.cursor-position-byte-offset;
-        CrossSelect.put(root.sel-row, root.idx, root.text);
+        CrossSelect.put(root.sel-row, root.idx, root.text, root.sep);
+        root.arm();
+    }
+    function arm() {
+        if root.links != "" && self.has-focus {
+            CrossSelect.armed = root.selecting ? "" : CrossSelect.link-at(root.links, self.cursor-position-byte-offset);
+        }
     }
     function lost() {
         if root.sel-row >= 0 && root.focus-block {
@@ -110,6 +121,7 @@ export component Ghost inherits TextInput {
     changed part => { root.show(); }
     changed text => { root.show(); }
     changed cursor-position-byte-offset => {
+        root.arm();
         if self.has-focus && root.focus-block {
             CrossSelect.f-off = self.cursor-position-byte-offset;
         }
@@ -153,9 +165,12 @@ export component GhostText inherits TouchArea {
     in property <TextVerticalAlignment> valign: top;
     in property <int> sel-row: -1;
     in property <int> idx;
+    in property <string> sep: "\n";
+    // Blocks side by side (a tool card's header): a drag enters by x too.
+    in property <bool> by-x;
     out property <bool> selecting;
     property <bool> focused;
-    property <bool> over: CrossSelect.over(root.sel-row, self.absolute-position.y, self.height);
+    property <bool> over: CrossSelect.over(root.sel-row, self.absolute-position.y, self.height) && (!root.by-x || CrossSelect.beside(self.absolute-position.x, self.width));
     function track() {
         CrossSelect.track(root.sel-row, root.idx, self.absolute-position.x, self.absolute-position.y, self.width, self.height, self.mouse-x, self.mouse-y);
     }
@@ -191,6 +206,7 @@ export component GhostText inherits TouchArea {
         vertical-alignment: root.valign;
         sel-row: root.sel-row;
         idx: root.idx;
+        sep: root.sep;
         changed has-focus => { root.focused = self.has-focus; }
         changed selecting => { root.selecting = self.selecting; }
     }

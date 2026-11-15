@@ -164,6 +164,10 @@ fn keep_size(window: &slint::Window, mut writer: InnerSizeWriter) {
 }
 
 fn on_event(ui: &MainWindow, window: &slint::Window, event: &WindowEvent) -> EventResult {
+    use slint::winit_030::winit::event::{ElementState, MouseButton};
+    if let WindowEvent::MouseInput { state: ElementState::Released, button: MouseButton::Left, .. } = event {
+        crate::cross_select::released(ui);
+    }
     match kind(event) {
         Kind::Drop(path) => {
             crate::images_view::dropped(path);

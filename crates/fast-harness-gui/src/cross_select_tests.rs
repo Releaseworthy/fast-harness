@@ -25,7 +25,7 @@ fn at(x: f32, y: f32) -> LogicalPosition {
 }
 
 /// A left-button drag from `from` to `to` in 12 moves, hovering first.
-fn drag(chat: &Chat, from: (f32, f32), to: (f32, f32)) {
+pub(super) fn drag(chat: &Chat, from: (f32, f32), to: (f32, f32)) {
     let window = &chat.window;
     let button = PointerEventButton::Left;
     window.dispatch_event(WindowEvent::PointerMoved { position: at(from.0, from.1) });
@@ -117,7 +117,7 @@ const CODE_STEP: f32 = 18.0;
 fn joined_takes_the_ends_parts_and_whole_blocks_between() {
     let parts = [((1, 0), "abc def"), ((1, 1), "ghi"), ((2, -1), "jkl mno")]
         .into_iter()
-        .map(|(k, v)| (k, v.to_string()))
+        .map(|(k, v)| (k, ("\n".to_string(), v.to_string())))
         .collect();
     let range = Range::new((2, -1, 3), (1, 0, 4));
     assert_eq!(joined(&parts, &range), "def\nghi\njkl");
@@ -143,9 +143,12 @@ fn a_drag_from_a_detail_line_selects_into_its_code() {
     shot(&chat.window, "cross-select-detail");
     let got = chat.copy();
     let lines: Vec<&str> = got.lines().collect();
-    assert_eq!(lines.len(), 2, "copied {got:?}");
+    // The detail line's part, the card's header (name, file, folder), then
+    // the code's part.
+    assert_eq!(lines.len(), 3, "copied {got:?}");
     assert!("src/a.rs".ends_with(lines[0]) && !lines[0].is_empty(), "copied {got:?}");
-    assert!(CODE[0].starts_with(lines[1]) && !lines[1].is_empty(), "copied {got:?}");
+    assert_eq!(lines[1], "read a.rs src", "copied {got:?}");
+    assert!(CODE[0].starts_with(lines[2]) && !lines[2].is_empty(), "copied {got:?}");
 }
 
 /// A point on the detail line's target, and the first code line.
