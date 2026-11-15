@@ -406,7 +406,8 @@ impl<H: Host> VirtualList<H> {
             self.shown.set_vec(self.tops.clone());
         }
         let span = list_end::span(&self.tops, self.rows.len(), offset, view);
-        self.set_window(span);
+        list_end::set_window(&self.window, self.span, span);
+        self.span = span;
         if (H::offset(ui) - offset).abs() > 0.01 {
             H::set_offset(ui, offset);
         }
@@ -417,26 +418,6 @@ impl<H: Host> VirtualList<H> {
             H::top_row(ui, H::item(&self.rows[i], i));
         }
         self.background(ui);
-    }
-
-    /// The window's rows: its ends move one row at a time, so the rows
-    /// that stay keep their laid out views.
-    fn set_window(&mut self, (a, b): (usize, usize)) {
-        let (a0, b0) = self.span;
-        let model = &self.window;
-        if model.row_count() != b0 - a0 || b <= a0 || a >= b0 {
-            model.set_vec((a..b).map(|i| i as i32).collect::<Vec<_>>());
-        } else {
-            for _ in b..b0 {
-                model.remove(model.row_count() - 1);
-            }
-            (b0..b).for_each(|i| model.push(i as i32));
-            for _ in a0..a {
-                model.remove(0);
-            }
-            (a..a0).rev().for_each(|i| model.insert(0, i as i32));
-        }
-        self.span = (a, b);
     }
 
     /// Starts or stops the lane that measures the rows not measured yet.

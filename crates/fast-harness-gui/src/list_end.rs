@@ -1,6 +1,25 @@
 //! The virtual list's geometry (`virtual_list`): the rows' tops, the rows
 //! around the view, and the end a following view holds.
 
+use slint::{Model, VecModel};
+
+/// Moves the window's rows from span `old` to `(a, b)`: its ends move one
+/// row at a time, so the rows that stay keep their laid out views.
+pub fn set_window(model: &VecModel<i32>, (a0, b0): (usize, usize), (a, b): (usize, usize)) {
+    if model.row_count() != b0 - a0 || b <= a0 || a >= b0 {
+        model.set_vec((a..b).map(|i| i as i32).collect::<Vec<_>>());
+        return;
+    }
+    for _ in b..b0 {
+        model.remove(model.row_count() - 1);
+    }
+    (b0..b).for_each(|i| model.push(i as i32));
+    for _ in a0..a {
+        model.remove(0);
+    }
+    (a..a0).rev().for_each(|i| model.insert(0, i as i32));
+}
+
 /// Rows laid out above and below the view, in view heights.
 const OVERSCAN: f32 = 0.5;
 
