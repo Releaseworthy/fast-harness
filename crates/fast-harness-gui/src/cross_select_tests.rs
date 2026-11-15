@@ -169,3 +169,83 @@ fn a_click_on_a_detail_line_still_toggles_and_a_drag_does_not() {
     click(&chat, DETAIL_X, top + DETAIL_DY, false);
     assert_eq!(toggles.get(), 1, "a click after the selection did not toggle");
 }
+
+const AFTER: &str = "After the code beta words.";
+
+/// A reply with a fenced code block between two paragraphs.
+fn code_reply() -> String {
+    format!("{P1}\n\n```\n{}\n{}\n```\n\n{AFTER}", CODE[0], CODE[1])
+}
+
+#[test]
+fn a_drag_selects_across_a_replys_code_block() {
+    let chat = chat(vec![row(0, "user", "Why?"), row(1, "assistant", &code_reply())]);
+    let top = chat.top(1);
+    drag(&chat, (360.0, top + 10.0), (390.0, top + AFTER_DY));
+    shot(&chat.window, "cross-select-code-block");
+    assert_spans(&chat.copy(), P1, &[CODE[0], CODE[1]], AFTER);
+}
+
+/// The paragraph after the code block below the reply's top.
+const AFTER_DY: f32 = 100.0;
+
+/// The pixels on the band `y +- 6` that differ from the band's most
+/// common colour (its background): the ink of the text drawn there.
+fn ink(chat: &Chat, y: f32) -> usize {
+    let pixels = chat.pixels();
+    let width = chat.window.size().width as usize;
+    let rows = (y as usize - 6)..(y as usize + 6);
+    let band: Vec<_> = rows.flat_map(|r| pixels[r * width..(r + 1) * width].to_vec()).collect();
+    let mut counts = std::collections::HashMap::new();
+    for p in &band {
+        *counts.entry((p.r, p.g, p.b)).or_insert(0usize) += 1;
+    }
+    let bg = counts.into_iter().max_by_key(|(_, n)| *n).map(|(c, _)| c).unwrap_or_default();
+    let far = |p: &slint::Rgb8Pixel| {
+        let d = |a: u8, b: u8| (a as i32 - b as i32).abs();
+        d(p.r, bg.0) + d(p.g, bg.1) + d(p.b, bg.2) > 60
+    };
+    band.iter().filter(|p| far(p)).count()
+}
+
+#[test]
+fn a_shift_click_that_shrinks_the_selection_keeps_the_dropped_items_text() {
+    let chat = chat(vec![row(0, "user", "Why?"), row(1, "assistant", &reply())]);
+    let top = chat.top(1);
+    let before = ink(&chat, top + LI1_DY);
+    drag(&chat, (360.0, top + 10.0), (390.0, top + LI2_DY));
+    sweep(&chat, (390.0, top + LI2_DY), (380.0, top + P2_DY));
+    click(&chat, 380.0, top + P2_DY, true);
+    sweep(&chat, (380.0, top + P2_DY), (700.0, top + 200.0));
+    shot(&chat.window, "cross-select-shrink");
+    let after = ink(&chat, top + LI1_DY);
+    assert!(after * 5 >= before * 4, "the dropped item lost its text: ink {after} of {before}");
+    assert_spans(&chat.copy(), P1, &[], P2);
+}
+
+/// The second paragraph below the reply's top.
+const P2_DY: f32 = 36.0;
+
+const ASK: &str = "Please read the build log and tell me which test failed first";
+
+#[test]
+fn a_drag_selects_from_a_user_message_into_the_reply() {
+    let chat = chat(vec![row(0, "user", ASK), row(1, "assistant", &reply())]);
+    let (user, top) = (chat.top(0), chat.top(1));
+    drag(&chat, (ASK_X, user + 34.0), (390.0, top + 10.0));
+    shot(&chat.window, "cross-select-user");
+    assert_spans(&chat.copy(), ASK, &[], P1);
+}
+
+/// A point inside the user's bubble text.
+const ASK_X: f32 = 700.0;
+
+/// Moves the pointer from `from` to `to` in 10 steps, no button.
+fn sweep(chat: &Chat, from: (f32, f32), to: (f32, f32)) {
+    for i in 0..=10 {
+        let f = i as f32 / 10.0;
+        let position = at(from.0 + (to.0 - from.0) * f, from.1 + (to.1 - from.1) * f);
+        chat.window.dispatch_event(WindowEvent::PointerMoved { position });
+        pump(&chat.window, 32);
+    }
+}

@@ -27,8 +27,12 @@ component MdText inherits TouchArea {
     callback link(string);
     property <bool> focused;
     property <bool> selecting;
-    property <bool> inked: root.selecting;
     property <int> group: root.plain != "" ? root.sel-row : -1;
+    // The ghost exists; a block that leaves the selection (a Shift+click
+    // that shrinks it) loses its ghost without a `changed selecting`, so
+    // `selecting` can be stale and the text hides only while it shows.
+    property <bool> shown: root.plain != "" && (root.has-hover || root.focused || CrossSelect.within(root.group, root.idx));
+    property <bool> inked: root.selecting && root.shown;
     property <bool> over: CrossSelect.over(root.group, self.absolute-position.y, self.height);
     function track() {
         CrossSelect.track(root.group, root.idx, self.absolute-position.x, self.absolute-position.y, self.width, self.height, self.mouse-x, self.mouse-y);
@@ -50,7 +54,7 @@ component MdText inherits TouchArea {
             link-clicked(url) => { root.link(url); }
         }
     }
-    if root.plain != "" && (root.has-hover || root.focused || CrossSelect.within(root.group, root.idx)): Ghost {
+    if root.shown: Ghost {
         x: label.x;
         y: label.y;
         width: label.width;
@@ -61,6 +65,10 @@ component MdText inherits TouchArea {
         ink: root.inked;
         sel-row: root.group;
         idx: root.idx;
+        init => {
+            root.focused = self.has-focus;
+            root.selecting = self.selecting;
+        }
         changed has-focus => { root.focused = self.has-focus; }
         changed selecting => { root.selecting = self.selecting; }
     }
@@ -203,7 +211,7 @@ export component MdBlockView inherits Rectangle {
                 idx: root.idx;
                 link(url) => { root.link(url); }
             }
-            if root.block.kind == "code": CodeBox { text: root.block.code; }
+            if root.block.kind == "code": CodeBox { text: root.block.code; sel-row: root.sel-row; idx: root.idx; }
             if root.block.kind == "rule": MdRule { }
             if root.block.kind == "table": MdTable {
                 rows: root.block.rows;
