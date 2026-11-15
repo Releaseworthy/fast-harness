@@ -45,6 +45,8 @@ mod read_stream;
 mod read_text;
 mod search_seen;
 mod shell;
+mod shell_hints;
+mod shell_ignored;
 mod shell_live;
 pub mod skills;
 mod text_codec;

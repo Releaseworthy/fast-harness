@@ -98,7 +98,11 @@ impl Tool for ShellTool {
             let timeout = opt_positive(args, "timeout_ms", DEFAULT_TIMEOUT_MS)?;
             Ok((command, timeout.min(MAX_TIMEOUT_MS)))
         });
-        match parsed.and_then(|(command, timeout)| run_shell(command, timeout, ctx)) {
+        let run = |(command, timeout)| {
+            let output = run_shell(command, timeout, ctx)?;
+            Ok(super::shell_hints::annotate(command, ctx.cwd, output))
+        };
+        match parsed.and_then(run) {
             Ok(output) => output,
             Err(message) => ToolOutput::err(message),
         }

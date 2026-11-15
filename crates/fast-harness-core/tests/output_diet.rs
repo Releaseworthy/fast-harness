@@ -187,7 +187,8 @@ fn shell_keeps_head_and_tail_and_spills_the_whole_output() {
     let body = &out.text()[..out.text().len() - note.len()];
     assert!(body.ends_with("[exit code: 1]"), "errors stay at the end");
     let head = body.split("[...").next().unwrap();
-    assert!((1500..=2048).contains(&head.len()), "head {}", head.len());
+    // D89: the head gets the same 25 lines as the tail.
+    assert_eq!(head.lines().count(), 25, "{head}");
 }
 
 #[test]
