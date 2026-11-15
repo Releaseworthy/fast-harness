@@ -176,8 +176,11 @@ export component StatusBar inherits Rectangle {
         Text { text: root.model; font-size: Theme.font-xs; color: Theme.dim; vertical-alignment: center; }
         Text { text: root.account; font-size: Theme.font-xs; color: Theme.dim; vertical-alignment: center; overflow: elide; }
         Rectangle { horizontal-stretch: 1; }
-        Text { text: root.tokens; font-size: Theme.font-xs; color: Theme.dim; vertical-alignment: center; }
-        Text { text: root.timing; font-size: Theme.font-xs; color: Theme.dim; vertical-alignment: center; }
+        // Elided: a text wider than the room sets no minimum width. The
+        // growing token numbers of a running step widened the main card
+        // (840 -> 846 px), the chat re-measured every row and flickered.
+        Text { text: root.tokens; font-size: Theme.font-xs; color: Theme.dim; vertical-alignment: center; overflow: elide; }
+        Text { text: root.timing; font-size: Theme.font-xs; color: Theme.dim; vertical-alignment: center; overflow: elide; }
     }
 }
 

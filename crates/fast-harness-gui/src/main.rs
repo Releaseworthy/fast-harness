@@ -27,6 +27,8 @@ mod drafts_tests;
 #[cfg(test)]
 mod dropdown_tests;
 #[cfg(test)]
+mod flicker_tests;
+#[cfg(test)]
 mod fold_view_tests;
 #[cfg(test)]
 mod follow_tests;
