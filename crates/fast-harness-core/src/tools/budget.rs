@@ -22,9 +22,9 @@ pub const SPILL_MARK: &str = "[full output: ";
 const SHELL_HEAD_SHARE: usize = 4;
 /// Lines the shell keeps from the start of a cut result; the whole text is
 /// in the spill file.
-pub const SHELL_HEAD_LINES: usize = 40;
+pub const SHELL_HEAD_LINES: usize = 20;
 /// Lines the shell keeps from the end of a cut result.
-pub const SHELL_TAIL_LINES: usize = 60;
+pub const SHELL_TAIL_LINES: usize = 30;
 
 /// What the tools of one session share: where spill files go and the read
 /// ranges already returned. A resumed session starts with no ranges.

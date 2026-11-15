@@ -27,11 +27,17 @@ const DRAIN_GRACE: Duration = Duration::from_millis(1500);
 const MAX_CAPTURE: usize = 8 * 1024 * 1024;
 
 /// Makes PowerShell write UTF-8 without colour codes (`$PSStyle` exists
-/// from 7.2 on; Windows PowerShell 5 has none) and stay quiet about progress.
+/// from 7.2 on; Windows PowerShell 5 has none), stay quiet about progress
+/// and format 400 columns wide: the hidden console is 120 wide, so
+/// `Format-Table` cut or wrapped columns. A host without a resizable buffer
+/// keeps its width (the `try`).
 const PWSH_PRELUDE: &str = "[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)\n\
 $OutputEncoding = [Console]::OutputEncoding\n\
 if ($PSStyle) { $PSStyle.OutputRendering = 'PlainText' }\n\
-$ProgressPreference = 'SilentlyContinue'\n";
+$ProgressPreference = 'SilentlyContinue'\n\
+try { $Host.UI.RawUI.BufferSize = [Management.Automation.Host.Size]::new(400, [Math]::Max(1, $Host.UI.RawUI.BufferSize.Height)) } catch {}\n\
+$PSDefaultParameterValues['Out-String:Width'] = 400\n\
+$PSDefaultParameterValues['Out-File:Width'] = 400\n";
 
 pub(crate) struct ShellTool;
 
@@ -314,5 +320,21 @@ mod tests {
             matches!(rendering, "rendering PlainText" | "rendering none"),
             "{text:?}"
         );
+    }
+
+    /// A three-column table of 60-character values stays on one line, as
+    /// in the shell tool's hidden console (`CREATE_NO_WINDOW`) and in Out-String.
+    #[test]
+    fn the_pwsh_prelude_formats_wide_tables_on_one_line() {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        let row = "[pscustomobject]@{A='a'*60; B='b'*60; C='c'*60}";
+        let script = format!("{row} | Format-Table\n{row} | Format-Table | Out-String");
+        let mut cmd = super::shell_command(&script);
+        let out = cmd.creation_flags(CREATE_NO_WINDOW).output().expect("run");
+        let text = String::from_utf8_lossy(&out.stdout);
+        let (a, c) = ("a".repeat(60), "c".repeat(60));
+        let whole = text.lines().filter(|l| l.contains(&a) && l.contains(&c));
+        assert_eq!(whole.count(), 2, "{text}");
     }
 }

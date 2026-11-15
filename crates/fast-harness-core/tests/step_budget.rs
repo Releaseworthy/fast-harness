@@ -1,5 +1,5 @@
-//! D84: read cuts a long line at 800 characters, the shell keeps 40 head
-//! and 60 tail lines, glob and grep show paths relative to a folder `path`,
+//! D84: read cuts a long line at 800 characters, the shell keeps 20 head
+//! and 30 tail lines, glob and grep show paths relative to a folder `path`,
 //! and the calls of one step share `context.stepOutputBytes`.
 
 mod agent_support;
@@ -51,24 +51,24 @@ fn fit_shell(name: &str, full: &str) -> (ToolOutput, Env) {
 }
 
 #[test]
-fn shell_keeps_40_head_and_60_tail_lines_even_under_the_byte_budget() {
+fn shell_keeps_20_head_and_30_tail_lines_even_under_the_byte_budget() {
     let full = numbered(300);
     assert!(full.len() < 8192);
     let (out, _env) = fit_shell("d84-shell-lines", &full);
     let text = out.text();
     assert!(
-        text.starts_with("line 1\n") && text.contains("line 40\n"),
+        text.starts_with("line 1\n") && text.contains("line 20\n"),
         "{text}"
     );
     assert!(
-        !text.contains("line 41\n") && !text.contains("line 240\n"),
+        !text.contains("line 21\n") && !text.contains("line 270\n"),
         "{text}"
     );
     assert!(
-        text.contains("line 241\n") && text.contains("line 300\n"),
+        text.contains("line 271\n") && text.contains("line 300\n"),
         "{text}"
     );
-    assert!(text.contains("[... 200 lines, "), "{text}");
+    assert!(text.contains("[... 250 lines, "), "{text}");
     let spilled = out
         .spilled()
         .expect("the whole output is in the spill file");
@@ -76,7 +76,7 @@ fn shell_keeps_40_head_and_60_tail_lines_even_under_the_byte_budget() {
 }
 
 #[test]
-fn shell_over_the_byte_budget_keeps_at_most_100_lines() {
+fn shell_over_the_byte_budget_keeps_at_most_50_lines() {
     let full = numbered(3000);
     assert!(full.len() > 8192);
     let (out, _env) = fit_shell("d84-shell-bytes", &full);
@@ -85,14 +85,14 @@ fn shell_over_the_byte_budget_keeps_at_most_100_lines() {
         .lines()
         .filter(|l| l.starts_with("line "))
         .count();
-    assert_eq!(kept, 100, "{}", out.text());
+    assert_eq!(kept, 50, "{}", out.text());
     assert!(out.text().contains("line 3000\n"));
-    assert!(out.text().contains("[... 2900 lines, "));
+    assert!(out.text().contains("[... 2950 lines, "));
 }
 
 #[test]
 fn a_short_shell_output_is_not_cut() {
-    let full = numbered(100);
+    let full = numbered(50);
     let (out, _env) = fit_shell("d84-shell-short", &full);
     assert_eq!(out.text(), full);
     assert!(out.spilled().is_none());
