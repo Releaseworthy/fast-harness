@@ -17,14 +17,12 @@ fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
 
 /// Start of the note a spilled result ends with.
 pub const SPILL_MARK: &str = "[full output: ";
-/// The shell keeps a quarter of the room as head (2 KB of 8 KB), the rest
-/// as tail: errors are at the end.
-const SHELL_HEAD_SHARE: usize = 4;
 /// Lines the shell keeps from the start of a cut result; the whole text is
-/// in the spill file.
-pub const SHELL_HEAD_LINES: usize = 20;
+/// in the spill file. Head and tail get the same room (D89): build errors
+/// sit at the start, test failures at the end.
+pub const SHELL_HEAD_LINES: usize = 25;
 /// Lines the shell keeps from the end of a cut result.
-pub const SHELL_TAIL_LINES: usize = 30;
+pub const SHELL_TAIL_LINES: usize = 25;
 
 /// What the tools of one session share: where spill files go and the read
 /// ranges already returned. A resumed session starts with no ranges.
@@ -378,15 +376,16 @@ fn keeps_head_tail(name: &str) -> bool {
     matches!(name, "shell" | "job_output")
 }
 
-/// A quarter of `room` from the start and the rest from the end, at most
-/// [`SHELL_HEAD_LINES`] and [`SHELL_TAIL_LINES`] lines, with a marker
-/// naming the lines and bytes left out.
+/// Half of `room` from the start and the rest (with what the head left
+/// unused) from the end, at most [`SHELL_HEAD_LINES`] and
+/// [`SHELL_TAIL_LINES`] lines, with a marker naming the lines and bytes
+/// left out.
 fn head_tail(text: &str, room: usize) -> String {
     let marker_room = 64;
     let usable = room.saturating_sub(marker_room);
-    let first = first_lines(head(text, usable / SHELL_HEAD_SHARE), SHELL_HEAD_LINES);
+    let first = first_lines(head(text, usable / 2), SHELL_HEAD_LINES);
     let last = last_lines(
-        tail(text, usable - usable / SHELL_HEAD_SHARE),
+        tail(text, usable.saturating_sub(first.len())),
         SHELL_TAIL_LINES,
     );
     let cut = text.len().saturating_sub(first.len() + last.len());

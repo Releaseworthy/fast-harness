@@ -40,9 +40,8 @@ fn binary_output_becomes_a_note() {
         "head -c 5120 /dev/urandom",
     );
     let text = run(command, 60_000).text().into_owned();
-    assert!(text.contains("[binary output, "), "{text}");
-    assert!(text.contains(" bytes omitted]"), "{text}");
-    assert!(text.len() < 400, "{text}");
+    // D89: binary as a whole is one line with the bytes the command wrote.
+    assert_eq!(text, "[binary output, 5120 bytes]\n[exit code: 0]");
 }
 
 #[test]

@@ -1,5 +1,5 @@
-//! D84: read cuts a long line at 800 characters, the shell keeps 20 head
-//! and 30 tail lines, glob and grep show paths relative to a folder `path`,
+//! D84: read cuts a long line at 800 characters, the shell keeps 25 head
+//! and 25 tail lines (D89), glob and grep show paths relative to a folder `path`,
 //! and the calls of one step share `context.stepOutputBytes`.
 
 mod agent_support;
@@ -76,22 +76,43 @@ fn fit_shell(name: &str, full: &str) -> (ToolOutput, Env) {
     (out, env)
 }
 
+/// Owner, 2026-11-15: a step share of 2 KB kept 7 head and 20 tail lines;
+/// build errors sit at the start, so the head gets as much room as the tail.
 #[test]
-fn shell_keeps_20_head_and_30_tail_lines_even_under_the_byte_budget() {
+fn a_small_shell_room_keeps_as_many_head_lines_as_tail_lines() {
+    let full: String = (1..=300)
+        .map(|i| format!("{i:>4} {}\n", "x".repeat(64)))
+        .collect();
+    let env = env("shell-even-split");
+    let cancel = AtomicBool::new(false);
+    let ctx = ToolCtx::new(&env.cwd, &cancel).with_budget(2048);
+    let out = budget::fit("shell", ToolOutput::ok(full), &ctx);
+    let text = out.text();
+    let (head, tail) = text.split_once("[... ").expect("a cut marker");
+    let rows = |part: &str| part.lines().filter(|l| l.ends_with("xxxx")).count();
+    let (head, tail) = (rows(head), rows(tail));
+    assert!(
+        head >= 10 && head + 1 >= tail,
+        "{head} head, {tail} tail:\n{text}"
+    );
+}
+
+#[test]
+fn shell_keeps_25_head_and_25_tail_lines_even_under_the_byte_budget() {
     let full = numbered(300);
     assert!(full.len() < 8192);
     let (out, _env) = fit_shell("d84-shell-lines", &full);
     let text = out.text();
     assert!(
-        text.starts_with("line 1\n") && text.contains("line 20\n"),
+        text.starts_with("line 1\n") && text.contains("line 25\n"),
         "{text}"
     );
     assert!(
-        !text.contains("line 21\n") && !text.contains("line 270\n"),
+        !text.contains("line 26\n") && !text.contains("line 275\n"),
         "{text}"
     );
     assert!(
-        text.contains("line 271\n") && text.contains("line 300\n"),
+        text.contains("line 276\n") && text.contains("line 300\n"),
         "{text}"
     );
     assert!(text.contains("[... 250 lines, "), "{text}");
