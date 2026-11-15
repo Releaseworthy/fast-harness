@@ -177,8 +177,8 @@ fn render(out: Capture, err: Capture, ending: Ending) -> ToolOutput {
             Some(code) => format!("[exit code: {code}]"),
             None => "[exit code: none]".to_string(),
         },
-        Ending::TimedOut(ms, _) => format!("[timed out after {ms} ms; process tree killed]"),
-        Ending::Cancelled(_) => "[cancelled; process tree killed]".to_string(),
+        Ending::TimedOut(ms) => format!("[timed out after {ms} ms; process tree killed]"),
+        Ending::Cancelled => "[cancelled; process tree killed]".to_string(),
     };
     let mut text = problem;
     if !tail.is_empty() {

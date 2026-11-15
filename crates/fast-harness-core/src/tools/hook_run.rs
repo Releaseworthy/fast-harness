@@ -95,8 +95,8 @@ fn execute(
             Some(code) => format!("exit code {code}"),
             None => "exit code none".into(),
         },
-        Ending::TimedOut(ms, _) => format!("timed out after {ms} ms; process tree killed"),
-        Ending::Cancelled(_) => "cancelled; process tree killed".into(),
+        Ending::TimedOut(ms) => format!("timed out after {ms} ms; process tree killed"),
+        Ending::Cancelled => "cancelled; process tree killed".into(),
     };
     Err(match tail(stderr.trim()) {
         "" => problem,

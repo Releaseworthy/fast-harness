@@ -10,7 +10,8 @@ use super::args::{
     cut_chars, display_rel, looks_binary, object_schema, opt_bool, opt_positive, opt_str, req_str,
     resolve, search_base,
 };
-use super::walk::files;
+use super::search_seen::dedupe;
+use super::walk::{walk, Include, Skipped};
 use super::{Effect, Tool, ToolCtx, ToolOutput};
 use crate::llm::ToolSpec;
 
@@ -28,7 +29,8 @@ impl Tool for GrepTool {
         ToolSpec {
             name: "grep".into(),
             description: "Search file contents with a regular expression (Rust regex syntax), \
-                line by line. Respects .gitignore and skips hidden and binary files. Output: \
+                line by line. Skips files .gitignore leaves out, hidden and binary files \
+                (a last line counts them). Output: \
                 matches grouped by file, a path line (relative to the working directory, or \
                 to a folder `path`, named once by a first line) then \
                 \"  line: text\" lines; at most max_results matches, then a count of the rest."
@@ -39,7 +41,9 @@ impl Tool for GrepTool {
                     "path": {"type": "string", "description": "File or directory to search. Default: the working directory."},
                     "glob": {"type": "string", "description": "Only search files matching this glob, e.g. \"*.rs\" or \"src/**/*.ts\"."},
                     "ignore_case": {"type": "boolean", "description": "Case-insensitive match. Default false."},
-                    "max_results": {"type": "integer", "minimum": 1, "description": "Maximum matching lines shown. Default 50."}
+                    "max_results": {"type": "integer", "minimum": 1, "description": "Maximum matching lines shown. Default 50."},
+                    "include_ignored": {"type": "boolean", "description": "Also search files .gitignore leaves out. Default false."},
+                    "include_hidden": {"type": "boolean", "description": "Also search hidden files and folders. Default false."}
                 }),
                 &["pattern"],
             ),
@@ -48,7 +52,7 @@ impl Tool for GrepTool {
 
     fn run(&self, args: &Value, ctx: &ToolCtx<'_>) -> ToolOutput {
         match grep(args, ctx) {
-            Ok(text) => ToolOutput::ok(text),
+            Ok(text) => ToolOutput::ok(dedupe("grep", args, text, ctx)),
             Err(message) => ToolOutput::err(message),
         }
     }
@@ -62,6 +66,8 @@ struct Search {
     shown: usize,
     more: usize,
     more_files: usize,
+    /// Binary files passed over.
+    binary: usize,
 }
 
 fn grep(args: &Value, ctx: &ToolCtx<'_>) -> Result<String, String> {
@@ -84,15 +90,17 @@ fn grep(args: &Value, ctx: &ToolCtx<'_>) -> Result<String, String> {
         shown: 0,
         more: 0,
         more_files: 0,
+        binary: 0,
     };
     let (base, header) = search_base(ctx.cwd, &root);
-    for entry in files(&root, glob)? {
+    let found = walk(&root, glob, include(args)?, ctx.cancel).map_err(|e| format!("grep {e}"))?;
+    for entry in &found.files {
         if ctx.cancel.load(Ordering::Relaxed) {
             return Err("grep cancelled".to_string());
         }
         search_file(&mut search, base, entry.path());
     }
-    match (header, render(&search)) {
+    match (header, render(&search, &found.skipped)) {
         (Some(line), out) if !search.groups.is_empty() => Ok(format!("{line}\n{out}")),
         (_, out) => Ok(out),
     }
@@ -105,6 +113,7 @@ fn search_file(search: &mut Search, base: &Path, path: &Path) {
         return;
     };
     if looks_binary(&bytes) {
+        search.binary += 1;
         return;
     }
     let text = String::from_utf8_lossy(&bytes);
@@ -174,9 +183,21 @@ fn clip(regex: &Regex, line: &str) -> String {
     out.push(']');
     out
 }
-fn render(search: &Search) -> String {
+/// The include_ignored and include_hidden arguments.
+pub(super) fn include(args: &Value) -> Result<Include, String> {
+    Ok(Include {
+        ignored: opt_bool(args, "include_ignored", false)?,
+        hidden: opt_bool(args, "include_hidden", false)?,
+    })
+}
+
+fn render(search: &Search, skipped: &Skipped) -> String {
+    let note = skipped.note(search.binary);
     if search.groups.is_empty() {
-        return "No matches.".to_string();
+        return match note {
+            Some(note) => format!("No matches.\n{note}\n"),
+            None => "No matches.".to_string(),
+        };
     }
     let mut out = String::new();
     for (path, lines) in &search.groups {
@@ -196,6 +217,10 @@ fn render(search: &Search) -> String {
             "[{} more matches in {files}; narrow the pattern, path or glob, or raise max_results]\n",
             search.more
         ));
+    }
+    if let Some(note) = note {
+        out.push_str(&note);
+        out.push('\n');
     }
     out
 }

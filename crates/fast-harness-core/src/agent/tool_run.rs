@@ -336,6 +336,7 @@ fn run_one(
         .with_budget(budget)
         .with_context(context)
         .with_call_id(&call.id)
+        .with_loaded(run.loaded.unwrap_or_default())
         .with_session(run.session)
         .with_progress(progress);
     let gate = |raw: &str| {

@@ -56,6 +56,17 @@ pub fn run(args: &Value, others: &[ToolSpec]) -> ToolOutput {
 /// [`run`] that also matches `skills` (PLAN.md D43): a name or the best
 /// query match returns the skill body as text after the tool lines.
 pub fn run_with(args: &Value, others: &[ToolSpec], skills: &[Skill]) -> ToolOutput {
+    run_loaded(args, others, skills, &[])
+}
+
+/// [`run_with`] where the tools in `loaded` are loaded already: each one
+/// matched gets the line `<name>: already loaded` instead of its schema.
+pub fn run_loaded(
+    args: &Value,
+    others: &[ToolSpec],
+    skills: &[Skill],
+    loaded: &[String],
+) -> ToolOutput {
     let names: Vec<&str> = args
         .get("names")
         .and_then(Value::as_array)
@@ -99,7 +110,14 @@ pub fn run_with(args: &Value, others: &[ToolSpec], skills: &[Skill]) -> ToolOutp
         .and_then(Value::as_u64)
         .unwrap_or(MAX_RESULTS as u64);
     picked.truncate((limit as usize).clamp(1, MAX_LIMIT));
-    let mut text = answer(&picked, &unknown, others, !skilled.is_empty());
+    let (already, picked): (Vec<usize>, Vec<usize>) =
+        (picked.into_iter()).partition(|&i| loaded.iter().any(|name| *name == others[i].name));
+    let found = Found {
+        picked: &picked,
+        already: &already,
+        unknown: &unknown,
+    };
+    let mut text = answer(&found, others, !skilled.is_empty());
     for index in skilled {
         text.push_str("\n\n");
         text.push_str(&skills::body(&skills[index]));
@@ -115,9 +133,10 @@ pub fn run_full(
     others: &[ToolSpec],
     skills: &[Skill],
     mcp: &[ToolSpec],
+    loaded: &[String],
 ) -> ToolOutput {
     if mcp.is_empty() {
-        return run_with(args, others, skills);
+        return run_loaded(args, others, skills, loaded);
     }
     let names: Vec<&str> = (args.get("names").and_then(Value::as_array))
         .map(|list| list.iter().filter_map(Value::as_str).collect())
@@ -138,13 +157,13 @@ pub fn run_full(
     }
     hits.truncate(MAX_RESULTS);
     if hits.is_empty() {
-        return run_with(args, others, skills);
+        return run_loaded(args, others, skills, loaded);
     }
     let mut names = vec!["mcp_describe", "mcp_call"];
     names.extend(rest);
     let mut args = args.clone();
     args["names"] = json!(names);
-    let output = run_with(&args, others, skills);
+    let output = run_loaded(&args, others, skills, loaded);
     let text = output.text().into_owned() + &mcp_lines(&hits, mcp);
     ToolOutput::new(text, output.is_error())
 }
@@ -186,17 +205,30 @@ fn best_skill(query: &str, skills: &[Skill]) -> Option<usize> {
     (score(&words, &specs[best]) >= 2).then_some(best)
 }
 
-fn answer(picked: &[usize], unknown: &[&str], others: &[ToolSpec], skills: bool) -> String {
+/// The tools a find matched: new ones, loaded ones, unknown names.
+struct Found<'a> {
+    picked: &'a [usize],
+    already: &'a [usize],
+    unknown: &'a [&'a str],
+}
+
+fn answer(found: &Found<'_>, others: &[ToolSpec], skills: bool) -> String {
+    let (picked, unknown) = (found.picked, found.unknown);
     let all: Vec<&str> = others.iter().map(|tool| tool.name.as_str()).collect();
     let mut lines = Vec::new();
     if picked.is_empty() && skills {
         lines.push("Skill instructions below (no tool loaded).".to_string());
+    } else if picked.is_empty() && !found.already.is_empty() {
+        // No `Loaded:` line: nothing new to send a schema for.
     } else if picked.is_empty() {
         lines.push(format!("No tool matched. Tools: {}.", all.join(", ")));
     } else {
         let found: Vec<&str> = picked.iter().map(|&i| others[i].name.as_str()).collect();
         lines.push(loaded_line(&found));
         lines.push(CALL_NOW.to_string());
+    }
+    for &index in found.already {
+        lines.push(format!("{}: already loaded", others[index].name));
     }
     if !unknown.is_empty() {
         lines.push(format!("Unknown: {}.", unknown.join(", ")));

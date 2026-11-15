@@ -21,6 +21,7 @@ mod args;
 pub mod ask;
 mod atomic;
 pub mod budget;
+mod clean;
 pub use args::BASE_MARK;
 pub(crate) mod command;
 mod edit;
@@ -38,6 +39,7 @@ pub mod mcp;
 mod output;
 mod read;
 mod read_stream;
+mod search_seen;
 mod shell;
 mod shell_live;
 pub mod skills;
@@ -71,6 +73,9 @@ pub struct ToolCtx<'a> {
     /// `context.dedupeReads`: lines already returned and unchanged answer
     /// `[unchanged since call <id>]`.
     pub dedupe_reads: bool,
+    /// Tools earlier finds loaded: `find_tools` names them as loaded
+    /// instead of sending their schemas again.
+    pub loaded: &'a [String],
     /// Where [`ToolCtx::progress`] goes; `None` outside a session.
     progress: Option<&'a Progress<'a>>,
 }
@@ -90,6 +95,7 @@ impl<'a> ToolCtx<'a> {
             session: None,
             read_head: crate::config::context::DEFAULT_READ_HEAD_BYTES,
             dedupe_reads: true,
+            loaded: &[],
             progress: None,
         }
     }
@@ -125,6 +131,12 @@ impl<'a> ToolCtx<'a> {
     pub fn with_context(mut self, context: &crate::config::context::ContextConfig) -> ToolCtx<'a> {
         self.read_head = context.read_head_bytes;
         self.dedupe_reads = context.dedupe_reads;
+        self
+    }
+
+    /// Names the tools earlier finds loaded.
+    pub fn with_loaded(mut self, loaded: &'a [String]) -> ToolCtx<'a> {
+        self.loaded = loaded;
         self
     }
 
@@ -340,10 +352,11 @@ impl Registry {
             // Not budgeted: the tool lines are short and each skill body is
             // already cut at `skills::SKILL_BYTES` (at most MAX_SKILLS).
             (true, 0) if !self.skills.is_empty() => {
-                let output = find::run_full(&args, &self.specs[1..], &self.skills, &self.mcp);
+                let output =
+                    find::run_full(&args, &self.specs[1..], &self.skills, &self.mcp, ctx.loaded);
                 return filter(&args, output);
             }
-            (true, 0) => find::run_full(&args, &self.specs[1..], &[], &self.mcp),
+            (true, 0) => find::run_full(&args, &self.specs[1..], &[], &self.mcp, ctx.loaded),
             (true, index) => self.tools[index - 1].run(&args, ctx),
             (false, index) => self.tools[index].run(&args, ctx),
         };

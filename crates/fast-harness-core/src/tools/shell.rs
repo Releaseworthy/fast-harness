@@ -10,8 +10,8 @@ use std::time::{Duration, Instant};
 
 use serde_json::{json, Value};
 
-use super::ansi::strip_ansi;
 use super::args::{object_schema, opt_positive, req_str};
+use super::clean::clean_output;
 use super::shell_live::Live;
 use super::{Tool, ToolCtx, ToolOutput};
 use crate::llm::ToolSpec;
@@ -37,7 +37,20 @@ if ($PSStyle) { $PSStyle.OutputRendering = 'PlainText' }\n\
 $ProgressPreference = 'SilentlyContinue'\n\
 try { $Host.UI.RawUI.BufferSize = [Management.Automation.Host.Size]::new(400, [Math]::Max(1, $Host.UI.RawUI.BufferSize.Height)) } catch {}\n\
 $PSDefaultParameterValues['Out-String:Width'] = 400\n\
-$PSDefaultParameterValues['Out-File:Width'] = 400\n";
+$PSDefaultParameterValues['Out-File:Width'] = 400\n\
+$Error.Clear()\n";
+
+/// After the command (stdin is closed and the host non-interactive, so a
+/// prompt fails at once): exit 1 when the last statement failed (what
+/// `-Command` reports anyway) or when any prompt could not be shown
+/// (`Read-Host`, `Get-Credential`, `-Confirm`, a missing mandatory
+/// parameter), even if later statements ran: the command did not get the
+/// input it asked for. Other errors keep pwsh's own rule (a `Write-Error`
+/// or a caught exception mid-script still exits 0); an `exit N` never
+/// reaches this.
+const PWSH_EPILOGUE: &str = "\n$__fhOk = $?\n\
+$__fhPrompt = @($Error | Where-Object { $_.Exception -is [System.Management.Automation.Host.HostException] -or \"$($_.Exception.Message)\" -match 'NonInteractive' -or \"$($_.FullyQualifiedErrorId)\" -like 'MissingMandatoryParameter*' }).Count\n\
+if ($__fhPrompt -or -not $__fhOk) { exit 1 }\n";
 
 pub(crate) struct ShellTool;
 
@@ -94,8 +107,10 @@ impl Tool for ShellTool {
 
 pub(super) enum Ending {
     Exited(ExitStatus),
-    TimedOut(u64, Option<ExitStatus>),
-    Cancelled(Option<ExitStatus>),
+    /// Killed at the deadline after this many ms: no exit code of its own.
+    TimedOut(u64),
+    /// Killed by the cancel flag: no exit code of its own.
+    Cancelled,
 }
 
 #[derive(Default)]
@@ -158,7 +173,7 @@ pub(super) fn shell_command(command: &str) -> Command {
     if cfg!(windows) {
         let mut cmd = Command::new(powershell());
         cmd.args(["-NoLogo", "-NoProfile", "-NonInteractive", "-Command"])
-            .arg(format!("{PWSH_PRELUDE}{command}"));
+            .arg(format!("{PWSH_PRELUDE}{command}{PWSH_EPILOGUE}"));
         cmd
     } else {
         let mut cmd = Command::new("sh");
@@ -233,11 +248,13 @@ pub(super) fn supervise(
             }
         }
         if cancel.load(Ordering::Relaxed) {
-            return Ok(Ending::Cancelled(stop(child, group)));
+            stop(child, group);
+            return Ok(Ending::Cancelled);
         }
         if Instant::now() >= deadline {
             let elapsed = started.elapsed().as_millis() as u64;
-            return Ok(Ending::TimedOut(elapsed, stop(child, group)));
+            stop(child, group);
+            return Ok(Ending::TimedOut(elapsed));
         }
     }
 }
@@ -266,7 +283,7 @@ pub(super) fn drain(rx: &Receiver<Vec<u8>>, capture: &mut Capture) {
 }
 
 fn render(capture: Capture, ending: Ending, timeout_ms: u64) -> ToolOutput {
-    let mut text = strip_ansi(&String::from_utf8_lossy(&capture.bytes)).into_owned();
+    let mut text = clean_output(&capture.bytes);
     if text.is_empty() {
         text.push_str("(no output)");
     }
@@ -279,26 +296,30 @@ fn render(capture: Capture, ending: Ending, timeout_ms: u64) -> ToolOutput {
             capture.dropped
         ));
     }
+    // A killed tree has no exit code of its own: the one the kill gave
+    // (0xF4A50001, -190513151) means nothing to the model.
     let (status, killed) = match ending {
         Ending::Exited(status) => (Some(status), None),
-        Ending::TimedOut(ms, status) => (
-            status,
-            Some(format!(
-                "[timed out after {ms} ms (timeout_ms={timeout_ms}); process tree killed]"
-            )),
-        ),
-        Ending::Cancelled(status) => (status, Some("[cancelled; process tree killed]".into())),
+        Ending::TimedOut(ms) => (None, Some(timed_out(ms, timeout_ms))),
+        Ending::Cancelled => (None, Some("[cancelled; process tree killed]".into())),
     };
     if let Some(note) = &killed {
         text.push_str(note);
         text.push('\n');
     }
     let code = status.and_then(|status| status.code());
+    // `none` is the documented marker of a killed or code-less process.
     match code {
         Some(code) => text.push_str(&format!("[exit code: {code}]")),
         None => text.push_str("[exit code: none]"),
     }
     ToolOutput::new(text, killed.is_some() || code != Some(0))
+}
+
+/// The note of a command killed at its deadline, in seconds.
+fn timed_out(ms: u64, timeout_ms: u64) -> String {
+    let seconds = ms as f64 / 1000.0;
+    format!("[timed out after {seconds:.1} s (timeout_ms={timeout_ms}); process tree killed]")
 }
 
 #[cfg(all(test, windows))]
