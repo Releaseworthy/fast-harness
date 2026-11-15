@@ -12,7 +12,7 @@ use std::sync::Arc;
 
 use agent_support::*;
 use fast_harness_core::agent::{Agent, Conversation};
-use fast_harness_core::config::context::ContextConfig;
+use fast_harness_core::config::context::{ContextConfig, DEFAULT_READ_HEAD_BYTES};
 use fast_harness_core::config::Config;
 use fast_harness_core::http::{ScriptedResponse, ScriptedTransport};
 use fast_harness_core::tools::{builtin, ToolCtx, ToolSession};
@@ -40,7 +40,7 @@ fn a_read_without_a_range_is_a_head_that_names_the_line_count() {
     std::fs::write(env.cwd.join("f.rs"), code(1000)).unwrap();
     let context = ContextConfig::default();
     let head = read_with(&env.cwd, json!({"path": "f.rs"}), &context);
-    assert!(head.len() <= 4096, "{}", head.len());
+    assert!(head.len() <= DEFAULT_READ_HEAD_BYTES, "{}", head.len());
     let shown = head.lines().count() - 1;
     let last = head.lines().last().unwrap();
     let expect = format!(
@@ -276,14 +276,20 @@ fn a_read_overlapping_earlier_reads_returns_only_the_new_lines() {
     let tail = read("c4", 100, 26);
     assert_eq!(numbers(&tail), (100..=119).collect::<Vec<_>>());
     assert!(
-        tail.ends_with("[already shown, unchanged: lines 120-125 (call c3)]\n"),
+        tail.ends_with(
+            "[already shown, unchanged: lines 120-125 (call c3)]\n\
+             [lines 100 to 125 of 300; continue with offset 126]\n"
+        ),
         "{tail}"
     );
     // Earlier reads at both ends: only the gap between them comes back.
     let gap = read("c5", 1, 139);
     assert_eq!(numbers(&gap), (81..=99).collect::<Vec<_>>());
     assert!(gap.starts_with("[already shown, unchanged: lines 1-80 (call c1, c2)]\n"));
-    assert!(gap.ends_with("[already shown, unchanged: lines 100-139 (call c3, c4)]\n"));
+    assert!(gap.ends_with(
+        "[already shown, unchanged: lines 100-139 (call c3, c4)]\n\
+         [lines 1 to 139 of 300; continue with offset 140]\n"
+    ));
     assert_eq!(
         read("c6", 1, 139),
         "[unchanged since call c1, c2, c5, c4, c3]"
@@ -298,5 +304,7 @@ fn a_read_overlapping_earlier_reads_returns_only_the_new_lines() {
     assert_eq!(read("c10", 295, 50), "[unchanged since call c9]");
     let past_end = read("c11", 280, 50);
     assert_eq!(numbers(&past_end), (280..=289).collect::<Vec<_>>());
-    assert!(past_end.ends_with("[already shown, unchanged: lines 290-end (call c9)]\n"));
+    assert!(past_end.ends_with(
+        "[already shown, unchanged: lines 290-end (call c9)]\n[lines 280 to 301 of 301]\n"
+    ));
 }

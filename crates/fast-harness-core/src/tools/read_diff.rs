@@ -1,5 +1,5 @@
 //! `read` of a range the session already returned whose file changed since
-//! (someone else's change; the agent's own edits move its ranges along):
+//! (someone else's change, or the agent's own edits since that read, D87):
 //! only the changed lines come back, numbered, with a note.
 
 use super::budget::{ReadKey, ToolSession};

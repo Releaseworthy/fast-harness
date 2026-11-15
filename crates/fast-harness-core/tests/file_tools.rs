@@ -30,7 +30,7 @@ fn numbered(count: usize) -> String {
 }
 
 #[test]
-fn an_own_edit_or_a_touch_keeps_a_reread_unchanged_and_others_changes_come_alone() {
+fn an_own_edit_comes_back_changed_a_touch_keeps_a_reread_unchanged_and_others_changes_come_alone() {
     let env = env("ft-dedupe");
     let file = env.cwd.join("a.txt");
     std::fs::write(&file, numbered(50)).unwrap();
@@ -40,14 +40,17 @@ fn an_own_edit_or_a_touch_keeps_a_reread_unchanged_and_others_changes_come_alone
     let edit = json!({"path": "a.txt", "old_string": "line 10\n", "new_string": "ten\nmore\n"});
     let out = call(&session, &env.cwd, "c2", "edit", edit);
     assert!(!out.is_error(), "{}", out.text());
-    assert_eq!(read("c3"), "[unchanged since call c1, c2]");
+    // The own edit's lines come back (D87), then the range is unchanged.
+    let reread = read("c3");
+    assert!(reread.starts_with("[changed since call c1:"), "{reread}");
+    assert!(reread.ends_with("]\n10: ten\n11: more\n"), "{reread}");
     // Same content, a later modified time: still unchanged.
     let touched = std::fs::OpenOptions::new().write(true).open(&file).unwrap();
     touched
         .set_modified(SystemTime::now() + Duration::from_secs(60))
         .unwrap();
     drop(touched);
-    assert_eq!(read("c4"), "[unchanged since call c1, c2]");
+    assert_eq!(read("c4"), "[unchanged since call c1, c3]");
     // Someone else changes line 30: only that line comes back.
     let other = std::fs::read_to_string(&file)
         .unwrap()
@@ -55,11 +58,11 @@ fn an_own_edit_or_a_touch_keeps_a_reread_unchanged_and_others_changes_come_alone
     std::fs::write(&file, other).unwrap();
     let diff = read("c5");
     assert!(
-        diff.starts_with("[changed since call c1, c2: only the changed lines"),
+        diff.starts_with("[changed since call c1, c3: only the changed lines"),
         "{diff}"
     );
     assert!(diff.ends_with("]\n31: thirty\n"), "{diff}");
-    assert_eq!(read("c6"), "[unchanged since call c1, c2, c5]");
+    assert_eq!(read("c6"), "[unchanged since call c1, c3, c5]");
 }
 
 #[test]
