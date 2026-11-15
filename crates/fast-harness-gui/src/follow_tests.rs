@@ -2,7 +2,7 @@
 //! down to within a line of the end follows again, and a new row at the
 //! end of a following chat glides into view instead of jumping.
 
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use slint::platform::WindowEvent;
 use slint::{LogicalPosition, Rgb8Pixel};
@@ -46,17 +46,21 @@ fn a_scroll_down_near_the_end_follows_again() {
 fn a_new_row_glides_into_view() {
     let (window, ui, rows) = following();
     let start = ui.get_chat_offset();
+    // The glide reads a set clock, 8 ms a frame: no wall time involved.
+    let t0 = Instant::now();
+    crate::glide::set_clock(Some(t0));
     rows.push(row("assistant", &"A new step line.\n\n".repeat(12)));
     let mut seen = vec![start];
     let mut buffer = vec![Rgb8Pixel { r: 0, g: 0, b: 0 }; 1100 * 760];
-    for _ in 0..40 {
-        std::thread::sleep(Duration::from_millis(8));
+    for frame in 1..=60 {
+        crate::glide::set_clock(Some(t0 + Duration::from_millis(8 * frame)));
         slint::platform::update_timers_and_animations();
+        ui.invoke_chat_sync();
         window.request_redraw();
         window.draw_if_needed(|renderer| {
             renderer.render(&mut buffer, 1100);
-            seen.push(ui.get_chat_offset());
         });
+        seen.push(ui.get_chat_offset());
     }
     let last = *seen.last().expect("frames");
     assert!(last > start + 100.0, "it shows the new row: {seen:?}");
@@ -65,8 +69,7 @@ fn a_new_row_glides_into_view() {
     let between = seen
         .iter()
         .filter(|y| **y > start + 0.5 && **y < last - 0.5);
-    // A jump shows no frame between; a loaded test run draws few frames in
-    // the glide's 150 ms (two under `cargo test --workspace`), so one will do.
-    assert!(between.count() >= 1, "it moves over frames: {seen:?}");
+    // A jump shows no frame between; the 150 ms glide spans about 18.
+    assert!(between.count() >= 8, "it moves over frames: {seen:?}");
     assert!(ui.get_transcript_follow(), "still following");
 }
