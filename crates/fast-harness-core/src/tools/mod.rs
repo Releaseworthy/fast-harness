@@ -25,6 +25,7 @@ mod clean;
 pub use args::BASE_MARK;
 pub(crate) mod command;
 mod edit;
+mod edit_hint;
 pub mod ext;
 mod file_state;
 pub mod find;

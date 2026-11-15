@@ -26,6 +26,9 @@ pub(crate) struct Snapshot {
     pub lines: Option<Arc<Vec<u64>>>,
     /// The call that saw it.
     pub call: String,
+    /// The version (hash, line hashes) the session's reads returned before
+    /// its own edits since: a re-read shows the lines they changed (D87).
+    pub base: Option<(u64, Arc<Vec<u64>>)>,
 }
 
 /// Snapshots by canonical path.
@@ -106,8 +109,23 @@ pub(crate) fn record_read(
     call: &str,
 ) {
     let lines = text.map(|text| Arc::new(line_diff::line_hashes(text)));
+    let before = session.files().get(&path).and_then(|s| s.base);
+    if let (Some((base, old)), Some(new)) = (before, &lines) {
+        // Ranges the diff did not show keep only the lines no edit touched.
+        let hunks = line_diff::hunks(&old, new);
+        move_spans(session, &path, (base, hash), &hunks, Some(&[]), call);
+    }
     let call = call.to_string();
-    session.files().record(path, Snapshot { hash, lines, call });
+    let base = None;
+    session.files().record(
+        path,
+        Snapshot {
+            hash,
+            lines,
+            call,
+            base,
+        },
+    );
 }
 
 /// After the agent's own `edit` or `write` turned `old` into `new` text
@@ -128,6 +146,7 @@ pub(crate) fn record_change(
     let before = session.files().get(&key);
     let lines = Arc::new(line_diff::line_hashes(new));
     let call = ctx.call_id.to_string();
+    let mut base = None;
     if whole {
         session.forget_reads(&key);
         let read = ReadKey {
@@ -138,8 +157,10 @@ pub(crate) fn record_change(
         };
         session.remember_span(read, u64::MAX, &call);
     } else if let Some(before) = before {
-        let hunks = line_diff::hunks(&line_diff::line_hashes(old), &lines);
-        move_spans(session, &key, (before.hash, hash), &hunks, None, &call);
+        // The read ranges stay at the version they were read at: the next
+        // read diffs against it and returns the lines the edits changed.
+        let old_lines = || Arc::new(line_diff::line_hashes(old));
+        base = Some(before.base.unwrap_or_else(|| (before.hash, old_lines())));
     }
     session.files().record(
         key,
@@ -147,6 +168,7 @@ pub(crate) fn record_change(
             hash,
             lines: Some(lines),
             call,
+            base,
         },
     );
 }

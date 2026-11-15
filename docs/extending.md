@@ -259,7 +259,7 @@ The AGENTS.md files from the repository root down to the working directory are i
 
 `config.json` key `context` (D83) keeps reads small before they enter the history; nothing already sent is changed, so the prompt cache holds.
 
-- `readHeadBytes` (default 4096): a `read` without `offset` and `limit` returns whole lines up to this size, then a note with the file's line count and how to read a range. 0 uses the plain result budget (`toolOutput.read` or `toolOutputBytes`).
+- `readHeadBytes` (default 6144, D87): a `read` without `offset` and `limit` returns whole lines up to this size, then a note with the file's line count and how to read a range. 0 uses the plain result budget (`toolOutput.read` or `toolOutputBytes`).
 - `dedupeReads` (default true): lines inside a range an earlier read of the session returned, the file unchanged (size and modified time), answer `[unchanged since call <id>]`. Forgotten at a compaction and on reopen.
 - `stepOutputBytes` (default 16384, 0 off): the results of one step share it; each of `n` calls gets at most `stepOutputBytes / n` (at least 2048, never above its own budget). `find_tools` and subagent answers do not share (D84).
 

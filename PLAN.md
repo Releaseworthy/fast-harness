@@ -116,6 +116,7 @@ One file per decision in [docs/decisions/](docs/decisions/), moved there unchang
 - D84 [Tighter cuts and a step budget](docs/decisions/D84.md): read cuts a line at 800 characters; shell keeps 20 head and 30 tail lines; glob and grep show paths relative to a folder `path`; `context.stepOutputBytes` (16 KB) is shared by the calls of one step.
 - D85 [The effort message stays where it was sent](docs/decisions/D85.md): the Claude per-message effort entry follows each user turn and is never moved, so earlier thinking keeps its prefix and the next turn reads the cache.
 - D86 [Each user message keeps its effort](docs/decisions/D86.md): the Claude effort message after a user turn repeats the level that turn was first sent with, so an effort change no longer rewrites the history and its thinking.
+- D87 [Reads and edits answer with what the model needs next](docs/decisions/D87.md): an offset past the end fails after a read too, a re-read after an own edit shows the changed lines, a 6 KB head, an overlapping read ends with the whole range, a missed edit names the nearest lines and a repeated one every match line.
 
 ## Architecture
 

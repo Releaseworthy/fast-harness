@@ -4,10 +4,11 @@
 
 use serde::{Deserialize, Serialize};
 
-/// Default `context.readHeadBytes`: half the 8 KB result budget. A read
-/// without `offset` and `limit` returns whole lines up to this size, then a
-/// note with the file's line count (D83 has the numbers).
-pub const DEFAULT_READ_HEAD_BYTES: usize = 4 * 1024;
+/// Default `context.readHeadBytes`: three quarters of the 8 KB result
+/// budget. A read without `offset` and `limit` returns whole lines up to
+/// this size, then a note with the file's line count (D83 chose 4 KB from
+/// a cost model; D87 raised it: ~64 lines a read cost extra calls).
+pub const DEFAULT_READ_HEAD_BYTES: usize = 6 * 1024;
 
 /// Default `context.stepOutputBytes`: the results of one step together, so
 /// a step of many broad calls (read + grep + glob) adds at most about 4k

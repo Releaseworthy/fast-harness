@@ -118,11 +118,15 @@ fn changed_lines(
         return None;
     };
     let before = session.files().get(&key.path)?;
-    if before.hash == key.hash || session.read_by(key).is_some() {
+    // After own edits the ranges are at the version read before them.
+    let (old_hash, lines) = match before.base {
+        Some(base) => base,
+        None => (before.hash, before.lines?),
+    };
+    if old_hash == key.hash || session.read_by(key).is_some() {
         return None;
     }
-    let lines = before.lines.as_ref()?;
-    read_diff::changed(session, key, (lines, text, before.hash), page.room, call_id)
+    read_diff::changed(session, key, (&lines, text, old_hash), page.room, call_id)
 }
 
 /// Only the lines of `key` no earlier read of the unchanged file returned,
@@ -133,19 +137,19 @@ fn read_new(
     run: impl Fn(u64, u64) -> Result<ToolOutput, String>,
     call_id: &str,
 ) -> Result<ToolOutput, String> {
-    if let Some(earlier) = session.read_by(&key) {
-        return Ok(unchanged(&earlier));
-    }
     // Only the lines no earlier read of the unchanged file returned.
     let seen = session.read_seen(&key);
-    if seen.covered {
-        return Ok(unchanged(&seen.before.join(", ")));
+    let earlier = session
+        .read_by(&key)
+        .or_else(|| seen.covered.then(|| seen.before.join(", ")));
+    if let Some(calls) = earlier {
+        return unchanged_inside(&run, key.offset, &calls);
     }
     let (offset, limit) = (seen.offset, seen.end - seen.offset + 1);
     let output = match run(offset, limit) {
         // The lines left start past the end: all of the file's were shown.
         Err(err) if !seen.before.is_empty() && err.contains("past the end") => {
-            return Ok(unchanged(&seen.before.join(", ")))
+            return unchanged_inside(&run, key.offset, &seen.before.join(", "));
         }
         output => output?,
     };
@@ -164,6 +168,24 @@ fn read_new(
 
 pub(super) fn unchanged(calls: &str) -> ToolOutput {
     ToolOutput::ok(format!("[unchanged since call {calls}]"))
+}
+
+/// [`unchanged`] since `calls`, unless `offset` is past the end of the
+/// file: that fails as it does for a file never read (a range read to the
+/// end covers every later line number too).
+fn unchanged_inside(
+    run: &impl Fn(u64, u64) -> Result<ToolOutput, String>,
+    offset: u64,
+    calls: &str,
+) -> Result<ToolOutput, String> {
+    if offset > 1 {
+        if let Err(err) = run(offset, 1) {
+            if err.contains("past the end") {
+                return Err(err);
+            }
+        }
+    }
+    Ok(unchanged(calls))
 }
 
 /// A read without a range is a head (PLAN.md D82): at most `read_head`.
@@ -204,11 +226,73 @@ fn with_seen_notes(output: ToolOutput, key: &ReadKey, seen: &Seen) -> ToolOutput
         false => wanted_end.to_string(),
     };
     let after = note(seen.end + 1, to, &seen.after);
-    let mut text = before + &output.text();
-    if !text.ends_with('\n') && !after.is_empty() {
+    let text = output.text();
+    let (lines, range) = split_range_note(&text);
+    let mut text = before + lines;
+    if !text.ends_with('\n') {
         text.push('\n');
     }
-    ToolOutput::ok(text + &after)
+    text += &after;
+    text += &whole_range(range, lines, key, seen);
+    ToolOutput::ok(text)
+}
+
+/// `text` and its last line when that is the range note `[lines a to b…]`.
+fn split_range_note(text: &str) -> (&str, Option<&str>) {
+    let body = text.trim_end_matches('\n');
+    let (lines, last) = match body.rfind('\n') {
+        Some(at) => (&body[..at + 1], &body[at + 1..]),
+        None => ("", body),
+    };
+    match last.starts_with("[lines ") {
+        true => (lines, Some(last)),
+        false => (text, None),
+    }
+}
+
+/// The last line of a read trimmed by `seen`: the range note `range` of the
+/// new `lines` rewritten for the whole request `key` (PLAN.md D87).
+fn whole_range(range: Option<&str>, lines: &str, key: &ReadKey, seen: &Seen) -> String {
+    let from = key.offset;
+    let Some(note) = range else {
+        // The new lines reached the end of the file.
+        let last = lines.lines().rev().find_map(|l| l.split_once(": "));
+        return match last.and_then(|(n, _)| n.parse::<u64>().ok()) {
+            Some(n) => format!("[lines {from} to {n} of {n}]\n"),
+            None => String::new(),
+        };
+    };
+    let after_from = note.find(" to ").map_or(note.len(), |at| at + 4);
+    let rest = &note[after_from..];
+    let digits = rest
+        .find(|c: char| !c.is_ascii_digit())
+        .unwrap_or(rest.len());
+    let (Ok(shown_end), tail) = (rest[..digits].parse::<u64>(), &rest[digits..]) else {
+        return format!("{note}\n");
+    };
+    if shown_end < seen.end {
+        // Cut by the budget: the read goes on after the new lines.
+        return format!("[lines {from} to {shown_end}{tail}\n");
+    }
+    let total = tail
+        .strip_prefix(" of ")
+        .and_then(|t| t.split([';', ']']).next())
+        .and_then(|t| t.parse::<u64>().ok());
+    let wanted_end = key.offset.saturating_add(key.limit.saturating_sub(1));
+    match (seen.to_end, total) {
+        (true, Some(total)) => format!("[lines {from} to {total} of {total}]\n"),
+        (true, None) => format!("[lines {from} to the end of the file]\n"),
+        (false, Some(total)) if wanted_end >= total => {
+            format!("[lines {from} to {total} of {total}]\n")
+        }
+        (false, _) => {
+            let tail = tail.replace(
+                &format!("offset {}", shown_end + 1),
+                &format!("offset {}", wanted_end.saturating_add(1)),
+            );
+            format!("[lines {from} to {wanted_end}{tail}\n")
+        }
+    }
 }
 
 /// The last line `text` holds: the range note's end when lines remain, else

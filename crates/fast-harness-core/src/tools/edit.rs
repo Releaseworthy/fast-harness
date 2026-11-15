@@ -60,12 +60,14 @@ fn edit(args: &Value, ctx: &ToolCtx<'_>) -> Result<String, String> {
     let (old, new) = pick_strings(&content, old, new);
     let count = content.matches(old.as_str()).count();
     if count == 0 {
-        return Err(format!("old_string not found in {path_arg}"));
+        let hint = super::edit_hint::nearest(&content, &old);
+        return Err(format!("old_string not found in {path_arg}{hint}"));
     }
     if count > 1 && !replace_all {
+        let lines = match_lines(&content, &old, count);
         return Err(format!(
-            "old_string matches {count} times in {path_arg}; add surrounding context to make \
-             it unique, or set replace_all to true"
+            "old_string matches {count} times in {path_arg} at lines {lines}; add surrounding \
+             context to make it unique, or set replace_all to true"
         ));
     }
     let (updated, replaced) = if replace_all {
