@@ -178,7 +178,7 @@ impl Children {
 
     /// Stores the answer of background child `id` and queues the notice
     /// `[subagent <id> finished] <answer>`, cut to `budget` bytes; a notice
-    /// whose answer a tool result gave first becomes one line ([	ake_notices]).
+    /// whose answer a tool result gave first becomes one line (`take_notices`).
     pub(super) fn finish_kid(&self, id: &str, output: String, budget: usize) {
         let notice = format!("[subagent {id} finished] {}", cut(&output, budget));
         let mut state = self.lock();
