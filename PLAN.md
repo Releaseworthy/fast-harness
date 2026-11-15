@@ -117,6 +117,7 @@ One file per decision in [docs/decisions/](docs/decisions/), moved there unchang
 - D85 [The effort message stays where it was sent](docs/decisions/D85.md): the Claude per-message effort entry follows each user turn and is never moved, so earlier thinking keeps its prefix and the next turn reads the cache.
 - D86 [Each user message keeps its effort](docs/decisions/D86.md): the Claude effort message after a user turn repeats the level that turn was first sent with, so an effort change no longer rewrites the history and its thinking.
 - D87 [Reads and edits answer with what the model needs next](docs/decisions/D87.md): an offset past the end fails after a read too, a re-read after an own edit shows the changed lines, a 6 KB head, an overlapping read ends with the whole range, a missed edit names the nearest lines and a repeated one every match line.
+- D88 [Session file state and main-session cache TTL](docs/decisions/D88.md): the read/write state of a session survives -c and reopen; the tool loop caches messages for 5 minutes, turn starts for 1 hour.
 - D89 [Shell output: binary, even cut, hints](docs/decisions/D89.md): an output that is binary as a whole is one line `[binary output, N bytes]` (N before pwsh's lossy decode); a cut keeps the same room and lines (25) for head and tail; a recursive listing into ignored folders hints at glob, a file read at read, and the working folder repeated before paths is left out once.
 
 ## Architecture
@@ -150,4 +151,3 @@ Now in [docs/formats.md](docs/formats.md#tools).
 ## Rules for the code
 
 See `AGENTS.md`.
-- D88 [Session file state and main-session cache TTL](docs/decisions/D88.md): the read/write state of a session survives -c and reopen; the tool loop caches messages for 5 minutes, turn starts for 1 hour.

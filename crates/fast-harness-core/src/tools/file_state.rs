@@ -100,10 +100,13 @@ mod saved_file {
             let (hash, call) = (f.hash, f.call);
             (
                 f.path,
+                // No content is known from before the restart: the first
+                // read returns the whole file, an edit checks only `hash`.
                 Snapshot {
                     hash,
                     lines: None,
                     call,
+                    base: None,
                 },
             )
         };

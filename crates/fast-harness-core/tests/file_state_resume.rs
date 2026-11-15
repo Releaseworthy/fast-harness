@@ -4,14 +4,15 @@
 
 mod agent_support;
 
+use std::path::Path;
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 
 use agent_support::{env, key_auth, parts, text_reply, tool_reply, Env};
 use fast_harness_core::agent::{Agent, Conversation};
 use fast_harness_core::http::{ScriptedResponse, ScriptedTransport};
-use fast_harness_core::tools;
-use serde_json::json;
+use fast_harness_core::tools::{self, ToolCtx, ToolOutput, ToolSession};
+use serde_json::{json, Value};
 
 fn agent(env: &Env, script: Vec<ScriptedResponse>) -> Agent {
     let transport = Arc::new(ScriptedTransport::new(script));
@@ -70,6 +71,40 @@ fn a_reopened_session_edits_the_file_it_wrote_and_edited() {
     edit_after_reopen(&env, &id);
     let file = env.cwd.join("s.txt");
     assert_eq!(std::fs::read_to_string(file).unwrap(), "v3");
+}
+
+fn call(session: &ToolSession, cwd: &Path, id: &str, tool: &str, args: Value) -> ToolOutput {
+    let cancel = AtomicBool::new(false);
+    let ctx = ToolCtx::new(cwd, &cancel)
+        .with_call_id(id)
+        .with_session(session);
+    tools::builtin().run(tool, &args.to_string(), &ctx)
+}
+
+/// A restored entry knows no earlier content (D87 meets D88): an edit
+/// after the reopen is taken, and the read after it returns the whole
+/// file, not the lines changed since a read the new process never saw.
+#[test]
+fn a_read_after_reopen_and_edit_returns_the_whole_file() {
+    let env = env("fs-resume-read");
+    let out = env.home.join("s.out");
+    let text: String = (1..=50).map(|i| format!("line {i}\n")).collect();
+    std::fs::write(env.cwd.join("a.txt"), &text).unwrap();
+    let read = json!({"path": "a.txt"});
+    let before = ToolSession::new(Some(out.clone()));
+    assert!(call(&before, &env.cwd, "c1", "read", read.clone())
+        .text()
+        .starts_with("1: line 1\n"));
+    let edit = json!({"path": "a.txt", "old_string": "line 10\n", "new_string": "ten\n"});
+    assert!(!call(&before, &env.cwd, "c2", "edit", edit).is_error());
+    drop(before);
+    let after = ToolSession::new(Some(out));
+    let edit = json!({"path": "a.txt", "old_string": "line 40\n", "new_string": "forty\n"});
+    let edited = call(&after, &env.cwd, "c3", "edit", edit);
+    assert!(!edited.is_error(), "{}", edited.text());
+    let reread = call(&after, &env.cwd, "c4", "read", read).into_text();
+    assert!(reread.starts_with("1: line 1\n"), "{reread}");
+    assert!(reread.contains("\n10: ten\n") && reread.contains("\n40: forty\n"));
 }
 
 #[test]
