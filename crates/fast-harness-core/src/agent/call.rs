@@ -162,6 +162,20 @@ impl Turn<'_> {
         Ok(())
     }
 
+    /// The cache lifetimes of a request starting at `now`: `auto` keeps
+    /// 1 hour for turn starts after an idle gap only, an explicit `1h` for
+    /// every step (PLAN.md D88).
+    fn cache(&self, now: u64) -> Cache {
+        let config = &self.agent.parts.config;
+        let (system_1h, messages_1h) = config.cache_hours();
+        let loop_5m = config.cache_setting() == CacheTtl::Auto;
+        let base = Cache::new(system_1h, messages_1h).with_loop_5m(loop_5m);
+        match self.quiet {
+            true => base,
+            false => self.conv.cache_clock.cache(base, now),
+        }
+    }
+
     fn stream_once(&mut self, lease: &Lease, wire_name: &str) -> Result<Completion, LlmError> {
         let agent = self.agent;
         let parts = &agent.parts;
@@ -174,15 +188,14 @@ impl Turn<'_> {
             Some(capture) => capture,
             None => &*parts.transport,
         };
-        let (system_1h, messages_1h) = parts.config.cache_hours();
-        // `auto` keeps 1 hour for turn starts only; an explicit `1h` for
-        // every step (PLAN.md D88).
-        let loop_5m = parts.config.cache_setting() == CacheTtl::Auto;
         // A `PreModelRequest` hook may change only these two (PLAN.md D63).
         let change = self.change.as_ref().filter(|_| !self.quiet);
         let (model, effort, max_tokens) =
             super::model_hook::request_parts(&self.request, change, parts);
         stamp_effort(&mut self.conv.messages, effort, self.quiet);
+        let now = crate::types::now_ms();
+        let quiet = self.quiet;
+        let cache = self.cache(now);
         let conv = &*self.conv; // The frozen system and tools (PLAN.md D36).
         let req = ChatRequest {
             model,
@@ -191,22 +204,24 @@ impl Turn<'_> {
             tools: conv.tools.as_deref().unwrap_or(agent.tools.specs()),
             max_tokens,
             effort,
-            cache: Cache::new(system_1h, messages_1h).with_loop_5m(loop_5m),
+            cache,
             session: &conv.id,
             cancel: self.cancel,
         };
         let sink = &mut *self.sink;
         let mut ids: Vec<String> = Vec::new();
         // The summary request of a compaction streams nothing to the views.
-        let quiet = self.quiet;
         let mut on_delta = |delta: Delta<'_>| {
             if !quiet {
                 forward(delta, &mut ids, sink)
             }
         };
-        parts
-            .provider
-            .stream(http, &lease.auth, &req, &mut on_delta)
+        let done = (parts.provider).stream(http, &lease.auth, &req, &mut on_delta);
+        if done.is_ok() && !quiet {
+            let conv = &mut *self.conv;
+            conv.cache_clock.answered(&cache, now, &conv.messages);
+        }
+        done
     }
 
     fn on_error(

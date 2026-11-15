@@ -130,10 +130,15 @@ pub struct Cache {
     pub system_1h: bool,
     pub messages_1h: bool,
     /// With `messages_1h` (`cacheTtl: auto` in the TUI and GUI, PLAN.md
-    /// D88): a step inside the tool loop caches its messages for 5 minutes
-    /// behind a 1 hour breakpoint on the turn's user message; a turn's
-    /// first step keeps 1 hour.
+    /// D88): the message tail lives 5 minutes, 1 hour only on a turn's
+    /// first step with `turn_start_1h`; `anchor` adds a 1 hour breakpoint.
     pub loop_5m: bool,
+    /// With `loop_5m`: a trailing user message (a turn start) gets 1 hour
+    /// (the previous request started 4 minutes ago or more, or unknown).
+    pub turn_start_1h: bool,
+    /// With `loop_5m`: 1 hour on the user message after this many
+    /// assistant messages, where the last 1 hour tail was written.
+    pub anchor: Option<usize>,
 }
 
 impl Cache {
@@ -142,12 +147,21 @@ impl Cache {
             system_1h,
             messages_1h,
             loop_5m: false,
+            turn_start_1h: true,
+            anchor: None,
         }
     }
 
-    /// `messages_1h` only at turn starts (see `loop_5m`).
+    /// `messages_1h` only at idle turn starts (see `loop_5m`).
     pub fn with_loop_5m(mut self, loop_5m: bool) -> Cache {
         self.loop_5m = loop_5m;
+        self
+    }
+
+    /// Sets [`Cache::turn_start_1h`] and [`Cache::anchor`].
+    pub fn with_turn_start(mut self, turn_start_1h: bool, anchor: Option<usize>) -> Cache {
+        self.turn_start_1h = turn_start_1h;
+        self.anchor = anchor;
         self
     }
 }

@@ -6,6 +6,7 @@ use std::sync::Mutex;
 
 use serde_json::Value;
 
+use super::cache_clock::CacheClock;
 use super::context::Context;
 use crate::llm::ToolSpec;
 use crate::session;
@@ -51,6 +52,8 @@ pub struct Conversation {
     pub unfinished: Option<session::Unfinished>,
     /// Nesting level of the session (0 top level; a subagent's is above 0).
     pub depth: u32,
+    /// When the message tail is cached for 1 hour (PLAN.md D88).
+    pub(crate) cache_clock: CacheClock,
     /// Notes of the reopen (a damaged log line skipped, D60), handed out
     /// once by [`Conversation::take_notes`].
     notes: Mutex<Vec<String>>,
@@ -91,6 +94,7 @@ impl Conversation {
             compacted: false,
             unfinished: None,
             depth,
+            cache_clock: CacheClock::default(),
             notes: Mutex::default(),
         })
     }
@@ -186,6 +190,7 @@ impl Conversation {
             tools: header.map(|h| saved_tools(&h.tools)),
             context: header.and_then(|h| h.context.clone()),
             last_header,
+            cache_clock: CacheClock::from_events(events),
             notes: Mutex::default(),
         }
     }

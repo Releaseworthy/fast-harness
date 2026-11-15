@@ -3,12 +3,13 @@
 //! Tools and system come first and share one lifetime, so a 1 hour
 //! breakpoint never follows a 5 minute one. The messages carry one on the
 //! last block of a trailing user message. With [`Cache::loop_5m`]
-//! (`cacheTtl: auto` in the TUI and GUI) that one lives 5 minutes inside the
-//! tool loop (the next step comes within seconds) and 1 hour on a turn's
-//! first step, and the user message that opened the latest turn before the
-//! trailing message keeps a 1 hour breakpoint: after a pause the next step
-//! reads up to there even when the 5 minute entries are gone and it lies
-//! more than 20 blocks back (the API looks back only that far).
+//! (`cacheTtl: auto` in the TUI and GUI) that one lives 5 minutes, 1 hour
+//! only on a turn start after an idle gap ([`Cache::turn_start_1h`]): a hit
+//! on a 5 minute entry does not count when a 1 hour breakpoint after it
+//! misses, so a 1 hour tail after a live 5 minute loop would write the loop
+//! again. [`Cache::anchor`] keeps a 1 hour breakpoint where the last 1 hour
+//! tail was written: after a pause the next step reads up to there even
+//! when it lies more than 20 blocks back (the API looks back only that far).
 
 use serde_json::{json, Map, Value};
 
@@ -41,11 +42,26 @@ pub(crate) fn mark_messages(messages: &mut [Value], cache: &Cache) {
         mark_user(&mut messages[last], &cache_control(cache.messages_1h));
         return;
     }
-    if let Some(turn) = messages[..last].iter().rposition(opens_turn) {
-        mark_user(&mut messages[turn], &cache_control(true));
+    if let Some(anchor) = cache.anchor.and_then(|n| after_answers(messages, n)) {
+        if anchor < last {
+            mark_user(&mut messages[anchor], &cache_control(true));
+        }
     }
-    let turn_start = opens_turn(&messages[last]);
-    mark_user(&mut messages[last], &cache_control(turn_start));
+    let long = cache.turn_start_1h && opens_turn(&messages[last]);
+    mark_user(&mut messages[last], &cache_control(long));
+}
+
+/// The last user message before the assistant message after `answers`
+/// assistant messages (or before the end).
+fn after_answers(messages: &[Value], answers: usize) -> Option<usize> {
+    let mut seen = 0;
+    let end = messages.iter().position(|m| {
+        let assistant = m["role"] == "assistant";
+        seen += usize::from(assistant);
+        assistant && seen > answers
+    });
+    let before = &messages[..end.unwrap_or(messages.len())];
+    before.iter().rposition(|m| m["role"] == "user")
 }
 
 /// A user message with new input, not tool results (those come first in

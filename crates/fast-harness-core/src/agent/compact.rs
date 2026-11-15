@@ -256,6 +256,7 @@ impl Turn<'_> {
         self.conv.messages = history;
         self.conv.last_context = after;
         self.conv.compacted = true;
+        self.conv.cache_clock.forget_anchor();
         self.conv.tool_session.clear_reads();
         self.usage.add(&summary.usage);
         (self.sink)(AgentEvent::Compaction {
