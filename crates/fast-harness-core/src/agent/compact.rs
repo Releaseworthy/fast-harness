@@ -258,6 +258,7 @@ impl Turn<'_> {
         self.conv.compacted = true;
         self.conv.cache_clock.forget_anchor();
         self.conv.tool_session.clear_reads();
+        super::children::forget_delivered(&self.conv.id);
         self.usage.add(&summary.usage);
         (self.sink)(AgentEvent::Compaction {
             summary: summary.text.clone(),

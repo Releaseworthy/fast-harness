@@ -229,6 +229,12 @@ impl ToolSession {
         &self.files
     }
 
+    /// The files a reopened session's log shows it read, wrote or edited:
+    /// `(path, last call, time of its result in ms)` (PLAN.md D90).
+    pub fn know_logged(&self, files: Vec<(PathBuf, String, u64)>) {
+        self.files.know_logged(files);
+    }
+
     /// Forgets the read ranges of `path` (the agent wrote all of it).
     pub(crate) fn forget_reads(&self, path: &Path) {
         lock(&self.reads).retain(|span| span.key.path != path);

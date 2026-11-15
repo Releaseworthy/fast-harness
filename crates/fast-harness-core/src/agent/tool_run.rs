@@ -330,10 +330,7 @@ fn run_one(
         agent.parts.config.tool_budget(&call.name),
         &agent.parts.config.context,
     );
-    let budget = match shares_step(&call.name) {
-        true => context.step_share(own, run.sharing),
-        false => own,
-    };
+    let budget = context.call_budget(&call.name, own, run.sharing);
     let ctx = ToolCtx::new(&agent.parts.cwd, run.cancel)
         .with_budget(budget)
         .with_context(context)

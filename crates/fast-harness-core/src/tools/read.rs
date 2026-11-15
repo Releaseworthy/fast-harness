@@ -53,7 +53,9 @@ impl Tool for ReadTool {
 
 /// Bytes of the budget kept free for the notes around the lines (range,
 /// lines already shown): the generic cut must never take the range line.
-const NOTE_ROOM: usize = 1024;
+/// The notes take under 300 bytes; 1 KB here left a ranged read 7 KB of
+/// lines (PLAN.md D90).
+const NOTE_ROOM: usize = 512;
 
 fn read(args: &Value, ctx: &ToolCtx<'_>) -> Result<ToolOutput, String> {
     let path_arg = req_str(args, "path")?;

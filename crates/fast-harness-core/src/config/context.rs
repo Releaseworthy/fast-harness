@@ -4,11 +4,12 @@
 
 use serde::{Deserialize, Serialize};
 
-/// Default `context.readHeadBytes`: three quarters of the 8 KB result
+/// Default `context.readHeadBytes`: seven eighths of the 8 KB result
 /// budget. A read without `offset` and `limit` returns whole lines up to
 /// this size, then a note with the file's line count (D83 chose 4 KB from
-/// a cost model; D87 raised it: ~64 lines a read cost extra calls).
-pub const DEFAULT_READ_HEAD_BYTES: usize = 6 * 1024;
+/// a cost model; D87 raised it: ~64 lines a read cost extra calls; D90
+/// to 7 KB: the owner still asked for 6-8 KB a read).
+pub const DEFAULT_READ_HEAD_BYTES: usize = 7 * 1024;
 
 /// Default `context.stepOutputBytes`: the results of one step together, so
 /// a step of many broad calls (read + grep + glob) adds at most about 4k
@@ -60,6 +61,18 @@ impl ContextConfig {
         }
         let share = (self.step_output_bytes / sharing).max(MIN_STEP_SHARE);
         own.min(share)
+    }
+
+    /// The budget of a call of tool `name` (own budget `own`) in a step
+    /// where `sharing` calls share the step budget. A `read` keeps its own
+    /// (PLAN.md D90): its head and `limit` already bound it, and a share cut
+    /// it to 58 of 64 asked lines; it still counts for the others' shares.
+    pub fn call_budget(&self, name: &str, own: usize, sharing: usize) -> usize {
+        match name {
+            "read" => own,
+            _ if shares_step(name) => self.step_share(own, sharing),
+            _ => own,
+        }
     }
 }
 

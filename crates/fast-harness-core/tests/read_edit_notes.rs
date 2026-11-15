@@ -72,7 +72,7 @@ fn a_reread_after_an_own_edit_shows_the_changed_lines() {
 }
 
 #[test]
-fn a_head_read_returns_about_six_kilobytes() {
+fn a_head_read_returns_about_seven_kilobytes() {
     let env = env("rn-head");
     let text: String = (1..=600)
         .map(|i| format!("{i:>4} {}\n", "x".repeat(40)))
@@ -81,7 +81,7 @@ fn a_head_read_returns_about_six_kilobytes() {
     let session = ToolSession::new(None);
     let head = call(&session, &env.cwd, "c1", "read", json!({"path": "a.txt"})).into_text();
     assert!(
-        head.len() > 4 * 1024 && head.len() <= 6 * 1024,
+        head.len() > 6 * 1024 && head.len() <= 7 * 1024,
         "{}",
         head.len()
     );

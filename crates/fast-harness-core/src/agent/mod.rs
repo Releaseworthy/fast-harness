@@ -19,6 +19,7 @@ pub mod hooks;
 mod inbox;
 mod inbox_file;
 pub mod live;
+mod logged_files;
 pub mod memory;
 mod model_hook;
 pub mod nested;

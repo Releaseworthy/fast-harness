@@ -38,6 +38,10 @@ pub struct FileStates {
     /// `<session>.files.json`, where the snapshots outlive a restart
     /// (PLAN.md D88); `None` without a session folder.
     saved: Option<PathBuf>,
+    /// Files the session log shows a read, write or edit of, with the last
+    /// such call and the time of its result (ms): the fallback for a file
+    /// `saved` lacks, as in a log from before it (PLAN.md D90).
+    logged: Mutex<HashMap<PathBuf, (String, u64)>>,
 }
 
 impl FileStates {
@@ -48,7 +52,26 @@ impl FileStates {
         FileStates {
             map: Mutex::new(map),
             saved,
+            logged: Mutex::default(),
         }
+    }
+
+    /// Remembers the files of the session log: `(path, call, time)`, the
+    /// path resolved as the call's tool resolved it.
+    pub(crate) fn know_logged(&self, files: Vec<(PathBuf, String, u64)>) {
+        let mut logged = self.logged.lock().unwrap_or_else(|e| e.into_inner());
+        for (path, call, time) in files {
+            let key = file_key(&path);
+            let later = logged.get(&key).is_none_or(|(_, at)| *at <= time);
+            if later {
+                logged.insert(key, (call, time));
+            }
+        }
+    }
+
+    fn logged(&self, path: &Path) -> Option<(String, u64)> {
+        let logged = self.logged.lock().unwrap_or_else(|e| e.into_inner());
+        logged.get(path).cloned()
     }
 
     pub(crate) fn get(&self, path: &Path) -> Option<Snapshot> {
@@ -173,9 +196,7 @@ pub(crate) fn check_seen(
         return Ok(());
     };
     match session.files().get(&file_key(path)) {
-        None => Err(format!(
-            "{path_arg} was not read in this session; read it first, then change it"
-        )),
+        None => known_from_log(session, path, path_arg, bytes),
         Some(seen) if seen.hash != hash_of(path, bytes) => Err(format!(
             "{path_arg} changed since this session last read or wrote it (call {}); read it \
              again, then change it",
@@ -183,6 +204,39 @@ pub(crate) fn check_seen(
         )),
         Some(_) => Ok(()),
     }
+}
+
+/// A file no snapshot covers: known when the session log shows a read,
+/// write or edit of it and it was not modified after the last one's result
+/// (PLAN.md D90); it is then known at its current content.
+fn known_from_log(
+    session: &ToolSession,
+    path: &Path,
+    path_arg: &str,
+    bytes: &[u8],
+) -> Result<(), String> {
+    let key = file_key(path);
+    let Some((call, at)) = session.files().logged(&key) else {
+        return Err(format!(
+            "{path_arg} was not read in this session; read it first, then change it"
+        ));
+    };
+    let modified = std::fs::metadata(path).and_then(|m| m.modified()).ok();
+    let since = modified.and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok());
+    if since.is_none_or(|d| d.as_millis() > u128::from(at)) {
+        return Err(format!(
+            "{path_arg} changed since this session last read or wrote it (call {call}); read \
+             it again, then change it"
+        ));
+    }
+    let snapshot = Snapshot {
+        hash: hash_of(path, bytes),
+        lines: None,
+        call,
+        base: None,
+    };
+    session.files().record(key, snapshot);
+    Ok(())
 }
 
 /// Records what `read` returned of `path` (`text` when it is text).

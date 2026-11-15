@@ -107,6 +107,38 @@ fn a_read_after_reopen_and_edit_returns_the_whole_file() {
     assert!(reread.contains("\n10: ten\n") && reread.contains("\n40: forty\n"));
 }
 
+/// A session from before `<id>.files.json` (the owner's, 2026-11-15): the
+/// log alone shows what it wrote and edited (PLAN.md D90).
+fn without_saved_state(env: &Env, id: &str) {
+    let out = fast_harness_core::session::out_dir(&env.home, &env.cwd, id);
+    std::fs::remove_file(out.with_extension("files.json")).unwrap();
+}
+
+#[test]
+fn a_session_log_without_saved_state_still_knows_the_files_it_changed() {
+    let env = env("fs-resume-log");
+    let id = written_and_edited(&env);
+    without_saved_state(&env, &id);
+    edit_after_reopen(&env, &id);
+    let file = env.cwd.join("s.txt");
+    assert_eq!(std::fs::read_to_string(file).unwrap(), "v3");
+}
+
+#[test]
+fn a_session_log_without_saved_state_refuses_a_file_changed_after_it() {
+    let env = env("fs-resume-log-changed");
+    let id = written_and_edited(&env);
+    without_saved_state(&env, &id);
+    let file = env.cwd.join("s.txt");
+    std::fs::write(&file, "v2").unwrap();
+    let later = std::time::SystemTime::now() + std::time::Duration::from_secs(60);
+    let handle = std::fs::File::options().write(true).open(&file).unwrap();
+    handle.set_modified(later).unwrap();
+    drop(handle);
+    edit_after_reopen(&env, &id);
+    assert_eq!(std::fs::read_to_string(&file).unwrap(), "v2");
+}
+
 #[test]
 fn a_reopened_session_refuses_a_file_changed_on_disk_since() {
     let env = env("fs-resume-changed");

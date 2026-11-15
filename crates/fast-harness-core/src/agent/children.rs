@@ -24,9 +24,10 @@ struct Kid {
     steer: Sender<Input>,
     /// The answer once it ended.
     output: Option<String>,
-    /// Whether a tool result (agent_output) already gave the answer: its
-    /// finished notice then shrinks to one line.
-    returned: bool,
+    /// Where the context already holds the answer (`call <id>` of the
+    /// agent_output that gave it, or the finished notice): a later notice
+    /// shrinks to one line and a later agent_output names it (PLAN.md D90).
+    delivered: Option<String>,
 }
 
 /// A queued finished notice: the child's id and the whole notice.
@@ -80,6 +81,15 @@ pub fn forget(id: &str) {
     let gone = table().remove(id);
     if let Some(children) = gone {
         children.cancel_all();
+    }
+}
+
+/// After a compaction of session `id`: its children's answers are no
+/// longer in the context ([`Children::forget_delivered`]).
+pub fn forget_delivered(id: &str) {
+    let found = table().get(id).cloned();
+    if let Some(children) = found {
+        children.forget_delivered();
     }
 }
 
@@ -173,7 +183,7 @@ impl Children {
             cancel,
             steer,
             output: None,
-            returned: false,
+            delivered: None,
         });
         id
     }
@@ -205,13 +215,26 @@ impl Children {
         })
     }
 
-    /// The answer of child `id`, waiting for it until `cancel` is set when `wait`.
-    pub(super) fn output(&self, id: &str, wait: bool, cancel: &AtomicBool) -> Option<String> {
+    /// The answer of child `id` for call `call`, waiting for it until
+    /// `cancel` is set when `wait`; `[already returned in <where>]` when the
+    /// context holds it already (PLAN.md D90).
+    pub(super) fn output(
+        &self,
+        id: &str,
+        wait: bool,
+        call: &str,
+        cancel: &AtomicBool,
+    ) -> Option<String> {
         let mut state = self.lock();
         loop {
             let kid = state.kids.iter_mut().find(|kid| kid.id == id.trim())?;
             if kid.output.is_some() || !wait || cancel.load(Ordering::Relaxed) {
-                kid.returned |= kid.output.is_some();
+                if let (Some(_), Some(place)) = (&kid.output, &kid.delivered) {
+                    return Some(format!("[already returned in {place}]"));
+                }
+                if kid.output.is_some() {
+                    kid.delivered = Some(format!("call {call}"));
+                }
                 return kid.output.clone();
             }
             state = self.wait(state, TICK);
@@ -229,15 +252,33 @@ impl Children {
     pub(super) fn take_notices(&self) -> Option<String> {
         let mut state = self.lock();
         let notices = std::mem::take(&mut state.notices);
-        let returned = |id: &str| state.kids.iter().any(|kid| kid.id == id && kid.returned);
         let texts: Vec<String> = notices
             .into_iter()
-            .map(|notice| match returned(&notice.id) {
-                true => format!("[subagent {} finished; answer already returned]", notice.id),
-                false => notice.text,
+            .map(|notice| {
+                let kid = state.kids.iter_mut().find(|kid| kid.id == notice.id);
+                match kid {
+                    Some(kid) if kid.delivered.is_some() => {
+                        format!("[subagent {} finished; answer already returned]", notice.id)
+                    }
+                    Some(kid) => {
+                        let place = format!("the [subagent {} finished] notice", notice.id);
+                        kid.delivered = Some(place);
+                        notice.text
+                    }
+                    None => notice.text,
+                }
             })
             .collect();
         (!texts.is_empty()).then(|| texts.join("\n\n"))
+    }
+
+    /// Forgets where the answers went: after a compaction the context no
+    /// longer holds them, so agent_output returns them whole again.
+    pub(super) fn forget_delivered(&self) {
+        self.lock()
+            .kids
+            .iter_mut()
+            .for_each(|kid| kid.delivered = None);
     }
 
     pub(super) fn push_event(&self, event: AgentEvent) {

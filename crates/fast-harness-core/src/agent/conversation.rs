@@ -138,6 +138,8 @@ impl Conversation {
         repair(&mut messages);
         let mut conv = Conversation::from_log(app_home, cwd, id, &parsed.events, trace);
         conv.messages = messages;
+        let logged = super::logged_files::logged_files(&parsed.events, cwd);
+        conv.tool_session.know_logged(logged);
         conv.depth = parsed.header.depth;
         conv.notes = Mutex::new(parsed.note().into_iter().collect());
         Ok((conv, parsed.events))

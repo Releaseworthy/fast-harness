@@ -101,7 +101,7 @@ impl Tool for ChildTool {
             }
             Kind::Output => {
                 let wait = args["wait"].as_bool().unwrap_or(false);
-                match self.children.output(id, wait, ctx.cancel) {
+                match self.children.output(id, wait, ctx.call_id, ctx.cancel) {
                     Some(output) => ToolOutput::ok(output),
                     None => ToolOutput::ok(format!("{id} is still running")),
                 }
