@@ -53,6 +53,7 @@ mod workspaces;
 mod chat_list;
 mod list_host;
 mod plain_text;
+mod cross_select;
 mod reply_select;
 mod step_rows;
 mod trace_list;

@@ -18,6 +18,7 @@ pub fn new_window() -> Result<MainWindow, slint::PlatformError> {
     attach(&ui);
     crate::trace_list::attach(&ui);
     crate::reply_select::attach(&ui);
+    crate::cross_select::attach(&ui);
     Ok(ui)
 }
 

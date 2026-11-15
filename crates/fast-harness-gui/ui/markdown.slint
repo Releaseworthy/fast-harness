@@ -5,7 +5,7 @@
 // a row measures its real height for the chat's virtual list.
 import { Theme } from "parts.slint";
 import { CodeBox } from "blocks.slint";
-import { Ghost } from "selectable.slint";
+import { Ghost, CrossSelect } from "selectable.slint";
 import { MdBlock, MdRow, MdCell } from "types.slint";
 
 // Inline markdown, wrapped. StyledText takes every press (i-slint-core
@@ -20,10 +20,26 @@ component MdText inherits TouchArea {
     in property <string> plain;
     in property <length> size: Theme.font-m;
     in property <int> weight: 400;
+    // Its place in the chat's selection (ui/cross_select.slint); a block
+    // with a link has no ghost, so it stays out (row -1).
+    in property <int> sel-row: -1;
+    in property <int> idx;
     callback link(string);
     property <bool> focused;
     property <bool> selecting;
-    property <bool> inked: root.focused && root.selecting;
+    property <bool> inked: root.selecting;
+    property <int> group: root.plain != "" ? root.sel-row : -1;
+    property <bool> over: CrossSelect.over(root.group, self.absolute-position.y, self.height);
+    function track() {
+        CrossSelect.track(root.group, root.idx, self.absolute-position.x, self.absolute-position.y, self.width, self.height, self.mouse-x, self.mouse-y);
+    }
+    changed mouse-x => { root.track(); }
+    changed mouse-y => { root.track(); }
+    changed over => {
+        if self.over {
+            CrossSelect.reach(root.group, root.idx, clamp(CrossSelect.px, self.absolute-position.x + 2px, self.absolute-position.x + max(2px, self.width - 2px)), clamp(CrossSelect.py, self.absolute-position.y + 1px, self.absolute-position.y + max(1px, self.height - 1px)));
+        }
+    }
     VerticalLayout {
         label := StyledText {
             text: root.text;
@@ -34,7 +50,7 @@ component MdText inherits TouchArea {
             link-clicked(url) => { root.link(url); }
         }
     }
-    if root.plain != "" && (root.has-hover || root.focused): Ghost {
+    if root.plain != "" && (root.has-hover || root.focused || CrossSelect.within(root.group, root.idx)): Ghost {
         x: label.x;
         y: label.y;
         width: label.width;
@@ -43,6 +59,8 @@ component MdText inherits TouchArea {
         font-size: root.size;
         font-weight: root.weight;
         ink: root.inked;
+        sel-row: root.group;
+        idx: root.idx;
         changed has-focus => { root.focused = self.has-focus; }
         changed selecting => { root.selecting = self.selecting; }
     }
@@ -51,6 +69,8 @@ component MdText inherits TouchArea {
 // A list item: its marker (bullet, number or task box) and its text.
 component MdItem inherits Rectangle {
     in property <MdBlock> block;
+    in property <int> sel-row: -1;
+    in property <int> idx;
     callback link(string);
     HorizontalLayout {
         spacing: 4px;
@@ -64,6 +84,8 @@ component MdItem inherits Rectangle {
         MdText {
             text: root.block.text;
             plain: root.block.plain;
+            sel-row: root.sel-row;
+            idx: root.idx;
             link(url) => { root.link(url); }
         }
     }
@@ -144,6 +166,8 @@ component MdTable inherits Rectangle {
 // One block: indented by its list depth, a bar per quote level.
 export component MdBlockView inherits Rectangle {
     in property <MdBlock> block;
+    in property <int> sel-row: -1;
+    in property <int> idx;
     callback link(string);
     property <bool> quoted: root.block.quote > 0;
     HorizontalLayout {
@@ -160,17 +184,23 @@ export component MdBlockView inherits Rectangle {
             if root.block.kind == "p": MdText {
                 text: root.block.text;
                 plain: root.block.plain;
+                sel-row: root.sel-row;
+                idx: root.idx;
                 link(url) => { root.link(url); }
             }
             if root.block.kind == "h": MdText {
                 text: root.block.text;
                 plain: root.block.plain;
+                sel-row: root.sel-row;
+                idx: root.idx;
                 weight: 700;
                 size: root.block.level <= 1 ? Theme.font-xl : root.block.level == 2 ? Theme.font-l : root.block.level == 3 ? 16px : Theme.font-m;
                 link(url) => { root.link(url); }
             }
             if root.block.kind == "li": MdItem {
                 block: root.block;
+                sel-row: root.sel-row;
+                idx: root.idx;
                 link(url) => { root.link(url); }
             }
             if root.block.kind == "code": CodeBox { text: root.block.code; }
@@ -186,11 +216,15 @@ export component MdBlockView inherits Rectangle {
 // A reply: its blocks in order.
 export component MdReply inherits Rectangle {
     in property <[MdBlock]> blocks;
+    // The transcript item, for the chat's selection.
+    in property <int> sel-row: -1;
     callback link(string);
     VerticalLayout {
         spacing: Theme.space-s;
-        for block in root.blocks: MdBlockView {
+        for block[i] in root.blocks: MdBlockView {
             block: block;
+            sel-row: root.sel-row;
+            idx: i;
             link(url) => { root.link(url); }
         }
     }

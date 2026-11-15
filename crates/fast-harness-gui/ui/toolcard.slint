@@ -163,6 +163,8 @@ component ChipLines inherits Rectangle {
 component FieldRow {
     in property <ToolField> field;
     in property <bool> expanded;
+    in property <int> sel-row: -1;
+    in property <int> idx;
     HorizontalLayout {
         spacing: Theme.space-s;
         Text {
@@ -179,6 +181,8 @@ component FieldRow {
             font-family: Theme.mono;
             font-size: Theme.font-s;
             horizontal-stretch: 1;
+            sel-row: root.sel-row;
+            idx: root.idx;
         }
     }
 }
@@ -210,6 +214,9 @@ component MoreLink inherits HorizontalLayout {
 // the lines or the text; collapsed it shows the previews.
 export component ToolBody {
     in property <ToolView> tool;
+    // The transcript item, for the chat's selection: fields from 1, lines
+    // from 1000 (the detail line is 0).
+    in property <int> sel-row: -1;
     in property <bool> expanded;
     in property <bool> show-link: true;
     in property <length> indent;
@@ -225,12 +232,14 @@ export component ToolBody {
                 kind-color: root.tint;
             }
         }
-        for field in root.tool.fields: FieldRow { field: field; expanded: root.expanded; }
+        for field[i] in root.tool.fields: FieldRow { field: field; expanded: root.expanded; sel-row: root.sel-row; idx: 1 + i; }
         if root.tool.lines.length > 0: CodeView {
             lines: root.expanded ? root.tool.lines : root.tool.lines-preview;
             two-numbers: root.tool.two-numbers;
             marks: root.tool.kind == "write" || root.tool.kind == "edit";
             digits: root.tool.digits;
+            sel-row: root.sel-row;
+            base: 1000;
         }
         // A failed tool's output keeps the normal box: the card's border
         // and the failed pill say it.
@@ -393,6 +402,7 @@ component ToolHead inherits HorizontalLayout {
 // (src/layout_tests.rs).
 export component ToolFrame inherits Rectangle {
     in property <ToolView> tool;
+    in property <int> sel-row: -1;
     in property <bool> error;
     // A call the approval gate ended before it ran: no error edge, and its
     // status pill says `not run` (D64).
@@ -450,6 +460,7 @@ export component ToolFrame inherits Rectangle {
         // header: an empty body still took the layout's spacing.
         if ToolStyle.has-body(root.tool, root.expanded, root.show-link): ToolBody {
             tool: root.tool;
+            sel-row: root.sel-row;
             expanded: root.expanded;
             show-link: root.show-link;
             indent: root.indent;

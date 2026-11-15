@@ -14,6 +14,8 @@ import { GhostText } from "selectable.slint";
 // gap row shows an ellipsis.
 export component CodeRow inherits Rectangle {
     in property <CodeLine> line;
+    in property <int> sel-row: -1;
+    in property <int> idx;
     in property <bool> two-numbers;
     in property <bool> marks;
     in property <length> number-width;
@@ -88,6 +90,8 @@ export component CodeRow inherits Rectangle {
                 font-weight: root.header ? 600 : 400;
                 wrap: char-wrap;
                 horizontal-stretch: 1;
+                sel-row: root.sel-row;
+                idx: root.idx;
             }
         }
     }
@@ -96,6 +100,10 @@ export component CodeRow inherits Rectangle {
 // The rounded box on the code colour with a row per line.
 export component CodeView inherits Rectangle {
     in property <[CodeLine]> lines;
+    // The transcript item and the first line's place in its row, for the
+    // chat's selection (ui/cross_select.slint).
+    in property <int> sel-row: -1;
+    in property <int> base;
     in property <bool> two-numbers;
     in property <bool> marks;
     in property <int> digits;
@@ -110,8 +118,10 @@ export component CodeView inherits Rectangle {
         padding-bottom: 4px;
         padding-left: 1px;
         padding-right: 1px;
-        for line in root.lines: CodeRow {
+        for line[i] in root.lines: CodeRow {
             line: line;
+            sel-row: root.sel-row;
+            idx: root.base + i;
             two-numbers: root.two-numbers;
             marks: root.marks;
             number-width: root.number-width;

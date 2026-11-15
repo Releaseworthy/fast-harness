@@ -2,6 +2,7 @@
 import { Theme, Mark } from "parts.slint";
 import { Icons } from "icons.slint";
 import { BusySpinner, FocusRing } from "widgets.slint";
+import { GhostText, CrossSelect } from "selectable.slint";
 
 // One step folded into a line: a chevron on the left (up when the step is
 // open) and what the step did in dim words, a running spinner and an error
@@ -14,6 +15,10 @@ export component StepLine inherits Rectangle {
     in property <bool> open;
     in property <bool> running;
     in property <bool> failed;
+    // The transcript item and place in its row, for the chat's selection.
+    in property <int> sel-row: -1;
+    in property <int> idx;
+    property <bool> lifted;
     callback toggled();
     height: 26px;
     border-radius: Theme.radius-s;
@@ -51,12 +56,18 @@ export component StepLine inherits Rectangle {
             color: Theme.error;
             font-size: Theme.font-s;
         }
-        Text {
+        line := GhostText {
             text: root.text;
-            color: ta.has-hover || fs.has-focus ? Theme.text : Theme.dim;
+            color: ta.has-hover || fs.has-focus || root.lifted ? Theme.text : Theme.dim;
             font-size: Theme.font-m;
-            vertical-alignment: center;
+            valign: center;
             overflow: elide;
+            wrap: no-wrap;
+            horizontal-stretch: 0;
+            sel-row: root.sel-row;
+            idx: root.idx;
+            changed selecting => { if !self.selecting { root.lifted = false; } }
+            changed has-hover => { if !self.has-hover && !self.selecting { root.lifted = false; } }
         }
         // Up while open; down on hover or focus says the line opens.
         if root.kind != "" && (root.open || ta.has-hover || fs.has-focus): Mark {
@@ -67,9 +78,19 @@ export component StepLine inherits Rectangle {
         }
         Rectangle { horizontal-stretch: 1; }
     }
+    // A click toggles; a drag (rows in the chat only) hands the press to
+    // the text's ghost (ui/cross_select.slint `lift`) and this area steps
+    // aside until the selection is gone.
     ta := TouchArea {
+        enabled: !root.lifted;
         mouse-cursor: pointer;
         clicked => { root.toggled(); }
+        moved => {
+            if self.pressed && root.sel-row >= 0 && !root.lifted && abs(self.mouse-x - self.pressed-x) + abs(self.mouse-y - self.pressed-y) > 4px {
+                root.lifted = true;
+                CrossSelect.lift(root.sel-row, root.idx, clamp(self.absolute-position.x + self.pressed-x, line.absolute-position.x + 1px, line.absolute-position.x + max(1px, line.width - 2px)), line.absolute-position.y + line.height / 2, self.absolute-position.x + self.mouse-x, self.absolute-position.y + self.mouse-y);
+            }
+        }
     }
     fs := FocusScope {
         focus-on-click: false;
