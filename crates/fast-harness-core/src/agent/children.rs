@@ -24,6 +24,15 @@ struct Kid {
     steer: Sender<Input>,
     /// The answer once it ended.
     output: Option<String>,
+    /// Whether a tool result (agent_output) already gave the answer: its
+    /// finished notice then shrinks to one line.
+    returned: bool,
+}
+
+/// A queued finished notice: the child's id and the whole notice.
+struct Notice {
+    id: String,
+    text: String,
 }
 
 #[derive(Default)]
@@ -32,7 +41,7 @@ struct State {
     running: usize,
     started: u32,
     kids: Vec<Kid>,
-    notices: Vec<String>,
+    notices: Vec<Notice>,
     events: Vec<AgentEvent>,
     /// The session's frozen system prompt, set at each turn start: a child
     /// takes it (a resumed session keeps its own, not a fresh render).
@@ -162,19 +171,24 @@ impl Children {
             cancel,
             steer,
             output: None,
+            returned: false,
         });
         id
     }
 
     /// Stores the answer of background child `id` and queues the notice
-    /// `[subagent <id> finished] <answer>`, cut to `budget` bytes.
+    /// `[subagent <id> finished] <answer>`, cut to `budget` bytes; a notice
+    /// whose answer a tool result gave first becomes one line ([	ake_notices]).
     pub(super) fn finish_kid(&self, id: &str, output: String, budget: usize) {
         let notice = format!("[subagent {id} finished] {}", cut(&output, budget));
         let mut state = self.lock();
         if let Some(kid) = state.kids.iter_mut().find(|kid| kid.id == id) {
             kid.output = Some(output);
         }
-        state.notices.push(notice);
+        state.notices.push(Notice {
+            id: id.to_string(),
+            text: notice,
+        });
         drop(state);
         self.changed.notify_all();
     }
@@ -193,8 +207,9 @@ impl Children {
     pub(super) fn output(&self, id: &str, wait: bool, cancel: &AtomicBool) -> Option<String> {
         let mut state = self.lock();
         loop {
-            let kid = state.kids.iter().find(|kid| kid.id == id.trim())?;
+            let kid = state.kids.iter_mut().find(|kid| kid.id == id.trim())?;
             if kid.output.is_some() || !wait || cancel.load(Ordering::Relaxed) {
+                kid.returned |= kid.output.is_some();
                 return kid.output.clone();
             }
             state = self.wait(state, TICK);
@@ -207,10 +222,20 @@ impl Children {
         state.kids.iter().filter(|kid| kid.output.is_none()).count()
     }
 
-    /// The finished notices, joined by blank lines.
+    /// The finished notices, joined by blank lines. The answer of a child
+    /// that agent_output already returned does not enter the context twice.
     pub(super) fn take_notices(&self) -> Option<String> {
-        let notices = std::mem::take(&mut self.lock().notices);
-        (!notices.is_empty()).then(|| notices.join("\n\n"))
+        let mut state = self.lock();
+        let notices = std::mem::take(&mut state.notices);
+        let returned = |id: &str| state.kids.iter().any(|kid| kid.id == id && kid.returned);
+        let texts: Vec<String> = notices
+            .into_iter()
+            .map(|notice| match returned(&notice.id) {
+                true => format!("[subagent {} finished; answer already returned]", notice.id),
+                false => notice.text,
+            })
+            .collect();
+        (!texts.is_empty()).then(|| texts.join("\n\n"))
     }
 
     pub(super) fn push_event(&self, event: AgentEvent) {

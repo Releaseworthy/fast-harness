@@ -237,6 +237,46 @@ fn background_children_answer_in_order_of_completion() {
 }
 
 #[test]
+fn answer_returned_by_agent_output_is_not_repeated_in_the_notice() {
+    let env = env("sub-once");
+    let bg = r#"{"prompt":"task A","background":true}"#;
+    let find = r#"{"names":["subagent","agent_output"]}"#;
+    let transport = Routed::new(vec![
+        ("task A", 300, vec![text_reply("the long answer A")]),
+        (
+            "go",
+            0,
+            vec![
+                tool_reply(&[("t0", "find_tools", find)]),
+                tool_reply(&[("t1", "subagent", bg)]),
+                tool_reply(&[("t2", "agent_output", r#"{"id":"bg1","wait":true}"#)]),
+                text_reply("done"),
+                text_reply("spare"),
+                text_reply("spare"),
+            ],
+        ),
+    ]);
+    let mut parts = parts(
+        &Arc::new(ScriptedTransport::new(vec![])),
+        key_auth(),
+        &env.cwd,
+    );
+    parts.transport = transport.clone();
+    let mut conv = Conversation::create(&env.home, &env.cwd, None).unwrap();
+    let agent = Agent::with_subagent(parts, &env.home, &conv.id);
+    let outcome = agent.run_turn(&mut conv, "go", &AtomicBool::new(false), &mut |_| {});
+    assert_eq!(outcome, TurnOutcome::Done);
+    let users: String = conv
+        .messages
+        .iter()
+        .filter(|m| m.role != Role::Assistant)
+        .map(|m| format!("{m:?}"))
+        .collect();
+    assert_eq!(users.matches("the long answer A").count(), 1, "{users}");
+    assert!(users.contains("[subagent bg1 finished; answer already returned]"));
+}
+
+#[test]
 fn cancel_reaches_every_descendant() {
     let env = env("sub-cancel");
     let bg = r#"{"prompt":"task A","background":true}"#;
