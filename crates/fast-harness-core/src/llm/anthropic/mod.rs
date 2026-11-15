@@ -4,6 +4,7 @@
 //! path pi-ai's SDK uses for `beta.messages.create`). The response stream is
 //! decoded by [`SseDecoder`] and assembled by `stream::Assembler`.
 
+mod cache;
 pub mod claude_code;
 mod error;
 mod live;

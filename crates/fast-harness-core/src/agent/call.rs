@@ -5,7 +5,7 @@ use std::time::{Duration, Instant};
 
 use crate::agent::turn::{ms, traced, Res, Turn};
 use crate::auth::{Failover, Lease};
-use crate::config::Config;
+use crate::config::{CacheTtl, Config};
 use crate::events::{AgentEvent, TurnOutcome};
 use crate::http::Transport;
 use crate::llm::{Cache, ChatRequest, Completion, Delta, ErrorKind, LlmError, Timing};
@@ -175,6 +175,9 @@ impl Turn<'_> {
             None => &*parts.transport,
         };
         let (system_1h, messages_1h) = parts.config.cache_hours();
+        // `auto` keeps 1 hour for turn starts only; an explicit `1h` for
+        // every step (PLAN.md D88).
+        let loop_5m = parts.config.cache_setting() == CacheTtl::Auto;
         // A `PreModelRequest` hook may change only these two (PLAN.md D63).
         let change = self.change.as_ref().filter(|_| !self.quiet);
         let (model, effort, max_tokens) =
@@ -188,10 +191,7 @@ impl Turn<'_> {
             tools: conv.tools.as_deref().unwrap_or(agent.tools.specs()),
             max_tokens,
             effort,
-            cache: Cache {
-                system_1h,
-                messages_1h,
-            },
+            cache: Cache::new(system_1h, messages_1h).with_loop_5m(loop_5m),
             session: &conv.id,
             cancel: self.cancel,
         };
