@@ -28,13 +28,16 @@ fn the_live_undo_notes_equal_the_replayed_ones() {
     let env = env("undo-views-parity");
     std::fs::write(env.cwd.join("p.txt"), "before").unwrap();
     let args = json!({"path": "p.txt", "content": "after"}).to_string();
-    let script = vec![tool_reply(&[("c1", "write", &args)]), text_reply("ok")];
+    // The file exists: write needs a read of it first.
+    let read = json!({"path": "p.txt"}).to_string();
+    let calls = [("c0", "read", read.as_str()), ("c1", "write", &args)];
+    let script = vec![tool_reply(&calls), text_reply("ok")];
     let transport = Arc::new(ScriptedTransport::new(script));
     let mut agent = Agent::new(
         parts(&transport, key_auth(), &env.cwd),
         Arc::new(tools::builtin()),
     );
-    agent.preload = vec!["write".into()];
+    agent.preload = vec!["read".into(), "write".into()];
     let mut conv = Conversation::create(&env.home, &env.cwd, None).unwrap();
     agent.run_turn(&mut conv, "change p", &AtomicBool::new(false), &mut |_| {});
     let outcome = undo_conv(&mut conv, false).unwrap();

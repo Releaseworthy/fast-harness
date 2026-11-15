@@ -5,8 +5,8 @@
 
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, MutexGuard};
-use std::time::SystemTime;
 
+use super::file_state::FileStates;
 use super::{Jobs, ToolCtx, ToolOutput, UndoLog};
 use crate::types::ImageRef;
 
@@ -42,16 +42,18 @@ pub struct ToolSession {
     media_dir: Option<PathBuf>,
     /// Images attached for the next user message (PLAN.md D70).
     attached: Mutex<Vec<ImageRef>>,
+    /// What the agent last saw of each file (`file_state`).
+    files: FileStates,
 }
 
-/// A returned read: path, offset, limit, file size and modified time.
+/// A returned read: path, offset, limit and the file's content hash
+/// (`file_state::hash_of`: a touched but unchanged file stays the same).
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct ReadKey {
     pub path: PathBuf,
     pub offset: u64,
     pub limit: u64,
-    pub size: u64,
-    pub modified: Option<SystemTime>,
+    pub hash: u64,
 }
 
 impl ToolSession {
@@ -63,6 +65,7 @@ impl ToolSession {
             out_dir,
             media_dir,
             attached: Mutex::default(),
+            files: FileStates::default(),
             reads: Mutex::new(Vec::new()),
             jobs: Arc::default(),
             undo: Arc::new(UndoLog::new(undo_dir)),
@@ -113,13 +116,12 @@ impl ToolSession {
 
     /// The call that already returned `key`, if any: the same request, or
     /// lines inside a range an earlier read returned (PLAN.md D82), the
-    /// file's size and modified time unchanged.
+    /// file's content unchanged.
     pub fn read_by(&self, key: &ReadKey) -> Option<String> {
         let reads = self.reads.lock().unwrap_or_else(|e| e.into_inner());
         let wanted_end = key.offset.saturating_add(key.limit.saturating_sub(1));
         let covers = |span: &&ReadSpan| {
-            let same_file = (&span.key.path, span.key.size, span.key.modified)
-                == (&key.path, key.size, key.modified);
+            let same_file = same_file(&span.key, key);
             let inside = span.key.offset <= key.offset && wanted_end <= span.end;
             same_file && (span.key == *key || inside)
         };
@@ -202,9 +204,63 @@ pub struct Seen {
     pub to_end: bool,
 }
 
-/// Same path, size and modified time: the file did not change between.
+/// Same path and content hash: the file did not change between.
 fn same_file(a: &ReadKey, b: &ReadKey) -> bool {
-    (&a.path, a.size, a.modified) == (&b.path, b.size, b.modified)
+    (&a.path, a.hash) == (&b.path, b.hash)
+}
+
+/// A new line range for an old one (`None` drops it) and whether a change
+/// touched it.
+pub(crate) type MoveSpan<'a> = dyn Fn(u64, u64) -> Option<(u64, u64, bool)> + 'a;
+
+/// File state (`file_state`): kept apart from the ranges above.
+impl ToolSession {
+    /// What the agent last saw of each file.
+    pub(crate) fn files(&self) -> &FileStates {
+        &self.files
+    }
+
+    /// Forgets the read ranges of `path` (the agent wrote all of it).
+    pub(crate) fn forget_reads(&self, path: &Path) {
+        lock(&self.reads).retain(|span| span.key.path != path);
+    }
+
+    /// Moves the ranges of `path` read at content `from` to content `to`
+    /// through `map`; a range a change touched also names `call`.
+    pub(crate) fn move_reads(
+        &self,
+        path: &Path,
+        (from, to): (u64, u64),
+        map: &MoveSpan<'_>,
+        call: &str,
+    ) {
+        let mut reads = lock(&self.reads);
+        let old = std::mem::take(&mut *reads);
+        for span in old {
+            if span.key.path != path || span.key.hash != from {
+                reads.push(span);
+                continue;
+            }
+            let Some((offset, end, touched)) = map(span.key.offset, span.end) else {
+                continue;
+            };
+            let limit = match end {
+                u64::MAX => span.key.limit,
+                end => end - offset + 1,
+            };
+            let key = ReadKey {
+                offset,
+                limit,
+                hash: to,
+                ..span.key
+            };
+            let call = match touched && !span.call.split(", ").any(|c| c == call) {
+                true => format!("{}, {call}", span.call),
+                false => span.call,
+            };
+            reads.push(ReadSpan { key, end, call });
+        }
+    }
 }
 
 fn push_new(calls: &mut Vec<String>, call: &str) {

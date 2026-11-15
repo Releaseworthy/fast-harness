@@ -3,6 +3,7 @@
 use serde_json::{json, Value};
 
 use super::args::{object_schema, opt_bool, req_str, resolve};
+use super::{file_state, text_codec};
 use super::{Effect, Tool, ToolCtx, ToolOutput};
 use crate::llm::ToolSpec;
 
@@ -18,7 +19,9 @@ impl Tool for EditTool {
             name: "edit".into(),
             description: "Replace exact text in a file. `old_string` must match the file \
                 exactly (whitespace included) and, unless replace_all is true, exactly once; \
-                add surrounding lines to make it unique. Reports the number of replacements."
+                add surrounding lines to make it unique. Read the file first: an unread file \
+                or one changed since is refused. Keeps the encoding (UTF-16, BOM). Reports \
+                the number of replacements."
                 .into(),
             schema: object_schema(
                 json!({
@@ -52,9 +55,8 @@ fn edit(args: &Value, ctx: &ToolCtx<'_>) -> Result<String, String> {
         return Err("old_string and new_string are identical; nothing to change".to_string());
     }
     let path = resolve(ctx, path_arg);
-    let bytes = std::fs::read(&path).map_err(|err| format!("cannot read {path_arg}: {err}"))?;
-    let content = String::from_utf8(bytes)
-        .map_err(|_| format!("{path_arg} is not valid UTF-8 text; edit refused"))?;
+    let (bytes, encoding, content) = text_codec::read_text_file(path_arg, &path)?;
+    file_state::check_seen(ctx, &path, path_arg, &bytes)?;
     let (old, new) = pick_strings(&content, old, new);
     let count = content.matches(old.as_str()).count();
     if count == 0 {
@@ -71,8 +73,10 @@ fn edit(args: &Value, ctx: &ToolCtx<'_>) -> Result<String, String> {
     } else {
         (content.replacen(old.as_str(), &new, 1), 1)
     };
-    super::undo::tracked_replace(ctx, &path, updated.as_bytes())
+    let written = text_codec::encode(&updated, encoding);
+    super::undo::tracked_replace(ctx, &path, &written)
         .map_err(|err| format!("cannot write {path_arg}: {err}"))?;
+    file_state::record_change(ctx, &path, (&content, &updated), &written, false);
     let lines = match_lines(&content, &old, replaced);
     Ok(if replaced == 1 {
         format!("Replaced 1 occurrence in {path_arg} at line {lines}")

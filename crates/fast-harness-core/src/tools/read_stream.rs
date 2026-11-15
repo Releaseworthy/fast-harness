@@ -3,7 +3,8 @@
 
 use std::io::BufRead;
 
-use super::args::cut_chars;
+/// Shows line `n` (its text, whether it was read whole) as an output line.
+pub(super) type ShowLine<'a> = dyn Fn(u64, &str, bool) -> String + 'a;
 
 /// Bytes kept of one line: more than `max_chars` characters of UTF-8.
 fn keep_bytes(max_chars: usize) -> usize {
@@ -59,13 +60,15 @@ fn skip_line<R: BufRead>(reader: &mut R, line: &mut Vec<u8>) -> std::io::Result<
 }
 
 /// Lines `offset..` of `reader`, at most `limit` of them and `room` bytes
-/// (at least one line), each cut to `max_chars`. Reading stops after the
-/// last line shown; a note says so when input remains, since the total line
-/// count of the file (`size` bytes) is then unknown.
+/// (at least one line), each kept to `max_chars` and shown by `show`.
+/// Reading stops after the last line shown; a note says so when input
+/// remains, since the total line count of the file (`size` bytes) is then
+/// unknown.
 pub(super) fn prefix_lines<R: BufRead>(
     mut reader: R,
     (offset, limit, room, max_chars): (u64, u64, usize, usize),
     size: u64,
+    show: &ShowLine<'_>,
 ) -> Result<String, String> {
     let io = |err: std::io::Error| format!("cannot read the file: {err}");
     let mut line = Vec::new();
@@ -83,7 +86,7 @@ pub(super) fn prefix_lines<R: BufRead>(
             break;
         };
         let text = String::from_utf8_lossy(&line);
-        let entry = format!("{}: {}\n", end + 1, cut_chars(&text, max_chars));
+        let entry = show(end + 1, &text, whole);
         if end >= offset && out.len() + entry.len() > room {
             stop = true;
             break;
@@ -112,6 +115,10 @@ mod tests {
 
     use super::prefix_lines;
 
+    fn show(n: u64, line: &str, whole: bool) -> String {
+        format!("{n}: {line}{}\n", if whole { "" } else { " [cut]" })
+    }
+
     struct Counting<'a, R>(R, &'a Cell<u64>);
 
     impl<R: Read> Read for Counting<'_, R> {
@@ -135,7 +142,7 @@ mod tests {
         let size = data.len() as u64;
         let read = Cell::new(0);
         let reader = BufReader::new(Counting(Cursor::new(data), &read));
-        let out = prefix_lines(reader, (1, 2000, 4_000, 2000), size).unwrap();
+        let out = prefix_lines(reader, (1, 2000, 4_000, 2000), size, &show).unwrap();
         assert!(out.starts_with("1: line 1\n"), "{out}");
         assert!(out.contains("read only this far; continue with offset"));
         assert!(read.get() < 64 * 1024, "read {} bytes", read.get());
@@ -147,8 +154,8 @@ mod tests {
         data.extend_from_slice(b"\nnext\n");
         let read = Cell::new(0);
         let reader = BufReader::new(Counting(Cursor::new(data), &read));
-        let out = prefix_lines(reader, (1, 10, 100_000, 50), 0).unwrap();
-        assert!(out.starts_with(&format!("1: {}... [line cut]\n", "x".repeat(50))));
+        let out = prefix_lines(reader, (1, 10, 100_000, 50), 0, &show).unwrap();
+        assert!(out.starts_with(&format!("1: {} [cut]\n", "x".repeat(204))));
         assert!(out.contains("continue with offset 2"), "{out}");
         assert!(read.get() < 64 * 1024, "read {} bytes", read.get());
     }
@@ -156,10 +163,10 @@ mod tests {
     #[test]
     fn the_end_of_input_gives_no_note_and_crlf_is_dropped() {
         let reader = BufReader::new(Cursor::new(b"a\r\nb\r\nc".to_vec()));
-        let out = prefix_lines(reader, (2, 10, 1_000, 2000), 7).unwrap();
+        let out = prefix_lines(reader, (2, 10, 1_000, 2000), 7, &show).unwrap();
         assert_eq!(out, "2: b\n3: c\n");
         let reader = BufReader::new(Cursor::new(b"a\n".to_vec()));
-        let err = prefix_lines(reader, (3, 10, 1_000, 2000), 2).unwrap_err();
+        let err = prefix_lines(reader, (3, 10, 1_000, 2000), 2, &show).unwrap_err();
         assert!(err.contains("past the end"), "{err}");
     }
 }
