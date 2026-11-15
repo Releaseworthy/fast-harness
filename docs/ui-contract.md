@@ -74,6 +74,9 @@ With `"approvals": "ask"` a call can wait for an answer (PLAN.md D64). Both fron
 - `CrossSelect.f-row`: property <int>
 - `CrossSelect.hand-off`: callback
 - `CrossSelect.handing`: property <bool>
+- `CrossSelect.held`: property <bool>
+- `CrossSelect.left`: callback
+- `CrossSelect.out`: property <bool>
 - `CrossSelect.put`: callback
 - `DialogUi.open`: property <string>
 - `JobsUi.clear`: callback
